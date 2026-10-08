@@ -10,7 +10,7 @@ API_KEY = os.environ["PUNTERSEDGE_API_KEY"]
 
 API_URL = (
     "https://api.puntersedge.online/v1/racing/next-to-go"
-    ""?country=GB,IE&category=horse&num_races=200""
+    "?country=GB,IE&category=horse&num_races=200"
 )
 
 DATA_DIR = Path("data")
