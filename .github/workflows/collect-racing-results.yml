@@ -28,11 +28,15 @@ jobs:
           RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
         run: python collect-racing-results.py
 
+      - name: Calculate trainer and jockey strike rates
+        run: python calculate-strike-rates.py
+
+
       - name: Save results to GitHub
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/racing-results/
+          git add data/racing-results/ data/strike-rates.json
           if ! git diff --cached --quiet; then
             git commit -m "Update daily racing results"
             git push
