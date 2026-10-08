@@ -1,10 +1,12 @@
 
-name: Collect Racing Edge Odds
+name: Collect Racing Hot Pots Odds
 
 "on":
   workflow_dispatch: {}
   schedule:
-    - cron: "17 * * * *"
+    - cron: "0 * * * *"
+    - cron: "15,30,45 11-17 * * *"
+
 permissions:
   contents: write
 
@@ -19,20 +21,42 @@ jobs:
     steps:
       - name: Download repository
         uses: actions/checkout@v4
-        with:
-          persist-credentials: true
+
+      - name: Check Irish racing hours
+        id: hours
+        env:
+          TRIGGER: ${{ github.event_name }}
+          SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          hour=$(TZ=Europe/Dublin date +%H)
+          minute=$(TZ=Europe/Dublin date +%M)
+
+          if [ "$TRIGGER" = "workflow_dispatch" ]; then
+            echo "collect=true" >> "$GITHUB_OUTPUT"
+          elif [ "$SCHEDULE" = "0 * * * *" ]; then
+            echo "collect=true" >> "$GITHUB_OUTPUT"
+          elif [ "$hour" -ge 12 ] && [ "$hour" -lt 18 ]; then
+            echo "collect=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "collect=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "Irish time: $hour:$minute"
 
       - name: Collect bookmaker odds
+        if: steps.hours.outputs.collect == 'true'
         env:
           PUNTERSEDGE_API_KEY: ${{ secrets.PUNTERSEDGE_API_KEY }}
         run: python collect-odds.py
 
       - name: Save odds history
+        if: steps.hours.outputs.collect == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/latest-odds.json data/odds-history.json
           if ! git diff --cached --quiet; then
-            git commit -m "Update Racing Edge odds snapshots"
+            git commit -m "Update Racing Hot Pots odds snapshots"
+            git pull --rebase
             git push
           fi
