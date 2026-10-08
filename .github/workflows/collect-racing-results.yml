@@ -1,0 +1,39 @@
+
+name: Collect Racing Results Daily
+
+on:
+  schedule:
+    - cron: '30 22 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  collect-results:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Collect UK and Irish results
+        env:
+          RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
+          RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
+        run: python collect-racing-results.py
+
+      - name: Save results to GitHub
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/racing-results/
+          if ! git diff --cached --quiet; then
+            git commit -m "Update daily racing results"
+            git push
+          fi
