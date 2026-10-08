@@ -1,1 +1,19 @@
 
+name: Test Racing Edge API
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download repository
+        uses: actions/checkout@v4
+
+      - name: Run API key test
+        env:
+          PUNTERSEDGE_API_KEY: ${{ secrets.PUNTERSEDGE_API_KEY }}
+        run: python test-feed.py
+
