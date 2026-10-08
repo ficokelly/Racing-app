@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0c0b09"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><title>Racing Hot Pots</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#edf7f8;background:#07141e;font-synthesis:none}*{box-sizing:border-box}body{margin:0;padding-bottom:90px;background:radial-gradient(circle at 90% -10%,#19494e 0,transparent 43%),#07141e}header,main,nav{max-width:850px;margin:auto}header{padding:env(safe-area-inset-top) 18px 4px}.top{display:flex;justify-content:space-between;align-items:center;padding-top:23px}.brand{font-weight:850;letter-spacing:-.7px;font-size:25px}.brand span{color:#6be1ba}.sub{color:#8ea9b0;font-size:12px;margin-top:4px}.live{font-size:11px;border:1px solid #2b6b61;background:#123a37;border-radius:30px;padding:7px 10px;color:#8af3cc}main{padding:14px 16px}h1{font-size:27px;letter-spacing:-.8px;margin:12px 0 4px}h2{font-size:17px;margin:22px 0 12px}.muted{color:#9bb1bb;font-size:12px;line-height:1.5}.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin:20px 0}.metric{background:#102733;border:1px solid #20404b;border-radius:16px;padding:13px 11px}.metric b{display:block;font-size:26px;margin:7px 0 2px}.metric small{font-size:11px;color:#9eb7be}.filters{display:flex;gap:8px;overflow-x:auto;padding:3px 0 12px}button,select{font:inherit}.chip{white-space:nowrap;border:1px solid #294550;color:#a8c1c7;background:#102733;padding:9px 13px;border-radius:25px;font-size:12px;cursor:pointer}.chip.active{background:#2c806a;color:white;border-color:#4eae91}.toolbar{display:flex;justify-content:space-between;gap:10px;align-items:center}.toolbar select{background:#102733;border:1px solid #294550;color:#e6f6f5;border-radius:9px;padding:9px;font-size:12px;max-width:170px}.list{display:grid;gap:10px}.horse{background:#102733;border:1px solid #20404b;border-radius:17px;padding:15px}.horse-top{display:flex;justify-content:space-between;gap:10px}.name{font-weight:750;font-size:17px}.meta{color:#9db4bd;font-size:12px;margin-top:5px}.pill{font-size:11px;border-radius:20px;padding:6px 9px;height:max-content;background:#253d46;color:#b6ccd1;white-space:nowrap}.pill.yes{background:#194b3c;color:#80f0bd}.pill.no{background:#493729;color:#f5c795}.odds{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:15px 0}.odds div{background:#0b1e29;border-radius:10px;padding:10px 8px}.odds small{display:block;color:#9ab1bb;font-size:10px}.odds b{display:block;margin-top:5px;font-size:17px}.move{color:#80f0bd}.foot{display:flex;justify-content:space-between;gap:10px;color:#9ab1bb;font-size:11px;line-height:1.4}.foot strong{color:#cce0e3}.empty{border:1px dashed #3b5860;border-radius:16px;padding:30px 15px;text-align:center;color:#a5bbc0}.note{border-left:3px solid #6be1ba;padding:10px 12px;background:#102733;color:#bed1d5;font-size:12px;border-radius:4px;margin-top:14px;line-height:1.6}nav{position:fixed;bottom:0;left:0;right:0;display:flex;justify-content:space-around;background:#0a202c;border-top:1px solid #24424d;padding:12px 0 calc(13px + env(safe-area-inset-bottom));z-index:5}nav button{border:0;background:none;color:#8baab3;font-size:12px;padding:6px 15px;cursor:pointer}nav button.active{color:#77e7bb;font-weight:750}details{margin-top:10px}summary{color:#8bdec1;font-size:12px;cursor:pointer}details .history{padding:8px 0;color:#adc7ca;font-size:11px;line-height:1.8}.smalltag{font-size:10px;color:#88a9b2}.notice{color:#e4bf7e}a{color:#8ce6c2}@media(min-width:700px){.list{grid-template-columns:repeat(2,1fr)}}
+
+/* Racing Hot Pots · Black & Gold edition */
+:root{color:#f7f1df;background:#0b0a09;color-scheme:dark}
+body{background:radial-gradient(ellipse at 76% -4%,rgba(196,146,54,.15),transparent 42%),linear-gradient(180deg,#11100d 0%,#090909 65%);color:#f7f1df}
+header{padding-left:18px;padding-right:18px}
+.top{padding-top:26px;padding-bottom:15px;border-bottom:1px solid rgba(213,167,75,.19)}
+.brand{display:flex;align-items:center;gap:9px;font-size:25px;letter-spacing:-.9px;font-weight:860;line-height:1}
+.brand-words span{color:#e9bf67}.brand-icon{display:inline-flex;align-items:center;justify-content:center;width:39px;height:39px;border:1px solid #b78b41;border-radius:12px;background:linear-gradient(135deg,#3b2a16,#17120b);color:#efc875;font-size:30px;line-height:1;box-shadow:inset 0 0 12px #b4883022}
+.sub{color:#b3a48a;font-size:9px;letter-spacing:1.3px;margin-top:8px}.sub-dot{color:#e4b85f;margin:0 3px}
+.live{font-size:9px;font-weight:750;letter-spacing:.4px;color:#f0cd84;background:#292011;border:1px solid #705426;padding:8px 9px}
+main{padding-top:17px}.eyebrow{color:#bf9650;letter-spacing:2px;font-size:10px;font-weight:850}.eyebrow span{padding:0 7px;color:#d5ac60}
+h1{font-size:32px;margin:9px 0 5px;letter-spacing:-1.15px}.gold-text{color:#e5b65b}
+h2{color:#f7f0de;font-size:18px;letter-spacing:-.2px}
+.muted{color:#a99e8a}.metrics{gap:8px;margin:22px 0 18px}
+.metric{background:linear-gradient(145deg,#211c13,#141310);border:1px solid #47371f;box-shadow:0 6px 20px #0004;border-radius:16px;min-width:0}
+.metric:first-child{border-color:#82602f;background:linear-gradient(145deg,#322516,#181510)}
+.metric b{color:#ebc06c;font-size:29px}.metric small{color:#b2a38a;font-size:10px}
+.filters{margin-bottom:2px}.chip{border:1px solid #4a3b27;background:#211c15;color:#cdbda0}.chip.active{background:linear-gradient(135deg,#f1ce83,#b9842d);border-color:#f1c978;color:#18110a;font-weight:750}
+.toolbar select{color:#efdcb2;background:#231b12;border:1px solid #5a4528}
+.horse{background:linear-gradient(155deg,#1d1a14,#141310);border:1px solid #483925;border-radius:17px;box-shadow:0 10px 25px #0003;position:relative;overflow:hidden}
+.horse:before{content:'';display:block;position:absolute;top:0;left:14px;right:14px;height:1px;background:linear-gradient(90deg,transparent,#8d6b34,transparent)}
+.name{color:#fcf4df}.meta{color:#aa9b82}.pill{color:#c6b79a;background:#362b1f}.pill.yes{background:#504018;color:#ffe29b;border:1px solid #8e6a27}.pill.no{background:#392e23;color:#f0c291}
+.odds div{background:#0f0e0b;border:1px solid #302819}.odds small{color:#ae9e84}.odds b{color:#faf1d9}.odds b.move{color:#e9bd60}
+.foot{color:#a99a82}.foot strong{color:#f0d495}.empty{border-color:#594324;color:#cabda1}
+.note{border-left:3px solid #d9a64c;background:#1e1911;color:#c5b79b}
+nav{background:#14110df5;border-top:1px solid #59452c;box-shadow:0 -8px 35px #0009;backdrop-filter:blur(18px)}nav button{color:#aa9879}nav button.active{color:#eac16a}
+summary{color:#edbd64}details .history{color:#d6c5a5}.smalltag{color:#a99a80}.notice{color:#e6b668}a{color:#f2c979}
+@media(max-width:390px){.brand{font-size:21px}.brand-icon{width:34px;height:34px;font-size:26px}.live{font-size:8px;padding:7px}.metric b{font-size:25px}}
+.race-filters{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:5px 0 13px}.race-filter{display:flex;flex-direction:column;gap:5px;min-width:0}.race-filter label{font-size:11px;color:#c9af7f;letter-spacing:.3px}.race-filter select{width:100%;min-width:0;background:#211b13;color:#f3e4c3;border:1px solid #6a4b27;border-radius:11px;padding:11px 28px 11px 10px;font-size:14px}.filter-count{font-size:11px;color:#bba783;margin:-5px 0 13px}@media(max-width:340px){.race-filters{grid-template-columns:1fr}}.sort-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 13px}.sort-row label{font-size:12px;color:#c9af7f}.sort-row select{flex:1;max-width:225px;min-width:0;background:#211b13;color:#f3e4c3;border:1px solid #6a4b27;border-radius:11px;padding:10px;font-size:13px}</style></head><body><header><div class="top"><div><div class="brand"><span class="brand-icon" aria-hidden="true">♞</span><span class="brand-words">Racing <span>Hot Pots</span></span></div><div class="sub">UK & IRELAND <span class="sub-dot">◆</span> RACING INTELLIGENCE</div></div><div class="live" id="status">Checking feed</div></div></header><main><div class="eyebrow">THE RACING BOARD <span>✦</span> LIVE ODDS ANALYSIS</div><h1>Market <span class="gold-text">Movers</span></h1><div class="muted" id="asof">Loading data…</div><div class="metrics"><div class="metric"><small>Races tracked</small><b id="races">—</b><small>Current racecard</small></div><div class="metric"><small>Steamers</small><b id="steamers">—</b><small>Bookmaker moves</small></div><div class="metric"><small>Strategy A</small><b id="qualifiers">—</b><small>Potential picks</small></div></div><div class="toolbar"><h2 id="section">Biggest movers</h2><select id="bookie" aria-label="Select bookmaker"><option value="all">All bookmakers</option></select></div><div class="race-filters"><div class="race-filter"><label for="meeting">Meeting</label><select id="meeting" aria-label="Filter by race meeting"><option value="all">All meetings</option></select></div><div class="race-filter"><label for="race-time">Race time (Irish time)</label><select id="race-time" aria-label="Filter by race start time"><option value="all">All race times</option></select></div></div><div class="sort-row"><label for="sort-by">Sort horses by</label><select id="sort-by" aria-label="Sort horse entries"><option value="shortest">Shortest odds first</option><option value="longest">Longest odds first</option><option value="earliest">Race time — earliest first</option><option value="latest">Race time — latest first</option><option value="movement">Biggest price drop first</option></select></div><div class="filter-count" id="filter-count" aria-live="polite"></div><div class="filters" id="filters"><button class="chip active" data-filter="all">All movers</button><button class="chip" data-filter="qualifier">Strategy A</button><button class="chip" data-filter="near">Near misses</button><button class="chip" data-filter="history">Price history</button></div><div class="list" id="list"></div><div class="note" id="note">Strategy A: favourite shorter than 2/1, second favourite at least 3/1, and same-bookmaker shortening. Quotes marked stale are excluded.</div><p class="muted" style="margin-top:18px">iPhone: Safari → Share → Add to Home Screen. This app never places bets.</p></main><nav><button class="active" data-tab="movers">↘<br>Movers</button><button data-tab="strategy">◎<br>Strategy A</button><button data-tab="history">◷<br>History</button></nav><script>
+'use strict';
+const $ = id=>document.getElementById(id);
+const safe=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const num=x=>x!==null&&x!==undefined&&x!==''&&Number.isFinite(Number(x))?Number(x):null;
+const when=s=>{if(!s)return 'Unknown';let d=new Date(s);return Number.isNaN(d.getTime())?String(s):new Intl.DateTimeFormat('en-IE',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Dublin'}).format(d)};
+function fmt(x){let d=num(x);if(d===null||d<=1)return '—';if(Math.abs(d-2)<.001)return 'EVS';let f=d-1;for(let den=1;den<=40;den++){let n=Math.round(f*den);if(Math.abs(n/den-f)<.003){const gcd=(a,b)=>b?gcd(b,a%b):a;let g=gcd(n,den);return `${n/g}/${den/g}`}}return d.toFixed(2)}
+let rows=[],mode='all',selectedBook='all',selectedMeeting='all',selectedTime='all',selectedSort='shortest',asof='',snapshotCount=0;
+const clock=s=>{if(!s)return 'Unknown';const d=new Date(s);return Number.isNaN(d.getTime())?'Unknown':new Intl.DateTimeFormat('en-GB',{hour:'2-digit',minute:'2-digit',hourCycle:'h23',timeZone:'Europe/Dublin'}).format(d)};
+// A unique horse+bookmaker price series within one race. Use exact same bookmaker for comparisons.
+const k=p=>JSON.stringify([p.race_id,p.horse,p.bookmaker]);
+function build(latest,history){
+ const current=Array.isArray(latest.prices)?latest.prices:[];
+ const hist=Array.isArray(history)?history:[];
+ const series=new Map();
+ for(const snap of hist){if(!snap||!Array.isArray(snap.prices))continue;
+  for(const p of snap.prices){let odds=num(p.decimal_odds);if(!p||odds===null||odds<=1||p.stale===true)continue;
+   let key=k(p);if(!series.has(key))series.set(key,[]);
+   series.get(key).push({at:p.collected_at||snap.collected_at,decimal:odds});
+  }
+ }
+ for(const points of series.values()){
+   points.sort((a,b)=>new Date(a.at)-new Date(b.at));
+   const uniq=new Map();for(const p of points)if(p.at)uniq.set(p.at,p);
+   points.splice(0,points.length,...uniq.values());
+ }
+ // Build one market per race AND bookmaker. Never mix odds across bookmakers.
+ const markets=new Map();
+ for(const p of current){if(!p||!p.race_id||!p.horse||!p.bookmaker||p.stale===true)continue;let odds=num(p.decimal_odds);if(odds===null||odds<=1)continue;
+  let mk=JSON.stringify([p.race_id,p.bookmaker]);if(!markets.has(mk))markets.set(mk,new Map());
+  markets.get(mk).set(p.horse,{...p,decimal_odds:odds});
+ }
+ const result=[];
+ for(const runners of markets.values()){
+  const sorted=[...runners.values()].sort((a,b)=>a.decimal_odds-b.decimal_odds);
+  if(sorted.length<2)continue;
+  const fav=sorted[0],second=sorted[1];
+  const favTie=sorted[0].decimal_odds===sorted[1].decimal_odds;
+  for(const p of sorted){
+   const points=series.get(k(p))||[];const cur=num(p.decimal_odds);
+   const earlier=points.find(x=>new Date(x.at)<new Date(latest.collected_at)&&x.decimal!==null);
+   const reportedOpen=num(p.opening_odds);
+   // Prefer an actual prior timestamped snapshot; API opening field is clearly labelled as provider-reported.
+   const baseline=earlier?earlier.decimal:(reportedOpen!==null&&reportedOpen>1?reportedOpen:null);
+   const label=earlier?'First saved snapshot':'API-reported open (unverified)';
+   const baselineAt=earlier?earlier.at:null;
+   // Shortening in fractional odds terms: opening fractional minus current fractional, over earlier fractional.
+   const pct=baseline!==null&&baseline>1?(baseline-cur)/(baseline-1)*100:null;
+   const moves=pct!==null&&pct>0.0001;
+   const isFav=p.horse===fav.horse&&!favTie;
+   const qualifies=isFav&&cur<3&&second.decimal_odds>=4&&moves;
+   const near=isFav&&moves&&!qualifies&&(cur<3||second.decimal_odds>=4);
+   result.push({race_id:p.race_id,horse:p.horse,course:p.course||'Unknown course',country:p.country,time:when(p.race_time),raceClock:clock(p.race_time),raceTimestamp:Date.parse(p.race_time)||null,bookmaker:p.bookmaker,current_decimal:cur,earlier_decimal:baseline,baseline_label:label,baseline_at:baselineAt?when(baselineAt):'Not timestamped',current_at:when(p.bookmaker_updated_at||p.collected_at),move_pct:pct,second_horse:second.horse,second_decimal:second.decimal_odds,qualifies,near,isFav,history:points.map(x=>({at:when(x.at),decimal:x.decimal})),reason:!earlier&&reportedOpen!==null?'Only API-reported opening odds available; provenance not verified':favTie?'Joint favourite; excluded from Strategy A':null});
+  }
+ }
+ return result;
+}
+function updateRaceFilters(){
+ const meetings=[...new Set(rows.filter(x=>selectedBook==='all'||x.bookmaker===selectedBook).map(x=>x.course))].sort((a,b)=>a.localeCompare(b));
+ if(selectedMeeting!=='all'&&!meetings.includes(selectedMeeting))selectedMeeting='all';
+ $('meeting').innerHTML='<option value="all">All meetings</option>'+meetings.map(m=>'<option value="'+safe(m)+'">'+safe(m)+'</option>').join('');
+ $('meeting').value=selectedMeeting;
+ const times=[...new Set(rows.filter(x=>(selectedBook==='all'||x.bookmaker===selectedBook)&&(selectedMeeting==='all'||x.course===selectedMeeting)).map(x=>x.raceClock).filter(t=>t!=='Unknown'))].sort();
+ if(selectedTime!=='all'&&!times.includes(selectedTime))selectedTime='all';
+ $('race-time').innerHTML='<option value="all">All race times</option>'+times.map(t=>'<option value="'+safe(t)+'">'+safe(t)+'</option>').join('');
+ $('race-time').value=selectedTime;
+}
+function render(){
+ const items=rows.filter(x=>(selectedBook==='all'||x.bookmaker===selectedBook)&&(selectedMeeting==='all'||x.course===selectedMeeting)&&(selectedTime==='all'||x.raceClock===selectedTime));
+ const movers=items.filter(x=>x.move_pct!==null&&x.move_pct>0);
+ const view=(mode==='qualifier'?movers.filter(x=>x.qualifies):mode==='near'?movers.filter(x=>x.near):mode==='history'?items:movers).sort((a,b)=>{
+  const byOdds=a.current_decimal-b.current_decimal;
+  const byTime=(a.raceTimestamp??Infinity)-(b.raceTimestamp??Infinity);
+  const byMove=(b.move_pct??-Infinity)-(a.move_pct??-Infinity);
+  const tie=(a.course||'').localeCompare(b.course||'')||(a.horse||'').localeCompare(b.horse||'')||(a.bookmaker||'').localeCompare(b.bookmaker||'');
+  if(selectedSort==='shortest')return byOdds||byTime||tie;
+  if(selectedSort==='longest')return -byOdds||byTime||tie;
+  if(selectedSort==='earliest')return byTime||byOdds||tie;
+  if(selectedSort==='latest')return -byTime||byOdds||tie;
+  return byMove||byOdds||tie;
+ });
+ $('races').textContent=new Set(items.map(x=>x.race_id)).size;
+ $('steamers').textContent=movers.length;
+ $('qualifiers').textContent=movers.filter(x=>x.qualifies).length;
+ $('section').textContent=({qualifier:'Strategy A qualifiers',near:'Near qualifiers',history:'Price history',all:'Biggest movers'})[mode];
+ $('filter-count').textContent='Showing '+view.length+' '+(mode==='qualifier'?'Strategy A entries':mode==='history'?'price records':mode==='near'?'near misses':'steamer entries')+' across '+new Set(items.map(x=>x.race_id)).size+' races';
+ $('list').innerHTML=view.length?view.slice(0,250).map(x=>`<article class="horse"><div class="horse-top"><div><div class="name">${safe(x.horse)}</div><div class="meta">${safe(x.time)} · ${safe(x.course)} · ${safe(x.country)}</div></div><span class="pill ${x.qualifies?'yes':x.near?'no':''}">${x.qualifies?'✓ Strategy A':x.near?'Near miss':x.move_pct>0?'Steamer':'Price record'}</span></div><div class="odds"><div><small>${safe(x.baseline_label)}</small><b>${fmt(x.earlier_decimal)}</b></div><div><small>Current odds</small><b>${fmt(x.current_decimal)}</b></div><div><small>Shortened by</small><b class="move">${x.move_pct===null?'—':x.move_pct>0?x.move_pct.toFixed(1)+'%':'—'}</b></div></div><div class="foot"><span>2nd favourite: <strong>${safe(x.second_horse)} · ${fmt(x.second_decimal)}</strong></span><span>${safe(x.bookmaker)}</span></div><div class="foot" style="margin-top:9px"><span>Earlier: ${safe(x.baseline_at)}</span><span>Quote: ${safe(x.current_at)}</span></div>${x.reason?`<p class="smalltag notice">${safe(x.reason)}</p>`:''}<details ${mode==='history'?'open':''}><summary>View saved price history</summary><div class="history">${x.history.length?x.history.map(p=>`${safe(p.at)} — ${fmt(p.decimal)}`).join('<br>'):'No saved observations'}</div></details></article>`).join(''):'<div class="empty">No matching horses. Two non-stale observations or a provider-reported opening price are needed to identify shortening.</div>';
+}
+async function load(){try{
+ const suffix='?v='+Date.now();
+ const [a,b]=await Promise.all([fetch('./data/latest-odds.json'+suffix,{cache:'no-store'}),fetch('./data/odds-history.json'+suffix,{cache:'no-store'})]);
+ if(!a.ok)throw Error('Latest odds file unavailable (HTTP '+a.status+')');
+ if(!b.ok)throw Error('Odds history file unavailable (HTTP '+b.status+')');
+ const latest=await a.json(),history=await b.json();
+ if(!Array.isArray(latest.prices)||!Array.isArray(history))throw Error('Invalid odds files');
+ rows=build(latest,history);snapshotCount=history.length;asof=latest.collected_at;
+ $('status').textContent='● ODDS SYNCED';
+ $('asof').textContent='Last collected: '+when(asof)+' (Irish time) · '+latest.races_returned+' races returned · '+latest.prices_collected+' bookmaker quotes · '+snapshotCount+' snapshot(s)';
+ $('note').textContent='Strategy A: unique favourite below 2/1 (decimal < 3), second favourite at least 3/1 (decimal ≥ 4), and shortening at that same bookmaker. Stale quotes excluded. Missing earlier prices are never invented. “API-reported open” is unverified; saved snapshots are actual observed quotes. Coverage reflects races returned by the API at the latest collection, not necessarily every scheduled race. Historical comparisons require repeated collections. Odds can change before you bet.';
+ const books=[...new Set(rows.map(x=>x.bookmaker))].sort();
+ $('bookie').innerHTML='<option value="all">All bookmakers</option>'+books.map(b=>`<option value="${safe(b)}">${safe(b)}</option>`).join('');
+ if(selectedBook!=='all'&&!books.includes(selectedBook))selectedBook='all';$('bookie').value=selectedBook;
+ updateRaceFilters();render();
+ }catch(e){$('status').textContent='NO DATA';$('asof').textContent='Could not load odds files';$('list').innerHTML='<div class="empty">'+safe(e.message)+'. Check GitHub Pages deployment and the data directory, then refresh.</div>';}}
+$('bookie').addEventListener('change',e=>{selectedBook=e.target.value;updateRaceFilters();render()});
+$('meeting').addEventListener('change',e=>{selectedMeeting=e.target.value;selectedTime='all';updateRaceFilters();render()});
+$('race-time').addEventListener('change',e=>{selectedTime=e.target.value;render()});
+$('sort-by').addEventListener('change',e=>{selectedSort=e.target.value;render()});
+document.querySelectorAll('[data-filter]').forEach(b=>b.addEventListener('click',()=>{mode=b.dataset.filter;document.querySelectorAll('[data-filter]').forEach(c=>c.classList.toggle('active',c===b));render()}));
+document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('[data-tab]').forEach(c=>c.classList.toggle('active',c===b));mode=b.dataset.tab==='strategy'?'qualifier':b.dataset.tab==='history'?'history':'all';document.querySelectorAll('[data-filter]').forEach(c=>c.classList.toggle('active',c.dataset.filter===mode));render();window.scrollTo({top:0,behavior:'smooth'})}));
+load();
+</script></body></html>
