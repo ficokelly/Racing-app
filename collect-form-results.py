@@ -29,15 +29,18 @@ def parse_date(value):
         return None
 
 
-def fetch_results(offset):
-    query = urlencode({'country': 'GB,IE', 'category': 'horse', 'hours_back': 48, 'limit': 500, 'offset': offset, 'status': 'final'})
+def fetch_results():
+    # Start with documented core filters only. Omit limit/offset until validated.
+    query = urlencode({'country': 'GB,IE', 'category': 'horse', 'hours_back': 48})
     req = Request('https://api.puntersedge.online/v1/racing/results?' + query,
                   headers={'X-API-Key': key, 'Accept': 'application/json', 'User-Agent': 'RacingHotPots/1.0'})
     try:
         with urlopen(req, timeout=50) as resp:
             payload = json.load(resp)
     except HTTPError as e:
-        raise SystemExit(f'PuntersEdge HTTP {e.code}; existing archive unchanged.') from e
+        # Log the API's validation message, never the secret request header.
+        detail = e.read(1500).decode('utf-8', errors='replace')
+        raise SystemExit(f'PuntersEdge HTTP {e.code}: {detail}; existing archive unchanged.') from e
     if isinstance(payload, list):
         return payload
     if isinstance(payload, dict):
@@ -56,14 +59,9 @@ if FILE.exists():
         if isinstance(runner, dict) and runner.get('race_id') and runner.get('horse'):
             existing[(runner['race_id'], runner['horse'].casefold())] = runner
 
-received = []
-for offset in range(0, 5000, 500):
-    page = fetch_results(offset)
-    received += page
-    if len(page) < 500:
-        break
-else:
-    raise RuntimeError('Pagination limit reached; archive unchanged.')
+received = fetch_results()
+# A single unpaginated request may not provide complete race coverage.
+# Never claim complete 14-day statistics without an independent coverage audit.
 
 for race in received:
     if race.get('status') != 'final' or race.get('country') not in ('GB', 'IE'):
