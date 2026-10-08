@@ -25,12 +25,74 @@ def parse_date(value):
         return None
     try:
         return dt.datetime.fromisoformat(value.replace('Z', '+00:00')).astimezone(UTC)
-    except ValueError:
+    except (ValueError, TypeError, AttributeError):
         return None
 
 
+def field_names(value):
+    """Log keys only, never response values or credentials."""
+    if not isinstance(value, dict):
+        return f'type={type(value).__name__}'
+    return ', '.join(sorted(str(k) for k in value.keys())[:60])
+
+
+def diagnose_payload(payload, races):
+    print('DIAGNOSTIC: payload type:', type(payload).__name__)
+    print('DIAGNOSTIC: top-level keys:', field_names(payload))
+    print('DIAGNOSTIC: race count:', len(races))
+    if not races:
+        return
+    first = races[0]
+    print('DIAGNOSTIC: first race type:', type(first).__name__)
+    print('DIAGNOSTIC: first race keys:', field_names(first))
+    if not isinstance(first, dict):
+        return
+    for k in ('runners', 'horses', 'entries', 'results', 'participants', 'race_result'):
+        value = first.get(k)
+        if isinstance(value, list):
+            print(f'DIAGNOSTIC: first race {k} count:', len(value))
+            if value:
+                print(f'DIAGNOSTIC: first {k} item keys:', field_names(value[0]))
+        elif isinstance(value, dict):
+            print(f'DIAGNOSTIC: first race {k} keys:', field_names(value))
+    counts = {'status_not_final_or_country': 0, 'missing_race_id_or_time': 0,
+              'missing_runners_list': 0, 'runners_found': 0,
+              'runner_status_or_name': 0, 'missing_trainer_or_jockey': 0,
+              'missing_or_invalid_position': 0, 'accepted': 0}
+    for race in races:
+        if not isinstance(race, dict):
+            counts['status_not_final_or_country'] += 1
+            continue
+        if race.get('status') != 'final' or race.get('country') not in ('GB', 'IE'):
+            counts['status_not_final_or_country'] += 1
+            continue
+        if not race.get('race_id') or not parse_date(race.get('start_time')):
+            counts['missing_race_id_or_time'] += 1
+            continue
+        runners = race.get('runners')
+        if not isinstance(runners, list):
+            counts['missing_runners_list'] += 1
+            continue
+        counts['runners_found'] += len(runners)
+        for runner in runners:
+            if not isinstance(runner, dict) or runner.get('status') != 'ran' or not runner.get('name'):
+                counts['runner_status_or_name'] += 1
+            elif not runner.get('trainer') or not runner.get('jockey'):
+                counts['missing_trainer_or_jockey'] += 1
+            else:
+                try:
+                    if runner.get('position') is None:
+                        raise ValueError('missing')
+                    int(runner['position'])
+                except (ValueError, TypeError):
+                    counts['missing_or_invalid_position'] += 1
+                else:
+                    counts['accepted'] += 1
+    for name, count in counts.items():
+        print(f'DIAGNOSTIC: {name}: {count}')
+
+
 def fetch_results():
-    # Start with documented core filters only. Omit limit/offset until validated.
     query = urlencode({'country': 'GB,IE', 'category': 'horse', 'hours_back': 48})
     req = Request('https://api.puntersedge.online/v1/racing/results?' + query,
                   headers={'X-API-Key': key, 'Accept': 'application/json', 'User-Agent': 'RacingHotPots/1.0'})
@@ -38,15 +100,17 @@ def fetch_results():
         with urlopen(req, timeout=50) as resp:
             payload = json.load(resp)
     except HTTPError as e:
-        # Log the API's validation message, never the secret request header.
         detail = e.read(1500).decode('utf-8', errors='replace')
         raise SystemExit(f'PuntersEdge HTTP {e.code}: {detail}; existing archive unchanged.') from e
     if isinstance(payload, list):
+        diagnose_payload(payload, payload)
         return payload
     if isinstance(payload, dict):
         for field in ('results', 'races', 'data'):
             if isinstance(payload.get(field), list):
+                diagnose_payload(payload, payload[field])
                 return payload[field]
+    print('DIAGNOSTIC: unexpected payload top-level keys:', field_names(payload))
     raise RuntimeError('Unexpected results API schema; existing archive unchanged.')
 
 
@@ -60,11 +124,8 @@ if FILE.exists():
             existing[(runner['race_id'], runner['horse'].casefold())] = runner
 
 received = fetch_results()
-# A single unpaginated request may not provide complete race coverage.
-# Never claim complete 14-day statistics without an independent coverage audit.
-
 for race in received:
-    if race.get('status') != 'final' or race.get('country') not in ('GB', 'IE'):
+    if not isinstance(race, dict) or race.get('status') != 'final' or race.get('country') not in ('GB', 'IE'):
         continue
     started = race.get('start_time')
     race_id = race.get('race_id')
@@ -74,11 +135,10 @@ for race in received:
     if not isinstance(runners, list):
         continue
     for runner in runners:
-        if runner.get('status') != 'ran' or not runner.get('name'):
+        if not isinstance(runner, dict) or runner.get('status') != 'ran' or not runner.get('name'):
             continue
         if not runner.get('trainer') or not runner.get('jockey'):
             continue
-        # Null finish positions cannot safely be counted as wins or losses.
         position = runner.get('position')
         if position is None:
             continue
@@ -90,22 +150,18 @@ for race in received:
                 'trainer': runner['trainer'], 'jockey': runner['jockey'], 'position': position}
         existing[(race_id, runner['name'].casefold())] = item
 
-# Keep enough history for a rolling 14-day period; results before a race do not leak future results.
 cutoff = now - dt.timedelta(days=18)
 entries = sorted((item for item in existing.values()
                   if (parsed := parse_date(item.get('race_time'))) and parsed >= cutoff),
                  key=lambda x: (x['race_time'], x['race_id'], x['horse']))
-# Avoid claiming full population coverage merely because a request succeeded.
-# Once the archive has aged 14 days, results may be used only if all daily
-# requests were successful and field completeness has been independently verified.
 today = now.date()
 prior_days.add(today.isoformat())
 fetched = sorted(d for d in prior_days if d >= (today - dt.timedelta(days=18)).isoformat())
-complete = False  # must remain false until coverage audit establishes full UK/IE fields
+complete = False
 content = {'schema': 'racing-hot-pots-form-v1', 'updated_at': now.isoformat(),
            'coverage_start': entries[0]['race_time'] if entries else None,
            'complete': complete, 'fetched_days': fetched, 'runners': entries,
            'note': 'Incomplete until race and runner coverage audited; do not report strike rates as verified.'}
 FILE.parent.mkdir(parents=True, exist_ok=True)
 FILE.write_text(json.dumps(content, ensure_ascii=False, separators=(',', ':')) + '\n')
-print(f'Fetched {len(received)} final races; archived {len(entries)} verified-position runners; full coverage not yet established')
+print(f'Fetched {len(received)} races; archived {len(entries)} verified-position runners; full coverage not yet established')
