@@ -8,7 +8,7 @@ key = os.environ["PUNTERSEDGE_API_KEY"]
 
 url = (
     "https://api.puntersedge.online/v1/racing/next-to-go"
-    "?country=GB,IE&category=horse"
+    "?country=GB,IE&category=horse&num_races=200"
 )
 
 request = urllib.request.Request(
