@@ -69,11 +69,28 @@ summary,a{color:#77e4b8}details .history{color:#b7d7ce}.notice{color:#f1c984}
 #bet-date::-webkit-date-and-time-value{text-align:left;min-height:20px;line-height:20px;margin:0}
 #bet-date::-webkit-datetime-edit{text-align:left;padding:0;font-size:14px;line-height:20px}
 #bet-date::-webkit-calendar-picker-indicator{opacity:.85;margin:0 0 0 3px}
-.power-bookie-field{margin:16px 0 12px;max-width:100%}.power-bookie-field select{width:100%;min-height:43px;background:#0b2630;color:#e9fff5;border:1px solid #37675f;border-radius:11px;padding:9px 12px;font:inherit}</style></head><body><header><div class="top"><div><div class="brand"><span class="brand-icon">♞</span><span class="brand-words">Racing <span>Hot Pots</span></span></div><div class="sub">UK & IRELAND ◆ RACING INTELLIGENCE</div></div><div class="live" id="status">Checking feed</div></div></header><main><div class="eyebrow">MIDNIGHT EMERALD ✦ LIVE ODDS RESEARCH</div><h1 id="pageTitle">Market <span class="gold-text">Movers</span></h1><div class="muted" id="asof">Loading odds…</div><div class="tabs" id="tabs"><button class="active" data-tab="markets">Markets</button><button data-tab="power">Power Favs 🔥</button><button data-tab="bets">My Bets</button><button data-tab="pnl">P&amp;L</button></div>
+.power-bookie-field{margin:16px 0 12px;max-width:100%}.power-bookie-field select{width:100%;min-height:43px;background:#0b2630;color:#e9fff5;border:1px solid #37675f;border-radius:11px;padding:9px 12px;font:inherit}
+/* Preview-only multi-select person filters */
+.person-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:12px 0}
+.person-filter{border:1px solid #356969;border-radius:12px;background:#0b242e;min-width:0}
+.person-filter>summary{list-style:none;cursor:pointer;padding:13px 10px;color:#e2fff4;font-size:12px;font-weight:650}
+.person-filter>summary::-webkit-details-marker{display:none}
+.person-filter>summary:after{content:' ▾';color:#80eac0}
+.person-filter[open]>summary:after{content:' ▴'}
+.person-filter .person-inner{padding:10px;border-top:1px solid #2b5556}
+.person-filter input[type=search]{font-size:13px;margin-bottom:8px}
+.person-options{max-height:235px;overflow-y:auto;display:grid;gap:3px}
+.person-options label{display:flex;align-items:center;gap:7px;padding:7px 3px;margin:0;color:#d6f3eb;font-size:12px;line-height:1.35}
+.person-options input{width:16px;height:16px;flex:none}
+.person-controls{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:8px}
+.person-controls button{font-size:11px;padding:7px}
+.person-count{color:#91bcb7;font-size:11px}
+</style></head><body><header><div class="top"><div><div class="brand"><span class="brand-icon">♞</span><span class="brand-words">Racing <span>Hot Pots</span></span></div><div class="sub">UK & IRELAND ◆ RACING INTELLIGENCE</div></div><div class="live" id="status">Checking feed</div></div></header><main><div class="eyebrow">MIDNIGHT EMERALD ✦ LIVE ODDS RESEARCH</div><h1 id="pageTitle">Market <span class="gold-text">Movers</span></h1><div class="muted" id="asof">Loading odds…</div><div class="tabs" id="tabs"><button class="active" data-tab="markets">Markets</button><button data-tab="power">Power Favs 🔥</button><button data-tab="bets">My Bets</button><button data-tab="pnl">P&amp;L</button></div>
 <section id="marketview"><div class="metrics"><div class="metric"><small>Races returned</small><b id="races">—</b></div><div class="metric"><small>Shortened quotes</small><b id="steamers">—</b></div><div class="metric"><small>Drifted quotes</small><b id="drifters">—</b></div></div>
 <div class="panel"><div class="panelflex"><div class="field"><label for="race-date">Race date (Irish time)</label><select id="race-date"><option value="all">All saved dates</option></select></div><div class="field"><label for="meeting">Meeting</label><select id="meeting"><option value="all">All meetings</option></select></div><div class="field"><label for="race-time">Race time</label><select id="race-time"><option value="all">All times</option></select></div><div class="field"><label for="bookie">Bookmaker</label><select id="bookie"><option value="all">All bookmakers</option></select></div><div class="field full"><label for="sort-by">Sort horses by</label><select id="sort-by"><option value="shortest">Shortest odds first</option><option value="longest">Longest odds first</option><option value="earliest">Earliest race first</option><option value="latest">Latest race first</option><option value="drop">Biggest price drop first</option><option value="drift">Biggest drift first</option></select></div></div></div>
-<div class="filters" id="filters"><button class="chip active" data-filter="all">All horses</button><button class="chip" data-filter="short">Shortened</button><button class="chip" data-filter="drift">Drifters</button><button class="chip" data-filter="flat">Unchanged</button><button class="chip" data-filter="drop">Biggest Drops</button><button class="chip" data-filter="unknown">Unknown</button></div><div class="filter-count" id="filter-count"></div><div class="list" id="list"></div><div class="note">Odds shortening does not prove money was backed. Movements compare fractional odds at the same bookmaker and race. Unverified API opening prices are labelled separately.</div></section>
-<section id="powerview" class="hidden"><div class="panel"><h2>Power Favs 🔥</h2><p class="hint">Unique favourite below 2/1, second favourite at least 3/1, and shortening at the same bookmaker. Candidates relying only on API-reported opening prices are provisional.</p><p class="hint">Form data is not yet connected. You can set these multi-select filters now; choose <strong>Unknown</strong> to include horses without verified stats.</p><div class="field power-bookie-field"><label for="power-bookie">Power Favs bookmaker</label><select id="power-bookie" aria-label="Filter Power Favs by bookmaker"><option value="all">All bookmakers</option></select></div><div class="form-collapses"><details class="form-dropdown"><summary><span>Trainer · last 14 days</span><span id="trainer-summary" class="form-selection">All ranges</span></summary><div class="form-dropdown-inner"><p class="hint">Select any number of ranges:</p><div class="checkgrid" id="trainer-bands"></div><div class="actions form-actions"><button type="button" class="action small outline" data-band-clear="trainer">Clear selection</button></div></div></details><details class="form-dropdown"><summary><span>Jockey · last 14 days</span><span id="jockey-summary" class="form-selection">All ranges</span></summary><div class="form-dropdown-inner"><p class="hint">Select any number of ranges:</p><div class="checkgrid" id="jockey-bands"></div><div class="actions form-actions"><button type="button" class="action small outline" data-band-clear="jockey">Clear selection</button></div></div></details></div></div><div class="filter-count" id="power-count"></div><div class="list" id="power-list"></div></section>
+ <div class="person-grid" id="market-person-filters"></div>
+ <div class="filters" id="filters"><button class="chip active" data-filter="all">All horses</button><button class="chip" data-filter="short">Shortened</button><button class="chip" data-filter="drift">Drifters</button><button class="chip" data-filter="flat">Unchanged</button><button class="chip" data-filter="drop">Biggest Drops</button><button class="chip" data-filter="unknown">Unknown</button></div><div class="filter-count" id="filter-count"></div><div class="list" id="list"></div><div class="note">Odds shortening does not prove money was backed. Movements compare fractional odds at the same bookmaker and race. Unverified API opening prices are labelled separately.</div></section>
+<section id="powerview" class="hidden"><div class="panel"><h2>Power Favs 🔥</h2><p class="hint">Unique favourite below 2/1, second favourite at least 3/1, and shortening at the same bookmaker. Candidates relying only on API-reported opening prices are provisional.</p><p class="hint">Form uses the saved UK & Irish results archive when a complete lookback is available. Select a different 1–14-day period for each. If results are incomplete or names cannot be matched, figures show Unknown.</p><div class="field power-bookie-field"><label for="power-bookie">Power Favs bookmaker</label><select id="power-bookie" aria-label="Filter Power Favs by bookmaker"><option value="all">All bookmakers</option></select></div><div class="form-collapses"><details class="form-dropdown"><summary><span>Trainer form</span><span id="trainer-summary" class="form-selection">All ranges</span></summary><div class="form-dropdown-inner"><div class="field"><label for="trainer-days">Results period</label><select id="trainer-days" aria-label="Trainer results period"></select></div><p class="hint">Select any number of ranges:</p><div class="checkgrid" id="trainer-bands"></div><div class="actions form-actions"><button type="button" class="action small outline" data-band-clear="trainer">Clear selection</button></div></div></details><details class="form-dropdown"><summary><span>Jockey form</span><span id="jockey-summary" class="form-selection">All ranges</span></summary><div class="form-dropdown-inner"><div class="field"><label for="jockey-days">Results period</label><select id="jockey-days" aria-label="Jockey results period"></select></div><p class="hint">Select any number of ranges:</p><div class="checkgrid" id="jockey-bands"></div><div class="actions form-actions"><button type="button" class="action small outline" data-band-clear="jockey">Clear selection</button></div></div></details></div><div class="person-grid" id="power-person-filters"></div></div><div class="filter-count" id="power-count"></div><div class="list" id="power-list"></div></section>
 <section id="betsview" class="hidden"><div class="panel"><h2>My Bets · Bet Builder</h2><p class="hint">Add a horse from a racing card, or create a multiple with several horses. Always enter the actual odds and total amount staked in your betting app. Nothing here places a bet.</p><div class="panelflex"><div class="field"><label>Bet type</label><select id="bet-type"></select></div><div class="field"><label>Total stake (€)</label><input id="bet-stake" type="number" min="0.01" step="0.01" value="5"></div><div class="field"><label>Bookmaker where you bet</label><input id="bet-bookie" value="Novibet" maxlength="100"></div><div class="field"><label for="bet-date">Bet date</label><input id="bet-date" type="date" aria-label="Bet date (defaults to today)"></div></div><div class="panel" id="slip"></div><div class="actions"><button class="action outline" id="clear-slip">Clear selections</button><button class="action" id="save-bet">Save bet</button></div><p class="hint" id="bet-msg"></p></div><div class="panel"><h2>Saved bets</h2><div class="actions"><button class="action small outline" id="export-bets">Export backup (JSON)</button><label class="action small outline" for="import-bets" style="margin:0">Import backup</label><input id="import-bets" type="file" accept="application/json,.json" class="hidden"></div><p class="hint">Saved privately in this browser's local storage, not the public GitHub repository. Back up regularly; storage may be lost if you clear website data or remove the app.</p><div id="saved-bets"></div></div></section>
 <section id="pnlview" class="hidden"><div class="panel"><h2>Profit &amp; Loss</h2><div class="panelflex"><div><label for="period">Period</label><select id="period"><option value="day">Today</option><option value="week">This week</option><option value="month" selected>This month</option><option value="year">This year</option><option value="all">All time</option></select></div><div><label for="bet-status">Status</label><select id="bet-status"><option value="all">All bets</option><option value="settled">Settled</option><option value="pending">Pending</option></select></div></div><div class="metrics"><div class="metric"><small>Net P&amp;L</small><b id="pl-profit">€0.00</b></div><div class="metric"><small>ROI</small><b id="pl-roi">—</b></div><div class="metric"><small>Settled / bets</small><b id="pl-bets">0 / 0</b></div></div><div id="pl-more" class="hint"></div><div class="graph" id="pl-chart"></div><div id="pl-list"></div></div></section>
 </main><script>'use strict';
@@ -86,25 +103,40 @@ const dateFmt=new Intl.DateTimeFormat('en-IE',{year:'numeric',month:'2-digit',da
 const dateKey=s=>{const d=new Date(s);if(!s||Number.isNaN(d.getTime()))return '';const p=dateFmt.formatToParts(d);return `${p.find(x=>x.type==='year').value}-${p.find(x=>x.type==='month').value}-${p.find(x=>x.type==='day').value}`};
 const clock=s=>{const d=new Date(s);return !s||isNaN(d)?'Unknown':new Intl.DateTimeFormat('en-GB',{hour:'2-digit',minute:'2-digit',hourCycle:'h23',timeZone:'Europe/Dublin'}).format(d)};
 const when=s=>{const d=new Date(s);return !s||isNaN(d)?'Unknown':new Intl.DateTimeFormat('en-IE',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Dublin'}).format(d)};
-const key=p=>JSON.stringify([p.race_id,p.horse,p.bookmaker]);
-let rows=[],allRows=[],activeTab='markets',moveFilter='all',selectedDate='all',selectedMeeting='all',selectedTime='all',selectedBook='all',selectedPowerBook='all',selectedSort='shortest',historyCount=0;
+const bookName=b=>/^(william[ _-]?hill|williamhill(?:_uk)?)$/i.test(String(b||''))?'William Hill':String(b||'');
+const key=p=>JSON.stringify([p.race_id,p.horse,bookName(p.bookmaker)]);
+let rows=[],allRows=[],activeTab='markets',moveFilter='all',selectedDate='all',selectedMeeting='all',selectedTime='all',selectedBook='William Hill',selectedPowerBook='William Hill',selectedSort='shortest',historyCount=0;
 let slip=[],bets=[];
+let racecardIndex=new Map();
+const personKey=v=>String(v||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+function racecardKey(horse,course,day){return personKey(horse)+'|'+personKey(course)+'|'+day}
+function loadRacecardIndex(raw){
+ racecardIndex=new Map();
+ for(const r of Array.isArray(raw?.runners)?raw.runners:[]){
+  if(!r?.horse||!r?.course)continue;
+  const day=r.date||dateKey(r.race_time);
+  const k=racecardKey(r.horse,r.course,day);
+  if(!racecardIndex.has(k))racecardIndex.set(k,r);
+ }
+}
 function build(latest,history){
  const series=new Map(); const current=Array.isArray(latest.prices)?latest.prices:[];
  for(const snap of history){if(!snap||!Array.isArray(snap.prices))continue;for(const p of snap.prices){if(!p||p.stale===true)continue;const od=num(p.decimal_odds);if(od===null||od<=1)continue;const k=key(p);if(!series.has(k))series.set(k,[]);series.get(k).push({at:p.collected_at||snap.collected_at,od});}}
  for(const [k,pts] of series){const dedup=new Map();for(const p of pts)if(p.at)dedup.set(p.at,p);series.set(k,[...dedup.values()].sort((a,b)=>Date.parse(a.at)-Date.parse(b.at)));}
- const markets=new Map();for(const p of current){if(!p||p.stale===true||!p.race_id||!p.horse||!p.bookmaker)continue;const od=num(p.decimal_odds);if(od===null||od<=1)continue;const k=JSON.stringify([p.race_id,p.bookmaker]);if(!markets.has(k))markets.set(k,new Map());markets.get(k).set(p.horse,{...p,decimal_odds:od});}
+ const markets=new Map();for(const p of current){if(!p||p.stale===true||!p.race_id||!p.horse||!p.bookmaker)continue;const od=num(p.decimal_odds);if(od===null||od<=1)continue;const k=JSON.stringify([p.race_id,bookName(p.bookmaker)]);if(!markets.has(k))markets.set(k,new Map());markets.get(k).set(p.horse,{...p,bookmaker:bookName(p.bookmaker),decimal_odds:od});}
  const out=[];
  for(const runners of markets.values()){const sorted=[...runners.values()].sort((a,b)=>a.decimal_odds-b.decimal_odds);if(!sorted.length)continue;const fav=sorted[0],second=sorted[1],tie=second&&fav.decimal_odds===second.decimal_odds;
  for(const p of sorted){const points=series.get(key(p))||[];const cur=p.decimal_odds, prior=points.find(x=>Date.parse(x.at)<Date.parse(latest.collected_at)), opener=num(p.opening_odds);
  const baseline=prior?prior.od:opener!==null&&opener>1?opener:null;const move=baseline!==null?(baseline-cur)/(baseline-1)*100:null;
  const isFav=!tie&&p.horse===fav.horse&&!!second;const qualifies=!!(isFav&&cur<3&&second.decimal_odds>=4&&move!==null&&move>0);
- const trainer=p.trainer||null,jockey=p.jockey||null;
- out.push({id:key(p),race_id:p.race_id,horse:p.horse,course:p.course||'Unknown',country:p.country,starts:p.race_time,day:dateKey(p.race_time),time:clock(p.race_time),bookmaker:p.bookmaker,current:cur,earlier:baseline,baselineAt:prior?prior.at:null,baselineLabel:prior?'First recorded':'API open (unverified)',move,points,first:points.length?points[0].od:null,latest:points.length?points[points.length-1].od:null,qualifies,isFav,favName:fav.horse,favOdds:fav.decimal_odds,secondName:second?.horse||null,secondOdds:second?.decimal_odds||null,tie,trainer,jockey,trainerWins:num(p.trainer_wins_14d),trainerRuns:num(p.trainer_runs_14d),jockeyWins:num(p.jockey_wins_14d),jockeyRuns:num(p.jockey_rides_14d),courseWin:p.course_winner??null,distanceWin:p.distance_winner??null,cdWin:p.course_distance_winner??null});
+ const rc=racecardIndex.get(racecardKey(p.horse,p.course,dateKey(p.race_time)));
+  const trainer=rc?.trainer||p.trainer||null,jockey=rc?.jockey||p.jockey||null;
+  const trainer_id=rc?.trainer_id||p.trainer_id||null,jockey_id=rc?.jockey_id||p.jockey_id||null;
+ out.push({id:key(p),race_id:p.race_id,horse:p.horse,course:p.course||'Unknown',country:p.country,starts:p.race_time,day:dateKey(p.race_time),time:clock(p.race_time),bookmaker:bookName(p.bookmaker),current:cur,earlier:baseline,baselineAt:prior?prior.at:null,baselineLabel:prior?'First recorded':'API open (unverified)',move,points,first:points.length?points[0].od:null,latest:points.length?points[points.length-1].od:null,qualifies,isFav,favName:fav.horse,favOdds:fav.decimal_odds,secondName:second?.horse||null,secondOdds:second?.decimal_odds||null,tie,trainer,jockey,trainer_id,jockey_id,trainerWins:num(p.trainer_wins_14d),trainerRuns:num(p.trainer_runs_14d),jockeyWins:num(p.jockey_wins_14d),jockeyRuns:num(p.jockey_rides_14d),courseWin:p.course_winner??null,distanceWin:p.distance_winner??null,cdWin:p.course_distance_winner??null});
  }}return out;
 }
 const selOpts=(id,opts,selected)=>{$(id).innerHTML=opts.map(([v,t])=>`<option value="${safe(v)}">${safe(t)}</option>`).join('');$(id).value=selected};
-function refreshSelects(){const arr=rows.filter(x=>selectedDate==='all'||x.day===selectedDate);const books=[...new Set(arr.map(x=>x.bookmaker))].sort();if(selectedBook!=='all'&&!books.includes(selectedBook))selectedBook='all';selOpts('bookie',[['all','All bookmakers'],...books.map(b=>[b,b])],selectedBook);
+function refreshSelects(){const arr=rows.filter(x=>selectedDate==='all'||x.day===selectedDate);const books=[...new Set(['William Hill',...arr.map(x=>x.bookmaker)])].sort();if(selectedBook!=='all'&&!books.includes(selectedBook))selectedBook='William Hill';selOpts('bookie',[['all','All bookmakers'],...books.map(b=>[b,b])],selectedBook);
  const relevant=arr.filter(x=>selectedBook==='all'||x.bookmaker===selectedBook),meetings=[...new Set(relevant.map(x=>x.course))].sort();if(selectedMeeting!=='all'&&!meetings.includes(selectedMeeting))selectedMeeting='all';selOpts('meeting',[['all','All meetings'],...meetings.map(x=>[x,x])],selectedMeeting);
  const times=[...new Set(relevant.filter(x=>selectedMeeting==='all'||x.course===selectedMeeting).map(x=>x.time))].filter(x=>x!=='Unknown').sort();if(selectedTime!=='all'&&!times.includes(selectedTime))selectedTime='all';selOpts('race-time',[['all','All race times'],...times.map(x=>[x,x])],selectedTime);
 }
@@ -117,18 +149,126 @@ function miniGraph(pts){if(!pts.length)return '<p class="hint">No saved observat
 }
 function card(x){let movement=x.move===null?'No comparison':x.move>0.001?`↘ ${x.move.toFixed(1)}% shorter`:x.move<-.001?`↗ ${Math.abs(x.move).toFixed(1)}% drift`:'Unchanged';let cls=x.move===null?'flat':x.move>.001?'down':x.move<-.001?'up':'flat';const ref=x.isFav&&x.secondName?`Second favourite: ${safe(x.secondName)} · ${fmt(x.secondOdds)}`:x.tie?`Joint favourite: ${safe(x.favName)} · ${fmt(x.favOdds)}`:`Market favourite: ${safe(x.favName)} · ${fmt(x.favOdds)}`;
  return `<article class="horse"><div class="horse-top"><div><div class="name">${safe(x.horse)}</div><div class="meta">${safe(when(x.starts))} · ${safe(x.course)} · ${safe(x.country)}</div></div><span class="tag ${cls}">${safe(movement)}</span></div><div class="odds"><div><small>${safe(x.baselineLabel)}</small><b>${fmt(x.earlier)}</b></div><div><small>Latest odds</small><b>${fmt(x.current)}</b></div><div><small>Movement</small><b class="move">${x.move===null?'—':x.move.toFixed(1)+'%'}</b></div></div><div class="foot"><span>${ref}</span><span>${safe(x.bookmaker)}</span></div><div class="actions" style="margin-top:12px"><button class="action small" data-add="${safe(x.id)}">+ Add to My Bets</button>${x.qualifies?'<span class="tag down">🔥 Power Fav</span>':''}</div><details><summary>Price history graph &amp; details</summary>${miniGraph(x.points)}<div class="historyline">${x.points.map(p=>`${safe(when(p.at))} — ${fmt(p.od)}`).join('<br>')||'No saved prices'}</div></details><div class="hint" style="margin-top:8px">Trainer: ${safe(x.trainer||'Not available')} · Jockey: ${safe(x.jockey||'Not available')} · C / D / CD: ${x.cdWin===true?'CD winner':x.courseWin===true?'C winner':x.distanceWin===true?'D winner':'Not verified'}</div>${x.baselineAt===null&&x.earlier!==null?'<div class="hint">Movement uses unverified API-reported opening price.</div>':''}</article>`;}
+const selectedPeople={markets:{trainer:new Set(),jockey:new Set()},power:{trainer:new Set(),jockey:new Set()}};
+const personSearch={markets:{trainer:'',jockey:''},power:{trainer:'',jockey:''}};
+function personLabel(x,type){return String(x[type]||'').replace(/\s*\(\d+\)\s*$/,'').trim()}
+function personMatches(x,view){return ['trainer','jockey'].every(type=>{
+ const selected=selectedPeople[view][type];
+ return !selected.size||(x[type+'_id']&&selected.has('id:'+x[type+'_id']))||selected.has('name:'+personKey(personLabel(x,type)));
+})}
+function personChoices(view,type){
+ // Each list is constrained by the OTHER person's selections, not its own.
+ // This avoids circular filtering and keeps already-selected names removable.
+ const opposite=type==='trainer'?'jockey':'trainer';
+ const otherSelected=selectedPeople[view][opposite];
+ const ownSelected=selectedPeople[view][type];
+ const source=view==='power'
+  ?rows.filter(x=>x.qualifies&&(selectedDate==='all'||x.day===selectedDate)&&(selectedPowerBook==='all'||x.bookmaker===selectedPowerBook))
+  :scoped();
+ const map=new Map();
+ for(const x of source){
+  if(otherSelected.size&&!((x[opposite+'_id']&&otherSelected.has('id:'+x[opposite+'_id']))||otherSelected.has('name:'+personKey(personLabel(x,opposite)))))continue;
+  const name=personLabel(x,type);if(!name)continue;
+  const id=x[type+'_id']?'id:'+x[type+'_id']:'name:'+personKey(name);
+  if(!map.has(id))map.set(id,name);
+ }
+ // Preserve checked selections even if other filters temporarily exclude them.
+ for(const x of rows){
+  const name=personLabel(x,type);if(!name)continue;
+  const id=x[type+'_id']?'id:'+x[type+'_id']:'name:'+personKey(name);
+  if(ownSelected.has(id)&&!map.has(id))map.set(id,name);
+ }
+ return [...map].sort((a,b)=>a[1].localeCompare(b[1]));
+}
+function renderPersonFilters(view){
+ const host=$(view==='markets'?'market-person-filters':'power-person-filters');
+ for(const type of ['trainer','jockey']){
+  const id=view+'-'+type+'-people';
+  let el=$(id);
+  if(!el){el=document.createElement('details');el.className='person-filter';el.id=id;host.append(el)}
+  const selected=selectedPeople[view][type],choices=personChoices(view,type),search=personSearch[view][type];
+  const visible=choices.filter(([key,name])=>name.toLowerCase().includes(search.toLowerCase()));
+  const wasOpen=el.open,focused=document.activeElement?.dataset?.personSearch===view+':'+type;
+  const cursor=focused?document.activeElement.selectionStart:null;
+  el.innerHTML=`<summary>${type==='trainer'?'Trainers':'Jockeys'} · ${selected.size?selected.size+' selected':'All'}</summary><div class="person-inner"><input type="search" data-person-search="${view}:${type}" placeholder="Search ${type}s" aria-label="Search ${type}s" value="${safe(search)}"><div class="person-options">${visible.length?visible.map(([key,name])=>`<label><input type="checkbox" data-person-select="${view}:${type}" value="${safe(key)}" ${selected.has(key)?'checked':''}>${safe(name)}</label>`).join(''):'<span class="hint">No matching names available.</span>'}</div><div class="person-controls"><span class="person-count">${choices.length} available</span><button type="button" class="action outline small" data-person-clear="${view}:${type}">Clear</button></div></div>`;
+  el.open=wasOpen;
+  if(focused){const input=el.querySelector('input[type=search]');input.focus();if(cursor!==null)input.setSelectionRange(cursor,cursor)}
+ }
+}
+function updatePersonViews(){renderPersonFilters('markets');renderPersonFilters('power');renderMarkets();renderPower()}
 function renderMarkets(){const arr=scoped(),short=arr.filter(x=>x.move>0.001),drift=arr.filter(x=>x.move<-.001);$('races').textContent=new Set(arr.map(x=>x.race_id)).size;$('steamers').textContent=short.length;$('drifters').textContent=drift.length;
- let view=arr.filter(x=>moveFilter==='all'||(moveFilter==='short'&&x.move>0.001)||(moveFilter==='drop'&&x.move>0.001)||(moveFilter==='drift'&&x.move<-.001)||(moveFilter==='flat'&&x.move!==null&&Math.abs(x.move)<=.001)||(moveFilter==='unknown'&&x.move===null));
+ let view=arr.filter(x=>personMatches(x,'markets')&&(moveFilter==='all'||(moveFilter==='short'&&x.move>0.001)||(moveFilter==='drop'&&x.move>0.001)||(moveFilter==='drift'&&x.move<-.001)||(moveFilter==='flat'&&x.move!==null&&Math.abs(x.move)<=.001)||(moveFilter==='unknown'&&x.move===null)));
  if(moveFilter==='drop')view.sort((a,b)=>(b.move??-Infinity)-(a.move??-Infinity));else view=sortRows(view);
  $('filter-count').textContent=`${view.length} bookmaker-runner entries across ${new Set(view.map(x=>x.race_id)).size} races; ${historyCount} saved snapshots.`;
  $('list').innerHTML=view.length?view.slice(0,300).map(card).join(''):'<div class="empty">No matching horses for these filters.</div>';
 }
 const bands=[['0-5','≤5%',0,5],['5-10','5–10%',5,10],['10-15','10–15%',10,15],['15-20','15–20%',15,20],['20-25','20–25%',20,25],['25+','25%+',25,Infinity],['unknown','Unknown',null,null]];
-let selectedTrainer=new Set(),selectedJockey=new Set();
+let selectedTrainer=new Set(),selectedJockey=new Set(),trainerDays=14,jockeyDays=14,formData=null,formIndex={trainer:{},jockey:{}};
+const formName=s=>String(s||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+function formStats(row,type){
+ const person=row[type],selectedDays=type==='trainer'?trainerDays:jockeyDays;
+ if(!person||!formData||!formData.periods)return null;
+ // Use only results strictly before the race, never future results.
+ const asOf=formData.as_of,raceDay=row.day;
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(asOf||'')||!/^\d{4}-\d{2}-\d{2}$/.test(raceDay||''))return null;
+ const prior=new Date(raceDay+'T12:00:00Z');prior.setUTCDate(prior.getUTCDate()-1);
+ if(asOf!==prior.toISOString().slice(0,10))return null;
+ // A selected 14-day window starts with 1 verified day, then grows to 2,
+ // 3 ... up to 14. Never count an uncollected day as a zero-run day.
+ let availableDays=0,period=null;
+ for(let n=selectedDays;n>=1;n--){
+  const candidate=formData.periods[String(n)];
+  if(!candidate||!Array.isArray(candidate.dates_available))continue;
+  const dates=new Set(candidate.dates_available);
+  let complete=true;
+  for(let i=0;i<n;i++){
+   const d=new Date(asOf+'T12:00:00Z');d.setUTCDate(d.getUTCDate()-i);
+   if(!dates.has(d.toISOString().slice(0,10))){complete=false;break;}
+  }
+  if(complete){period=candidate;availableDays=n;break;}
+ }
+ if(!period)return null;
+ const group=type==='trainer'?'trainers':'jockeys';
+ const directId=row[type+'_id'];
+ let stat=directId?period[group]?.[directId]:null;
+ // The racecard and results endpoints sometimes have different IDs.
+ // Only fall back when a normalised name uniquely identifies one person.
+ if(!stat){
+  const matches=formIndex[type][formName(person)]||[];
+  if(matches.length!==1)return null;
+  stat=period[group]?.[matches[0]]||null;
+ }
+ if(!stat)return null;
+ const runs=Number(stat.runs??stat.rides),wins=Number(stat.wins);
+ if(!Number.isFinite(runs)||runs<=0||!Number.isFinite(wins)||wins<0||wins>runs)return null;
+ return {wins,runs,pct:100*wins/runs,availableDays,selectedDays};
+}
+function indexFormNames(raw){
+ formIndex={trainer:{},jockey:{}};
+ const period=raw?.periods?.['1'];
+ for(const [type,group] of [['trainer','trainers'],['jockey','jockeys']]){
+  for(const [id,stat] of Object.entries(period?.[group]||{})){
+   const name=formName(stat?.name);if(!name)continue;
+   (formIndex[type][name]??=[]).push(id);
+  }
+ }
+ // Include people who ran only on earlier dates, for a full rolling archive.
+ for(const period of Object.values(raw?.periods||{})){
+  for(const [type,group] of [['trainer','trainers'],['jockey','jockeys']]){
+   for(const [id,stat] of Object.entries(period?.[group]||{})){
+    const name=formName(stat?.name);if(!name)continue;
+    const ids=formIndex[type][name]??=[];
+    if(!ids.includes(id))ids.push(id);
+   }
+  }
+ }
+}
+
 function renderBands(){for(const [type,target] of [['trainer','trainer-bands'],['jockey','jockey-bands']]){$(target).innerHTML=bands.map(b=>`<label><input type="checkbox" data-band="${type}" value="${b[0]}" ${(type==='trainer'?selectedTrainer:selectedJockey).has(b[0])?'checked':''}>${b[1]}</label>`).join('');const selected=type==='trainer'?selectedTrainer:selectedJockey;$(type+'-summary').textContent=selected.size?selected.size+' selected':'All ranges';}}
-function bandMatch(row,type,selected){if(!selected.size)return true;const wins=row[type+'Wins'],runs=row[type+'Runs'];if(wins===null||runs===null||runs<=0)return selected.has('unknown');const pct=100*wins/runs;return bands.some(([id,_,lo,hi])=>selected.has(id)&&id!=='unknown'&&(id==='0-5'?pct<=5:id==='25+'?pct>25:pct>lo&&pct<=hi));}
-function refreshPowerBooks(){const eligible=rows.filter(x=>x.qualifies&&(selectedDate==='all'||x.day===selectedDate));const books=[...new Set(eligible.map(x=>x.bookmaker))].sort();if(selectedPowerBook!=='all'&&!books.includes(selectedPowerBook))selectedPowerBook='all';selOpts('power-bookie',[['all','All bookmakers'],...books.map(b=>[b,b])],selectedPowerBook);}
-function renderPower(){refreshPowerBooks();let view=rows.filter(x=>(selectedDate==='all'||x.day===selectedDate)&&(selectedPowerBook==='all'||x.bookmaker===selectedPowerBook)&&x.qualifies&&bandMatch(x,'trainer',selectedTrainer)&&bandMatch(x,'jockey',selectedJockey));view=sortRows(view);$('power-count').textContent=`${view.length} Power Fav bookmaker entries. Trainer and jockey statistics require a verified external feed.`;$('power-list').innerHTML=view.length?view.map(x=>card(x)+`<div class="hint">Trainer: ${x.trainerRuns>0?`${x.trainerWins}/${x.trainerRuns} (${(100*x.trainerWins/x.trainerRuns).toFixed(1)}%)`:'Not available'} · Jockey: ${x.jockeyRuns>0?`${x.jockeyWins}/${x.jockeyRuns} (${(100*x.jockeyWins/x.jockeyRuns).toFixed(1)}%)`:'Not available'}</div>`).join(''):'<div class="empty">No Power Favs matching these filters. The current odds API does not supply verified 14-day form statistics.</div>'}
+function bandMatch(row,type,selected){if(!selected.size)return true;const stat=formStats(row,type);if(!stat)return selected.has('unknown');const pct=stat.pct;return bands.some(([id,_,lo,hi])=>selected.has(id)&&id!=='unknown'&&(id==='0-5'?pct<=5:id==='25+'?pct>25:pct>lo&&pct<=hi));}
+function formText(x,type){const v=formStats(x,type);return v?`${v.wins}/${v.runs} (${v.pct.toFixed(1)}% over ${v.availableDays}${v.availableDays===1?' day':' days'}${v.availableDays<v.selectedDays?' of selected '+v.selectedDays+' days':''})`:'Unknown (insufficient verified results)';}
+function refreshPowerBooks(){const eligible=rows.filter(x=>x.qualifies&&(selectedDate==='all'||x.day===selectedDate));const books=[...new Set(['William Hill',...eligible.map(x=>x.bookmaker)])].sort();if(selectedPowerBook!=='all'&&!books.includes(selectedPowerBook))selectedPowerBook='William Hill';selOpts('power-bookie',[['all','All bookmakers'],...books.map(b=>[b,b])],selectedPowerBook);}
+function renderPower(){refreshPowerBooks();let view=rows.filter(x=>(selectedDate==='all'||x.day===selectedDate)&&(selectedPowerBook==='all'||x.bookmaker===selectedPowerBook)&&x.qualifies&&personMatches(x,'power')&&bandMatch(x,'trainer',selectedTrainer)&&bandMatch(x,'jockey',selectedJockey));view=sortRows(view);$('power-count').textContent=`${view.length} Power Fav bookmaker entries. Form periods: trainer ${trainerDays}d · jockey ${jockeyDays}d. Results shown use all collected days within the selected period; coverage increases daily.`;$('power-list').innerHTML=view.length?view.map(x=>card(x).replace('</article>',`<div class="hint" style="margin-top:10px">Trainer form: ${safe(formText(x,'trainer'))}<br>Jockey form: ${safe(formText(x,'jockey'))}</div></article>`)).join(''):'<div class="empty">No Power Favs matching these filters. If the trainer/jockey dataset is not ready, select Unknown or clear form percentage filters.</div>'}
 function showTab(tab){activeTab=tab;for(const [name,id] of [['markets','marketview'],['power','powerview'],['bets','betsview'],['pnl','pnlview']])$(id).classList.toggle('hidden',tab!==name);document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));$('pageTitle').textContent=({markets:'Market Movers',power:'Power Favs 🔥',bets:'My Bets',pnl:'Profit & Loss'})[tab];if(tab==='markets')renderMarkets();if(tab==='power')renderPower();if(tab==='bets')renderSlip();if(tab==='pnl')renderPnL();window.scrollTo(0,0)}
 const betTypes=[['single','Single',1,1],['acc','Accumulator (all win)',2,99],['trixie','Trixie',3,3],['patent','Patent',3,3],['yankee','Yankee',4,4],['lucky15','Lucky 15',4,4],['canadian','Canadian',5,5],['lucky31','Lucky 31',5,5],['heinz','Heinz',6,6],['lucky63','Lucky 63',6,6]];
 const typeDesc=id=>betTypes.find(x=>x[0]===id);
@@ -149,12 +289,23 @@ function renderPnL(){const arr=relevantBets(),settled=arr.filter(b=>settleBet(b)
  $('pl-profit').textContent=(profit>=0?'+':'')+money(profit);$('pl-roi').textContent=staked?(profit/staked*100).toFixed(1)+'%':'—';$('pl-bets').textContent=`${settled.length} / ${arr.length}`;$('pl-more').textContent=`Staked ${money(staked)} · Returns ${money(returns)} · Profitable bets ${wins} · Strike rate ${settled.length?(wins/settled.length*100).toFixed(1)+'%':'—'} · Pending ${arr.length-settled.length}. Pending bets excluded from ROI.`;
  const plot=settled.slice().sort((a,b)=>a.date.localeCompare(b.date)).reduce((a,b)=>{a.push((a[a.length-1]||0)+settleBet(b)-b.stake);return a},[]);$('pl-chart').innerHTML=plot.length?`<p class="hint">Cumulative net P&L of settled bets, in settlement-list order</p>${sparkline(plot)}`:'<p class="hint">Settle some bets to see your profit graph.</p>';$('pl-list').innerHTML=arr.map(b=>`<div class="summarycard"><strong>${safe(b.typeLabel)}</strong> · ${safe(b.date)} · ${money(b.stake)} · ${settleBet(b)===null?'Pending':money(settleBet(b)-b.stake)+' P&L'}</div>`).join('')}
 function sparkline(values){if(values.length===1)values=[0,values[0]];const low=Math.min(0,...values),high=Math.max(0,...values),span=high-low||1;const p=values.map((v,i)=>`${15+i/(values.length-1)*300},${90-(v-low)/span*70}`).join(' ');return `<svg viewBox="0 0 330 112" role="img" aria-label="Cumulative profit and loss"><line x1="15" y1="90" x2="315" y2="90" stroke="#42665e"/><polyline fill="none" stroke="#80e6bc" stroke-width="3" points="${p}"/></svg>`}
-async function loadFeed(){try{const q='?v='+Date.now(),responses=await Promise.all([fetch('./data/latest-odds.json'+q,{cache:'no-store'}),fetch('./data/odds-history.json'+q,{cache:'no-store'})]);if(!responses[0].ok||!responses[1].ok)throw Error('Odds files unavailable');const latest=await responses[0].json(),hist=await responses[1].json();if(!Array.isArray(hist)||!Array.isArray(latest.prices))throw Error('Invalid JSON feed');rows=build(latest,hist);historyCount=hist.length;$('status').textContent='● ODDS SYNCED';$('asof').textContent=`Last collected: ${when(latest.collected_at)} (Irish time) · ${latest.races_returned} races · ${latest.prices_collected} bookmaker quotes · ${hist.length} snapshots`;
- const dates=[...new Set(rows.map(x=>x.day).filter(Boolean))].sort().reverse();selectedDate=dates.includes(dateKey(new Date().toISOString()))?dateKey(new Date().toISOString()):dates[0]||'all';selOpts('race-date',[['all','All available dates'],...dates.map(d=>[d,d])],selectedDate);refreshSelects();renderMarkets();renderPower();}catch(e){$('status').textContent='NO DATA';$('asof').textContent='Could not load odds feed: '+e.message;}}
-function setup(){loadBets();const today=dateKey(new Date().toISOString());$('bet-date').value=today;selOpts('bet-type',betTypes.map(t=>[t[0],t[1]]),'single');renderBands();renderSavedBets();renderSlip();renderPnL();
- document.addEventListener('click',e=>{const tab=e.target.closest('[data-tab]'),add=e.target.closest('[data-add]'),del=e.target.closest('[data-delete]'),remove=e.target.closest('[data-remove]'),chip=e.target.closest('[data-filter]');if(tab)showTab(tab.dataset.tab);const clear=e.target.closest('[data-band-clear]');if(clear){(clear.dataset.bandClear==='trainer'?selectedTrainer:selectedJockey).clear();renderBands();renderPower()}if(add)addHorse(add.dataset.add);if(remove){slip.splice(Number(remove.dataset.remove),1);renderSlip()}if(del&&confirm('Delete this bet?')){bets=bets.filter(b=>b.id!==del.dataset.delete);storeBets();renderSavedBets();renderPnL()}if(chip){moveFilter=chip.dataset.filter;document.querySelectorAll('[data-filter]').forEach(b=>b.classList.toggle('active',b===chip));renderMarkets()}});
- document.addEventListener('change',e=>{const t=e.target;if(t.dataset.band){const set=t.dataset.band==='trainer'?selectedTrainer:selectedJockey;t.checked?set.add(t.value):set.delete(t.value);renderBands();renderPower()}if(t.dataset.odds!==undefined){slip[Number(t.dataset.odds)].odds=t.value;renderSlip()}if(t.dataset.result){const b=bets.find(x=>x.id===t.dataset.result);if(b){b.selections[Number(t.dataset.idx)].result=t.value;storeBets();renderSavedBets();renderPnL()}}});
- $('power-bookie').onchange=e=>{selectedPowerBook=e.target.value;renderPower()};$('race-date').onchange=e=>{selectedDate=e.target.value;selectedMeeting='all';selectedTime='all';refreshSelects();renderMarkets();renderPower()};$('bookie').onchange=e=>{selectedBook=e.target.value;selectedMeeting='all';selectedTime='all';refreshSelects();renderMarkets();renderPower()};$('meeting').onchange=e=>{selectedMeeting=e.target.value;selectedTime='all';refreshSelects();renderMarkets();renderPower()};$('race-time').onchange=e=>{selectedTime=e.target.value;renderMarkets();renderPower()};$('sort-by').onchange=e=>{selectedSort=e.target.value;renderMarkets();renderPower()};$('bet-type').onchange=renderSlip;$('bet-stake').oninput=renderSlip;$('period').onchange=renderPnL;$('bet-status').onchange=renderPnL;
+async function loadForm(){
+ try{
+  const resp=await fetch('./data/strike-rates.json?v='+Date.now(),{cache:'no-store'});
+  if(!resp.ok)throw Error('Strike-rate data unavailable');
+  const raw=await resp.json();
+  if(!raw||typeof raw.as_of!=='string'||!raw.periods||typeof raw.periods!=='object')throw Error('Invalid strike-rate data');
+  formData=raw;indexFormNames(raw);renderPower();
+ }catch(e){formData=null;formIndex={trainer:{},jockey:{}};renderPower();}
+}
+async function loadFeed(){loadForm();try{const q='?v='+Date.now(),responses=await Promise.all([fetch('./data/latest-odds.json'+q,{cache:'no-store'}),fetch('./data/odds-history.json'+q,{cache:'no-store'}),fetch('./data/racecards.json'+q,{cache:'no-store'}).catch(()=>null)]);
+  if(responses[2]?.ok){try{loadRacecardIndex(await responses[2].json())}catch(e){loadRacecardIndex(null)}}if(!responses[0].ok||!responses[1].ok)throw Error('Odds files unavailable');const latest=await responses[0].json(),hist=await responses[1].json();if(!Array.isArray(hist)||!Array.isArray(latest.prices))throw Error('Invalid JSON feed');rows=build(latest,hist);historyCount=hist.length;$('status').textContent='● ODDS SYNCED';$('asof').textContent=`Last collected: ${when(latest.collected_at)} (Irish time) · ${latest.races_returned} races · ${latest.prices_collected} bookmaker quotes · ${hist.length} snapshots`;
+ const dates=[...new Set(rows.map(x=>x.day).filter(Boolean))].sort().reverse();selectedDate=dates.includes(dateKey(new Date().toISOString()))?dateKey(new Date().toISOString()):dates[0]||'all';selOpts('race-date',[['all','All available dates'],...dates.map(d=>[d,d])],selectedDate);refreshSelects();renderPersonFilters('markets');renderPersonFilters('power');renderMarkets();renderPower();}catch(e){$('status').textContent='NO DATA';$('asof').textContent='Could not load odds feed: '+e.message;}}
+function setup(){loadBets();const today=dateKey(new Date().toISOString());$('bet-date').value=today;selOpts('bet-type',betTypes.map(t=>[t[0],t[1]]),'single');renderBands();for(const type of ['trainer','jockey'])selOpts(type+'-days',Array.from({length:14},(_,i)=>[String(i+1),`Last ${i+1} ${i?'days':'day'}`]),'14');renderSavedBets();renderSlip();renderPnL();
+ document.addEventListener('click',e=>{const tab=e.target.closest('[data-tab]'),add=e.target.closest('[data-add]'),del=e.target.closest('[data-delete]'),remove=e.target.closest('[data-remove]'),chip=e.target.closest('[data-filter]');if(tab)showTab(tab.dataset.tab);const personClear=e.target.closest('[data-person-clear]');if(personClear){const [v,t]=personClear.dataset.personClear.split(':');selectedPeople[v][t].clear();updatePersonViews()}const clear=e.target.closest('[data-band-clear]');if(clear){(clear.dataset.bandClear==='trainer'?selectedTrainer:selectedJockey).clear();renderBands();renderPower()}if(add)addHorse(add.dataset.add);if(remove){slip.splice(Number(remove.dataset.remove),1);renderSlip()}if(del&&confirm('Delete this bet?')){bets=bets.filter(b=>b.id!==del.dataset.delete);storeBets();renderSavedBets();renderPnL()}if(chip){moveFilter=chip.dataset.filter;document.querySelectorAll('[data-filter]').forEach(b=>b.classList.toggle('active',b===chip));renderMarkets()}});
+ document.addEventListener('input',e=>{const t=e.target;if(!t.dataset.personSearch)return;const [view,type]=t.dataset.personSearch.split(':');personSearch[view][type]=t.value;const box=t.closest('.person-filter');const choices=personChoices(view,type),selected=selectedPeople[view][type],query=t.value.toLocaleLowerCase();const visible=choices.filter(([,name])=>name.toLocaleLowerCase().includes(query));box.querySelector('.person-options').innerHTML=visible.length?visible.map(([key,name])=>`<label><input type="checkbox" data-person-select="${view}:${type}" value="${safe(key)}" ${selected.has(key)?'checked':''}>${safe(name)}</label>`).join(''):'<span class="hint">No matching names available.</span>';});
+ document.addEventListener('change',e=>{const t=e.target;if(t.dataset.personSelect){const [v,k]=t.dataset.personSelect.split(':');const set=selectedPeople[v][k];t.checked?set.add(t.value):set.delete(t.value);updatePersonViews()}if(t.dataset.band){const set=t.dataset.band==='trainer'?selectedTrainer:selectedJockey;t.checked?set.add(t.value):set.delete(t.value);renderBands();renderPower()}if(t.dataset.odds!==undefined){slip[Number(t.dataset.odds)].odds=t.value;renderSlip()}if(t.dataset.result){const b=bets.find(x=>x.id===t.dataset.result);if(b){b.selections[Number(t.dataset.idx)].result=t.value;storeBets();renderSavedBets();renderPnL()}}});
+ $('trainer-days').onchange=e=>{trainerDays=Number(e.target.value);renderPower()};$('jockey-days').onchange=e=>{jockeyDays=Number(e.target.value);renderPower()};$('power-bookie').onchange=e=>{selectedPowerBook=e.target.value;updatePersonViews()};$('race-date').onchange=e=>{selectedDate=e.target.value;selectedMeeting='all';selectedTime='all';refreshSelects();updatePersonViews()};$('bookie').onchange=e=>{selectedBook=e.target.value;selectedMeeting='all';selectedTime='all';refreshSelects();updatePersonViews()};$('meeting').onchange=e=>{selectedMeeting=e.target.value;selectedTime='all';refreshSelects();updatePersonViews()};$('race-time').onchange=e=>{selectedTime=e.target.value;updatePersonViews()};$('sort-by').onchange=e=>{selectedSort=e.target.value;renderMarkets();renderPower()};$('bet-type').onchange=renderSlip;$('bet-stake').oninput=renderSlip;$('period').onchange=renderPnL;$('bet-status').onchange=renderPnL;
  $('clear-slip').onclick=()=>{slip=[];renderSlip()};$('save-bet').onclick=()=>{let err=validSlip();if(err){$('bet-msg').textContent=err;return}const type=$('bet-type').value,stake=num($('bet-stake').value),lines=linesFor(type,slip.length);const bet={id:`bet-${Date.now()}-${Math.floor(Math.random()*10000)}`,date:$('bet-date').value||today,type,typeLabel:typeDesc(type)[1],stake,bookmaker:$('bet-bookie').value||'Unknown',lines:lines.length,selections:slip.map(s=>({horse:s.horse,course:s.course,raceTime:s.raceTime,decimal:parseOdds(s.odds),result:'pending'}))};bets.push(bet);if(storeBets()){$('bet-msg').textContent='Bet saved privately on this device. Export a backup regularly.';slip=[];renderSlip();renderSavedBets();renderPnL()}};
  $('export-bets').onclick=()=>{const blob=new Blob([JSON.stringify({format:'racing-hot-pots-bets-v1',bets},null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='racing-hot-pots-bets-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
  $('import-bets').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{const o=JSON.parse(await f.text());if(o.format!=='racing-hot-pots-bets-v1'||!Array.isArray(o.bets))throw Error('Not a valid Racing Hot Pots backup');if(!confirm('Replace current saved bets with the backup?'))return;bets=o.bets;storeBets();renderSavedBets();renderPnL()}catch(err){alert('Import failed: '+err.message)}finally{e.target.value=''}};loadFeed()}
