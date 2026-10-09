@@ -2,6 +2,7 @@
 import os
 import json
 import base64
+import time
 import urllib.request
 import urllib.parse
 from datetime import datetime, timezone
@@ -61,7 +62,8 @@ for day in ("today", "tomorrow"):
             break
 
         skip += 500
-
+        time.sleep(2) 
+    time.sleep(2)
 output = {
     "collected_at": datetime.now(timezone.utc).isoformat(),
     "source": "The Racing API",
