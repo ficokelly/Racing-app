@@ -1,0 +1,63 @@
+name: Test historical racing results access
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Test 25 September 2026 (UK and Ireland)
+        env:
+          RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
+          RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
+        run: |
+          python - <<'PY'
+          import base64
+          import json
+          import os
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          username = os.environ.get('RACING_API_USERNAME', '')
+          password = os.environ.get('RACING_API_PASSWORD', '')
+          if not username or not password:
+              raise SystemExit('FAIL: Racing API GitHub secrets are missing.')
+
+          params = urllib.parse.urlencode({
+              'start_date': '2026-09-25',
+              'end_date': '2026-09-25',
+              'region': ['gb', 'ire'],
+              'limit': 100,
+              'skip': 0,
+          }, doseq=True)
+          url = 'https://api.theracingapi.com/v1/results?' + params
+          token = base64.b64encode((username + ':' + password).encode()).decode()
+          request = urllib.request.Request(url, headers={
+              'Authorization': 'Basic ' + token,
+              'Accept': 'application/json',
+          })
+          try:
+              with urllib.request.urlopen(request, timeout=45) as response:
+                  payload = json.load(response)
+                  print('SUCCESS: Historical results endpoint is accessible.')
+                  print('HTTP status:', response.status)
+          except urllib.error.HTTPError as error:
+              print('Historical access failed. HTTP status:', error.code)
+              print('403/401 usually indicates subscription or credential restrictions.')
+              raise SystemExit(1)
+          except Exception as error:
+              print('Historical test failed:', type(error).__name__)
+              raise SystemExit(1)
+
+          races = payload.get('results', [])
+          print('Returned races on first page:', len(races))
+          print('Total reported races:', payload.get('total', 'not supplied'))
+          if not races:
+              raise SystemExit('Endpoint accessible, but returned no races for this date.')
+          print('PASS: Ready to design the 14-day historical backfill.')
+          PY
