@@ -1,0 +1,72 @@
+name: Test Basic Horse History
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-horse-history:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Test King's Scholar history (25 Sep to 8 Oct 2026)
+        env:
+          RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
+          RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
+        run: |
+          python - <<'PY'
+          import base64
+          import json
+          import os
+          from urllib.error import HTTPError, URLError
+          from urllib.parse import urlencode
+          from urllib.request import Request, urlopen
+
+          horse_id = "hrs_40819548"
+          params = urlencode({
+              "start_date": "2026-09-25",
+              "end_date": "2026-10-08",
+              "region": ["gb", "ire"],
+              "limit": 20,
+              "skip": 0,
+          }, doseq=True)
+          url = f"https://api.theracingapi.com/v1/racecards/{horse_id}/results?{params}"
+          username = os.environ["RACING_API_USERNAME"]
+          password = os.environ["RACING_API_PASSWORD"]
+          token = base64.b64encode(f"{username}:{password}".encode()).decode()
+          req = Request(url, headers={
+              "Authorization": f"Basic {token}",
+              "Accept": "application/json",
+          })
+          print("Testing Basic-plan racecard horse history for King's Scholar")
+          print("Date range: 2026-09-25 through 2026-10-08")
+          try:
+              with urlopen(req, timeout=30) as response:
+                  data = json.load(response)
+                  print("HTTP status:", response.status)
+          except HTTPError as error:
+              print("HTTP status:", error.code)
+              print("API request denied or failed. No secrets printed.")
+              raise SystemExit(1)
+          except (URLError, ValueError) as error:
+              print("Network or JSON response error:", type(error).__name__)
+              raise SystemExit(1)
+
+          print("Response type:", type(data).__name__)
+          if not isinstance(data, dict):
+              print("Unexpected response format.")
+              raise SystemExit(1)
+          print("Top-level fields:", list(data.keys()))
+          print("Reported total:", data.get("total", "not provided"))
+          races = data.get("results") or []
+          print("Number of historical race records returned:", len(races))
+          if races:
+              first = races[0]
+              print("First race fields:", list(first.keys()))
+              runners = first.get("runners") or []
+              if runners:
+                  runner = runners[0]
+                  print("First runner fields:", list(runner.keys()))
+                  for key in ("trainer", "trainer_id", "jockey", "jockey_id", "position"):
+                      if key in runner:
+                          print(key + ":", runner[key])
+          print("Test complete. Nothing was written to the repository.")
+          PY
