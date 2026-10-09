@@ -1,0 +1,91 @@
+name: Test 5-Minute Odds Refresh (No API Calls)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download repository
+        uses: actions/checkout@v4
+
+      - name: Simulate five-minute refresh schedule without using credits
+        run: |
+          python - <<'PY'
+          import json
+          from collections import defaultdict
+          from datetime import datetime, timedelta, timezone
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+
+          path = Path('data/racecards.json')
+          if not path.exists():
+              raise SystemExit('Missing data/racecards.json; no odds API was called.')
+          payload = json.loads(path.read_text())
+          runners = payload.get('runners', []) if isinstance(payload, dict) else []
+          if not isinstance(runners, list):
+              raise SystemExit('Invalid racecards format: runners must be a list.')
+
+          races = {}
+          for runner in runners:
+              if not isinstance(runner, dict):
+                  continue
+              when = runner.get('race_time')
+              course = runner.get('course')
+              if not when or not course:
+                  continue
+              try:
+                  post = datetime.fromisoformat(when.replace('Z', '+00:00'))
+                  if post.tzinfo is None:
+                      continue
+              except ValueError:
+                  continue
+              races[(course, post)] = {'course': course, 'post': post}
+
+          print('=== SAFE DRY RUN: ZERO ODDS API REQUESTS ===')
+          print('Racecards runners:', len(runners))
+          print('Unique races:', len(races))
+          print('Existing hourly and 15-minute refreshes remain unchanged.')
+          print('A candidate extra refresh is on a 5-minute UTC clock tick')
+          print('only when at least one race starts >0 and <=15 minutes later.')
+
+          dublin = ZoneInfo('Europe/Dublin')
+          def baseline_tick(t):
+              # Workflow: hourly at UTC :00, plus UTC :15/:30/:45 at 11-18;
+              # those extra runs are further gated by local racing hours.
+              if t.minute == 0:
+                  return True
+              return 11 <= t.hour <= 18 and t.minute in (15, 30, 45) and 12 <= t.astimezone(dublin).hour <= 18
+
+          def floor_5(dt):
+              dt = dt.astimezone(timezone.utc)
+              return dt.replace(minute=(dt.minute//5)*5, second=0, microsecond=0)
+
+          potential = defaultdict(list)
+          for race in races.values():
+              post = race['post'].astimezone(timezone.utc)
+              tick = floor_5(post - timedelta(minutes=15))
+              while tick < post:
+                  remaining = (post - tick).total_seconds()/60
+                  if 0 < remaining <= 15 and not baseline_tick(tick):
+                      potential[tick].append((race['course'], post, round(remaining, 1)))
+                  tick += timedelta(minutes=5)
+
+          today = datetime.now(dublin).date()
+          upcoming = {t: r for t, r in potential.items() if t.astimezone(dublin).date() == today}
+          print('Additional five-minute run times in ALL loaded racecards:', len(potential))
+          print('Additional run times for TODAY (Dublin):', len(upcoming))
+          print('Estimated maximum additional PuntersEdge requests today IF enabled:', len(upcoming))
+          print('NOTE: Estimate assumes one full-feed API call per eligible run.')
+          for t, items in sorted(upcoming.items()):
+              shown = ', '.join(f'{course} {post.astimezone(dublin):%H:%M} ({mins:g}m)' for course, post, mins in items[:3])
+              suffix = f' ... plus {len(items)-3} more' if len(items) > 3 else ''
+              print(f'EXTRA {t.astimezone(dublin):%H:%M} Irish time | {len(items)} races | {shown}{suffix}')
+          if not upcoming:
+              print('No extra checks for today in current racecards; check date/coverage.')
+          print('DRY RUN COMPLETE. No PuntersEdge requests. No files changed.')
+          PY
