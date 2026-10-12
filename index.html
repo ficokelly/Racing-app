@@ -355,6 +355,49 @@ function setup(){loadPowerResults();$('pr-period').onchange=renderPowerResults;l
  $('clear-slip').onclick=()=>{slip=[];renderSlip()};$('save-bet').onclick=()=>{let err=validSlip();if(err){$('bet-msg').textContent=err;return}const type=$('bet-type').value,stake=num($('bet-stake').value),lines=linesFor(type,slip.length);const bet={id:`bet-${Date.now()}-${Math.floor(Math.random()*10000)}`,date:$('bet-date').value||today,type,typeLabel:typeDesc(type)[1],stake,bookmaker:$('bet-bookie').value||'Unknown',lines:lines.length,selections:slip.map(s=>({horse:s.horse,course:s.course,raceTime:s.raceTime,decimal:parseOdds(s.odds),result:'pending'}))};bets.push(bet);if(storeBets()){$('bet-msg').textContent='Bet saved privately on this device. Export a backup regularly.';slip=[];renderSlip();renderSavedBets();renderPnL()}};
  $('export-bets').onclick=()=>{const blob=new Blob([JSON.stringify({format:'racing-hot-pots-bets-v1',bets},null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='racing-hot-pots-bets-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
  $('import-bets').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{const o=JSON.parse(await f.text());if(o.format!=='racing-hot-pots-bets-v1'||!Array.isArray(o.bets))throw Error('Not a valid Racing Hot Pots backup');if(!confirm('Replace current saved bets with the backup?'))return;bets=o.bets;storeBets();renderSavedBets();renderPnL()}catch(err){alert('Import failed: '+err.message)}finally{e.target.value=''}};loadFeed()}
+// Automatically notice freshly published GitHub Pages data, without additional bookmaker API requests.
+// A changed data file triggers a page reload; unchanged files never reload the page.
+const AUTO_REFRESH_INTERVAL_MS=60000;
+const AUTO_REFRESH_FILES=['latest-odds.json','odds-history.json','racecards.json','strike-rates.json','power-favs-results.json'];
+let autoRefreshSignatures=null,autoRefreshBusy=false,autoRefreshLastCheck=0;
+async function dataSignature(file){
+ const response=await fetch('./data/'+file+'?autocheck='+Date.now(),{method:'HEAD',cache:'no-store'});
+ if(!response.ok)throw Error('Unable to inspect '+file);
+ const etag=response.headers.get('etag'),modified=response.headers.get('last-modified'),size=response.headers.get('content-length');
+ // If cache validators are missing, avoid false "changed" notifications.
+ return etag||((modified||'')+'|'+(size||''))||null;
+}
+async function checkPublishedData(){
+ if(autoRefreshBusy||document.visibilityState==='hidden'||!navigator.onLine)return;
+ autoRefreshBusy=true;
+ try{
+  const values=await Promise.all(AUTO_REFRESH_FILES.map(async f=>{try{return await dataSignature(f)}catch(e){return null}}));
+  if(autoRefreshSignatures!==null&&values.some((v,i)=>v!==null&&autoRefreshSignatures[i]!==null&&v!==autoRefreshSignatures[i])){
+   try{sessionStorage.setItem('rhp-auto-refresh-view',JSON.stringify({tab:activeTab,slip,scroll:window.scrollY,period:$('pr-period').value}))}catch(e){}
+   window.location.reload();return;
+  }
+  autoRefreshSignatures=values.map((v,i)=>v===null&&autoRefreshSignatures?autoRefreshSignatures[i]:v);
+ }catch(e){}finally{autoRefreshBusy=false;autoRefreshLastCheck=Date.now()}
+}
+function restoreAutoRefreshView(){
+ try{
+  const saved=sessionStorage.getItem('rhp-auto-refresh-view');
+  if(!saved)return;
+  sessionStorage.removeItem('rhp-auto-refresh-view');
+  const view=JSON.parse(saved);
+  if(Array.isArray(view.slip))slip=view.slip;
+  if(view.period)$('pr-period').value=view.period;
+  if(['markets','power','hot','powerresults','bets','pnl'].includes(view.tab))showTab(view.tab);
+  renderSlip();
+  setTimeout(()=>window.scrollTo(0,Math.max(0,Number(view.scroll)||0)),1000);
+ }catch(e){}
+}
 setup();
+restoreAutoRefreshView();
+checkPublishedData();
+setInterval(checkPublishedData,AUTO_REFRESH_INTERVAL_MS);
+document.addEventListener('visibilitychange',()=>{
+ if(document.visibilityState==='visible'&&Date.now()-autoRefreshLastCheck>15000)checkPublishedData();
+});
 
 </script></body></html>
