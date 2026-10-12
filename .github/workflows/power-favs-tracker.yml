@@ -1,0 +1,34 @@
+name: Power Favs Results Tracker
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/15 10-23 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: power-favs-results-tracker
+  cancel-in-progress: false
+
+jobs:
+  track:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Archive Power Favs and settle available results (no API calls)
+        run: python build_power_favs.py
+      - name: Commit archived selections
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/power-favs-results.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'Update Power Favs results archive'
+            git pull --rebase origin "${GITHUB_REF_NAME}"
+            git push origin HEAD:"${GITHUB_REF_NAME}"
+          fi
