@@ -125,13 +125,17 @@ jobs:
           PUNTERSEDGE_API_KEY: ${{ secrets.PUNTERSEDGE_API_KEY }}
         run: python collect-odds.py
 
+      - name: Archive older odds snapshots (no API call)
+        if: steps.guard.outputs.collect == 'true'
+        run: python archive-odds-history.py
+
       - name: Save updated odds history
         if: steps.guard.outputs.collect == 'true'
         shell: bash
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add data/latest-odds.json data/odds-history.json
+          git add data/latest-odds.json data/odds-history.json data/odds-archive/
           if ! git diff --cached --quiet; then
             git commit -m 'Refresh pre-race odds (protected 5-minute check)'
             git pull --rebase origin main
