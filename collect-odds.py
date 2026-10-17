@@ -56,6 +56,21 @@ else:
 if races and isinstance(races[0], dict):
     print("Available race fields:", sorted(races[0].keys()))
 
+# Inspect a few race-level fields already included in this API response.
+# No additional API calls or credits. Never print API keys or runner data.
+print("Race classification diagnostic (up to 6 races):")
+for race in [r for r in races if isinstance(r, dict) and r.get("country") in ("GB", "IE")][:6]:
+    diagnostic = {
+        key: race.get(key)
+        for key in (
+            "country", "venue", "race_name", "category", "conditions",
+            "race_class", "rail", "venue_site", "track_condition",
+            "race_type", "surface", "discipline", "track_surface"
+        )
+        if key in race
+    }
+    print("RACE_DIAGNOSTIC:", json.dumps(diagnostic, ensure_ascii=False, default=str)[:1500])
+
 
 def race_field(race, *names):
     for name in names:
