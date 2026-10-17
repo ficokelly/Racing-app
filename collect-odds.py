@@ -52,6 +52,18 @@ elif isinstance(raw, dict):
 else:
     races = []
 
+# Diagnostic: log field names only, never values, tokens, or runner details.
+if races and isinstance(races[0], dict):
+    print("Available race fields:", sorted(races[0].keys()))
+
+
+def race_field(race, *names):
+    for name in names:
+        value = race.get(name)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
 collected_at = datetime.now(timezone.utc).isoformat()
 records = []
 
@@ -84,6 +96,8 @@ for race in races:
                 "course": race.get("venue"),
                 "race_time": race.get("start_time"),
                 "country": race.get("country"),
+                "race_type": race_field(race, "race_type", "run_type", "raceType", "discipline", "type"),
+                "surface": race_field(race, "surface", "track_surface", "trackSurface", "going_surface"),
                 "horse": runner.get("name"),
                 "bookmaker": bookmaker.get("key"),
                 "decimal_odds": price,
