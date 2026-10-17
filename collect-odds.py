@@ -56,21 +56,6 @@ else:
 if races and isinstance(races[0], dict):
     print("Available race fields:", sorted(races[0].keys()))
 
-# Inspect a few race-level fields already included in this API response.
-# No additional API calls or credits. Never print API keys or runner data.
-print("Race classification diagnostic (up to 6 races):")
-for race in [r for r in races if isinstance(r, dict) and r.get("country") in ("GB", "IE")][:6]:
-    diagnostic = {
-        key: race.get(key)
-        for key in (
-            "country", "venue", "race_name", "category", "conditions",
-            "race_class", "rail", "venue_site", "track_condition",
-            "race_type", "surface", "discipline", "track_surface"
-        )
-        if key in race
-    }
-    print("RACE_DIAGNOSTIC:", json.dumps(diagnostic, ensure_ascii=False, default=str)[:1500])
-
 
 def race_field(race, *names):
     for name in names:
@@ -78,6 +63,77 @@ def race_field(race, *names):
         if isinstance(value, str) and value.strip():
             return value.strip()
     return None
+
+# Classification uses only fields in the existing odds API response.
+# Do not guess a surface at mixed turf/AW venues or infer flat from missing jump keywords.
+import re
+
+AW_ONLY = {
+    "dundalk", "chelmsford", "chelmsford city", "wolverhampton",
+}
+AW_MIXED = {"kempton", "kempton park", "lingfield", "lingfield park", "newcastle", "southwell"}
+# Known turf-only courses; mixed Flat/Jumps courses are safe here because
+# discipline is established separately using race name / short distance.
+TURF_ONLY = {
+    "aintree", "ascot", "ayr", "ballinrobe", "bangor", "bangor-on-dee",
+    "bath", "beverley", "brighton", "carlisle", "cartmel", "catterick",
+    "catterick bridge", "chepstow", "chester", "clonmel", "cork",
+    "curragh", "down royal", "downpatrick", "epsom", "epsom downs",
+    "exeter", "fairyhouse", "ffos las", "fontwell", "galway", "goodwood",
+    "gowran park", "hamilton", "hamilton park", "haydock", "haydock park",
+    "hexham", "huntingdon", "kelso", "killarney", "kilbeggan",
+    "leicester", "leopardstown", "limerick", "listowel", "ludlow",
+    "market rasen", "musselburgh", "naas", "navan", "newbury",
+    "newmarket", "nottingham", "perth", "plumpton", "pontefract",
+    "punchestown", "redcar", "ripon", "roscommon", "salisbury",
+    "sandown", "sandown park", "sedgefield", "sherwood", "sligo",
+    "stratford", "stratford-on-avon", "taunton", "thirsk", "thurles",
+    "tipperary", "tramore", "uttoxeter", "warwick", "wetheby",
+    "wetherby", "wexford", "windsor", "wincanton", "worcester",
+    "yarmouth", "york",
+}
+
+
+def classify_race(race):
+    name = str(race.get("race_name") or "").lower()
+    venue = str(race.get("venue_canonical") or race.get("venue") or "").strip().lower()
+    venue = re.sub(r"\s+", " ", venue)
+    explicit_type = race_field(race, "race_type", "run_type", "raceType", "discipline", "type")
+    explicit_surface = race_field(race, "surface", "track_surface", "trackSurface", "going_surface")
+    t = (explicit_type or "").lower()
+    surface = (explicit_surface or "").lower()
+
+    # Explicit jump labels take precedence over distance/course guesses.
+    jumps = bool(re.search(r"\b(hrd|hurdle|hurdles|chs|chase|chases|steeplechase|nhf|nh flat|national hunt flat|bumper|jumps)\b", name + " " + t))
+    if jumps:
+        return "jumps", surface if surface in ("turf", "aw") else "turf", "race_name_jump"
+
+    # Flat races at standard sprint/middle distances; jump racing is not run at
+    # these short distances. Longer races require explicit flat evidence.
+    short_distance = bool(re.search(r"\b(?:[5-7]f|1m(?:[0-6]f)?)\b", name))
+    flat = bool(re.search(r"\bflat\b", t + " " + name)) or short_distance
+    if not flat:
+        return None, None, "ambiguous_discipline"
+
+    if surface in ("aw", "all-weather", "all weather", "synthetic", "tapeta", "polytrack", "fibresand"):
+        return "flat", "aw", "explicit_surface"
+    if surface in ("turf", "grass"):
+        return "flat", "turf", "explicit_surface"
+    if venue in AW_ONLY:
+        return "flat", "aw", "aw_only_course"
+    if venue in TURF_ONLY:
+        return "flat", "turf", "turf_only_course"
+    # Mixed courses require explicit AW/turf metadata; don't invent it.
+    return "flat", None, "ambiguous_surface"
+
+
+classification_counts = {}
+for race in races:
+    if isinstance(race, dict) and race.get("country") in ("GB", "IE"):
+        typ, surf, reason = classify_race(race)
+        label = f"{typ or 'unknown'}/{surf or 'unknown'} ({reason})"
+        classification_counts[label] = classification_counts.get(label, 0) + 1
+print("Race classification summary:", classification_counts)
 
 collected_at = datetime.now(timezone.utc).isoformat()
 records = []
@@ -91,6 +147,8 @@ for race in races:
 
     if race.get("category") != "horse":
         continue
+
+    classified_type, classified_surface, _ = classify_race(race)
 
     for runner in race.get("runners", []):
         if not isinstance(runner, dict):
@@ -111,8 +169,8 @@ for race in races:
                 "course": race.get("venue"),
                 "race_time": race.get("start_time"),
                 "country": race.get("country"),
-                "race_type": race_field(race, "race_type", "run_type", "raceType", "discipline", "type"),
-                "surface": race_field(race, "surface", "track_surface", "trackSurface", "going_surface"),
+                "race_type": classified_type,
+                "surface": classified_surface,
                 "horse": runner.get("name"),
                 "bookmaker": bookmaker.get("key"),
                 "decimal_odds": price,
