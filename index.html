@@ -86,6 +86,10 @@ summary,a{color:#77e4b8}details .history{color:#b7d7ce}.notice{color:#f1c984}
 .person-controls button{font-size:11px;padding:7px}
 .person-count{color:#91bcb7;font-size:11px}
 #hot-ranking .summarycard{margin:7px 0}#hot-options label{padding:8px;border-bottom:1px solid #24454c}#hotview .horse{margin-bottom:4px}
+.hot-odds{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:10px 0 7px}
+.hot-odds>div{background:#091e26;border:1px solid #31585b;border-radius:10px;padding:10px;min-width:0}
+.hot-odds small{display:block;font-size:11px;color:#a9c1c2}
+.hot-odds strong{display:block;font-size:19px;color:#d6ffec;margin-top:5px}
 /* Movement colours: shorten green, drift red, unchanged neutral */
 .odds b.move.drift,.movement-drift{color:#ff7777!important}
 .odds b.move.short,.movement-short{color:#82f3c5!important}
@@ -103,9 +107,6 @@ summary,a{color:#77e4b8}details .history{color:#b7d7ce}.notice{color:#f1c984}
 #bet-dialog .panel{margin:0;border:0;padding:6px}
 #bet-dialog-header{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 6px 12px}
 
-/* Section navigation is in normal page flow, never a fixed bottom overlay. */
-#section-buttons{position:static;inset:auto;bottom:auto;left:auto;right:auto;z-index:auto;max-width:none;padding:0;background:transparent;border:0;box-shadow:none;backdrop-filter:none;justify-content:initial}
-body{padding-bottom:env(safe-area-inset-bottom)}
 /* Two-column fixed section navigation above page heading. */
 #section-buttons{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:9px;margin:13px 0 20px}
 #section-buttons .nav-column{display:grid;grid-template-rows:repeat(4,minmax(44px,auto));gap:8px;min-width:0}
@@ -181,7 +182,7 @@ function miniGraph(pts){if(!pts.length)return '<p class="hint">No saved observat
 function viewRace(id){
  const chosen=rows.find(x=>x.id===id);if(!chosen)return;
  // Match the race using stable race ID and restrict strictly to the Markets bookmaker.
- const book=selectedBook==='all'?chosen.bookmaker:selectedBook;
+ const book=chosen.bookmaker;
  let field=rows.filter(x=>x.race_id===chosen.race_id&&x.bookmaker===book);
  const seen=new Set();field=field.filter(x=>{const key=personKey(x.horse);if(seen.has(key))return false;seen.add(key);return true}).sort((a,b)=>a.current-b.current);
  $('race-info').textContent=`${chosen.course} · ${when(chosen.starts)} · ${book} · ${field.length} priced runners`;
@@ -325,7 +326,7 @@ function renderBands(){for(const [type,target] of [['trainer','trainer-bands'],[
 function bandMatch(row,type,selected){if(!selected.size)return true;const stat=formStats(row,type);if(!stat)return selected.has('unknown');const pct=stat.pct;return bands.some(([id,_,lo,hi])=>selected.has(id)&&id!=='unknown'&&(id==='0-5'?pct<=5:id==='25+'?pct>25:pct>lo&&pct<=hi));}
 function formText(x,type){const v=formStats(x,type);return v?`${v.wins}/${v.runs} (${v.pct.toFixed(1)}% over ${v.availableDays}${v.availableDays===1?' day':' days'}${v.availableDays<v.selectedDays?' of selected '+v.selectedDays+' days':''})`:'Unknown (insufficient verified results)';}
 function refreshPowerBooks(){const eligible=rows.filter(x=>x.qualifies&&(selectedDate==='all'||x.day===selectedDate));const books=[...new Set(['William Hill',...eligible.map(x=>x.bookmaker)])].sort();if(selectedPowerBook!=='all'&&!books.includes(selectedPowerBook))selectedPowerBook='William Hill';selOpts('power-bookie',[['all','All bookmakers'],...books.map(b=>[b,b])],selectedPowerBook);}
-function renderPower(){refreshPowerBooks();let view=rows.filter(x=>(selectedDate==='all'||x.day===selectedDate)&&(selectedPowerBook==='all'||x.bookmaker===selectedPowerBook)&&x.qualifies&&Number.isFinite(x.move)&&x.move>0.001&&x.current<x.earlier&&personMatches(x,'power')&&bandMatch(x,'trainer',selectedTrainer)&&bandMatch(x,'jockey',selectedJockey));view=sortRows(view);$('power-count').textContent=`${view.length} Power Fav bookmaker entries. Form periods: trainer ${trainerDays}d · jockey ${jockeyDays}d. Results shown use all collected days within the selected period; coverage increases daily.`;$('power-list').innerHTML=view.length?view.map(x=>card(x).replace('</article>',`<div class="hint" style="margin-top:10px">Trainer form: ${safe(formText(x,'trainer'))}<br>Jockey form: ${safe(formText(x,'jockey'))}</div></article>`)).join(''):'<div class="empty">No Power Favs matching these filters. If the trainer/jockey dataset is not ready, select Unknown or clear form percentage filters.</div>'}
+function renderPower(){refreshPowerBooks();let view=rows.filter(x=>(selectedDate==='all'||x.day===selectedDate)&&(selectedPowerBook==='all'||x.bookmaker===selectedPowerBook)&&x.qualifies&&personMatches(x,'power')&&bandMatch(x,'trainer',selectedTrainer)&&bandMatch(x,'jockey',selectedJockey));view=sortRows(view);$('power-count').textContent=`${view.length} Power Fav bookmaker entries. Form periods: trainer ${trainerDays}d · jockey ${jockeyDays}d. Results shown use all collected days within the selected period; coverage increases daily.`;$('power-list').innerHTML=view.length?view.map(x=>card(x).replace('</article>',`<div class="hint" style="margin-top:10px">Trainer form: ${safe(formText(x,'trainer'))}<br>Jockey form: ${safe(formText(x,'jockey'))}</div></article>`)).join(''):'<div class="empty">No Power Favs matching these filters. If the trainer/jockey dataset is not ready, select Unknown or clear form percentage filters.</div>'}
 function qualifiesA(x){const t=String(x.raceType||'').toLowerCase(),surf=String(x.surface||'').toLowerCase();return x.qualifies&&/flat/.test(t)&&!/nh flat|national hunt|bumper/.test(t)&&/^(turf|grass)$/.test(surf)}
 function qualifiesB(x){const t=String(x.raceType||'').toLowerCase(),surf=String(x.surface||'').toLowerCase();const jumps=/hurdle|chase|nh[ -]?flat|national hunt|bumper|jumps|steeple/.test(t);const flat=/flat/.test(t)&&!jumps;return x.qualifies&&(jumps||(flat&&/^(aw|all[ -]?weather|synthetic|polytrack|tapeta|fibresand)$/.test(surf)));}
 function renderStrategyA(){const choices=rows.filter(x=>qualifiesA(x)&&(selectedDate==='all'||x.day===selectedDate));const unique=new Map();for(const x of choices){const k=JSON.stringify([x.race_id,x.horse]);if(!unique.has(k)||x.current<unique.get(k).current)unique.set(k,x)}const list=sortRows([...unique.values()]);$('strategya-count').textContent=`${list.length} unique Strategy A qualifiers · tracking only when added from this section.`;$('strategya-list').innerHTML=list.length?list.map(card).join(''):'<div class="empty">No Strategy A qualifiers in the current feed.</div>';}
@@ -349,6 +350,17 @@ function hotOptionList(stats,todayRunners){
  $('hot-options').innerHTML=visible.length?visible.map(([id,name])=>`<label><input type="checkbox" data-hot-trainer="${safe(id)}" ${hotSelected.has(id)?'checked':''}>${safe(name)}</label>`).join(''):'<p class="hint">No matching trainers.</p>';
  $('hot-selected-count').textContent=hotSelected.size?hotSelected.size+' selected':'Top 10 automatically selected';$('hot-filter-summary').textContent=hotSelected.size?hotSelected.size+' selected':'Top 10 automatic';
 }
+// Match a Hot Trainers racecard runner to saved bookmaker odds, if available.
+function hotRunnerOdds(r){
+ const day=r.date||dateKey(r.race_time);
+ const matches=rows.filter(x=>personKey(x.horse)===personKey(r.horse)&&personKey(x.course)===personKey(r.course)&&x.day===day);
+ return matches.sort((a,b)=>b.points.length-a.points.length||a.bookmaker.localeCompare(b.bookmaker))[0]||null;
+}
+function hotRunnerPrices(r){
+ const x=hotRunnerOdds(r);
+ if(!x)return '<div class="hint" style="margin-top:9px">No matched bookmaker odds available.</div>';
+ return `<div class="hot-odds"><div><small>First recorded odds</small><strong>${fmt(x.first??x.earlier)}</strong></div><div><small>Current odds</small><strong>${fmt(x.current)}</strong></div></div><div class="hint">${safe(x.bookmaker)}${x.first===null&&x.earlier!==null?' · API opening price (unverified)':''}</div><div class="actions" style="margin-top:9px"><button type="button" class="action small outline" data-view-race="${safe(x.id)}">View Race</button></div>`;
+}
 function renderHot(){
  const {info,stats}=hotStats(),today=dateKey(new Date().toISOString());
  $('hot-coverage').textContent=info?`Results through ${formData.as_of} · ${info.days} of 14 days verified.`:'No complete verified results window available yet.';
@@ -366,10 +378,10 @@ function renderHot(){
  $('hot-runners').innerHTML=entries.length?entries.map(r=>{
   const row=rows.filter(x=>personKey(x.horse)===personKey(r.horse)&&personKey(x.course)===personKey(r.course)&&x.day===today).sort((a,b)=>b.points.length-a.points.length)[0];
   const st=stats.find(x=>hotTrainerMatch(r,x));
-  return `<article class="horse"><div class="name">${safe(r.horse)}</div><div class="meta">${safe(when(r.race_time))} · ${safe(r.course)}</div><div class="hint" style="margin-top:10px">Trainer: ${safe(r.trainer)} · ${st?st.pct.toFixed(1)+'% ('+st.wins+'/'+st.runs+')':'Strike rate unavailable'}</div><div class="hint">Jockey: ${safe(r.jockey||'Not available')}</div><div class="hint" style="margin-top:7px">${row?'Latest '+safe(row.bookmaker)+' odds: '+fmt(row.current):'No matched bookmaker price currently available'}</div>${row?`<div class="hint" style="margin-top:7px">${row.move===null?'Price movement unavailable':row.move>0.001?'↘ Shortening '+row.move.toFixed(1)+'%':row.move<-.001?'↗ Drifting '+Math.abs(row.move).toFixed(1)+'%':'Odds unchanged'} · ${safe(row.bookmaker)}</div><details><summary>Price history graph &amp; details</summary>${miniGraph(row.points)}<div class="historyline">${row.points.map(p=>`${safe(when(p.at))} — ${fmt(p.od)}`).join('<br>')||'No saved prices'}</div></details>`:'<div class="hint" style="margin-top:7px">No saved odds history to graph for this runner.</div>'}</article>`;
+  return `<article class="horse"><div class="name">${safe(r.horse)}</div><div class="meta">${safe(when(r.race_time))} · ${safe(r.course)}</div><div class="hint" style="margin-top:10px">Trainer: ${safe(r.trainer)} · ${st?st.pct.toFixed(1)+'% ('+st.wins+'/'+st.runs+')':'Strike rate unavailable'}</div><div class="hint">Jockey: ${safe(r.jockey||'Not available')}</div>${hotRunnerPrices(r)}${row?`<div class="hint" style="margin-top:7px">${row.move===null?'Price movement unavailable':row.move>0.001?'↘ Shortening '+row.move.toFixed(1)+'%':row.move<-.001?'↗ Drifting '+Math.abs(row.move).toFixed(1)+'%':'Odds unchanged'} · ${safe(row.bookmaker)}</div><details><summary>Price history graph &amp; details</summary>${miniGraph(row.points)}<div class="historyline">${row.points.map(p=>`${safe(when(p.at))} — ${fmt(p.od)}`).join('<br>')||'No saved prices'}</div></details>`:'<div class="hint" style="margin-top:7px">No saved odds history to graph for this runner.</div>'}</article>`;
  }).join(''):`<div class="empty">${hotSelected.size?'No runners today for your selected trainers.':'None of the current top 10 ranked trainers have runners on today’s racecards. Select other trainers above to see their horses.'}</div>`;
  $('hot-ranking-count').textContent=`${stats.length} trainers qualify · showing ${hotExpanded?'up to 100':'top 10'}.`;
- $('hot-ranking').innerHTML=stats.length?stats.slice(0,hotExpanded?100:10).map((x,i)=>{const runners=todayRunners.filter(r=>hotTrainerMatch(r,x)).sort((a,b)=>Date.parse(a.race_time)-Date.parse(b.race_time));const unique=[...new Map(runners.map(r=>[[r.horse,r.race_time,r.course].join('|'),r])).values()];return `<details class="summarycard"><summary><strong>${i+1}. ${safe(x.name)}</strong><span class="tag down" style="float:right">${x.pct.toFixed(1)}%</span><div class="hint">${x.wins} wins / ${x.runs} runs · ${info.days} verified days · <strong>${unique.length} runners today</strong></div></summary><div style="margin-top:10px">${unique.length?unique.map(r=>`<div class="summarycard"><strong>${safe(r.horse)}</strong><div class="hint">${safe(when(r.race_time))} · ${safe(r.course)}</div></div>`).join(''):'<p class="hint">No runners today on available racecards.</p>'}</div></details>`}).join(''):'<div class="empty">No trainers meet the current minimum runs requirement.</div>';
+ $('hot-ranking').innerHTML=stats.length?stats.slice(0,hotExpanded?100:10).map((x,i)=>{const runners=todayRunners.filter(r=>hotTrainerMatch(r,x)).sort((a,b)=>Date.parse(a.race_time)-Date.parse(b.race_time));const unique=[...new Map(runners.map(r=>[[r.horse,r.race_time,r.course].join('|'),r])).values()];return `<details class="summarycard"><summary><strong>${i+1}. ${safe(x.name)}</strong><span class="tag down" style="float:right">${x.pct.toFixed(1)}%</span><div class="hint">${x.wins} wins / ${x.runs} runs · ${info.days} verified days · <strong>${unique.length} runners today</strong></div></summary><div style="margin-top:10px">${unique.length?unique.map(r=>`<div class="summarycard"><strong>${safe(r.horse)}</strong><div class="hint">${safe(when(r.race_time))} · ${safe(r.course)}</div>${hotRunnerPrices(r)}</div>`).join(''):'<p class="hint">No runners today on available racecards.</p>'}</div></details>`}).join(''):'<div class="empty">No trainers meet the current minimum runs requirement.</div>';
  $('hot-more').textContent=hotExpanded?'Show top 10':'Show more';
  $('hot-more').disabled=stats.length<=10;
 }
