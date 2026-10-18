@@ -218,6 +218,7 @@ function refreshStrategyCards(){
 // never a guessed event or an unrelated race.
 function unibetRaceLink(x){
  const course=personKey(x.course),day=x.day||dateKey(x.starts);
+ if(day==='2026-10-18'&&course==='leopardstown'&&x.time==='15:42')return 'https://www.unibet.ie/racing#/event/202610181400.T.IRL.leopardstown.4';
  if(day==='2026-10-18'&&course==='sedgefield'&&x.time==='14:20')return 'https://www.unibet.ie/racing#/event/202610181300.T.GBR.sedgefield.2';
  return 'https://www.unibet.ie/racing';
 }
