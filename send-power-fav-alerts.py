@@ -162,6 +162,10 @@ def main():
             if result.get('errors') or not result.get('id'):
                 print(f'WARNING: OneSignal did not accept notification for {p["horse"]}: {result}')
                 continue
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode('utf-8', errors='replace')
+            print(f'WARNING: OneSignal HTTP {exc.code} for {p["horse"]}: {detail[:2000]}')
+            continue
         except (urllib.error.URLError, TimeoutError, ValueError) as exc:
             print(f'WARNING: OneSignal notification failed for {p["horse"]}: {exc}')
             continue
