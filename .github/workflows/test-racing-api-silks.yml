@@ -1,0 +1,48 @@
+name: Test Racing API Silks (Read Only)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check-silks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check silks fields in UK and Irish free racecards
+        env:
+          RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
+          RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
+        run: |
+          python - <<'PY'
+          import base64, json, os, urllib.request, urllib.parse, urllib.error
+          from collections import Counter
+
+          username = os.environ['RACING_API_USERNAME']
+          password = os.environ['RACING_API_PASSWORD']
+          auth = base64.b64encode(f'{username}:{password}'.encode()).decode()
+          url = 'https://api.theracingapi.com/v1/racecards/free?' + urllib.parse.urlencode({'day':'today','limit':500,'skip':0})
+          req = urllib.request.Request(url, headers={'Authorization':'Basic '+auth, 'Accept':'application/json'})
+          try:
+              with urllib.request.urlopen(req, timeout=40) as response:
+                  print('HTTP status:', response.status)
+                  data = json.load(response)
+          except urllib.error.HTTPError as exc:
+              print('HTTP status:', exc.code)
+              print('Could not inspect racecards; no files changed.')
+              raise SystemExit(0)
+          except (urllib.error.URLError, ValueError) as exc:
+              print('Request failed:', type(exc).__name__)
+              raise SystemExit(0)
+          races = [r for r in data.get('racecards',[]) if isinstance(r,dict) and r.get('region') in ('GB','IRE')]
+          runners = [h for r in races for h in r.get('runners',[]) if isinstance(h,dict)]
+          print('UK/Irish races checked:', len(races))
+          print('Runners checked:', len(runners))
+          print('Runner fields containing silk/colour/color:', sorted({k for h in runners for k in h if any(x in k.lower() for x in ('silk','colour','color'))}))
+          with_silks = [h for h in runners if h.get('silk_url')]
+          print('Runners with silk_url:', len(with_silks))
+          if with_silks:
+              print('Sample horse:', with_silks[0].get('horse'))
+              print('Sample silk_url:', str(with_silks[0]['silk_url'])[:300])
+          else:
+              print('No populated silk_url found in these free racecards.')
+          print('Read-only test complete. No app or data files changed.')
+          PY
