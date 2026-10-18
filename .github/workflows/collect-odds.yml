@@ -57,6 +57,7 @@ jobs:
         if: steps.hours.outputs.collect == 'true'
         env:
           ONESIGNAL_API_KEY: ${{ secrets.ONESIGNAL_API_KEY }}
+          ONESIGNAL_SUBSCRIPTION_ID: ${{ secrets.ONESIGNAL_SUBSCRIPTION_ID }}
         run: python send-power-fav-alerts.py
 
       - name: Save odds history
