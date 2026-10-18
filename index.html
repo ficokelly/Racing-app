@@ -232,20 +232,29 @@ function viewRace(id){
 function closeRace(){$('race-overlay').classList.add('hidden');document.body.style.overflow=''}
 // A bet belongs to a horse in a particular race, not to a temporary Power Fav quote.
 // Old saved selections have no race_id, so retain compatibility with those records.
-function savedSelectionMatches(s,x){
- const norm=v=>String(v||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
- if(norm(s.horse)!==norm(x.horse)||norm(s.course)!==norm(x.course))return false;
- const savedTime=Date.parse(s.raceTime),currentTime=Date.parse(x.starts);
- const savedDay=s.raceTime?dateKey(s.raceTime):'',currentDay=x.day||dateKey(x.starts);
- if(savedDay&&currentDay&&savedDay!==currentDay)return false;
- // Prefer an exact race identifier where the saved record has one.
- if(s.race_id&&x.race_id&&String(s.race_id)===String(x.race_id))return true;
- // Feed timestamps may change slightly between snapshots; allow a 30-minute margin.
- if(Number.isFinite(savedTime)&&Number.isFinite(currentTime))return Math.abs(savedTime-currentTime)<=30*60*1000;
- return !!(savedDay&&currentDay&&savedDay===currentDay);
+function savedSelectionMatches(s,x,bet){
+  // Match the selection, not a changing bookmaker quote or Power Fav status.
+  const norm=personKey;
+  if(norm(s.horse)!==norm(x.horse))return false;
+  const savedCourse=norm(s.course),currentCourse=norm(x.course);
+  if(savedCourse&&currentCourse&&savedCourse!==currentCourse)return false;
+  const savedDay=s.raceTime?dateKey(s.raceTime):'',currentDay=x.day||dateKey(x.starts);
+  const betDay=String(bet?.date||'').slice(0,10);
+  if(savedDay&&currentDay&&savedDay!==currentDay)return false;
+  if(!savedDay&&betDay&&currentDay&&betDay!==currentDay)return false;
+  // Exact identifiers are definitive only after horse, course and date agree.
+  if(s.race_id&&x.race_id&&String(s.race_id)===String(x.race_id))return true;
+  // A horse cannot run twice at the same meeting on the same day.
+  // Feed race IDs and advertised off times can change; neither should erase a bet.
+  if(savedCourse&&currentCourse&&savedDay&&currentDay)return true;
+  const savedTime=Date.parse(s.raceTime),currentTime=Date.parse(x.starts);
+  if(Number.isFinite(savedTime)&&Number.isFinite(currentTime))
+    return Math.abs(savedTime-currentTime)<=60*60*1000;
+  return false;
 }
+
 function savedHorseStatus(x){
- const found=bets.filter(b=>(b.selections||[]).some(s=>savedSelectionMatches(s,x)));
+ const found=bets.filter(b=>(b.selections||[]).some(s=>savedSelectionMatches(s,x,b)));
  if(!found.length)return '';
  const backed=found.some(b=>b.mode!=='tracking');
  const tracked=found.some(b=>b.mode==='tracking');
