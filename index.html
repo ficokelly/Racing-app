@@ -125,7 +125,38 @@ summary,a{color:#77e4b8}details .history{color:#b7d7ce}.notice{color:#f1c984}
 .horse-action-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:9px!important}
 .horse-action-grid>.race-full{grid-column:1/-1}
 .horse-action-grid>.action,.horse-action-grid>.tag{min-width:0;width:100%;min-height:42px;display:flex;align-items:center;justify-content:center;text-align:center;white-space:normal;overflow-wrap:anywhere;margin:0;padding:8px 5px;font-size:clamp(10px,3vw,13px)}
-</style></head><body><header><div class="top"><div><div class="brand"><span class="brand-icon">♞</span><span class="brand-words">Racing <span>Hot Pots</span></span></div><div class="sub">UK & IRELAND ◆ RACING INTELLIGENCE</div></div><div class="live" id="status">Checking feed</div></div></header><main><nav id="section-buttons" aria-label="Racing Hot Pots sections"><div class="nav-column"><button type="button" data-section="power">🔥 Power Favs</button><button type="button" data-section="strategya">Strategy A</button><button type="button" data-section="strategyb">Strategy B</button><button type="button" data-section="markets">Markets</button></div><div class="nav-column"><button type="button" data-section="hot">🔥 Hot Trainers</button><button type="button" data-section="powerresults">Power Favs Results</button><button type="button" data-section="bets">My Bets</button><button type="button" data-section="pnl">P&amp;L</button></div></nav><div class="eyebrow">MIDNIGHT EMERALD ✦ LIVE ODDS RESEARCH</div><h1 id="pageTitle">Market <span class="gold-text">Movers</span></h1><div class="muted" id="asof">Loading odds…</div>
+</style><link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./racing-icon.png">
+<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+<script>
+window.OneSignalDeferred = window.OneSignalDeferred || [];
+OneSignalDeferred.push(async function(OneSignal) {
+  try {
+    await OneSignal.init({appId: "1bbabde1-23d9-4e6a-9c97-eacf144d332b", serviceWorkerPath: "OneSignalSDKWorker.js", serviceWorkerParam: {scope: "/Racing-app/"}});
+    window.rhpOneSignal = OneSignal;
+    const button = document.getElementById('rhp-enable-alerts');
+    const status = document.getElementById('rhp-alert-status');
+    if (button) {
+      button.disabled = false;
+      button.addEventListener('click', async () => {
+        try {
+          if (!window.matchMedia('(display-mode: standalone)').matches && !window.navigator.standalone) {
+            status.textContent = 'On iPhone, open Racing Hot Pots from your Home Screen to enable notifications.';
+            return;
+          }
+          await OneSignal.Slidedown.promptPush();
+          status.textContent = OneSignal.User.PushSubscription.optedIn ? 'Notifications enabled.' : 'Check the notification permission prompt to finish subscribing.';
+        } catch (e) { status.textContent = 'Could not enable alerts: ' + (e?.message || e); }
+      });
+    }
+    if (status && OneSignal.User.PushSubscription.optedIn) status.textContent = 'Notifications enabled.';
+  } catch (e) {
+    const status = document.getElementById('rhp-alert-status');
+    if (status) status.textContent = 'Notification setup error: ' + (e?.message || e);
+  }
+});
+</script>
+</head><body><header><div class="top"><div><div class="brand"><span class="brand-icon">♞</span><span class="brand-words">Racing <span>Hot Pots</span></span></div><div class="sub">UK & IRELAND ◆ RACING INTELLIGENCE</div></div><div class="live" id="status">Checking feed</div></div></header><main><nav id="section-buttons" aria-label="Racing Hot Pots sections"><div class="nav-column"><button type="button" data-section="power">🔥 Power Favs</button><button type="button" data-section="strategya">Strategy A</button><button type="button" data-section="strategyb">Strategy B</button><button type="button" data-section="markets">Markets</button></div><div class="nav-column"><button type="button" data-section="hot">🔥 Hot Trainers</button><button type="button" data-section="powerresults">Power Favs Results</button><button type="button" data-section="bets">My Bets</button><button type="button" data-section="pnl">P&amp;L</button></div></nav><div class="panel" id="rhp-alert-panel" style="margin:12px 0"><div class="actions" style="align-items:center"><button type="button" class="action small" id="rhp-enable-alerts" disabled>🔔 Enable Alerts</button><span class="hint" id="rhp-alert-status" aria-live="polite">Loading notification service…</span></div></div><div class="eyebrow">MIDNIGHT EMERALD ✦ LIVE ODDS RESEARCH</div><h1 id="pageTitle">Market <span class="gold-text">Movers</span></h1><div class="muted" id="asof">Loading odds…</div>
 <div id="bet-overlay" class="hidden" role="dialog" aria-modal="true" aria-label="Add to My Bets"><div id="bet-dialog"><div id="bet-dialog-header"><strong>Add to My Bets</strong><button type="button" class="action small outline" id="close-bet">✕ Close</button></div><div id="bet-modal-content"></div></div></div>
 <section id="marketview"><div class="metrics"><div class="metric"><small>Races returned</small><b id="races">—</b></div><div class="metric"><small>Shortened quotes</small><b id="steamers">—</b></div><div class="metric"><small>Drifted quotes</small><b id="drifters">—</b></div></div>
 <div class="panel"><div class="panelflex"><div class="field"><label for="race-date">Race date (Irish time)</label><select id="race-date"><option value="all">All saved dates</option></select></div><div class="field"><label for="meeting">Meeting</label><select id="meeting"><option value="all">All meetings</option></select></div><div class="field"><label for="race-time">Race time</label><select id="race-time"><option value="all">All times</option></select></div><div class="field"><label for="bookie">Bookmaker</label><select id="bookie"><option value="all">All bookmakers</option></select></div><div class="field full"><label for="sort-by">Sort horses by</label><select id="sort-by"><option value="shortest">Shortest odds first</option><option value="longest">Longest odds first</option><option value="earliest">Earliest race first</option><option value="latest">Latest race first</option><option value="drop">Biggest price drop first</option><option value="drift">Biggest drift first</option></select></div></div></div>
