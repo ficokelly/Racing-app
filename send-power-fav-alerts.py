@@ -4,6 +4,7 @@ import json
 import os
 import re
 import urllib.request
+import urllib.error
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,6 +15,8 @@ HISTORY = DATA / 'odds-history.json'
 STATE = DATA / 'power-fav-alert-state.json'
 APP_ID = '1bbabde1-23d9-4e6a-9c97-eacf144d332b'
 TARGET = 'https://ficokelly.github.io/Racing-app/?tab=power'
+# Optional OneSignal Web Push subscription ID (not the OneSignal user ID).
+SUBSCRIPTION_ID = os.environ.get('ONESIGNAL_SUBSCRIPTION_ID', '').strip()
 
 
 def load(path, default):
@@ -143,7 +146,7 @@ def main():
         body = f"{p['horse']} · {course} {off_label} · {book} {price_text(fav)} (was {price_text(baseline)}) · 2nd fav {price_text(second)} · {label}"
         payload = {
             'app_id': APP_ID,
-            'included_segments': ['Subscribed Users'],
+            **({'include_subscription_ids': [SUBSCRIPTION_ID]} if SUBSCRIPTION_ID else {'included_segments': ['Subscribed Users']}),
             'headings': {'en': '🔥 New Power Fav detected'},
             'contents': {'en': body},
             'url': TARGET,
@@ -153,10 +156,15 @@ def main():
         request = urllib.request.Request('https://api.onesignal.com/notifications', data=json.dumps(payload).encode(), headers={
             'Authorization': f'Key {api_key}', 'Content-Type': 'application/json', 'Accept': 'application/json',
         }, method='POST')
-        with urllib.request.urlopen(request, timeout=30) as response:
-            result = json.load(response)
-        if result.get('errors') or not result.get('id'):
-            raise RuntimeError(f'OneSignal did not accept notification: {result}')
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                result = json.load(response)
+            if result.get('errors') or not result.get('id'):
+                print(f'WARNING: OneSignal did not accept notification for {p["horse"]}: {result}')
+                continue
+        except (urllib.error.URLError, TimeoutError, ValueError) as exc:
+            print(f'WARNING: OneSignal notification failed for {p["horse"]}: {exc}')
+            continue
         sent[unique] = current_at
         state['sent'] = sent
         STATE.write_text(json.dumps(state, indent=2) + '\n', encoding='utf-8')
