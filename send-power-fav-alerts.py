@@ -149,7 +149,6 @@ def main():
             **({'include_subscription_ids': [SUBSCRIPTION_ID]} if SUBSCRIPTION_ID else {'included_segments': ['Subscribed Users']}),
             'headings': {'en': '🔥 New Power Fav detected'},
             'contents': {'en': body},
-            'url': TARGET,
             'web_url': TARGET,
             'data': {'tab': 'power', 'race_id': str(p['race_id']), 'horse': p['horse']},
         }
