@@ -1,0 +1,63 @@
+name: Test PuntersEdge UK IE Horse Colours
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check-horse-colours:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check one UK or Irish horse profile (read-only)
+        env:
+          PUNTERSEDGE_API_KEY: ${{ secrets.PUNTERSEDGE_API_KEY }}
+        run: |
+          python - <<'PY'
+          import json, os, urllib.request, urllib.error
+          from urllib.parse import urlencode
+
+          base = 'https://api.puntersedge.online'
+          headers = {'X-API-Key': os.environ['PUNTERSEDGE_API_KEY'], 'Accept': 'application/json'}
+          def request(path):
+              req = urllib.request.Request(base + path, headers=headers)
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as res:
+                      return res.status, json.load(res)
+              except urllib.error.HTTPError as exc:
+                  return exc.code, None
+              except (urllib.error.URLError, ValueError) as exc:
+                  print('Network/JSON error:', type(exc).__name__)
+                  return None, None
+
+          status, raw = request('/v1/racing/next-to-go?country=GB,IE&category=horse&num_races=200')
+          print('UK/IE feed HTTP:', status)
+          if status != 200:
+              raise SystemExit(1)
+          races = raw if isinstance(raw, list) else next((raw[k] for k in ('races','data','results') if isinstance(raw,dict) and isinstance(raw.get(k),list)), [])
+          races = [r for r in races if isinstance(r,dict) and r.get('country') in ('GB','IE') and r.get('category') == 'horse']
+          horses = [(r['country'],h.get('name'),h.get('horse_ref')) for r in races for h in r.get('runners',[]) if isinstance(h,dict) and h.get('horse_ref')]
+          print('UK/IE races:',len(races),'Horses with horse_ref:',len(horses))
+          if not horses:
+              print('No suitable UK/IE horse available; retry when racing is scheduled.')
+              raise SystemExit(0)
+          country, name, horse_ref = horses[0]
+          print('Testing one horse:',name,'Country:',country,'Reference:',horse_ref)
+          status, data = request('/v1/racing/horses/form?' + urlencode({'horse':horse_ref}))
+          print('Horse form HTTP:',status)
+          if status != 200:
+              print('No successful UK/IE profile response. This endpoint is documented for AU thoroughbreds.')
+              print('404 may indicate unsupported horse; other status codes may reflect access or service restrictions.')
+              raise SystemExit(0)
+          if not isinstance(data,dict):
+              print('Unexpected profile response type:',type(data).__name__)
+              raise SystemExit(0)
+          print('Response fields:', sorted(data.keys()))
+          profile = data.get('profile')
+          print('Profile present:',isinstance(profile,dict))
+          if isinstance(profile,dict):
+              print('Profile fields:',sorted(profile.keys()))
+              colours = profile.get('colours')
+              print('Profile colours:',str(colours)[:300] if colours else 'Not provided')
+          else:
+              print('No profile.colours in response.')
+          print('Test complete. No repository files modified. A successful HTTP 200 may cost 3 API credits.')
+          PY
