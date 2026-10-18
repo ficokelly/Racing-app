@@ -1,0 +1,48 @@
+name: Test Racing API Colour Descriptions (Read Only)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check-colours:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Show five UK and Irish horse colour descriptions
+        env:
+          RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
+          RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
+        run: |
+          python - <<'PY'
+          import base64, json, os, urllib.request, urllib.parse, urllib.error
+
+          credentials = f"{os.environ['RACING_API_USERNAME']}:{os.environ['RACING_API_PASSWORD']}"
+          auth = base64.b64encode(credentials.encode()).decode()
+          url = 'https://api.theracingapi.com/v1/racecards/free?' + urllib.parse.urlencode({'day':'today','limit':500,'skip':0})
+          req = urllib.request.Request(url, headers={'Authorization':'Basic '+auth, 'Accept':'application/json'})
+          try:
+              with urllib.request.urlopen(req, timeout=40) as response:
+                  print('HTTP status:', response.status)
+                  data = json.load(response)
+          except urllib.error.HTTPError as exc:
+              print('HTTP status:', exc.code)
+              print('Could not inspect racecards. No files changed.')
+              raise SystemExit(0)
+          except (urllib.error.URLError, ValueError) as exc:
+              print('Request failed:', type(exc).__name__)
+              raise SystemExit(0)
+
+          races = [r for r in data.get('racecards', []) if isinstance(r, dict) and r.get('region') in ('GB', 'IRE')]
+          runners = [h for r in races for h in r.get('runners', []) if isinstance(h, dict)]
+          with_colours = [h for h in runners if isinstance(h.get('colour'), str) and h['colour'].strip()]
+          print('UK/Irish races checked:', len(races))
+          print('Runners checked:', len(runners))
+          print('Runners with non-empty colour descriptions:', len(with_colours))
+          print('Five sample horse colour descriptions:')
+          for h in with_colours[:5]:
+              print('Horse:', str(h.get('horse') or h.get('horse_name') or '(unnamed)')[:100])
+              print('Colour:', h['colour'][:350])
+              print('---')
+          if not with_colours:
+              print('No populated colour descriptions found in these free racecards.')
+          print('Read-only test complete. No app or data files changed.')
+          PY
