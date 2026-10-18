@@ -1,0 +1,49 @@
+name: Test Racecard Classification Fields
+
+on:
+  workflow_dispatch:
+
+jobs:
+  inspect-racecards:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect UK and Irish race type and surface fields (read-only)
+        env:
+          RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
+          RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
+        run: |
+          python - <<'PY'
+          import base64, json, os, urllib.request, urllib.parse, urllib.error
+          auth = base64.b64encode((os.environ['RACING_API_USERNAME'] + ':' + os.environ['RACING_API_PASSWORD']).encode()).decode()
+          base = 'https://api.theracingapi.com/v1/racecards/free'
+          keywords = ('type', 'surface', 'going', 'code', 'discipline', 'race_class', 'race_type', 'track', 'category')
+          for day in ('today', 'tomorrow'):
+              url = base + '?' + urllib.parse.urlencode({'day': day, 'limit': 500, 'skip': 0})
+              req = urllib.request.Request(url, headers={'Authorization': 'Basic ' + auth, 'Accept': 'application/json'})
+              try:
+                  with urllib.request.urlopen(req, timeout=40) as response:
+                      print('Day:', day, 'HTTP:', response.status)
+                      data = json.load(response)
+              except urllib.error.HTTPError as exc:
+                  print('Day:', day, 'HTTP:', exc.code)
+                  continue
+              except (urllib.error.URLError, ValueError) as exc:
+                  print('Day:', day, 'Error:', type(exc).__name__)
+                  continue
+              races = [r for r in data.get('racecards', []) if isinstance(r, dict) and r.get('region') in ('GB', 'IRE')]
+              print('UK/Irish races:', len(races))
+              if not races:
+                  continue
+              print('All race-level keys:', sorted({k for r in races for k in r.keys()}))
+              print('Classification-related keys:', sorted({k for r in races for k in r.keys() if any(term in k.lower() for term in keywords)}))
+              sample = next((r for r in races if 'leopardstown' in str(r.get('course', '')).lower()), races[0])
+              print('Sample course:', sample.get('course'), 'Off:', sample.get('off_dt'))
+              for key, value in sorted(sample.items()):
+                  if any(term in key.lower() for term in keywords):
+                      print('  ', key, ':', str(value)[:200])
+              for key in ('race_name', 'race_title', 'name', 'title', 'distance', 'region'):
+                  if key in sample:
+                      print('  ', key, ':', str(sample[key])[:200])
+              print('---')
+          print('Read-only inspection complete. No app, repository, or data files changed.')
+          PY
