@@ -112,6 +112,11 @@ summary,a{color:#77e4b8}details .history{color:#b7d7ce}.notice{color:#f1c984}
 .horse .actions{align-items:center;flex-wrap:wrap}
 .horse .race-action-row{margin-top:8px!important}
 .horse .strategy-category{margin-left:0}
+
+/* Horse-card actions: two equal columns, two rows; navigation remains unchanged. */
+.horse-action-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:12px;align-items:stretch}
+.horse-action-grid>.action,.horse-action-grid>.tag{min-width:0;width:100%;min-height:42px;display:flex;align-items:center;justify-content:center;text-align:center;white-space:normal;overflow-wrap:anywhere;margin:0;padding:8px 5px;font-size:clamp(10px,3vw,13px)}
+.horse-action-grid>.power-status{font-weight:700}
 </style></head><body><header><div class="top"><div><div class="brand"><span class="brand-icon">♞</span><span class="brand-words">Racing <span>Hot Pots</span></span></div><div class="sub">UK & IRELAND ◆ RACING INTELLIGENCE</div></div><div class="live" id="status">Checking feed</div></div></header><main><nav id="section-buttons" aria-label="Racing Hot Pots sections"><div class="nav-column"><button type="button" data-section="power">🔥 Power Favs</button><button type="button" data-section="strategya">Strategy A</button><button type="button" data-section="strategyb">Strategy B</button><button type="button" data-section="markets">Markets</button></div><div class="nav-column"><button type="button" data-section="hot">🔥 Hot Trainers</button><button type="button" data-section="powerresults">Power Favs Results</button><button type="button" data-section="bets">My Bets</button><button type="button" data-section="pnl">P&amp;L</button></div></nav><div class="eyebrow">MIDNIGHT EMERALD ✦ LIVE ODDS RESEARCH</div><h1 id="pageTitle">Market <span class="gold-text">Movers</span></h1><div class="muted" id="asof">Loading odds…</div>
 <div id="bet-overlay" class="hidden" role="dialog" aria-modal="true" aria-label="Add to My Bets"><div id="bet-dialog"><div id="bet-dialog-header"><strong>Add to My Bets</strong><button type="button" class="action small outline" id="close-bet">✕ Close</button></div><div id="bet-modal-content"></div></div></div>
 <section id="marketview"><div class="metrics"><div class="metric"><small>Races returned</small><b id="races">—</b></div><div class="metric"><small>Shortened quotes</small><b id="steamers">—</b></div><div class="metric"><small>Drifted quotes</small><b id="drifters">—</b></div></div>
@@ -178,7 +183,7 @@ function miniGraph(pts){if(!pts.length)return '<p class="hint">No saved observat
 function viewRace(id){
  const chosen=rows.find(x=>x.id===id);if(!chosen)return;
  // Match the race using stable race ID and restrict strictly to the Markets bookmaker.
- const book=selectedBook==='all'?chosen.bookmaker:selectedBook;
+ const book=chosen.bookmaker;
  let field=rows.filter(x=>x.race_id===chosen.race_id&&x.bookmaker===book);
  const seen=new Set();field=field.filter(x=>{const key=personKey(x.horse);if(seen.has(key))return false;seen.add(key);return true}).sort((a,b)=>a.current-b.current);
  $('race-info').textContent=`${chosen.course} · ${when(chosen.starts)} · ${book} · ${field.length} priced runners`;
@@ -202,7 +207,7 @@ function refreshStrategyCards(){
  if(activeTab==='strategyb')renderStrategyB();
 }
 function card(x){const strategyLabel=x.qualifies?(qualifiesA(x)?'<span class="tag strategy-category">Strategy A · Flat turf</span>':qualifiesB(x)?'<span class="tag strategy-category">Strategy B · AW/Jumps</span>':'<span class="tag strategy-category">Unverified</span>'):'';let movement=x.move===null?'No comparison':x.move>0.001?`↘ ${x.move.toFixed(1)}% shorter`:x.move<-.001?`↗ ${Math.abs(x.move).toFixed(1)}% drift`:'Unchanged';let cls=x.move===null?'flat':x.move>.001?'down':x.move<-.001?'up':'flat';const ref=x.isFav&&x.secondName?`Second favourite: ${safe(x.secondName)} · ${fmt(x.secondOdds)}`:x.tie?`Joint favourite: ${safe(x.favName)} · ${fmt(x.favOdds)}`:`Market favourite: ${safe(x.favName)} · ${fmt(x.favOdds)}`;
- return `<article class="horse">${['power','strategya','strategyb'].includes(activeTab)&&savedHorseStatus(x)?`<div class="saved-selection-banner">${safe(savedHorseStatus(x))}</div>`:''}<div class="horse-top"><div><div class="name">${safe(x.horse)}</div><div class="meta">${safe(when(x.starts))} · ${safe(x.course)} · ${safe(x.country)}</div></div></div><div class="odds"><div><small>${safe(x.baselineLabel)}</small><b>${fmt(x.earlier)}</b></div><div><small>Latest odds</small><b>${fmt(x.current)}</b></div><div><small>Movement</small><b class="move ${x.move===null||Math.abs(x.move)<=.001?'flat':x.move>0?'short':'drift'}">${x.move===null?'—':x.move.toFixed(1)+'%'}</b></div></div><div class="foot"><span>${ref}</span><span>${safe(x.bookmaker)}</span></div><div class="actions" style="margin-top:12px"><button class="action small" data-add="${safe(x.id)}">+ Add to My Bets</button>${x.qualifies?'<span class="tag down">🔥 Power Fav</span>':''}${strategyLabel}</div><div class="actions race-action-row"><button class="action small outline" data-view-race="${safe(x.id)}">View Race</button></div><details><summary>Price history graph &amp; details</summary>${miniGraph(x.points)}<div class="historyline">${x.points.map(p=>`${safe(when(p.at))} — ${fmt(p.od)}`).join('<br>')||'No saved prices'}</div></details><div class="hint" style="margin-top:8px">Trainer: ${safe(x.trainer||'Not available')} · Jockey: ${safe(x.jockey||'Not available')} · C / D / CD: ${x.cdWin===true?'CD winner':x.courseWin===true?'C winner':x.distanceWin===true?'D winner':'Not verified'}</div><div class="hint" style="margin-top:7px">Trainer strike rate: ${safe(formText(x,'trainer'))} · Jockey strike rate: ${safe(formText(x,'jockey'))}</div>${x.baselineAt===null&&x.earlier!==null?'<div class="hint">Movement uses unverified API-reported opening price.</div>':''}</article>`;}
+ return `<article class="horse">${['power','strategya','strategyb'].includes(activeTab)&&savedHorseStatus(x)?`<div class="saved-selection-banner">${safe(savedHorseStatus(x))}</div>`:''}<div class="horse-top"><div><div class="name">${safe(x.horse)}</div><div class="meta">${safe(when(x.starts))} · ${safe(x.course)} · ${safe(x.country)}</div></div></div><div class="odds"><div><small>${safe(x.baselineLabel)}</small><b>${fmt(x.earlier)}</b></div><div><small>Latest odds</small><b>${fmt(x.current)}</b></div><div><small>Movement</small><b class="move ${x.move===null||Math.abs(x.move)<=.001?'flat':x.move>0?'short':'drift'}">${x.move===null?'—':x.move.toFixed(1)+'%'}</b></div></div><div class="foot"><span>${ref}</span><span>${safe(x.bookmaker)}</span></div><div class="horse-action-grid"><button class="action small" data-add="${safe(x.id)}">+ Add to My Bets</button><button class="action small outline" data-view-race="${safe(x.id)}">View Race</button><span class="tag down power-status">${x.qualifies?'🔥 Power Fav':'Not a Power Fav'}</span>${strategyLabel||'<span class="tag strategy-category">Not classified</span>'}</div><details><summary>Price history graph &amp; details</summary>${miniGraph(x.points)}<div class="historyline">${x.points.map(p=>`${safe(when(p.at))} — ${fmt(p.od)}`).join('<br>')||'No saved prices'}</div></details><div class="hint" style="margin-top:8px">Trainer: ${safe(x.trainer||'Not available')} · Jockey: ${safe(x.jockey||'Not available')} · C / D / CD: ${x.cdWin===true?'CD winner':x.courseWin===true?'C winner':x.distanceWin===true?'D winner':'Not verified'}</div><div class="hint" style="margin-top:7px">Trainer strike rate: ${safe(formText(x,'trainer'))} · Jockey strike rate: ${safe(formText(x,'jockey'))}</div>${x.baselineAt===null&&x.earlier!==null?'<div class="hint">Movement uses unverified API-reported opening price.</div>':''}</article>`;}
 const selectedPeople={markets:{trainer:new Set(),jockey:new Set()},power:{trainer:new Set(),jockey:new Set()}};
 const personSearch={markets:{trainer:'',jockey:''},power:{trainer:'',jockey:''}};
 function personLabel(x,type){return String(x[type]||'').replace(/\s*\(\d+\)\s*$/,'').trim()}
@@ -349,8 +354,14 @@ function hotOptionList(stats,todayRunners){
 // Match a Hot Trainers racecard runner to the same race in the bookmaker feed.
 function hotPriceRow(r){
  const day=r.date||dateKey(r.race_time);
- const candidates=rows.filter(x=>personKey(x.horse)===personKey(r.horse)&&personKey(x.course)===personKey(r.course)&&x.day===day&&(!r.race_time||!x.starts||Math.abs(Date.parse(x.starts)-Date.parse(r.race_time))<60000));
- return candidates.sort((a,b)=>b.points.length-a.points.length||a.current-b.current)[0]||null;
+ const candidates=rows.filter(x=>personKey(x.horse)===personKey(r.horse)&&personKey(x.course)===personKey(r.course)&&x.day===day);
+ // Prefer the nearest advertised off time, then the richest recorded price history.
+ const rt=Date.parse(r.race_time);
+ return candidates.sort((a,b)=>{
+  const ad=Math.abs(Date.parse(a.starts)-rt),bd=Math.abs(Date.parse(b.starts)-rt);
+  const aa=Number.isFinite(ad)?ad:Infinity,bb=Number.isFinite(bd)?bd:Infinity;
+  return aa-bb||b.points.length-a.points.length||a.current-b.current;
+ })[0]||null;
 }
 function hotRunnerOdds(r){
  const row=hotPriceRow(r);
