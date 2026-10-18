@@ -50,6 +50,8 @@ for day in ("today", "tomorrow"):
                     "date": race.get("date"),
                     "course": race.get("course"),
                     "race_time": race.get("off_dt"),
+                    "type": race.get("type"),
+                    "surface": race.get("surface"),
                     "horse": runner.get("horse"),
                     "horse_id": runner.get("horse_id"),
                     "trainer": runner.get("trainer"),
