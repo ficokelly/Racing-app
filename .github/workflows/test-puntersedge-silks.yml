@@ -1,0 +1,51 @@
+name: Test PuntersEdge Racing Silks
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check-silks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect UK and Irish runner fields (read-only)
+        env:
+          PUNTERSEDGE_API_KEY: ${{ secrets.PUNTERSEDGE_API_KEY }}
+        run: |
+          python - <<'PY'
+          import json, os, urllib.request, urllib.error
+          url = 'https://api.puntersedge.online/v1/racing/next-to-go?country=GB,IE&category=horse&num_races=200'
+          req = urllib.request.Request(url, headers={'X-API-Key':os.environ['PUNTERSEDGE_API_KEY'],'Accept':'application/json'})
+          try:
+              with urllib.request.urlopen(req,timeout=30) as response:
+                  raw=json.load(response)
+                  print('HTTP status:',response.status)
+          except urllib.error.HTTPError as e:
+              print('API returned HTTP',e.code,'(no credentials shown)')
+              raise SystemExit(1)
+          races=raw if isinstance(raw,list) else next((raw[k] for k in ('races','data','results') if isinstance(raw,dict) and isinstance(raw.get(k),list)),[])
+          races=[r for r in races if isinstance(r,dict) and r.get('country') in ('GB','IE') and r.get('category')=='horse']
+          runners=[h for r in races for h in r.get('runners',[]) if isinstance(h,dict)]
+          print('UK/IE horse races:',len(races),'Runners:',len(runners))
+          if not runners:
+              print('No runners available to inspect at this time. Try again when UK/IE races are scheduled.')
+              raise SystemExit(0)
+          print('First runner field names:',sorted(runners[0]))
+          terms=('silk','silks','colour','color','image','jacket','owner','horse_id')
+          def scan(obj,path='',depth=0):
+              if depth>4:return
+              if isinstance(obj,dict):
+                  for k,v in obj.items():
+                      p=f'{path}.{k}' if path else k
+                      if any(term in k.lower() for term in terms):
+                          if isinstance(v,(str,int,float,bool)) or v is None:
+                              # Print presence and type only; never print a URL or sensitive data.
+                              print('MATCH',p,'type:',type(v).__name__,'populated:',v not in (None,''))
+                          else:
+                              print('MATCH',p,'type:',type(v).__name__)
+                      if isinstance(v,(dict,list)):scan(v,p,depth+1)
+              elif isinstance(obj,list):
+                  for v in obj[:1]:scan(v,path+'[]',depth+1)
+          print('Sample race and runner field matches:')
+          scan(races[0])
+          print('Test complete. No files written, no app code changed.')
+          PY
