@@ -183,6 +183,13 @@ summary,a{color:#77e4b8}details .history{color:#b7d7ce}.notice{color:#f1c984}
 .rc-race-facts{display:flex;flex-wrap:wrap;gap:6px;margin:9px 0 12px}
 .rc-race-fact{border:1px solid #315e5d;background:#0d2933;border-radius:8px;padding:6px 8px;font-size:11px;color:#c7e7df;line-height:1.3}
 .rc-race-fact b{color:#ecfff8}
+
+/* Racecard summaries and optional owner racing colours */
+.rhp-verdict{background:#102e36;border:1px solid #367164;border-left:3px solid #77e7be;border-radius:11px;padding:12px 13px;margin:12px 0 15px;color:#d5f3e8;font-size:12px;line-height:1.65}
+.rhp-verdict strong{color:#a8f5d5;font-size:13px}.rhp-verdict p{margin:6px 0 0}
+.rhp-horse-comment{background:#0b2930;border-left:3px solid #65cba8;border-radius:6px;padding:11px;color:#d7ede7;font-size:12px;line-height:1.65}
+.rhp-horse-comment b{color:#aaf4d4}
+.rhp-silk{width:30px;height:34px;object-fit:contain;vertical-align:middle;margin:0 8px 0 0;border-radius:4px;background:#fff}
 </style><link rel="manifest" href="./manifest.webmanifest">
 <link rel="apple-touch-icon" href="./racing-icon.png">
 <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
@@ -804,21 +811,52 @@ function rhpSilk(r){
   return `<img src="${safe(u.href)}" alt="Owner racing colours" loading="lazy" referrerpolicy="no-referrer" class="rhp-silk">`;
  }catch(e){return ''}
 }
+function rhpFormInsight(r){
+ const raw=String(rcForm(r)||'').trim();
+ if(!raw)return {text:'Recent finishing form has not been supplied.',score:null};
+ // Form digits are displayed oldest to newest; 0 denotes 10th or worse.
+ const digits=[...raw].filter(c=>/[0-9]/.test(c)).map(Number).slice(-7);
+ if(!digits.length)return {text:`Recorded form: ${raw}. Finishing positions cannot be interpreted reliably.`,score:null};
+ const recent=digits.slice(-5),wins=recent.filter(v=>v===1).length,places=recent.filter(v=>v>=1&&v<=3).length;
+ const latest=digits[digits.length-1];
+ const last=latest===0?'10th or worse':latest===1?'1st':latest===2?'2nd':latest===3?'3rd':`${latest}th`;
+ const description=wins?`${wins} win${wins===1?'':'s'} and ${places} top-three finish${places===1?'':'es'} in the last ${recent.length} recorded runs`:
+ places?`${places} top-three finish${places===1?'':'es'} in the last ${recent.length} recorded runs`:`No top-three finishes in the last ${recent.length} recorded runs`;
+ return {text:`Recent form ${raw}; last recorded finish ${last}. ${description}.`,score:places+2*wins};
+}
 function rhpHorseComment(r,x){
- const facts=[];const form=rcForm(r);
- if(form)facts.push(`Recent form: ${form}.`);
- const or=rcField(r,'ofr','official_rating');if(or!==null&&or!==undefined&&String(or).trim())facts.push(`Official rating ${or}.`);
- const going=rcField(r,'going');if(going)facts.push(`Today's going: ${going}.`);
- if(x&&Number.isFinite(x.move))facts.push(x.move>0.1?`Market price shortened ${Math.abs(x.move).toFixed(1)}%.`:x.move<-.1?`Market price drifted ${Math.abs(x.move).toFixed(1)}%.`:'No verified bookmaker price change.');
- if(!facts.length)return 'Limited verified runner data available; no reliable individual assessment yet.';
- return facts.join(' ')+' These are observed indicators, not proof of likely performance.';
+ const facts=[rhpFormInsight(r).text];
+ const rating=rcField(r,'ofr','or','official_rating','officialRating');
+ if(rating!==null&&rating!==undefined&&String(rating).trim())facts.push(`Official rating: ${rating}.`);
+ const age=rcField(r,'age'),weight=rcField(r,'lbs','weight'),draw=rcField(r,'draw');
+ if(age!==null&&age!==undefined&&String(age).trim())facts.push(`Age: ${age}.`);
+ if(weight!==null&&weight!==undefined&&String(weight).trim())facts.push(`Carried weight: ${weight}.`);
+ if(draw!==null&&draw!==undefined&&String(draw).trim())facts.push(`Draw: ${draw}.`);
+ if(x&&Number.isFinite(x.move))facts.push(x.move>0.1?`Bookmaker odds shortened ${Math.abs(x.move).toFixed(1)}% from the recorded earlier quote.`:x.move<-.1?`Bookmaker odds drifted ${Math.abs(x.move).toFixed(1)}% from the recorded earlier quote.`:'No material change between the recorded bookmaker quotes.');
+ facts.push('Distance and going suitability require comparable previous-race details; neither is assumed from form figures alone.');
+ return facts.join(' ');
 }
 function rhpRaceVerdict(list,completed){
- if(completed)return '<div class="rhp-verdict"><strong>Race overview</strong><p>Final finishing positions and starting prices are shown below. Pre-race market prices are not a prediction of the result.</p></div>';
- const entries=list.map(r=>({r,x:rcRow(r)})).filter(y=>y.x&&Number.isFinite(y.x.current)&&y.x.current>1).sort((a,b)=>a.x.current-b.x.current);
- if(entries.length<2)return '<div class="rhp-verdict"><strong>Racing Hot Pots race outlook</strong><p>Insufficient verified bookmaker prices to identify a market leader and main danger.</p></div>';
- const a=entries[0],b=entries[1];
- return `<div class="rhp-verdict"><strong>Racing Hot Pots race outlook · market based</strong><p><b>${safe(a.r.horse)}</b> is currently shortest in the available bookmaker prices (${safe(fmt(a.x.current))}). <b>${safe(b.r.horse)}</b> is next (${safe(fmt(b.x.current))}). ${a.x.move>0.1?'The favourite has shortened from an earlier observed price.':'Price movement alone does not confirm support.'} This is an original market summary, not an expert form verdict or guaranteed selection.</p></div>`;
+ if(completed)return '<div class="rhp-verdict"><strong>Race overview</strong><p>Verified finishing positions and starting prices appear below. The pre-race assessment is not a prediction of the result.</p></div>';
+ const entries=list.map(r=>({r,x:rcRow(r),form:rhpFormInsight(r)}));
+ const priced=entries.filter(y=>y.x&&Number.isFinite(y.x.current)&&y.x.current>1).sort((a,b)=>a.x.current-b.x.current);
+ const formRanked=entries.filter(y=>y.form.score!==null).sort((a,b)=>b.form.score-a.form.score);
+ if(!priced.length&&!formRanked.length)return '<div class="rhp-verdict"><strong>Race outlook · limited data</strong><p>Neither verified bookmaker prices nor interpretable recent form is available for these runners. A meaningful verdict cannot yet be produced.</p></div>';
+ const parts=[];
+ if(priced.length>=2){
+  const [a,b]=priced;
+  parts.push(`<b>${safe(a.r.horse)}</b> heads the available price quotes at ${safe(fmt(a.x.current))}; <b>${safe(b.r.horse)}</b> is next at ${safe(fmt(b.x.current))}.`);
+  if(a.x.move>0.1)parts.push('The market leader has shortened from its recorded earlier quote.');
+  const gap=b.x.current-a.x.current;
+  if(gap<0.3)parts.push('The two shortest quotes are close together, suggesting no clear separation in this snapshot.');
+ }else if(priced.length===1)parts.push(`Only one verified runner price is available: <b>${safe(priced[0].r.horse)}</b> at ${safe(fmt(priced[0].x.current))}.`);
+ if(formRanked.length){
+  const leader=formRanked[0];
+  parts.push(`<b>${safe(leader.r.horse)}</b> has ${safe(leader.form.text.toLowerCase())}`);
+  if(formRanked.length>1&&formRanked[1].form.score===leader.form.score)parts.push('Other runners share the same simple recent-form score.');
+ }
+ parts.push('This is an automated snapshot of available form and prices, not an expert tip. Missing race history prevents a dependable assessment of distance, going or opposition strength.');
+ return `<div class="rhp-verdict"><strong>Racing Hot Pots · race outlook</strong><p>${parts.join(' ')}</p></div>`;
 }
 function renderRacecards(){const host=$('rc-list');if(!host)return;document.querySelectorAll('[data-rc-day]').forEach(b=>{const chosen=b.dataset.rcDay===rcSelectedDay;b.classList.toggle('active',chosen);b.setAttribute('aria-pressed',String(chosen))});$('rc-meetings-heading').textContent=rcSelectedDay==='yesterday'?'Yesterday’s Meetings & Results':rcSelectedDay==='tomorrow'?'Tomorrow’s Meetings & Races':'Today’s Meetings & Races';const navTitle=document.querySelector('.rc-next-head h2');if(navTitle)navTitle.textContent=rcSelectedDay==='yesterday'?'🏇 Yesterday’s Races':'🏇 Next Races';renderRaceNavigation();const today=rcDateKey();const m=$('rc-meeting').value,t=$('rc-time').value,kind=$('rc-type').value,last=$('rc-result').value,gear=$('rc-gear').value,market=$('rc-market').value,sort=$('rc-sort').value;
  let data=rcViewingRunners().filter(r=>(r.date||dateKey(r.race_time))===today&&(m==='all'||r.course===m)&&(t==='all'||clock(r.race_time)===t)&&(kind==='all'||rcKind(r)===kind));
