@@ -1,0 +1,20 @@
+name: Test PuntersEdge Racing Results
+on:
+  workflow_dispatch:
+
+jobs:
+  test-results:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test UK and Irish results (read only)
+        env:
+          PUNTERSEDGE_API_KEY: ${{ secrets.PUNTERSEDGE_API_KEY }}
+        run: python test-puntersedge-results.py
