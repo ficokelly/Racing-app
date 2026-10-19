@@ -1,0 +1,38 @@
+name: Publish Racing Hot Pots Race Results
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: publish-racing-hot-pots-results
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Collect final UK and Irish results
+        env:
+          PUNTERSEDGE_API_KEY: ${{ secrets.PUNTERSEDGE_API_KEY }}
+        run: python collect-puntersedge-results.py
+      - name: Commit results feed only if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -f data/race-results.json ]; then
+            git add data/race-results.json
+            if ! git diff --cached --quiet; then
+              git commit -m "Update finished race results"
+              git pull --rebase origin main
+              git push origin HEAD:main
+            else
+              echo "No results changes to publish"
+            fi
+          else
+            echo "No results file generated"
+          fi
