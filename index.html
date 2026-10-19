@@ -181,7 +181,7 @@ let rows=[],allRows=[],activeTab='markets',moveFilter='all',selectedDate='all',s
 let slip=[],bets=[];
 let racecardIndex=new Map(),racecardRunners=[];
 const personKey=v=>String(v||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
-function racecardKey(horse,course,day){return personKey(horse)+'|'+personKey(course)+'|'+day}
+function racecardKey(horse,course,day){const normalizedCourse=String(course||'').replace(/\s*\((?:AW|all[ -]?weather)\)\s*$/i,'').trim();return personKey(horse)+'|'+personKey(normalizedCourse)+'|'+day}
 function loadRacecardIndex(raw){
  racecardIndex=new Map();const normalized=Array.isArray(raw?.runners)?raw.runners:Array.isArray(raw?.racecards)?raw.racecards.flatMap(r=>(r.runners||[]).map(h=>({...h,course:r.course,date:r.date,race_time:r.off_dt||r.race_time,type:r.type,surface:r.surface}))):[];racecardRunners=normalized;
  for(const r of normalized){
