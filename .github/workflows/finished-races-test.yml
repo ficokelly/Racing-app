@@ -1,0 +1,43 @@
+name: Test Finished Race Results
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-results:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check API credentials are configured
+        env:
+          RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
+          RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
+        run: |
+          if [ -z "$RACING_API_USERNAME" ] || [ -z "$RACING_API_PASSWORD" ]; then
+            echo 'Missing RACING_API_USERNAME or RACING_API_PASSWORD GitHub Actions secret'
+            exit 1
+          fi
+      - name: Test detailed race results access
+        env:
+          RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
+          RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
+        run: python collect-finished-races.py
+      - name: Show generated results summary
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('data/race-results.json')
+          data = json.loads(p.read_text())
+          races = data.get('races', [])
+          print('Verified races saved:', len(races))
+          print('Races with starting prices:', sum(any(x.get('sp') for x in r.get('runners', [])) for r in races))
+          PY
