@@ -25,7 +25,7 @@ RACE_FIELDS = (
 )
 RUNNER_FIELDS = (
     "form", "age", "lbs", "draw", "number", "ofr", "headgear",
-    "owner", "sex", "last_run", "sire", "dam",
+    "owner", "sex", "last_run", "sire", "dam", "silk_url", "silks",
 )
 
 for day in ("today", "tomorrow"):
@@ -74,3 +74,32 @@ output = {
 Path("data").mkdir(exist_ok=True)
 Path("data/racecards.json").write_text(json.dumps(output, indent=2), encoding="utf-8")
 print(f"Saved {len(all_runners)} UK/Ireland racecard runners with race metadata")
+
+
+# Preserve published current and prior-day runner profiles without overwriting older
+# rich records with result-only placeholders. Seven-day rolling archive for mobile use.
+ARCHIVE = Path("data/racecards-archive.json")
+old_rows = []
+if ARCHIVE.exists():
+    try:
+        old_payload = json.loads(ARCHIVE.read_text(encoding="utf-8"))
+        old_rows = old_payload.get("runners", []) if isinstance(old_payload, dict) else []
+    except (ValueError, OSError) as exc:
+        raise SystemExit(f"Refusing to replace unreadable archive: {exc}")
+from datetime import timedelta
+from zoneinfo import ZoneInfo
+cutoff = (datetime.now(ZoneInfo("Europe/Dublin")).date() - timedelta(days=7)).isoformat()
+def row_key(r):
+    return (str(r.get("date") or ""), str(r.get("course") or "").strip().casefold(),
+            str(r.get("race_time") or ""), str(r.get("horse_id") or r.get("horse") or "").strip().casefold())
+merged = {row_key(r): r for r in old_rows if isinstance(r, dict) and str(r.get("date") or "") >= cutoff}
+for r in all_runners:
+    k = row_key(r)
+    older = merged.get(k, {})
+    merged[k] = {**older, **{name: value for name, value in r.items() if value not in (None, "")}}
+archive_payload = {"updated_at": datetime.now(timezone.utc).isoformat(), "source": "The Racing API",
+                   "runners": sorted(merged.values(), key=lambda r: (str(r.get("date") or ""), str(r.get("race_time") or ""), str(r.get("horse") or "")))}
+tmp = ARCHIVE.with_suffix('.json.tmp')
+tmp.write_text(json.dumps(archive_payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+tmp.replace(ARCHIVE)
+print(f"Racecard archive: {len(archive_payload['runners'])} runner records retained")
