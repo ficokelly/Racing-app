@@ -606,6 +606,26 @@ function rcRow(r){
   return (ai<0?999:ai)-(bi<0?999:bi)||a.bookmaker.localeCompare(b.bookmaker);
  })[0]||null;
 }
+// Racecards date selection. Keep it independent of Markets and of bookmaker dates.
+let rcSelectedDay='today';
+function rcDateKey(){
+ const today=dateKey(new Date().toISOString());
+ if(rcSelectedDay!=='tomorrow')return today;
+ // Use a noon UTC anchor, avoiding DST boundary/date rollovers for Ireland.
+ const tomorrow=new Date(today+'T12:00:00Z');
+ tomorrow.setUTCDate(tomorrow.getUTCDate()+1);
+ return tomorrow.toISOString().slice(0,10);
+}
+function setRcDay(day){
+ const next=day==='tomorrow'?'tomorrow':'today';
+ if(next===rcSelectedDay)return;
+ rcSelectedDay=next;
+ // Reset meeting/time only when explicitly switching days; other filters survive.
+ if($('rc-meeting'))$('rc-meeting').value='all';
+ if($('rc-time'))$('rc-time').value='all';
+ rcSetupFilters();
+ renderRacecards();
+}
 function rcSetupFilters(){const arr=racecardRunners.filter(r=>(r.date||dateKey(r.race_time))===rcDateKey());const meetings=[...new Set(arr.map(x=>x.course))].sort();const m=$('rc-meeting'),t=$('rc-time');if(!m||!t)return;const old=m.value||'all';m.innerHTML='<option value="all">All meetings</option>'+meetings.map(x=>`<option value="${safe(x)}">${safe(x)}</option>`).join('');m.value=meetings.includes(old)?old:'all';const selected=arr.filter(x=>m.value==='all'||x.course===m.value);const times=[...new Set(selected.map(x=>clock(x.race_time)))].sort();const prev=t.value||'all';t.innerHTML='<option value="all">All times</option>'+times.map(x=>`<option value="${safe(x)}">${safe(x)}</option>`).join('');t.value=times.includes(prev)?prev:'all';}
 function rcPersonPreview(r,x,type,day){
  // Prefer verified form figures from the same archive used for Power Favs.
