@@ -287,7 +287,8 @@ summary,a{color:#77e4b8}details .history{color:#b7d7ce}.notice{color:#f1c984}
  box-shadow:none!important;border:0!important;outline:0!important;
 }
 /* The racecard trend uses a polyline, not a path. Only its stroke changes. */
-:root[data-rhp-theme="white"] .graph svg polyline{stroke:#28684f!important}
+:root[data-rhp-theme="white"] .graph svg polyline.rhp-shortening-line{stroke:#28684f!important}
+:root[data-rhp-theme="white"] .graph svg polyline.rhp-drifting-line{stroke:#b53b45!important}
 </style><link rel="manifest" href="./manifest.webmanifest">
 <link rel="apple-touch-icon" href="./racing-icon.png">
 <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
@@ -701,7 +702,7 @@ function hotSpark(row){
  const min=Math.min(...pts.map(p=>p.od)),max=Math.max(...pts.map(p=>p.od)),span=max-min||1;
  const times=pts.map(p=>Date.parse(p.at)),left=Math.min(...times),right=Math.max(...times);
  const points=pts.map((p,i)=>`${(8+(right>left?(times[i]-left)/(right-left):i/(pts.length-1))*304).toFixed(1)},${(64-((p.od-min)/span)*52).toFixed(1)}`).join(' ');
- return `<div class="graph" style="padding:9px;margin:9px 0"><div class="foot"><strong style="color:${col}">${label} · ${fmt(a)} → ${fmt(z)}</strong><span>${pts.length} observations</span></div><svg viewBox="0 0 320 110" role="img" aria-label="Odds over time; downward means shortening and upward means drifting" style="width:100%;height:auto"><polyline points="${points}" stroke="${col}" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>${rhpGraphTimeAxis(pts,8,312).replaceAll('y="134"','y="93"')}</svg><div class="hint">Down = shorter odds (backed/shortening), up = drifting. Price moves alone do not prove betting volume.</div></div>`;
+ return `<div class="graph" style="padding:9px;margin:9px 0"><div class="foot"><strong style="color:${col}">${label} · ${fmt(a)} → ${fmt(z)}</strong><span>${pts.length} observations</span></div><svg viewBox="0 0 320 110" role="img" aria-label="Odds over time; downward means shortening and upward means drifting" style="width:100%;height:auto"><polyline class="${delta < -0.001 ? 'rhp-shortening-line' : delta > 0.001 ? 'rhp-drifting-line' : 'rhp-unchanged-line'}" points="${points}" stroke="${col}" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>${rhpGraphTimeAxis(pts,8,312).replaceAll('y="134"','y="93"')}</svg><div class="hint">Down = shorter odds (backed/shortening), up = drifting. Price moves alone do not prove betting volume.</div></div>`;
 }
 function hotWatchButton(r){const idx=racecardRunners.indexOf(r),row=hotPriceRow(r),k=watchKey({horse:r.horse,course:r.course,day:r.date||dateKey(r.race_time)});const exists=watchlist.some(w=>w.key===k);return `<button type="button" class="action small outline" data-hot-watch="${idx}" ${exists?'disabled':''}>${exists?'★ On Watchlist':'☆ Add to Watchlist'}</button>`}
 function hotRunnerOdds(r){
