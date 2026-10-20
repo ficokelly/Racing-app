@@ -69,6 +69,30 @@ for diagnostic_race in races:
         break
 
 
+# Diagnostic: inspect the structure and a small sample of runner form.
+# Do not print API credentials, bookmaker data, or complete runner records.
+form_samples = []
+form_types = {}
+for diagnostic_race in races:
+    if not isinstance(diagnostic_race, dict) or diagnostic_race.get("country") not in ("GB", "IE"):
+        continue
+    for diagnostic_runner in diagnostic_race.get("runners", []):
+        if not isinstance(diagnostic_runner, dict):
+            continue
+        value = diagnostic_runner.get("form")
+        kind = type(value).__name__
+        form_types[kind] = form_types.get(kind, 0) + 1
+        if value not in (None, "", [], {}) and len(form_samples) < 3:
+            if isinstance(value, dict):
+                print("Runner form object keys:", sorted(value.keys()))
+            elif isinstance(value, list) and value and isinstance(value[0], dict):
+                print("Runner form entry keys:", sorted(value[0].keys()))
+            form_samples.append((diagnostic_runner.get("name", "Unknown"), repr(value)[:700]))
+print("Runner form value types:", form_types)
+for horse, sample in form_samples:
+    print("Runner form sample for", horse, ":", sample)
+
+
 def race_field(race, *names):
     for name in names:
         value = race.get(name)
