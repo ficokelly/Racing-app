@@ -256,14 +256,10 @@ summary,a{color:#77e4b8}details .history{color:#b7d7ce}.notice{color:#f1c984}
 :root[data-rhp-theme="white"] .hint strong{color:#17283f!important;font-weight:800}
 :root[data-rhp-theme="white"] .graph .chartlabel{fill:#344c63!important;font-weight:650}
 
-/* Combined Race View and Hot Trainers refinements */
+/* Hot Trainers runners-today filter */
 .hot-today-toggle{display:flex;align-items:center;gap:10px;margin:10px 0 14px;padding:11px 12px;border:1px solid #356969;border-radius:11px;color:inherit;font-size:13px;font-weight:650;cursor:pointer}
 .hot-today-toggle input{width:19px;height:19px;margin:0;flex:none;accent-color:#26845b}
 :root[data-rhp-theme="white"] .hot-today-toggle{border-color:#aab9c9;color:#17283f}
-:root[data-rhp-theme="white"] .graph svg path{stroke:#28744d!important;stroke-width:2.6!important}
-:root[data-rhp-theme="white"] .graph svg circle{fill:#28744d!important;stroke:#28744d!important}
-:root[data-rhp-theme="white"] .rc-people-preview{background:none!important;border:none!important;box-shadow:none!important;padding:0!important}
-:root[data-rhp-theme="white"] .rc-people-preview .rc-person-line{background:none!important;border:none!important;box-shadow:none!important}
 </style><link rel="manifest" href="./manifest.webmanifest">
 <link rel="apple-touch-icon" href="./racing-icon.png">
 <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
@@ -422,6 +418,211 @@ function rhpGraphTimeAxis(pts,xStart,xEnd){
   return `<text x="${x.toFixed(1)}" y="134" text-anchor="${i===0?'start':i===count-1?'end':'middle'}" class="chartlabel">${safe(label)}</text>`;
  }).join('');
 }
+function miniGraph(pts){if(!pts.length)return '<p class="hint">No saved observations yet.</p>';const first=pts[0],last=pts[pts.length-1];let plot='<p class="hint">Only one recorded price — a trend needs at least two observations.</p>';
+ if(pts.length>1){const w=330,h=143,p=20;let low=Math.min(...pts.map(x=>x.od)),high=Math.max(...pts.map(x=>x.od));const span=high-low||1,times=pts.map(x=>Date.parse(x.at)),tmin=Math.min(...times),tmax=Math.max(...times),path=pts.map((pt,i)=>`${i?'L':'M'} ${(p+(tmax>tmin?(times[i]-tmin)/(tmax-tmin):i/(pts.length-1))*(w-2*p)).toFixed(1)} ${(96-((pt.od-low)/span)*76).toFixed(1)}`).join(' ');
+ const dots=pts.map((pt,i)=>{let x=p+(tmax>tmin?(times[i]-tmin)/(tmax-tmin):i/(pts.length-1))*(w-2*p),y=96-((pt.od-low)/span)*76;return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="#b3ffe0"><title>${safe(when(pt.at))} — ${fmt(pt.od)}</title></circle>`}).join('');plot=`<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Recorded decimal bookmaker odds over time"><line x1="20" y1="96" x2="310" y2="96" stroke="#37635b"/><line x1="20" y1="20" x2="20" y2="96" stroke="#37635b"/><path d="${path}" stroke="#76e7b9" stroke-width="2.6" fill="none" stroke-linecap="round"/>${dots}<text x="26" y="14" class="chartlabel">${high.toFixed(2)} decimal</text><text x="26" y="110" class="chartlabel">${low.toFixed(2)} decimal</text>${rhpGraphTimeAxis(pts,20,310)}</svg>`;}
+ return `<div class="graph"><div class="graph-values"><div><small>First recorded · ${safe(when(first.at))}</small><b>${fmt(first.od)} <span class="hint">(${first.od.toFixed(2)})</span></b></div><div style="text-align:right"><small>Latest recorded · ${safe(when(last.at))}</small><b>${fmt(last.od)} <span class="hint">(${last.od.toFixed(2)})</span></b></div></div>${plot}<p class="hint">Line shows decimal odds. A downward line means shorter odds. Only saved observations are plotted.</p></div>`;
+}
+function viewRace(id){
+ const chosen=rows.find(x=>x.id===id);if(!chosen)return;
+ const popup={course:chosen.course,time:clock(chosen.starts),day:dateKey(chosen.starts)};
+ $('race-info').textContent=`${chosen.course} · ${when(chosen.starts)} · ${bookName(chosen.bookmaker)}`;
+ renderRacecards(popup);
+ if(!$('race-runner-list').querySelector('.panel')){
+  $('race-runner-list').innerHTML='<div class="empty">Full racecard information is not available for this race in the current Racecards feed.</div>';
+ }
+ $('race-overlay').classList.remove('hidden');document.body.style.overflow='hidden';
+}
+
+$('race-runner-list').addEventListener('click',e=>{
+ const bet=e.target.closest('[data-rc-bet]');
+ if(bet){e.preventDefault();e.stopPropagation();addHorse(bet.dataset.rcBet);return;}
+ const watch=e.target.closest('[data-hot-watch]');
+ if(watch){e.preventDefault();e.stopPropagation();const original=document.querySelector('#rc-list [data-hot-watch="'+watch.dataset.hotWatch+'"]');if(original)original.click();else {const r=racecardRunners[Number(watch.dataset.hotWatch)];if(r){const x={horse:r.horse,course:r.course,day:r.date||dateKey(r.race_time)};if(!watchlist.some(w=>w.key===watchKey(x))){watchlist.push({...x,key:watchKey(x)});saveWatch();watch.disabled=true;watch.textContent='★ On Watchlist';}}}}
+});
+function closeRace(){$('race-overlay').classList.add('hidden');document.body.style.overflow=''}
+// A bet belongs to a horse in a particular race, not to a temporary Power Fav quote.
+// Old saved selections have no race_id, so retain compatibility with those records.
+function betHorseKey(name){
+  // Race feeds may append a country of origin, e.g. "Dexperts Opinion (Ire)".
+  return horseMatchKey(name);
+}
+function savedSelectionMatches(s,x,bet){
+  // Match the selection, not a changing bookmaker quote or Power Fav status.
+  const norm=personKey;
+  if(betHorseKey(s.horse)!==betHorseKey(x.horse))return false;
+  const savedCourse=norm(s.course),currentCourse=norm(x.course);
+  if(savedCourse&&currentCourse&&savedCourse!==currentCourse)return false;
+  const savedDay=s.raceTime?dateKey(s.raceTime):'',currentDay=x.day||dateKey(x.starts);
+  const betDay=String(bet?.date||'').slice(0,10);
+  if(savedDay&&currentDay&&savedDay!==currentDay)return false;
+  if(!savedDay&&betDay&&currentDay&&betDay!==currentDay)return false;
+  // Exact identifiers are definitive only after horse, course and date agree.
+  if(s.race_id&&x.race_id&&String(s.race_id)===String(x.race_id))return true;
+  // A horse cannot run twice at the same meeting on the same day.
+  // Feed race IDs and advertised off times can change; neither should erase a bet.
+  if(savedCourse&&currentCourse&&savedDay&&currentDay)return true;
+  const savedTime=Date.parse(s.raceTime),currentTime=Date.parse(x.starts);
+  if(Number.isFinite(savedTime)&&Number.isFinite(currentTime))
+    return Math.abs(savedTime-currentTime)<=60*60*1000;
+  return false;
+}
+
+function savedHorseStatus(x){
+ const found=bets.filter(b=>(b.selections||[]).some(s=>savedSelectionMatches(s,x,b)));
+ if(!found.length)return '';
+ const backed=found.some(b=>b.mode!=='tracking');
+ const tracked=found.some(b=>b.mode==='tracking');
+ return backed&&tracked?'✓ Bet placed already · Also tracking':backed?'✓ Bet placed already':'✓ Already added to tracking';
+}
+
+function refreshStrategyCards(){
+  if(activeTab==='markets')renderMarkets();
+ if(activeTab==='power')renderPower();
+ if(activeTab==='strategya')renderStrategyA();
+ if(activeTab==='strategyb')renderStrategyB();
+}
+// Only use confirmed race-specific links. Unknown races open Unibet racing,
+// never a guessed event or an unrelated race.
+function unibetRaceLink(x){
+ const course=personKey(x.course),day=x.day||dateKey(x.starts);
+ if(day==='2026-10-18'&&course==='leopardstown'&&x.time==='15:42')return 'https://www.unibet.ie/racing#/event/202610181400.T.IRL.leopardstown.4';
+ if(day==='2026-10-18'&&course==='sedgefield'&&x.time==='14:20')return 'https://www.unibet.ie/racing#/event/202610181300.T.GBR.sedgefield.2';
+ return 'https://www.unibet.ie/racing';
+}
+function card(x){const betStatus=savedHorseStatus(x);const strategyLabel=x.qualifies?(qualifiesA(x)?'<span class="tag strategy-category">Strategy A · Flat turf</span>':qualifiesB(x)?'<span class="tag strategy-category">Strategy B · AW/Jumps</span>':'<span class="tag strategy-category">Unverified</span>'):'';let movement=x.move===null?'No comparison':x.move>0.001?`↘ ${x.move.toFixed(1)}% shorter`:x.move<-.001?`↗ ${Math.abs(x.move).toFixed(1)}% drift`:'Unchanged';let cls=x.move===null?'flat':x.move>.001?'down':x.move<-.001?'up':'flat';const ref=x.isFav&&x.secondName?`Second favourite: ${safe(x.secondName)} · ${fmt(x.secondOdds)}`:x.tie?`Joint favourite: ${safe(x.favName)} · ${fmt(x.favOdds)}`:`Market favourite: ${safe(x.favName)} · ${fmt(x.favOdds)}`;
+ return `<article class="horse">${betStatus?`<div class="saved-selection-banner">${safe(betStatus)}</div>`:''}<div class="horse-top"><div><div class="name">${safe(x.horse)}</div><div class="meta">${safe(when(x.starts))} · ${safe(x.course)} · ${safe(x.country)}</div></div></div><div class="odds"><div><small>${safe(x.baselineLabel)}</small><b>${fmt(x.earlier)}</b></div><div><small>Latest odds</small><b>${fmt(x.current)}</b></div><div><small>Movement</small><b class="move ${x.move===null||Math.abs(x.move)<=.001?'flat':x.move>0?'short':'drift'}">${x.move===null?'—':x.move.toFixed(1)+'%'}</b></div></div><div class="foot"><span>${ref}</span><span>${safe(x.bookmaker)}</span></div><div class="horse-action-grid"><button class="action small outline race-full" data-view-race="${safe(x.id)}">View Race</button><button class="action small ${betStatus?'outline':''}" ${betStatus?'data-show-bets="1"':`data-add="${safe(x.id)}"`}>${betStatus?'✓ View saved bet':'+ Add to My Bets'}</button><a class="action small outline" href="${safe(unibetRaceLink(x))}" target="_self" rel="noopener noreferrer" style="text-decoration:none">↗ Unibet${unibetRaceLink(x).includes('#/event/')?' · Race':' · Racing'}</a><span class="tag down power-status">${x.qualifies?'🔥 Power Fav':'Not a Power Fav'}</span>${strategyLabel||'<span class="tag strategy-category">Not classified</span>'}</div><div style="margin-top:9px"><button class="action small outline" style="width:100%" data-watch-add="${safe(x.id)}">${watchMatch(x)?'⭐ On Watchlist':'☆ Add to Watchlist'}</button></div><details><summary>Price history graph &amp; details</summary>${miniGraph(x.points)}<div class="historyline">${x.points.map(p=>`${safe(when(p.at))} — ${fmt(p.od)}`).join('<br>')||'No saved prices'}</div></details><div class="hint" style="margin-top:8px">Trainer: ${safe(x.trainer||'Not available')} · Jockey: ${safe(x.jockey||'Not available')} · C / D / CD: ${x.cdWin===true?'CD winner':x.courseWin===true?'C winner':x.distanceWin===true?'D winner':'Not verified'}</div><div class="hint" style="margin-top:7px">Trainer strike rate: ${safe(formText(x,'trainer'))} · Jockey strike rate: ${safe(formText(x,'jockey'))}</div>${x.baselineAt===null&&x.earlier!==null?'<div class="hint">Movement uses unverified API-reported opening price.</div>':''}</article>`;}
+const selectedPeople={markets:{trainer:new Set(),jockey:new Set()},power:{trainer:new Set(),jockey:new Set()},strategya:{trainer:new Set(),jockey:new Set()},strategyb:{trainer:new Set(),jockey:new Set()}};
+const personSearch={markets:{trainer:'',jockey:''},power:{trainer:'',jockey:''},strategya:{trainer:'',jockey:''},strategyb:{trainer:'',jockey:''}};
+function personLabel(x,type){return String(x[type]||'').replace(/\s*\(\d+\)\s*$/,'').trim()}
+function personMatches(x,view){return ['trainer','jockey'].every(type=>{
+ const selected=selectedPeople[view][type];
+ return !selected.size||(x[type+'_id']&&selected.has('id:'+x[type+'_id']))||selected.has('name:'+personKey(personLabel(x,type)));
+})}
+function personChoices(view,type){
+ // Each list is constrained by the OTHER person's selections, not its own.
+ // This avoids circular filtering and keeps already-selected names removable.
+ const opposite=type==='trainer'?'jockey':'trainer';
+ const otherSelected=selectedPeople[view][opposite];
+ const ownSelected=selectedPeople[view][type];
+ const source=view==='power'
+  ?rows.filter(x=>x.qualifies&&(selectedDate==='all'||x.day===selectedDate)&&(selectedPowerBook==='all'||x.bookmaker===selectedPowerBook))
+  :scoped();
+ const map=new Map();
+ for(const x of source){
+  if(otherSelected.size&&!((x[opposite+'_id']&&otherSelected.has('id:'+x[opposite+'_id']))||otherSelected.has('name:'+personKey(personLabel(x,opposite)))))continue;
+  const name=personLabel(x,type);if(!name)continue;
+  const id=x[type+'_id']?'id:'+x[type+'_id']:'name:'+personKey(name);
+  if(!map.has(id))map.set(id,name);
+ }
+ // Preserve checked selections even if other filters temporarily exclude them.
+ for(const x of rows){
+  const name=personLabel(x,type);if(!name)continue;
+  const id=x[type+'_id']?'id:'+x[type+'_id']:'name:'+personKey(name);
+  if(ownSelected.has(id)&&!map.has(id))map.set(id,name);
+ }
+ return [...map].sort((a,b)=>a[1].localeCompare(b[1]));
+}
+function renderPersonFilters(view){
+ const host=$(view==='markets'?'market-person-filters':view==='power'?'power-person-filters':view+'-person-filters');
+ for(const type of ['trainer','jockey']){
+  const id=view+'-'+type+'-people';
+  let el=$(id);
+  if(!el){el=document.createElement('details');el.className='person-filter';el.id=id;host.append(el)}
+  const selected=selectedPeople[view][type],choices=personChoices(view,type),search=personSearch[view][type];
+  const visible=choices.filter(([key,name])=>name.toLowerCase().includes(search.toLowerCase()));
+  const wasOpen=el.open,focused=document.activeElement?.dataset?.personSearch===view+':'+type;
+  const cursor=focused?document.activeElement.selectionStart:null;
+  el.innerHTML=`<summary>${type==='trainer'?'Trainers':'Jockeys'} · ${selected.size?selected.size+' selected':'All'}</summary><div class="person-inner"><input type="search" data-person-search="${view}:${type}" placeholder="Search ${type}s" aria-label="Search ${type}s" value="${safe(search)}"><div class="person-options">${visible.length?visible.map(([key,name])=>`<label><input type="checkbox" data-person-select="${view}:${type}" value="${safe(key)}" ${selected.has(key)?'checked':''}>${safe(name)}</label>`).join(''):'<span class="hint">No matching names available.</span>'}</div><div class="person-controls"><span class="person-count">${choices.length} available</span><button type="button" class="action outline small" data-person-clear="${view}:${type}">Clear</button></div></div>`;
+  el.open=wasOpen;
+  if(focused){const input=el.querySelector('input[type=search]');input.focus();if(cursor!==null)input.setSelectionRange(cursor,cursor)}
+ }
+}
+function updatePersonViews(){for(const v of ['markets','power','strategya','strategyb'])renderPersonFilters(v);renderMarkets();renderPower();renderStrategyA();renderStrategyB()}
+function renderMarkets(){const arr=scoped(),short=arr.filter(x=>x.move>0.001),drift=arr.filter(x=>x.move<-.001);$('races').textContent=new Set(arr.map(x=>x.race_id)).size;$('steamers').textContent=short.length;$('drifters').textContent=drift.length;
+ let view=arr.filter(x=>personMatches(x,'markets')&&(moveFilter==='all'||(moveFilter==='short'&&x.move>0.001)||(moveFilter==='drop'&&x.move>0.001)||(moveFilter==='drift'&&x.move<-.001)||(moveFilter==='flat'&&x.move!==null&&Math.abs(x.move)<=.001)||(moveFilter==='unknown'&&x.move===null)));
+ if(moveFilter==='drop')view.sort((a,b)=>(b.move??-Infinity)-(a.move??-Infinity));else view=sortRows(view);
+ $('filter-count').textContent=`${view.length} bookmaker-runner entries across ${new Set(view.map(x=>x.race_id)).size} races; ${historyCount} saved snapshots.`;
+ $('list').innerHTML=view.length?view.slice(0,300).map(card).join(''):'<div class="empty">No matching horses for these filters.</div>';
+}
+const bands=[['0-5','≤5%',0,5],['5-10','5–10%',5,10],['10-15','10–15%',10,15],['15-20','15–20%',15,20],['20-25','20–25%',20,25],['25+','25%+',25,Infinity],['unknown','Unknown',null,null]];
+let hotSelected=new Set(),hotSearch='',hotExpanded=false,hotMinRuns=1,hotTodayOnly=true,selectedTrainer=new Set(),selectedJockey=new Set(),trainerDays=14,jockeyDays=14,formData=null,formIndex={trainer:{},jockey:{}};
+const formName=s=>String(s||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+function formStats(row,type){
+ const person=row[type],selectedDays=type==='trainer'?trainerDays:jockeyDays;
+ if(!person||!formData||!formData.periods)return null;
+ // Use only results strictly before the race, never future results.
+ const asOf=formData.as_of,raceDay=row.day;
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(asOf||'')||!/^\d{4}-\d{2}-\d{2}$/.test(raceDay||''))return null;
+ const prior=new Date(raceDay+'T12:00:00Z');prior.setUTCDate(prior.getUTCDate()-1);
+ if(asOf!==prior.toISOString().slice(0,10))return null;
+ // A selected 14-day window starts with 1 verified day, then grows to 2,
+ // 3 ... up to 14. Never count an uncollected day as a zero-run day.
+ let availableDays=0,period=null;
+ for(let n=selectedDays;n>=1;n--){
+  const candidate=formData.periods[String(n)];
+  if(!candidate||!Array.isArray(candidate.dates_available))continue;
+  const dates=new Set(candidate.dates_available);
+  let complete=true;
+  for(let i=0;i<n;i++){
+   const d=new Date(asOf+'T12:00:00Z');d.setUTCDate(d.getUTCDate()-i);
+   if(!dates.has(d.toISOString().slice(0,10))){complete=false;break;}
+  }
+  if(complete){period=candidate;availableDays=n;break;}
+ }
+ if(!period)return null;
+ const group=type==='trainer'?'trainers':'jockeys';
+ const directId=row[type+'_id'];
+ let stat=directId?period[group]?.[directId]:null;
+ // The racecard and results endpoints sometimes have different IDs.
+ // Only fall back when a normalised name uniquely identifies one person.
+ if(!stat){
+  const matches=formIndex[type][formName(person)]||[];
+  if(matches.length!==1)return null;
+  stat=period[group]?.[matches[0]]||null;
+ }
+ if(!stat)return null;
+ const runs=Number(stat.runs??stat.rides),wins=Number(stat.wins);
+ if(!Number.isFinite(runs)||runs<=0||!Number.isFinite(wins)||wins<0||wins>runs)return null;
+ return {wins,runs,pct:100*wins/runs,availableDays,selectedDays};
+}
+function indexFormNames(raw){
+ formIndex={trainer:{},jockey:{}};
+ const period=raw?.periods?.['1'];
+ for(const [type,group] of [['trainer','trainers'],['jockey','jockeys']]){
+  for(const [id,stat] of Object.entries(period?.[group]||{})){
+   const name=formName(stat?.name);if(!name)continue;
+   (formIndex[type][name]??=[]).push(id);
+  }
+ }
+ // Include people who ran only on earlier dates, for a full rolling archive.
+ for(const period of Object.values(raw?.periods||{})){
+  for(const [type,group] of [['trainer','trainers'],['jockey','jockeys']]){
+   for(const [id,stat] of Object.entries(period?.[group]||{})){
+    const name=formName(stat?.name);if(!name)continue;
+    const ids=formIndex[type][name]??=[];
+    if(!ids.includes(id))ids.push(id);
+   }
+  }
+ }
+}
+
+function renderBands(){for(const [type,target] of [['trainer','trainer-bands'],['jockey','jockey-bands']]){$(target).innerHTML=bands.map(b=>`<label><input type="checkbox" data-band="${type}" value="${b[0]}" ${(type==='trainer'?selectedTrainer:selectedJockey).has(b[0])?'checked':''}>${b[1]}</label>`).join('');const selected=type==='trainer'?selectedTrainer:selectedJockey;$(type+'-summary').textContent=selected.size?selected.size+' selected':'All ranges';}}
+function bandMatch(row,type,selected){if(!selected.size)return true;const stat=formStats(row,type);if(!stat)return selected.has('unknown');const pct=stat.pct;return bands.some(([id,_,lo,hi])=>selected.has(id)&&id!=='unknown'&&(id==='0-5'?pct<=5:id==='25+'?pct>25:pct>lo&&pct<=hi));}
+function formText(x,type){const v=formStats(x,type);return v?`${v.wins}/${v.runs} (${v.pct.toFixed(1)}% over ${v.availableDays}${v.availableDays===1?' day':' days'}${v.availableDays<v.selectedDays?' of selected '+v.selectedDays+' days':''})`:'Unknown (insufficient verified results)';}
+function refreshPowerBooks(){const eligible=rows.filter(x=>x.qualifies&&(selectedDate==='all'||x.day===selectedDate));const books=[...new Set(['William Hill',...eligible.map(x=>x.bookmaker)])].sort();if(selectedPowerBook!=='all'&&!books.includes(selectedPowerBook))selectedPowerBook='William Hill';selOpts('power-bookie',[['all','All bookmakers'],...books.map(b=>[b,b])],selectedPowerBook);}
+function renderPower(){refreshPowerBooks();let view=rows.filter(x=>(selectedDate==='all'||x.day===selectedDate)&&(selectedPowerBook==='all'||x.bookmaker===selectedPowerBook)&&x.qualifies&&personMatches(x,'power')&&bandMatch(x,'trainer',selectedTrainer)&&bandMatch(x,'jockey',selectedJockey));view=sortRows(view);$('power-count').textContent=`${view.length} Power Fav bookmaker entries. Form periods: trainer ${trainerDays}d · jockey ${jockeyDays}d. Results shown use all collected days within the selected period; coverage increases daily.`;$('power-list').innerHTML=view.length?view.map(x=>card(x).replace('</article>',`<div class="hint" style="margin-top:10px">Trainer form: ${safe(formText(x,'trainer'))}<br>Jockey form: ${safe(formText(x,'jockey'))}</div></article>`)).join(''):'<div class="empty">No Power Favs matching these filters. If the trainer/jockey dataset is not ready, select Unknown or clear form percentage filters.</div>'}
+function qualifiesA(x){const t=String(x.raceType||'').toLowerCase(),surf=String(x.surface||'').toLowerCase();return x.qualifies&&/flat/.test(t)&&!/nh flat|national hunt|bumper/.test(t)&&/^(turf|grass)$/.test(surf)}
+function qualifiesB(x){const t=String(x.raceType||'').toLowerCase(),surf=String(x.surface||'').toLowerCase();const jumps=/hurdle|chase|nh[ -]?flat|national hunt|bumper|jumps|steeple/.test(t);const flat=/flat/.test(t)&&!jumps;return x.qualifies&&(jumps||(flat&&/^(aw|all[ -]?weather|synthetic|polytrack|tapeta|fibresand)$/.test(surf)));}
+const strategySettings={strategya:{book:'William Hill',trainerDays:14,jockeyDays:14,trainerBands:new Set(),jockeyBands:new Set()},strategyb:{book:'William Hill',trainerDays:14,jockeyDays:14,trainerBands:new Set(),jockeyBands:new Set()}};
+function strategyCandidates(view){const qualifies=view==='strategya'?qualifiesA:qualifiesB;return rows.filter(x=>qualifies(x)&&(selectedDate==='all'||x.day===selectedDate)&&(strategySettings[view].book==='all'||x.bookmaker===strategySettings[view].book));}
+function strategyPanel(view){const cfg=strategySettings[view],host=$(view+'-filter-panel');if(!host.dataset.ready){host.innerHTML=`<div class="field power-bookie-field"><label>Bookmaker</label><select data-strategy-book="${view}"></select></div><div class="form-collapses">${['trainer','jockey'].map(type=>`<details class="form-dropdown"><summary>${type==='trainer'?'Trainer':'Jockey'} form <span class="form-selection" id="${view}-${type}-summary">All ranges</span></summary><div class="form-dropdown-inner"><label>Results period</label><select data-strategy-days="${view}:${type}">${Array.from({length:14},(_,i)=>`<option value="${i+1}" ${i===13?'selected':''}>Last ${i+1} ${i?'days':'day'}</option>`).join('')}</select><div class="checkgrid" id="${view}-${type}-bands"></div><button type="button" class="action small outline" data-strategy-clear="${view}:${type}">Clear selection</button></div></details>`).join('')}</div><div class="person-grid" id="${view}-person-filters"></div>`;host.dataset.ready='1';}
+const books=[...new Set(['William Hill',...rows.filter(x=>x.qualifies).map(x=>x.bookmaker)])].sort();selOptsStrategy(host.querySelector('[data-strategy-book]'),[['all','All bookmakers'],...books.map(b=>[b,b])],cfg.book);
+for(const type of ['trainer','jockey']){const selected=cfg[type+'Bands'];$(view+'-'+type+'-bands').innerHTML=bands.map(b=>`<label><input type="checkbox" data-strategy-band="${view}:${type}" value="${b[0]}" ${selected.has(b[0])?'checked':''}>${b[1]}</label>`).join('');$(view+'-'+type+'-summary').textContent=selected.size?selected.size+' selected':'All ranges';}
+renderPersonFilters(view);
+}
+function selOptsStrategy(el,opts,selected){el.innerHTML=opts.map(([v,t])=>`<option value="${safe(v)}">${safe(t)}</option>`).join('');el.value=selected;}
+function strategyBandMatch(x,type,view){const cfg=strategySettings[view],selected=cfg[type+'Bands'];if(!selected.size)return true;const prev=type==='trainer'?trainerDays:jockeyDays;if(type==='trainer')trainerDays=cfg.trainerDays;else jockeyDays=cfg.jockeyDays;const ok=bandMatch(x,type,selected);if(type==='trainer')trainerDays=prev;else jockeyDays=prev;return ok;}
 function renderStrategy(view){strategyPanel(view);let choices=strategyCandidates(view).filter(x=>personMatches(x,view)&&strategyBandMatch(x,'trainer',view)&&strategyBandMatch(x,'jockey',view));const unique=new Map();for(const x of choices){const k=JSON.stringify([x.race_id,x.horse]);if(!unique.has(k)||x.current<unique.get(k).current)unique.set(k,x)}const list=sortRows([...unique.values()]);$(view+'-count').textContent=`${list.length} unique Strategy ${view==='strategya'?'A':'B'} qualifiers · ${strategySettings[view].book==='all'?'All bookmakers':strategySettings[view].book}${view==='strategya'?' · tracking only when added from this section.':'.'}`;$(view+'-list').innerHTML=list.length?list.map(card).join(''):'<div class="empty">No qualifiers matching these filters.</div>';}
 function renderStrategyA(){renderStrategy('strategya')}
 function renderStrategyB(){renderStrategy('strategyb')}
@@ -462,7 +663,7 @@ function hotSpark(row){
  if(pts.length<2)return '<p class="hint">Only one saved odds observation — no trend yet.</p>';
  const a=pts[0].od,z=pts[pts.length-1].od,delta=z-a;
  const label=delta < -0.001?'Shortening':delta > 0.001?'Drifting':'Unchanged';
- const col=delta < -0.001?'#26845b':delta > 0.001?'#ff8585':'#b9d0d1';
+ const col=delta < -0.001?'#82f3c5':delta > 0.001?'#ff8585':'#b9d0d1';
  const min=Math.min(...pts.map(p=>p.od)),max=Math.max(...pts.map(p=>p.od)),span=max-min||1;
  const times=pts.map(p=>Date.parse(p.at)),left=Math.min(...times),right=Math.max(...times);
  const points=pts.map((p,i)=>`${(8+(right>left?(times[i]-left)/(right-left):i/(pts.length-1))*304).toFixed(1)},${(64-((p.od-min)/span)*52).toFixed(1)}`).join(' ');
