@@ -330,6 +330,22 @@ summary,a{color:#77e4b8}details .history{color:#b7d7ce}.notice{color:#f1c984}
 #pnlview #custom-dates input[type="date"]::-webkit-date-and-time-value{min-width:0;text-align:left;}
 #pnlview #custom-dates input[type="date"]::-webkit-datetime-edit{min-width:0;padding:0;}
 @media(max-width:380px){#pnlview #custom-dates{gap:8px}#pnlview #custom-dates input[type="date"]{padding:7px 5px;font-size:12px}}
+
+/* iPhone Home Screen PWA: opaque status-bar safe area, like native apps. */
+@media (display-mode: standalone) {
+  body::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: max(env(safe-area-inset-top, 0px), 54px);
+    background: var(--theme-bg, #081720);
+    z-index: 10000;
+    pointer-events: none;
+  }
+  header { padding-top: max(env(safe-area-inset-top, 0px), 54px); }
+}
 </style><link rel="manifest" href="./manifest.webmanifest">
 <link rel="apple-touch-icon" href="./racing-icon.png">
 <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
