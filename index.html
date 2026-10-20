@@ -439,14 +439,14 @@ function addWatch(id){
 // Fractional caps: 8/1 = 9.0 decimal; 14/1 = 15.0 decimal.
 function autoWatchQualifiers(){
  const now=Date.now(), additions=[];
- const candidates=rows.filter(x=>x.bookmaker==='William Hill'&&Number.isFinite(x.current)&&Number.isFinite(x.move)&&x.move>30&&((x.move>50&&x.current<=15)||(x.current<=9))&&Number.isFinite(Date.parse(x.starts))&&Date.parse(x.starts)>now);
+ const candidates=rows.filter(x=>x.bookmaker==='William Hill'&&Number.isFinite(x.current)&&Number.isFinite(x.move)&&x.move>30&&((x.move>50&&x.current<=15)||(x.current<=9))&&Number.isFinite(Date.parse(x.starts))&&Date.parse(x.starts)>now&&((formStats(x,'trainer')?.pct??-1)>=20));
  for(const x of candidates){
   const k=watchKey(x);
   if(watchlist.some(w=>w.key===k))continue;
   const rule=x.move>50&&x.current<=15?'Rule 2 (>50%, 14/1 or shorter)':'Rule 1 (>30%, 8/1 or shorter)';
   const stamp=new Date().toISOString();
   const source=x.baselineLabel==='First recorded'?'First recorded':'API opening price (unverified)';
-  const note=`AUTO WATCHLIST — ${rule}. Shortened ${x.move.toFixed(1)}%. ${source}: ${fmt(x.earlier)} → ${fmt(x.current)}. William Hill. Added ${when(stamp)} (Irish time).`.slice(0,300);
+  const note=`AUTO WATCHLIST — ${rule}. Trainer strike rate ${formStats(x,'trainer').pct.toFixed(1)}% (minimum 20%). Shortened ${x.move.toFixed(1)}%. ${source}: ${fmt(x.earlier)} → ${fmt(x.current)}. William Hill. Added ${when(stamp)} (Irish time).`.slice(0,300);
   const entry={key:k,horse:x.horse,course:x.course,day:x.day,starts:x.starts,bookmaker:x.bookmaker,added:stamp,savedOdds:x.current,note,autoAdded:true};
   watchlist.push(entry);additions.push(entry);
  }
@@ -1224,7 +1224,7 @@ async function loadForm(){
   if(!resp.ok)throw Error('Strike-rate data unavailable');
   const raw=await resp.json();
   if(!raw||typeof raw.as_of!=='string'||!raw.periods||typeof raw.periods!=='object')throw Error('Invalid strike-rate data');
-  formData=raw;indexFormNames(raw);renderPower();renderMarkets();renderHot();
+  formData=raw;indexFormNames(raw);autoWatchQualifiers();renderPower();renderMarkets();renderHot();
  }catch(e){formData=null;formIndex={trainer:{},jockey:{}};renderPower();renderMarkets();renderHot();}
 }
 let powerResultsArchive=null;
