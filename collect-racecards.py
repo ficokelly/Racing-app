@@ -18,14 +18,18 @@ BASE = "https://api.theracingapi.com/v1/racecards/free"
 credentials = base64.b64encode(f"{USERNAME}:{PASSWORD}".encode()).decode()
 
 all_runners = []
+comment_count = 0
+verdict_races = set()
 RACE_FIELDS = (
     "race_id", "race_name", "race_class", "pattern", "prize", "distance",
     "distance_f", "distance_round", "going", "going_detailed", "age_band",
     "field_size", "rating_band", "race_status", "sex_restriction",
+    "verdict", "tip", "race_comment", "analysis",
 )
 RUNNER_FIELDS = (
     "form", "age", "lbs", "draw", "number", "ofr", "headgear",
     "owner", "sex", "last_run", "sire", "dam", "silk_url", "silks",
+    "comment", "spotlight", "performance_rating", "speed_rating",
 )
 
 for day in ("today", "tomorrow"):
@@ -60,6 +64,10 @@ for day in ("today", "tomorrow"):
                 item.update(metadata)
                 item.update({field: runner.get(field) for field in RUNNER_FIELDS})
                 all_runners.append(item)
+                if isinstance(item.get("comment"), str) and item["comment"].strip():
+                    comment_count += 1
+                if any(isinstance(item.get(k), str) and item[k].strip() for k in ("verdict", "race_comment")):
+                    verdict_races.add(str(item.get("race_id")))
         if len(racecards) < 500:
             break
         skip += 500
@@ -74,6 +82,7 @@ output = {
 Path("data").mkdir(exist_ok=True)
 Path("data/racecards.json").write_text(json.dumps(output, indent=2), encoding="utf-8")
 print(f"Saved {len(all_runners)} UK/Ireland racecard runners with race metadata")
+print(f"API written comments: {comment_count} runners; race verdicts: {len(verdict_races)} races (availability depends on endpoint/plan)")
 
 
 # Preserve published current and prior-day runner profiles without overwriting older
