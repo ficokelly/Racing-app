@@ -461,7 +461,7 @@ function refreshSelects(){const arr=rows.filter(x=>selectedDate==='all'||x.day==
  const times=[...new Set(relevant.filter(x=>selectedMeeting==='all'||x.course===selectedMeeting).map(x=>x.time))].filter(x=>x!=='Unknown').sort();if(selectedTime!=='all'&&!times.includes(selectedTime))selectedTime='all';selOpts('race-time',[['all','All race times'],...times.map(x=>[x,x])],selectedTime);
 }
 function scoped(){return rows.filter(x=>(selectedDate==='all'||x.day===selectedDate)&&(selectedBook==='all'||x.bookmaker===selectedBook)&&(selectedMeeting==='all'||x.course===selectedMeeting)&&(selectedTime==='all'||x.time===selectedTime));}
-function sortRows(arr){return [...arr].sort((a,b)=>{const oa=a.current-b.current,ta=(Date.parse(a.starts)||Infinity)-(Date.parse(b.starts)||Infinity),ma=(b.move??-Infinity)-(a.move??-Infinity),tie=a.horse.localeCompare(b.horse)||a.bookmaker.localeCompare(b.bookmaker);switch(selectedSort){case 'shortest':return oa||ta||tie;case 'longest':return -oa||ta||tie;case 'earliest':return ta||oa||tie;case 'latest':return -ta||oa||tie;case 'drop':return ma||oa||tie;case 'drift':return -ma||oa||tie;}return tie})}
+function sortRows(arr){return [...arr].sort((a,b)=>{const oa=(Number.isFinite(a.current)?a.current:Infinity)-(Number.isFinite(b.current)?b.current:Infinity),timeValue=x=>{const parsed=Date.parse(x.starts||'');if(Number.isFinite(parsed))return parsed;const day=String(x.day||'').slice(0,10),clock=String(x.time||'').match(/(\d{1,2}):(\d{2})/);return clock&&day?Date.parse(day+'T'+clock[1].padStart(2,'0')+':'+clock[2]+':00'):Infinity},ta=timeValue(a)-timeValue(b),ma=(b.move??-Infinity)-(a.move??-Infinity),tie=a.horse.localeCompare(b.horse)||a.bookmaker.localeCompare(b.bookmaker);switch(selectedSort){case 'shortest':return oa||ta||tie;case 'longest':return -oa||ta||tie;case 'earliest':return ta||oa||tie;case 'latest':return -ta||oa||tie;case 'drop':return ma||oa||tie;case 'drift':return -ma||oa||tie;}return tie})}
 function rhpGraphTimeAxis(pts,xStart,xEnd){
  const valid=pts.filter(p=>Number.isFinite(Date.parse(p.at))).sort((a,b)=>Date.parse(a.at)-Date.parse(b.at));
  if(valid.length<2)return '';
@@ -604,7 +604,7 @@ function renderPersonFilters(view){
 function updatePersonViews(){for(const v of ['markets','power','strategya','strategyb'])renderPersonFilters(v);renderMarkets();renderPower();renderStrategyA();renderStrategyB()}
 function renderMarkets(){const arr=scoped(),short=arr.filter(x=>x.move>0.001),drift=arr.filter(x=>x.move<-.001);$('races').textContent=new Set(arr.map(x=>x.race_id)).size;$('steamers').textContent=short.length;$('drifters').textContent=drift.length;
  let view=arr.filter(x=>personMatches(x,'markets')&&(moveFilter==='all'||(moveFilter==='short'&&x.move>0.001)||(moveFilter==='drop'&&x.move>0.001)||(moveFilter==='drift'&&x.move<-.001)||(moveFilter==='flat'&&x.move!==null&&Math.abs(x.move)<=.001)||(moveFilter==='unknown'&&x.move===null)));
- if(moveFilter==='drop')view.sort((a,b)=>(b.move??-Infinity)-(a.move??-Infinity));else view=sortRows(view);
+ view=sortRows(view);
  $('filter-count').textContent=`${view.length} bookmaker-runner entries across ${new Set(view.map(x=>x.race_id)).size} races; ${historyCount} saved snapshots.`;
  $('list').innerHTML=view.length?view.slice(0,300).map(card).join(''):'<div class="empty">No matching horses for these filters.</div>';
 }
