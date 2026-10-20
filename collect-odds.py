@@ -56,6 +56,18 @@ else:
 if races and isinstance(races[0], dict):
     print("Available race fields:", sorted(races[0].keys()))
 
+# Diagnostic: print only runner field names, not personal data or API values.
+for diagnostic_race in races:
+    if not isinstance(diagnostic_race, dict):
+        continue
+    diagnostic_runners = diagnostic_race.get("runners")
+    if not isinstance(diagnostic_runners, list):
+        continue
+    diagnostic_runner = next((item for item in diagnostic_runners if isinstance(item, dict)), None)
+    if diagnostic_runner is not None:
+        print("Available runner fields:", sorted(diagnostic_runner.keys()))
+        break
+
 
 def race_field(race, *names):
     for name in names:
