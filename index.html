@@ -293,6 +293,26 @@ summary,a{color:#77e4b8}details .history{color:#b7d7ce}.notice{color:#f1c984}
 #watch-list .odds b.move.drift{color:var(--theme-bad,#ff7777)!important}
 #watch-list .odds b.move.short{color:var(--theme-good,#82f3c5)!important}
 #watch-list .odds b.move.flat{color:var(--theme-muted,#b8c9cd)!important}
+
+/* Watchlist race timing, expandable form and odds history */
+#watch-list .watch-off{margin-top:13px;padding:12px;border:1px solid var(--theme-border,#315b5b);background:var(--theme-inner,#102530);border-radius:11px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+#watch-list .watch-off small{font-size:12px;color:var(--theme-muted,#a8c6c5)}
+#watch-list .watch-off strong{font-size:22px;color:var(--theme-text,#f0fff9)}
+#watch-list .watch-added{font-size:12px;margin:10px 0 13px;color:var(--theme-muted,#b5cecc);line-height:1.5}
+#watch-list .watch-added strong{color:var(--theme-text,#f0fff9)}
+#watch-list .watch-extra{margin:13px 0;border:1px solid var(--theme-border,#315b5b);border-radius:11px;overflow:hidden}
+#watch-list .watch-extra>summary{list-style:none;cursor:pointer;padding:13px;font-size:13px;font-weight:750;color:var(--theme-text,#effcf7);background:var(--theme-inner,#102530)}
+#watch-list .watch-extra>summary::-webkit-details-marker{display:none}
+#watch-list .watch-extra>summary:after{content:' ▾';float:right}
+#watch-list .watch-extra[open]>summary:after{content:' ▴'}
+#watch-list .watch-extra-body{padding:12px}
+#watch-list .watch-person{display:grid;gap:8px;margin:4px 0 15px}
+#watch-list .watch-person .rc-person-line{font-size:12px;line-height:1.5;color:var(--theme-muted,#b7d0ce)}
+#watch-list .watch-person strong{color:var(--theme-text,#f0fff9)}
+#watch-list .watch-extra h3{font-size:13px;margin:10px 0;color:var(--theme-text,#effcf7)}
+#watch-list .graph{margin:8px 0!important;max-width:100%;overflow:hidden}
+#watch-list .graph svg{width:100%;max-width:100%}
+:root[data-rhp-theme="white"] #watch-list .watch-extra>summary{color:#17283f!important}
 </style><link rel="manifest" href="./manifest.webmanifest">
 <link rel="apple-touch-icon" href="./racing-icon.png">
 <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
@@ -399,7 +419,11 @@ function addWatch(id){
  refreshWatchButtons();
 }
 function latestWatch(w){const matches=rows.filter(x=>watchKey(x)===w.key);return matches.find(x=>x.bookmaker===w.bookmaker)||matches.find(x=>x.bookmaker==='William Hill')||matches[0]||null}
-function renderWatch(){const box=$('watch-list');if(!box)return;$('watch-count').textContent=`${watchlist.length} horses saved · Separate from betting and P&L`;box.innerHTML=watchlist.length?watchlist.map(w=>{const x=latestWatch(w),live=x?x.current:null;return `<article class="horse"><div class="name">${safe(w.horse)}</div><div class="meta">${safe(w.course)} · ${safe(w.day)} · ${safe(w.bookmaker||'William Hill')}</div><div class="odds"><div><small>When added</small><b>${fmt(w.savedOdds)}</b></div><div><small>${x?'Latest odds':'Latest odds'}</small><b>${live?fmt(live):'—'}</b></div><div><small>Movement since saved</small><b class="move ${live&&w.savedOdds?(live>w.savedOdds?'drift':live<w.savedOdds?'short':'flat'):'flat'}">${live&&w.savedOdds?((w.savedOdds-live)/(w.savedOdds-1)*100).toFixed(1)+'%':'—'}</b></div></div><p class="hint">${x?'Live-feed quote available':'Race no longer in current feed — saved for reference'}</p><label class="hint">Your note<input data-watch-note="${safe(w.key)}" value="${safe(w.note||'')}" placeholder="Why does this horse interest you?" maxlength="300"></label><div class="actions" style="margin-top:10px">${x?`<button class="action small outline" data-view-race="${safe(x.id)}">View Race</button>`:''}<button class="action small danger" data-watch-remove="${safe(w.key)}">Remove from Watchlist</button></div></article>`}).join(''):'<div class="empty">No horses saved yet. Open Markets and tap ⭐ Add to Watchlist on any horse.</div>'}
+function watchRaceRunner(w){return racecardRunners.find(r=>horseMatchKey(r.horse)===horseMatchKey(w.horse)&&courseMatchKey(r.course)===courseMatchKey(w.course)&&(r.date||dateKey(r.race_time))===w.day)||null}
+function watchOff(w,r,x){const t=r?.race_time||w.starts||x?.starts;return t&&Number.isFinite(Date.parse(t))?clock(t):'Not available'}
+function watchForm(w,r,x){if(!r&&!x)return '<p class="hint">Trainer and jockey data unavailable for this race.</p>';const day=w.day;return `<div class="watch-person">${rcPersonPreview(r||x,x,'trainer',day)}${rcPersonPreview(r||x,x,'jockey',day)}</div>`}
+function watchGraph(x){return x?hotSpark(x):'<p class="hint">No recorded odds history available for this race.</p>'}
+function renderWatch(){const box=$('watch-list');if(!box)return;$('watch-count').textContent=`${watchlist.length} horses saved · Separate from betting and P&L`;box.innerHTML=watchlist.length?watchlist.map(w=>{const x=latestWatch(w),r=watchRaceRunner(w),live=x?x.current:null,off=watchOff(w,r,x);const savedTime=w.added&&Number.isFinite(Date.parse(w.added))?when(w.added):'Not recorded';return `<article class="horse watch-card"><div class="name">${safe(w.horse)}</div><div class="meta">${safe(w.course)} · ${safe(w.day)} · ${safe(w.bookmaker||'William Hill')}</div><div class="watch-off"><small>Scheduled off · Irish time</small><strong>${safe(off)}</strong></div><div class="odds"><div><small>Odds when added</small><b>${fmt(w.savedOdds)}</b></div><div><small>Latest odds</small><b>${live?fmt(live):'—'}</b></div><div><small>Movement since saved</small><b class="move ${live&&w.savedOdds?(live>w.savedOdds?'drift':live<w.savedOdds?'short':'flat'):'flat'}">${live&&w.savedOdds?((w.savedOdds-live)/(w.savedOdds-1)*100).toFixed(1)+'%':'—'}</b></div></div><div class="watch-added"><strong>Added to Watchlist:</strong> ${safe(savedTime)} (Irish time)</div><p class="hint">${x?'Live-feed quote available':'Race no longer in current feed — saved for reference'}</p><details class="watch-extra"><summary>Trainer, jockey &amp; odds history</summary><div class="watch-extra-body">${watchForm(w,r,x)}<h3>Recorded odds history</h3>${watchGraph(x)}</div></details><label class="hint">Your note<input data-watch-note="${safe(w.key)}" value="${safe(w.note||'')}" placeholder="Why does this horse interest you?" maxlength="300"></label><div class="actions" style="margin-top:10px">${x?`<button class="action small outline" data-view-race="${safe(x.id)}">View Race</button>`:''}<button class="action small danger" data-watch-remove="${safe(w.key)}">Remove from Watchlist</button></div></article>`}).join(''):'<div class="empty">No horses saved yet. Open Markets and tap ⭐ Add to Watchlist on any horse.</div>'}
 
 let racecardIndex=new Map(),racecardRunners=[];
 const personKey=v=>String(v||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
