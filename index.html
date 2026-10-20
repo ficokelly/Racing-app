@@ -418,6 +418,26 @@ function addWatch(id){
  if(!saveWatch()){watchlist.pop();return}
  refreshWatchButtons();
 }
+// Auto-watch only genuine current William Hill movers before their scheduled off.
+// Fractional caps: 8/1 = 9.0 decimal; 14/1 = 15.0 decimal.
+function autoWatchQualifiers(){
+ const now=Date.now(), additions=[];
+ const candidates=rows.filter(x=>x.bookmaker==='William Hill'&&Number.isFinite(x.current)&&Number.isFinite(x.move)&&x.move>30&&((x.move>50&&x.current<=15)||(x.current<=9))&&Number.isFinite(Date.parse(x.starts))&&Date.parse(x.starts)>now);
+ for(const x of candidates){
+  const k=watchKey(x);
+  if(watchlist.some(w=>w.key===k))continue;
+  const rule=x.move>50&&x.current<=15?'Rule 2 (>50%, 14/1 or shorter)':'Rule 1 (>30%, 8/1 or shorter)';
+  const stamp=new Date().toISOString();
+  const source=x.baselineLabel==='First recorded'?'First recorded':'API opening price (unverified)';
+  const note=`AUTO WATCHLIST — ${rule}. Shortened ${x.move.toFixed(1)}%. ${source}: ${fmt(x.earlier)} → ${fmt(x.current)}. William Hill. Added ${when(stamp)} (Irish time).`.slice(0,300);
+  const entry={key:k,horse:x.horse,course:x.course,day:x.day,starts:x.starts,bookmaker:x.bookmaker,added:stamp,savedOdds:x.current,note,autoAdded:true};
+  watchlist.push(entry);additions.push(entry);
+ }
+ if(additions.length){
+  if(!saveWatch()){watchlist=watchlist.filter(w=>!additions.includes(w));return}
+  renderWatch();
+ }
+}
 function latestWatch(w){const matches=rows.filter(x=>watchKey(x)===w.key);return matches.find(x=>x.bookmaker===w.bookmaker)||matches.find(x=>x.bookmaker==='William Hill')||matches[0]||null}
 function watchRaceRunner(w){return racecardRunners.find(r=>horseMatchKey(r.horse)===horseMatchKey(w.horse)&&courseMatchKey(r.course)===courseMatchKey(w.course)&&(r.date||dateKey(r.race_time))===w.day)||null}
 function watchOff(w,r,x){const t=r?.race_time||w.starts||x?.starts;return t&&Number.isFinite(Date.parse(t))?clock(t):'Not available'}
@@ -1160,7 +1180,7 @@ function renderPowerResults(){
  }).join(''):'<div class="empty">No qualifying T−15 observations in this period.</div>';
 }
 async function loadFeed(){loadForm();loadFinishedRaceFeed();try{const q='?v='+Date.now(),responses=await Promise.all([fetch('./data/latest-odds.json'+q,{cache:'no-store'}),fetch('./data/odds-history.json'+q,{cache:'no-store'}),fetch('./data/racecards.json'+q,{cache:'no-store'}).catch(()=>null)]);
-  if(responses[2]?.ok){try{const live=await responses[2].json();let history=[];try{const a=await fetch('./data/racecards-archive.json?v='+Date.now(),{cache:'no-store'});if(a.ok){const j=await a.json();history=Array.isArray(j.runners)?j.runners:[]}}catch(e){}const current=Array.isArray(live.runners)?live.runners:[];const merged=new Map();for(const r of history){if(r&&r.horse&&r.course)merged.set(racecardKey(r.horse,r.course,r.date||dateKey(r.race_time)),r)}for(const r of current){if(r&&r.horse&&r.course){const k=racecardKey(r.horse,r.course,r.date||dateKey(r.race_time));merged.set(k,{...(merged.get(k)||{}),...r})}}loadRacecardIndex({runners:[...merged.values()]})}catch(e){loadRacecardIndex(null)}}if(!responses[0].ok||!responses[1].ok)throw Error('Odds files unavailable');const latest=await responses[0].json(),hist=await responses[1].json();if(!Array.isArray(hist)||!Array.isArray(latest.prices))throw Error('Invalid JSON feed');rows=build(latest,hist);historyCount=hist.length;$('status').textContent='● ODDS SYNCED';$('asof').textContent=`Last collected: ${when(latest.collected_at)} (Irish time) · ${latest.races_returned} races · ${latest.prices_collected} bookmaker quotes · ${hist.length} snapshots`;
+  if(responses[2]?.ok){try{const live=await responses[2].json();let history=[];try{const a=await fetch('./data/racecards-archive.json?v='+Date.now(),{cache:'no-store'});if(a.ok){const j=await a.json();history=Array.isArray(j.runners)?j.runners:[]}}catch(e){}const current=Array.isArray(live.runners)?live.runners:[];const merged=new Map();for(const r of history){if(r&&r.horse&&r.course)merged.set(racecardKey(r.horse,r.course,r.date||dateKey(r.race_time)),r)}for(const r of current){if(r&&r.horse&&r.course){const k=racecardKey(r.horse,r.course,r.date||dateKey(r.race_time));merged.set(k,{...(merged.get(k)||{}),...r})}}loadRacecardIndex({runners:[...merged.values()]})}catch(e){loadRacecardIndex(null)}}if(!responses[0].ok||!responses[1].ok)throw Error('Odds files unavailable');const latest=await responses[0].json(),hist=await responses[1].json();if(!Array.isArray(hist)||!Array.isArray(latest.prices))throw Error('Invalid JSON feed');rows=build(latest,hist);autoWatchQualifiers();historyCount=hist.length;$('status').textContent='● ODDS SYNCED';$('asof').textContent=`Last collected: ${when(latest.collected_at)} (Irish time) · ${latest.races_returned} races · ${latest.prices_collected} bookmaker quotes · ${hist.length} snapshots`;
  const dates=[...new Set(rows.map(x=>x.day).filter(Boolean))].sort().reverse();selectedDate=dates.includes(dateKey(new Date().toISOString()))?dateKey(new Date().toISOString()):dates[0]||'all';selOpts('race-date',[['all','All available dates'],...dates.map(d=>[d,d])],selectedDate);refreshSelects();renderPersonFilters('markets');renderPersonFilters('power');renderMarkets();renderPower();renderStrategyA();renderStrategyB();renderHot();rcSetupFilters();restoreRefreshFiltersAfterFeed();renderRacecards();showTab(activeTab,true);if(refreshScrollPosition!==null){const pos=refreshScrollPosition;refreshScrollPosition=null;requestAnimationFrame(()=>setTimeout(()=>window.scrollTo(0,pos),160))}}catch(e){$('status').textContent='NO DATA';$('asof').textContent='Could not load odds feed: '+e.message;}}
 // Within each card/list area, opening one collapsible card closes its siblings.
 // Filter panels and expanded sections inside a horse remain independent.
