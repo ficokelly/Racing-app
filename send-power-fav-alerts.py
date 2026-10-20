@@ -6,7 +6,8 @@ import re
 import urllib.request
 import urllib.error
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 DATA = Path('data')
@@ -140,10 +141,20 @@ def main():
         course = p.get('course') or 'Unknown meeting'
         off = p.get('race_time') or ''
         try:
-            off_label = datetime.fromisoformat(off.replace('Z', '+00:00')).astimezone(__import__('zoneinfo').ZoneInfo('Europe/Dublin')).strftime('%H:%M')
-        except (ValueError, TypeError):
-            off_label = off
-        body = f"{p['horse']} · {course} {off_label} · {book} {price_text(fav)} (was {price_text(baseline)}) · 2nd fav {price_text(second)} · {label}"
+            race_dt = datetime.fromisoformat(off.replace('Z', '+00:00'))
+            if race_dt.tzinfo is None:
+                # Unzoned race times are interpreted as Irish local times.
+                race_dt = race_dt.replace(tzinfo=ZoneInfo('Europe/Dublin'))
+            race_local = race_dt.astimezone(ZoneInfo('Europe/Dublin'))
+            local_today = datetime.now(ZoneInfo('Europe/Dublin')).date()
+            race_day = race_local.date()
+            relative_day = ('Today' if race_day == local_today else
+                            'Tomorrow' if race_day == local_today + timedelta(days=1) else
+                            race_local.strftime('%A'))
+            off_label = f"{relative_day} {race_local.strftime('%d %b %Y')} at {race_local.strftime('%H:%M')} (Irish time)"
+        except (ValueError, TypeError, OverflowError):
+            off_label = str(off or 'Race date/time unavailable')
+        body = f"{p['horse']} · {course} · {off_label} · {book} {price_text(fav)} (was {price_text(baseline)}) · 2nd fav {price_text(second)} · {label}"
         payload = {
             'app_id': APP_ID,
             **({'include_subscription_ids': [SUBSCRIPTION_ID]} if SUBSCRIPTION_ID else {'included_segments': ['Subscribed Users']}),
