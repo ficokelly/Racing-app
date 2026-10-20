@@ -321,6 +321,15 @@ summary,a{color:#77e4b8}details .history{color:#b7d7ce}.notice{color:#f1c984}
 #pnlview .metric b{font-size:clamp(15px,4.6vw,27px);line-height:1.18;overflow-wrap:anywhere;word-break:normal;font-variant-numeric:tabular-nums}
 #pnlview .metric small{font-size:10px}
 #pl-chart svg{width:100%;height:auto;overflow:visible;color:var(--theme-muted,#a9c7c1)}
+
+/* P&L custom dates: iOS Safari native date controls must remain within each grid cell. */
+#pnlview #custom-dates{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;min-width:0;width:100%;}
+#pnlview #custom-dates.hidden{display:none!important}
+#pnlview #custom-dates .field{min-width:0;max-width:100%;overflow:hidden}
+#pnlview #custom-dates input[type="date"]{display:block;box-sizing:border-box;width:100%;min-width:0;max-width:100%;height:46px;min-height:46px;padding:8px 9px;font-size:clamp(12px,3.3vw,14px);-webkit-appearance:none;appearance:none;color-scheme:dark;}
+#pnlview #custom-dates input[type="date"]::-webkit-date-and-time-value{min-width:0;text-align:left;}
+#pnlview #custom-dates input[type="date"]::-webkit-datetime-edit{min-width:0;padding:0;}
+@media(max-width:380px){#pnlview #custom-dates{gap:8px}#pnlview #custom-dates input[type="date"]{padding:7px 5px;font-size:12px}}
 </style><link rel="manifest" href="./manifest.webmanifest">
 <link rel="apple-touch-icon" href="./racing-icon.png">
 <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
