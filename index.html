@@ -797,7 +797,7 @@ function hotPeriod(){
   d.setUTCDate(d.getUTCDate()-i);
   if(dates.has(d.toISOString().slice(0,10)))verified++;
  }
- return verified?{period:p,days:verified,requestedDays:hotDays}:null;
+ return {period:p,days:verified,requestedDays:hotDays};
 }
 function hotStats(){
  const info=hotPeriod();
@@ -806,7 +806,7 @@ function hotStats(){
 }
 function hotTrainerMatch(r,x){
  // The racecard and results IDs can differ; match by the same verified name when needed.
- return (r.trainer_id&&r.trainer_id===x.id)||personKey(r.trainer)===personKey(x.name);
+ return Boolean((r.trainer_id&&String(r.trainer_id)===String(x.id))||(r.trainer&&x.name&&personKey(r.trainer)===personKey(x.name)));
 }
 function hotOptionList(stats,todayRunners){
  const trainers=new Map();
@@ -862,7 +862,7 @@ function renderHot(){
  const {info,stats}=hotStats(),today=dateKey(new Date(Date.now()+(hotSelectedDay==='tomorrow'?86400000:0)).toISOString()),dayLabel=hotSelectedDay==='tomorrow'?'tomorrow':'today';
  document.querySelectorAll('[data-hot-day]').forEach(b=>b.classList.toggle('active',b.dataset.hotDay===hotSelectedDay));
  $('hot-coverage').textContent=info?`Results through ${formData.as_of} · ${info.days} of ${hotDays} selected days verified${info.days<hotDays?' (partial coverage)':''}.`:'No complete verified results window available yet.';
- const allTodayRunners=racecardRunners.filter(r=>(r.date||dateKey(r.race_time))===today);
+ const allTodayRunners=racecardRunners.filter(r=>{const d=String(r.date||'').slice(0,10)||dateKey(r.race_time);return d===today;});
  hotRefreshRaceFilters(allTodayRunners);
  const todayRunners=hotFilteredRunners(allTodayRunners);
  hotOptionList(stats,allTodayRunners);
@@ -875,12 +875,12 @@ function renderHot(){
  const unique=new Map();for(const r of chosen)unique.set([r.horse,r.course,r.race_time].join('|'),r);
  const entries=[...unique.values()].sort((a,b)=>Date.parse(a.race_time)-Date.parse(b.race_time));
  $('hot-runners-heading').textContent=(hotSelectedDay==='tomorrow'?"Tomorrow's":"Today's")+ (hotSelected.size?' runners · Selected trainers':' runners · Top 10 trainers');
- $('hot-count').textContent=hotSelected.size?`${hotSelected.size} selected trainer(s) · ${entries.length} runner(s) today (${today}).`:`Top 10 ranked trainers · ${entries.length} runner(s) today (${today}).`;
+ $('hot-count').textContent=hotSelected.size?`${hotSelected.size} selected trainer(s) · ${entries.length} runner(s) ${dayLabel} (${today}).`:`Top 10 ranked trainers · ${entries.length} runner(s) ${dayLabel} (${today}).`;
  $('hot-runners').innerHTML=entries.length?entries.map(r=>{
   const row=hotPriceRow(r);
   const st=stats.find(x=>hotTrainerMatch(r,x));
   return `<article class="horse"><div class="name">${safe(r.horse)}</div><div class="meta">${safe(when(r.race_time))} · ${safe(r.course)}</div><div class="hint" style="margin-top:10px">Trainer: ${safe(r.trainer)} · ${st?st.pct.toFixed(1)+'% ('+st.wins+'/'+st.runs+')':'Strike rate unavailable'}</div><div class="hint">Jockey: ${safe(r.jockey||'Not available')}</div>${hotRunnerOdds(r)}${row?`<div class="hint" style="margin-top:7px">${row.move===null?'Price movement unavailable':row.move>0.001?'↘ Shortening '+row.move.toFixed(1)+'%':row.move<-.001?'↗ Drifting '+Math.abs(row.move).toFixed(1)+'%':'Odds unchanged'} · ${safe(row.bookmaker)}</div><details><summary>Full odds history</summary>${miniGraph(row.points)}<div class="historyline">${row.points.map(p=>`${safe(when(p.at))} — ${fmt(p.od)}`).join('<br>')||'No saved prices'}</div></details>`:'<div class="hint" style="margin-top:7px">No saved odds history to graph for this runner.</div>'}</article>`;
- }).join(''):`<div class="empty">${hotSelected.size?'No runners ${dayLabel} for your selected trainers.':'None of the current top 10 ranked trainers have runners on today’s racecards. Select other trainers above to see their horses.'}</div>`;
+ }).join(''):`<div class="empty">${hotSelected.size?`No runners ${dayLabel} for your selected trainers.`:`None of the current top 10 ranked trainers have runners on ${dayLabel}’s racecards. Select other trainers above to see their horses.`}</div>`;
  $('hot-ranking-count').textContent=`${ranked.length} trainers qualify${hotTodayOnly?" with runners ${dayLabel}":""} · showing ${hotExpanded?'up to 100':'top 10'}.`;
  $('hot-ranking').innerHTML=ranked.length?ranked.slice(0,hotExpanded?100:10).map((x,i)=>{const runners=todayRunners.filter(r=>hotTrainerMatch(r,x)).sort((a,b)=>Date.parse(a.race_time)-Date.parse(b.race_time));const unique=[...new Map(runners.map(r=>[[r.horse,r.race_time,r.course].join('|'),r])).values()];return `<details class="summarycard"><summary><strong>${i+1}. ${safe(x.name)}</strong><span class="tag down" style="float:right">${x.pct.toFixed(1)}%</span><div class="hint">${x.wins} wins / ${x.runs} runs · ${info.days} verified days · <strong>${unique.length} runners ${dayLabel}</strong></div></summary><div style="margin-top:10px">${unique.length?unique.map(r=>`<div class="summarycard"><strong>${safe(r.horse)}</strong><div class="hint">${safe(when(r.race_time))} · ${safe(r.course)}</div>${hotRunnerOdds(r)}</div>`).join(''):'<p class="hint">No runners ${dayLabel} on available racecards.</p>'}</div></details>`}).join(''):'<div class="empty">No trainers meet the selected minimum runs and runners-${dayLabel} filters.</div>';
  $('hot-more').textContent=hotExpanded?'Show top 10':'Show more';
