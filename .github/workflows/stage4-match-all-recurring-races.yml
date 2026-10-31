@@ -1,0 +1,50 @@
+name: Stage 4 - Match all historical recurring races
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  discover_event_identities:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Download original race-title index from latest Stage 4 linking artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import json,os,subprocess
+          from pathlib import Path
+          repo=os.environ['GITHUB_REPOSITORY']
+          data=json.loads(subprocess.check_output(['gh','api',f'repos/{repo}/actions/artifacts','--method','GET','-f','per_page=100'],text=True))
+          matches=[a for a in data['artifacts'] if not a['expired'] and a['name']=='stage4-named-race-links']
+          if not matches:raise SystemExit('No unexpired Stage 4 named-race index artifact. Rerun stage4-link-named-races workflow.')
+          a=max(matches,key=lambda a:a['created_at'])
+          subprocess.run(['gh','run','download',str(a['workflow_run']['id']),'--repo',repo,'--name',a['name'],'--dir','original_named_index'],check=True)
+          paths=list(Path('original_named_index').rglob('named_race_index.csv'))
+          if len(paths)!=1:raise SystemExit(f'Expected one named_race_index.csv; found {len(paths)}')
+          with open(os.environ['GITHUB_ENV'],'a') as f:
+            print('STAGE4_NAMED_INDEX='+str(paths[0].resolve()),file=f)
+          PY
+      - name: Assign all race identities and generate review queue
+        run: |
+          test -f stage4_match_all_recurring_races.py
+          test -f stage4_seed_known_events.csv
+          python stage4_match_all_recurring_races.py \
+            --index "$STAGE4_NAMED_INDEX" \
+            --seed stage4_seed_known_events.csv \
+            --out stage4_all_races_results \
+            --min-years 3
+      - name: Upload complete audit and every race ID
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage4-all-race-identity-research
+          path: stage4_all_races_results/
+          if-no-files-found: warn
+          retention-days: 30
