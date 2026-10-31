@@ -1,0 +1,117 @@
+name: Stage 4 - Named Race Reference and Winner Audit
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify-named-races:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Confirm the four existing files (no moving required)
+        run: |
+          test -s .github/workflows/stage4_reference_race_registry.csv
+          test -s .github/workflows/stage4_apply_reference_registry.py
+          test -s .github/workflows/stage4_reference_gap_audit.py
+          test -s .github/workflows/stage4_extract_named_event_winners.py
+          python -m py_compile \
+            .github/workflows/stage4_apply_reference_registry.py \
+            .github/workflows/stage4_reference_gap_audit.py \
+            .github/workflows/stage4_extract_named_event_winners.py
+
+      - name: Retrieve latest completed full-race identity mapping
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+          repo = os.environ['GITHUB_REPOSITORY']
+          result = subprocess.check_output(
+              ['gh', 'api', f'repos/{repo}/actions/artifacts', '--method', 'GET', '-f', 'per_page=100'],
+              text=True)
+          artifacts = json.loads(result)['artifacts']
+          # The all-races matcher is already in this repository. Prefer any expanded
+          # mapping if that workflow has been run, otherwise use its established artifact.
+          names = ('stage4-expanded-recurring-identity-research',
+                   'stage4-all-race-identity-research')
+          options = [a for a in artifacts if not a['expired'] and a['name'] in names]
+          if not options:
+              raise SystemExit('No unexpired Stage 4 identity mapping. Run "Stage 4 - Match all historical recurring races" first.')
+          artifact = max(options, key=lambda a: (0 if a['name'] == names[0] else -1, a['created_at']))
+          print('Downloading:', artifact['name'], 'from run', artifact['workflow_run']['id'], flush=True)
+          subprocess.run(['gh','run','download',str(artifact['workflow_run']['id']),
+                          '--repo',repo,'--name',artifact['name'],'--dir','stage4_input'],check=True)
+          paths = list(Path('stage4_input').rglob('all_races_with_expanded_event_ids.csv'))
+          if not paths:
+              paths = list(Path('stage4_input').rglob('all_races_with_event_ids.csv'))
+          if len(paths) != 1:
+              raise SystemExit(f'Expected one all-races mapping CSV; found {len(paths)}.')
+          with open(os.environ['GITHUB_ENV'],'a') as env:
+              print('RACE_MAPPING='+str(paths[0].resolve()),file=env)
+          print('Mapping:', paths[0], flush=True)
+          PY
+
+      - name: Apply named-race references and audit missing editions
+        run: |
+          python .github/workflows/stage4_apply_reference_registry.py \
+            --input "$RACE_MAPPING" \
+            --registry .github/workflows/stage4_reference_race_registry.csv \
+            --out named_races_output
+          python .github/workflows/stage4_reference_gap_audit.py \
+            --mapping named_races_output/all_races_with_reference_event_ids.csv \
+            --registry .github/workflows/stage4_reference_race_registry.csv \
+            --out named_races_output
+
+      - name: Retrieve existing Stage 2 historical runner database
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+          repo = os.environ['GITHUB_REPOSITORY']
+          result = subprocess.check_output(
+              ['gh', 'api', f'repos/{repo}/actions/artifacts', '--method', 'GET', '-f', 'per_page=100'],
+              text=True)
+          options = [a for a in json.loads(result)['artifacts']
+                     if not a['expired'] and a['name']=='stage2-historical-staging-database']
+          if not options:
+              raise SystemExit('Stage 2 database artifact is missing or expired. Rerun Stage 2 import.')
+          artifact = max(options, key=lambda a: a['created_at'])
+          subprocess.run(['gh','run','download',str(artifact['workflow_run']['id']),
+                          '--repo',repo,'--name',artifact['name'],'--dir','stage2_input'],check=True)
+          dbs = list(Path('stage2_input').rglob('*.sqlite')) + list(Path('stage2_input').rglob('*.db'))
+          if not dbs:
+              raise SystemExit('No SQLite database found in Stage 2 artifact.')
+          with open(os.environ['GITHUB_ENV'],'a') as env:
+              print('SOURCE_DB='+str(max(dbs,key=lambda p:p.stat().st_size).resolve()),file=env)
+          PY
+
+      - name: Check named-race winners against original runner records
+        run: |
+          python .github/workflows/stage4_extract_named_event_winners.py \
+            --db "$SOURCE_DB" \
+            --mapping named_races_output/all_races_with_reference_event_ids.csv \
+            --out named_races_output/winner_checks
+
+      - name: Upload completed race identity audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage4-reference-named-events-and-winners
+          path: named_races_output/
+          if-no-files-found: warn
+          retention-days: 30
