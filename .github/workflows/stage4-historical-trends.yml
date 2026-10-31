@@ -1,0 +1,42 @@
+name: Stage 4 - Historical race trends audit
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  trends:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Download latest unexpired Stage 2 SQLite artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import json,os,subprocess
+          from pathlib import Path
+          repo=os.environ['GITHUB_REPOSITORY']
+          data=json.loads(subprocess.check_output(['gh','api',f'repos/{repo}/actions/artifacts?per_page=100'],text=True))
+          matches=[a for a in data['artifacts'] if not a['expired'] and a['name']=='stage2-historical-staging-database']
+          if not matches:raise SystemExit('No unexpired Stage 2 database artifact. Run Stage 2 in import mode first.')
+          art=max(matches,key=lambda a:a['created_at'])
+          subprocess.run(['gh','run','download',str(art['workflow_run']['id']),'--repo',repo,'--name',art['name'],'--dir','stage4_db'],check=True)
+          files=list(Path('stage4_db').rglob('*.sqlite'))+list(Path('stage4_db').rglob('*.db'))
+          if not files:raise SystemExit('Downloaded artifact contains no SQLite database.')
+          with open(os.environ['GITHUB_ENV'],'a') as f:print('STAGE4_DB='+str(max(files,key=lambda x:x.stat().st_size).resolve()),file=f)
+          PY
+      - name: Analyse comparable historical race trends
+        run: python stage4_trends.py --db "$STAGE4_DB" --out stage4_output --min-races 40
+      - name: Upload small research reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage4-historical-trends-reports
+          path: stage4_output/
+          if-no-files-found: warn
+          retention-days: 14
