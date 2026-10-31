@@ -12,9 +12,9 @@ on:
           - import
         default: inspect
       first_year:
-        description: 'Start year to keep (e.g. 2015)'
+        description: 'Start year to keep (1988 for full source history)'
         required: true
-        default: '2015'
+        default: '1988'
         type: string
 
 permissions:
@@ -23,7 +23,7 @@ permissions:
 jobs:
   staging-history:
     runs-on: ubuntu-latest
-    timeout-minutes: 105
+    timeout-minutes: 150
     steps:
       - name: Checkout repository (read-only)
         uses: actions/checkout@v4
@@ -63,12 +63,23 @@ jobs:
             --max-date '2026-10-07' \
             --database "$RUNNER_TEMP/history_output/historical_ukie_staging.sqlite" \
             --report "$RUNNER_TEMP/history_output/historical_stage2_report.json"
+      - name: Audit actual annual history coverage
+        if: ${{ inputs.mode == 'import' }}
+        run: |
+          python audit_history_coverage.py \
+            --database "$RUNNER_TEMP/history_output/historical_ukie_staging.sqlite" \
+            --expect-first-year "${{ inputs.first_year }}" \
+            --output "$RUNNER_TEMP/history_output/historical_annual_coverage.csv" \
+            --summary "$RUNNER_TEMP/history_output/historical_coverage_summary.json"
       - name: Upload validation report, including source columns
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: stage2-historical-import-report
-          path: ${{ runner.temp }}/history_output/historical_stage2_report.json
+          path: |
+            ${{ runner.temp }}/history_output/historical_stage2_report.json
+            ${{ runner.temp }}/history_output/historical_annual_coverage.csv
+            ${{ runner.temp }}/history_output/historical_coverage_summary.json
           if-no-files-found: warn
           retention-days: 7
       - name: Upload separate staging database (not to public website)
@@ -79,4 +90,4 @@ jobs:
           path: ${{ runner.temp }}/history_output/historical_ukie_staging.sqlite
           if-no-files-found: error
           compression-level: 6
-          retention-days: 2
+          retention-days: 3
