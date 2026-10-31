@@ -1,0 +1,35 @@
+name: Stage 4 - Recover original race names
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Kaggle downloader
+        run: python -m pip install kagglehub
+      - name: Download original historical source
+        run: |
+          python - <<'PY'
+          import kagglehub
+          path=kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025')
+          with open('dataset_location.txt','w') as f:f.write(path)
+          print('Dataset available at:',path)
+          PY
+      - name: Extract race names and audit Gold Cup candidates
+        run: |
+          DATASET_DIR="$(cat dataset_location.txt)"
+          python stage4_recover_race_names.py --source "$DATASET_DIR" --out race_identity_audit
+      - name: Upload audit and recovered race names
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage4-original-race-names
+          path: race_identity_audit/
+          retention-days: 14
