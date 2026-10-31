@@ -66,13 +66,25 @@ def intpos(s):
  return (int(m.group(1)),'FINISHED') if m else (None,v[:30] or 'UNKNOWN')
 
 def odds(s):
- s=str(s or '').strip().upper()
+ """Convert SP to decimal odds, including favourite suffixes in older archives.
+
+ Common result feeds record the same SP as `1/2F`, `5/1JF`, `EvsF`
+ (favourite or joint favourite). The suffix is metadata, NOT part of
+ the fractional price. Without stripping it, we lose many winning SPs.
+ """
+ s=re.sub(r'\s+','',str(s or '').strip().upper())
+ if not s or s in ('-','N/A','NA','NR','VOID'):return None
+ # Only remove *known* favourite markers after a valid-looking price.
+ # Do not silently accept arbitrary trailing alphabetic text.
+ s=re.sub(r'(?:\(?JF\)?|\(?CF\)?|\(?FAV\)?|\(?F\)?)$', '', s)
  if s in ('EVS','EVENS','EVEN','1/1'):return 2.0
  if '/' in s:
-  try:
-   a,b=s.split('/',1);return 1+float(a)/float(b)
-  except (ValueError,ZeroDivisionError):return None
- v=number(s);return v if v and v>=1.01 else None
+  m=re.fullmatch(r'(\d+(?:\.\d+)?)/(\d+(?:\.\d+)?)',s)
+  if not m:return None
+  a,b=map(float,m.groups())
+  return 1+a/b if b else None
+ v=number(s)
+ return v if v and v>=1.01 else None
 
 def weight_lbs(s):
  """Parse racecard stones/pounds strings such as 9-7 or 10st 4lb."""

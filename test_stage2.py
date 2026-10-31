@@ -35,6 +35,21 @@ class Stage2Tests(unittest.TestCase):
    self.assertEqual(data,(130.0,92.0,108.0,93.0,11.0,'Led late'))
    self.assertEqual(json.loads(report.read_text())['integrity'],'ok')
 
+ def test_favourite_suffix_sp_import(self):
+  # Older Kaggle rows often mark favourites with F/JF/CF suffixes.
+  # This is essential for correct winner returns and historical ROI.
+  with tempfile.TemporaryDirectory() as tmp:
+   p=Path(tmp);csvp=p/'prices.csv';db=p/'hist.sqlite';report=p/'report.json'
+   with csvp.open('w',newline='') as f:
+    w=csv.writer(f);w.writerow(['date','course','race_id','horse','pos','sp'])
+    for n,price in enumerate(['1/2F','5/1JF','EvsF','4/1CF','11/4','badprice'],1):
+     w.writerow(['2025-01-01','Catterick',str(n),'Runner'+str(n),'1',price])
+   proc=subprocess.run(['python',str(SCRIPT),'--input',str(csvp),'--mode','import','--database',str(db),'--report',str(report)],capture_output=True,text=True)
+   self.assertEqual(proc.returncode,0,proc.stderr+proc.stdout)
+   prices=sqlite3.connect(db).execute('select horse_name,sp_decimal from historical_runs order by horse_name').fetchall()
+   for actual, expected in zip(prices,[1.5,6.0,2.0,5.0,3.75,None]):
+    self.assertEqual(actual[1],expected)
+
  def test_unknown_schema_rejected(self):
   with tempfile.TemporaryDirectory() as tmp:
    p=Path(tmp);csvp=p/'sample.csv';csvp.write_text('hello,world\na,b\n')
