@@ -16,22 +16,24 @@ ALIASES = {
  'finish': ['finish_pos','finish_position','finishing_position','position','pos','placing','place','finish','result','finpos'],
  'race_id': ['race_id','raceid','race_key','event_id','eventid','race_code','race_ref'],
  'race_no': ['race_number','race_no','race_num','raceno','number','race'],
- 'off_time': ['off_time','race_time','time','scheduled_time','post_time','off'],
+ 'off_time': ['off_time','race_time','off','scheduled_time','post_time','time'],
  'horse_id': ['horse_id','horseid','runner_id','runnerid','horse_code','horse_ref'],
  'country': ['horse_country','horse_origin','birth_country','horse_nationality','origin'],
  'foaled': ['horse_dob','dob','foaled','birth_year','year_of_birth','foaling_year'],
  'race_type': ['race_type','racetype','discipline','type','code'],
  'surface': ['surface','surface_type','track_type'],
- 'distance': ['distance_f','distance_furlongs','race_distance_f','distance','race_distance','distance_m','distance_yards'],
+ 'distance': ['distance_f','distance_furlongs','race_distance_f','distance','race_distance','dist','distance_m','distance_yards'],
  'going': ['going','ground','track_condition','condition'],
  'race_class': ['class','race_class','grade','race_grade'],
  'trainer': ['trainer','trainer_name'], 'jockey': ['jockey','jockey_name','rider'],
  'rating': ['official_rating','or','rating','handicap_rating'],
- 'weight': ['weight_lbs','weight','carried_weight','weight_carried'],
+ 'weight': ['weight_lbs','weight','wgt','carried_weight','weight_carried'],
  'sp': ['sp_decimal','starting_price','sp','win_odds','odds'],
  'draw': ['draw','stall','barrier'],
  'age': ['horse_age','age'], 'sex': ['horse_sex','sex','gender'],
- 'sire': ['sire','sire_name','father'], 'dam': ['dam','dam_name','mother']
+ 'sire': ['sire','sire_name','father'], 'dam': ['dam','dam_name','mother'],
+ 'rpr': ['rpr','racing_post_rating'], 'ts': ['ts','top_speed','topspeed'],
+ 'comment': ['comment','in_running_comment'], 'beaten': ['btn','beaten_lengths']
 }
 
 
@@ -72,17 +74,40 @@ def odds(s):
   except (ValueError,ZeroDivisionError):return None
  v=number(s);return v if v and v>=1.01 else None
 
+def weight_lbs(s):
+ """Parse racecard stones/pounds strings such as 9-7 or 10st 4lb."""
+ s=str(s or '').strip().lower()
+ if not s:return None
+ m=re.fullmatch(r'(\d{1,2})\s*[-–]\s*(\d{1,2})',s)
+ if m:
+  st,lb=map(int,m.groups())
+  return float(st*14+lb) if lb<14 else None
+ m=re.fullmatch(r'(\d{1,2})\s*st(?:ones?)?\s*(\d{1,2})\s*(?:lb|lbs)?',s)
+ if m:
+  st,lb=map(int,m.groups())
+  return float(st*14+lb) if lb<14 else None
+ v=number(s)
+ return v if v is not None and 70<=v<=250 else None
+
+
+def _fraction_number(s):
+ return float(s.replace('¼','.25').replace('½','.5').replace('¾','.75'))
+
+
 def distance_f(s,column):
  if s is None:return None
- s=str(s).strip().lower()
+ s=str(s).strip().lower().replace(' ','')
  if not s:return None
- if 'm' in column.lower() and column.lower().endswith('_m'):
+ if column.lower().endswith('_m'):
   v=number(s);return round(v/201.168,2) if v else None
  if 'yard' in column.lower():
   v=number(s);return round(v/220,2) if v else None
- m=re.search(r'(\d+(?:\.\d+)?)\s*m(?:iles?)?',s)
- f=re.search(r'(\d+(?:\.\d+)?)\s*f',s)
- if m or f:return round((float(m.group(1))*8 if m else 0)+(float(f.group(1)) if f else 0),2)
+ m=re.search(r'(\d+(?:\.\d+|[¼½¾])?)m',s)
+ f=re.search(r'(\d+(?:\.\d+|[¼½¾])?)f',s)
+ y=re.search(r'(\d+(?:\.\d+)?)y',s)
+ if m or f or y:
+  total=(_fraction_number(m.group(1))*8 if m else 0)+(_fraction_number(f.group(1)) if f else 0)+(float(y.group(1))/220 if y else 0)
+  return round(total,2) if total>0 else None
  v=number(s)
  if v is None:return None
  if v>500:return round(v/201.168,2)
@@ -115,6 +140,7 @@ def create_db(c):
    foaled TEXT, finish_pos INTEGER, outcome TEXT, trainer TEXT, jockey TEXT,
    official_rating REAL, weight_lbs REAL, sp_decimal REAL, draw INTEGER,
    age INTEGER, sex TEXT, sire TEXT, dam TEXT,
+   rpr REAL, topspeed REAL, race_comment TEXT, beaten TEXT,
    PRIMARY KEY (race_id,runner_key), FOREIGN KEY(race_id) REFERENCES historical_races(id));
  CREATE TABLE IF NOT EXISTS data_provenance(source TEXT PRIMARY KEY,source_url TEXT,license_claim TEXT,download_time TEXT, caveat TEXT);
  CREATE INDEX IF NOT EXISTS hist_name_idx ON historical_runs(horse_name_norm,horse_country);
@@ -129,7 +155,7 @@ def process(src, destination, min_date, max_date, mode, current_db=None, max_row
  conn=None
  if mode=='import':
   conn=sqlite3.connect(destination);create_db(conn)
-  conn.execute('INSERT OR IGNORE INTO data_provenance VALUES (?,?,?,?,?)', (SOURCE,'https://www.kaggle.com/datasets/deltaromeo/horse-racing-results-ukireland-2015-2025','CDLA-Sharing-1.0 per third-party repository; VERIFY ON KAGGLE','', 'Archive is independently sourced; identity matches not confirmed'))
+  conn.execute('INSERT OR IGNORE INTO data_provenance VALUES (?,?,?,?,?)', (SOURCE,'https://www.kaggle.com/datasets/deltaromeo/horse-racing-results-ukireland-2015-2025','Unverified; check Kaggle publisher terms and original content rights before sharing','', 'Archive is independently sourced; identity matches not confirmed'))
  for filename,opener in source_iter(src):
   fi={'file':filename,'columns':[],'mapped':{},'recognized':False,'first_valid_row':None}
   summary['files'].append(fi)
@@ -170,13 +196,14 @@ def process(src, destination, min_date, max_date, mode, current_db=None, max_row
       distance_f(value(row,m,'distance'),m['distance'] or '') if m.get('distance') else None,
       value(row,m,'going') or None,value(row,m,'race_class') or None,SOURCE))
     country=value(row,m,'country').upper() or None
-    weight=number(value(row,m,'weight'))
+    weight=weight_lbs(value(row,m,'weight'))
     rowrun=(raceid,runnerkey,horseid or None,horse,normname(horse),country,
       value(row,m,'foaled') or None,pos,outcome,value(row,m,'trainer') or None,
       value(row,m,'jockey') or None,number(value(row,m,'rating')),weight,odds(value(row,m,'sp')),
       int(number(value(row,m,'draw'))) if number(value(row,m,'draw')) is not None else None,
       int(number(value(row,m,'age'))) if number(value(row,m,'age')) is not None else None,
-      value(row,m,'sex') or None,value(row,m,'sire') or None,value(row,m,'dam') or None)
+      value(row,m,'sex') or None,value(row,m,'sire') or None,value(row,m,'dam') or None,
+      number(value(row,m,'rpr')),number(value(row,m,'ts')),value(row,m,'comment') or None, value(row,m,'beaten') or None)
     before=conn.total_changes
     conn.execute('INSERT OR IGNORE INTO historical_runs VALUES ('+','.join('?'*len(rowrun))+')',rowrun)
     if conn.total_changes>before:summary['inserted']+=1
