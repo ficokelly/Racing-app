@@ -1,0 +1,48 @@
+name: Stage 3 - Historical baseline research
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Retrieve latest Stage 2 database artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import json, os, subprocess, shutil
+          from pathlib import Path
+          repo = os.environ['GITHUB_REPOSITORY']
+          result = subprocess.check_output(['gh', 'api', f'repos/{repo}/actions/artifacts', '--method', 'GET', '-f', 'per_page=100'], text=True)
+          artifacts = json.loads(result)['artifacts']
+          matches = [a for a in artifacts if not a['expired'] and ('staging' in a['name'].lower() or 'database' in a['name'].lower()) and ('historical' in a['name'].lower() or 'stage2' in a['name'].lower())]
+          if not matches:
+              raise SystemExit('No unexpired Stage 2 database artifact found.')
+          artifact = max(matches, key=lambda a: a['created_at'])
+          run_id = artifact['workflow_run']['id']
+          print('Downloading:', artifact['name'], 'from run:', run_id, flush=True)
+          subprocess.run(['gh', 'run', 'download', str(run_id), '--repo', repo, '--name', artifact['name'], '--dir', 'stage2_artifact'], check=True)
+          files = list(Path('stage2_artifact').rglob('*.sqlite')) + list(Path('stage2_artifact').rglob('*.db'))
+          if not files:
+              raise SystemExit('No SQLite database in artifact.')
+          source = max(files, key=lambda p: p.stat().st_size)
+          print('Database found:', source, 'size:', source.stat().st_size, flush=True)
+          shutil.move(str(source), 'historical_stage3.sqlite')
+          PY
+      - name: Run exploratory baseline
+        run: python stage3_baseline.py --db historical_stage3.sqlite --out stage3_output
+      - name: Upload small reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage3-baseline-reports
+          path: stage3_output/
+          retention-days: 14
