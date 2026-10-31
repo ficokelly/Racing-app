@@ -1,0 +1,31 @@
+name: Build historical racing database (manual)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-history:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out Racing Hot Pots repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Build database from already collected results
+        run: |
+          python historical_backfill.py ingest-repo --repo . --db out/horse_history.sqlite
+          python historical_backfill.py report --db out/horse_history.sqlite --date "$(date -u +%F)" | tee out/history_coverage.txt
+      - name: Download database and coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: racing-hot-pots-historical-database
+          path: |
+            out/horse_history.sqlite
+            out/history_coverage.txt
+          retention-days: 7
