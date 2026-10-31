@@ -1,0 +1,51 @@
+name: Check PuntersEdge UK-Irish horse form coverage
+
+on:
+  workflow_dispatch:
+    inputs:
+      venue:
+        description: "Optional venue (blank = auto-select latest GB/IE race in odds file)"
+        required: false
+        default: ""
+      meeting_date:
+        description: "Optional date YYYY-MM-DD (use with venue and race number)"
+        required: false
+        default: ""
+      race_number:
+        description: "Optional race number (use with venue and date)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Inspect one GB/IE race (3 PuntersEdge credits)
+        env:
+          PUNTERSEDGE_API_KEY: ${{ secrets.PUNTERSEDGE_API_KEY }}
+          PROBE_VENUE: ${{ inputs.venue }}
+          PROBE_DATE: ${{ inputs.meeting_date }}
+          PROBE_NUMBER: ${{ inputs.race_number }}
+        run: |
+          python - <<'PY'
+          import os, subprocess
+          cmd = ['python', 'probe-puntersedge-form.py']
+          if all(os.environ.get(k) for k in ('PROBE_VENUE','PROBE_DATE','PROBE_NUMBER')):
+              cmd += ['--venue', os.environ['PROBE_VENUE'], '--date', os.environ['PROBE_DATE'],
+                      '--race-number', os.environ['PROBE_NUMBER']]
+          subprocess.run(cmd, check=True)
+          PY
+      - name: Downloadable diagnostics (no secret or raw API payload)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: puntersedge-form-coverage-report
+          path: data/puntersedge-form-probe.json
+          retention-days: 7
