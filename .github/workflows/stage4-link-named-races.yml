@@ -1,0 +1,55 @@
+name: Stage 4 - Link historical race titles to results
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  link_names:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install original dataset downloader
+        run: python -m pip install kagglehub
+      - name: Fetch original historical source
+        run: |
+          python - <<'PY'
+          import kagglehub
+          from pathlib import Path
+          location=kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025')
+          Path('historical_source_dir.txt').write_text(location)
+          print('CSV source at:',location)
+          PY
+      - name: Retrieve Stage 2 SQLite artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import json,os,subprocess
+          from pathlib import Path
+          repo=os.environ['GITHUB_REPOSITORY']
+          data=json.loads(subprocess.check_output(['gh','api',f'repos/{repo}/actions/artifacts','--method','GET','-f','per_page=100'],text=True))
+          matches=[a for a in data['artifacts'] if not a['expired'] and a['name']=='stage2-historical-staging-database']
+          if not matches:raise SystemExit('Stage 2 database artifact expired; rerun the Stage 2 workflow.')
+          art=max(matches,key=lambda a:a['created_at'])
+          subprocess.run(['gh','run','download',str(art['workflow_run']['id']),'--repo',repo,'--name',art['name'],'--dir','stage2_sqlite'],check=True)
+          found=list(Path('stage2_sqlite').rglob('*.sqlite'))+list(Path('stage2_sqlite').rglob('*.db'))
+          if not found:raise SystemExit('No SQLite found in Stage 2 artifact.')
+          with open(os.environ['GITHUB_ENV'],'a') as f:
+            print('STAGE2_DB='+str(max(found,key=lambda p:p.stat().st_size).resolve()),file=f)
+          PY
+      - name: Link exact Stage 2 race IDs to original titles, audit recurring Gold Cup
+        run: |
+          python stage4_link_named_races.py --db "$STAGE2_DB" --source "$(cat historical_source_dir.txt)" --out named_race_links
+      - name: Upload race-name identity audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage4-named-race-links
+          path: named_race_links/
+          if-no-files-found: warn
+          retention-days: 14
