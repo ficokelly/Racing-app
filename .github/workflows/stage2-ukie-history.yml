@@ -1,0 +1,82 @@
+name: Stage 2 - Import older UK and Irish racing history
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'First use inspect; import after the schema is confirmed'
+        required: true
+        type: choice
+        options:
+          - inspect
+          - import
+        default: inspect
+      first_year:
+        description: 'Start year to keep (e.g. 2015)'
+        required: true
+        default: '2015'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  staging-history:
+    runs-on: ubuntu-latest
+    timeout-minutes: 105
+    steps:
+      - name: Checkout repository (read-only)
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test Stage 2 parser before fetching historical data
+        run: python -m unittest -v test_stage2.py
+      - name: Install Kaggle public-dataset downloader
+        run: python -m pip install --disable-pip-version-check kagglehub
+      - name: Download historical race archive from Kaggle
+        id: data
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+        run: |
+          python - <<'PY'
+          import os, pathlib, kagglehub
+          slug='deltaromeo/horse-racing-results-ukireland-2015-2025'
+          path=kagglehub.dataset_download(slug)
+          print('Archive folder available:',path)
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:
+              print('folder='+str(pathlib.Path(path).resolve()),file=f)
+          PY
+      - name: Validate and optionally stage older results
+        env:
+          MODE: ${{ inputs.mode }}
+          FIRST_YEAR: ${{ inputs.first_year }}
+          HISTORY_PATH: ${{ steps.data.outputs.folder }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/history_output"
+          python import_historical_ukie.py \
+            --mode "$MODE" \
+            --input "$HISTORY_PATH" \
+            --min-date "${FIRST_YEAR}-01-01" \
+            --max-date '2026-10-07' \
+            --database "$RUNNER_TEMP/history_output/historical_ukie_staging.sqlite" \
+            --report "$RUNNER_TEMP/history_output/historical_stage2_report.json"
+      - name: Upload validation report, including source columns
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage2-historical-import-report
+          path: ${{ runner.temp }}/history_output/historical_stage2_report.json
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Upload separate staging database (not to public website)
+        if: ${{ inputs.mode == 'import' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage2-historical-staging-database
+          path: ${{ runner.temp }}/history_output/historical_ukie_staging.sqlite
+          if-no-files-found: error
+          compression-level: 6
+          retention-days: 2
