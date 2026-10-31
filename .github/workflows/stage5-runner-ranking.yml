@@ -1,0 +1,42 @@
+name: Stage 5 - Historical trends and form runner rankings
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Download Stage 2 historical database
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import json,os,subprocess
+          from pathlib import Path
+          repo=os.environ['GITHUB_REPOSITORY']
+          data=json.loads(subprocess.check_output(['gh','api',f'repos/{repo}/actions/artifacts?per_page=100'],text=True))
+          matches=[a for a in data['artifacts'] if not a['expired'] and a['name']=='stage2-historical-staging-database']
+          if not matches:raise SystemExit('No unexpired Stage 2 database artifact. Rerun Stage 2 first.')
+          art=max(matches,key=lambda a:a['created_at'])
+          subprocess.run(['gh','run','download',str(art['workflow_run']['id']),'--repo',repo,'--name',art['name'],'--dir','stage5_db'],check=True)
+          files=list(Path('stage5_db').rglob('*.sqlite'))+list(Path('stage5_db').rglob('*.db'))
+          if not files:raise SystemExit('No SQLite database found in artifact.')
+          with open(os.environ['GITHUB_ENV'],'a') as f:print('STAGE5_DB='+str(max(files,key=lambda x:x.stat().st_size).resolve()),file=f)
+          PY
+      - name: Run historical trends and pre-race form ranking benchmark
+        run: python stage5_runner_model.py --db "$STAGE5_DB" --out stage5_output --start 2023 --end 2025
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage5-runner-ranking-reports
+          path: stage5_output/
+          if-no-files-found: warn
+          retention-days: 14
