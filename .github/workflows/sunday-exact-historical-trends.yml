@@ -1,0 +1,367 @@
+name: Sunday 1 Nov - Exact historical winner trends
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  historical_trends:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout source repository
+        uses: actions/checkout@v4
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Prepare Sunday racecard metadata and historical engine
+        run: |
+          cat > sunday_current_cards.csv <<'SUNDAY_CARDS_2026'
+          date,course,post_time,race_title,distance_f,race_type,race_class,going,surface,declared_runners,race_condition,source_url,data_status
+          2026-11-01,Carlisle,12:38,Pricedup Bet Gordon Richards Novices Limited Handicap Chase,21,Chase,3,,Turf,5,novice handicap,https://www.horseracinguk.co.uk/racecards/tomorrow/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Carlisle,13:13,Pricedup Now With Best Odds Guaranteed Novices Hurdle,20,Hurdle,3,,Turf,8,novice,https://www.horseracinguk.co.uk/racecards/tomorrow/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Carlisle,13:48,Pricedup Boosted Prices Daily Houghton Mares Chase (Listed),20,Chase,1,,Turf,4,mares listed,https://www.horseracinguk.co.uk/racecards/tomorrow/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Carlisle,14:23,Pricedup BOG From 10AM Castletown Handicap Hurdle,20,Hurdle,2,,Turf,10,handicap,https://www.horseracinguk.co.uk/racecards/tomorrow/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Carlisle,14:58,Colin Parker Memorial Intermediate Chase (Listed),20,Chase,1,Good,Turf,3,listed intermediate,https://www.racingpost.com/racecards/8/carlisle/2026-11-01/929406/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Carlisle,15:33,Pricedup Boosts And BOG Cumberland Handicap Chase,26,Chase,3,,Turf,8,handicap,https://www.horseracinguk.co.uk/racecards/tomorrow/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Carlisle,16:10,Pricedup Bet Open National Hunt Flat Race,17,NH Flat,4,,Turf,7,nh flat,https://www.horseracinguk.co.uk/racecards/tomorrow/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Cork,12:30,Paddy Power From The Horses Mouth Podcast Maiden Hurdle,16,Hurdle,,Yielding,Turf,11,maiden,https://www.horseracinguk.co.uk/racecards/tomorrow/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Cork,13:05,Paddy Power Did You Watch The Breeders Cup At All Mares Maiden Hurdle,16,Hurdle,,Yielding,Turf,21,mares maiden,https://www.horseracinguk.co.uk/racecards/tomorrow/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Cork,13:40,Paddy Power I Still Call It Twitter Handicap Hurdle,20,Hurdle,,Yielding,Turf,15,handicap,https://www.horseracinguk.co.uk/racecards/tomorrow/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Cork,14:15,Paddy Power How Many Days Til Christmas Irish EBF Novice Hurdle (Listed),24.25,Hurdle,1,Yielding,Turf,6,novice listed,https://www.horseracinguk.co.uk/racecards/tomorrow/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Cork,14:50,Paddy Power Betting Shops Irish EBF Novice Steeplechase (Grade 3),20,Chase,1,Yielding,Turf,8,novice graded,https://www.horseracinguk.co.uk/racecards/tomorrow/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Cork,15:25,Paddy Power Cork Grand National Handicap Chase,28,Chase,,Yielding,Turf,10,handicap,https://www.horseracinguk.co.uk/racecards/tomorrow/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Cork,16:00,Ballymaloe Foods Handicap Hurdle,16,Hurdle,,Yielding,Turf,24,handicap,https://www.horseracinguk.co.uk/racecards/tomorrow/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Curragh,12:17,Irish EBF Maiden Smullen Series,8,Flat,,Soft,Turf,23,2yo maiden,https://www.racingpost.com/racecards/2026-11-01/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Curragh,12:52,Mongey Communications Sprint Handicap,5,Flat,,Soft,Turf,13,handicap,https://www.racingpost.com/racecards/2026-11-01/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Curragh,13:27,Ryans Cleaning Race,7,Flat,,Soft,Turf,10,conditions,https://www.racingpost.com/racecards/2026-11-01/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Curragh,14:02,Isuzu Ireland Handicap,7,Flat,,Soft,Turf,26,handicap,https://www.racingpost.com/racecards/2026-11-01/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Curragh,14:37,QuinnBet Loughbrown Stakes (Group 3),16.32,Flat,1,Yielding to Soft,Turf,11,group 3,https://www.racingpost.com/racecards/178/curragh/2026-11-01/930870/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Curragh,15:12,Keadeen Hotel Premier Handicap,8,Flat,,Soft,Turf,22,handicap,https://www.racingpost.com/racecards/2026-11-01/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Curragh,15:47,Velo Coffee At The Curragh Maiden,12,Flat,,Yielding to Soft,Turf,20,maiden,https://www.racingpost.com/racecards/2026-11-01/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Curragh,16:20,QuinnBet Finale Stakes (Listed),12,Flat,1,Yielding to Soft,Turf,13,listed,https://www.racingpost.com/racecards/2026-11-01/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Huntingdon,12:22,CopyBet Support Safer Gambling Claiming Hurdle,16,Hurdle,4,,Turf,5,claiming,https://www.horseracinguk.co.uk/racecards/tomorrow/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Huntingdon,12:57,CopyBet For Football Profit Boosts Novices Hurdle,16,Hurdle,4,,Turf,10,novice,https://www.horseracinguk.co.uk/racecards/tomorrow/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Huntingdon,13:32,CopyBet Proudly Backs UK Horse Racing Novices Limited Handicap Chase,23.5,Chase,3,,Turf,4,novice handicap,https://www.horseracinguk.co.uk/racecards/tomorrow/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Huntingdon,14:07,CopyBet Follow Us On X Mares Novices Hurdle,19.5,Hurdle,4,,Turf,4,mares novice,https://www.horseracinguk.co.uk/racecards/tomorrow/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Huntingdon,14:42,CopyBet Pay First Past The Post Macer Gifford Handicap Chase,16.5,Chase,4,,Turf,8,handicap,https://www.horseracinguk.co.uk/racecards/tomorrow/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Huntingdon,15:17,CopyBet BOG Now For Racing Tomorrow Mares Handicap Hurdle,20.5,Hurdle,5,,Turf,7,mares handicap,https://www.horseracinguk.co.uk/racecards/tomorrow/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Huntingdon,15:52,CopyBet Overnight Best Odds Guaranteed Handicap Hurdle,25,Hurdle,5,,Turf,8,handicap,https://www.horseracinguk.co.uk/racecards/tomorrow/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Worcester,12:10,Copybet For Premier League Profit Boosts Novices Handicap Chase,20,Chase,4,Good to Soft,Turf,15,novice handicap,https://www.horseracinguk.co.uk/racecards/tomorrow/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Worcester,12:45,Copybet Support Safer Gambling Handicap Chase,20,Chase,3,Good to Soft,Turf,14,handicap,https://www.horseracinguk.co.uk/racecards/tomorrow/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Worcester,13:20,FBC Manby Bowdler Chasing Excellence Beginners Chase,23,Chase,3,Good to Soft,Turf,7,beginners,https://www.horseracinguk.co.uk/racecards/tomorrow/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Worcester,13:55,Copybet Pay First Past The Post Novices Handicap Chase,16.5,Chase,4,Good to Soft,Turf,10,novice handicap,https://www.horseracinguk.co.uk/racecards/tomorrow/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Worcester,14:30,PJ Nicholls KGM Fillies Juvenile Maiden Hurdle,16,Hurdle,4,Good to Soft,Turf,5,fillies juvenile maiden,https://www.horseracinguk.co.uk/racecards/tomorrow/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Worcester,15:05,Copybet Follow Us On X Maiden Hurdle,16,Hurdle,4,Good to Soft,Turf,16,maiden,https://www.horseracinguk.co.uk/racecards/tomorrow/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          2026-11-01,Worcester,15:40,Copybet Overnight Best Odds Guaranteed Novices Handicap Hurdle,23,Hurdle,5,Good to Soft,Turf,9,novice handicap,https://www.horseracinguk.co.uk/racecards/tomorrow/,Snapshot: runners/going subject to non-runners and updates; blanks are deliberately unknown
+          SUNDAY_CARDS_2026
+          cat > sunday_historical_engine.py <<'SUNDAY_PYTHON_ENGINE'
+          #!/usr/bin/env python3
+          """Sunday 2026-11-01 historical winner-versus-runner research, UK/IE only.
+
+          Uses pre-race source runner records from an existing Stage 2 SQLite database. This is
+          NOT a live selection engine. It does not infer recurring annual race IDs from
+          similar distances or sponsored names. Every comparable-race tier is labelled.
+          Python 3.11, standard library only.
+          """
+          import argparse, collections, csv, datetime as dt, json, math, re, sqlite3, statistics, unicodedata
+          from pathlib import Path
+
+          FIELDS = ['date','course','post_time','race_title','distance_f','race_type','race_class','going','surface','declared_runners','race_condition','source_url','data_status']
+          GENERIC_NO_RUN = {'NR','NONRUNNER','NON-RUNNER','NON RUNNER','WITHDRAWN','SCRATCHED','VOID'}
+          NAMED_ANCHORS = {
+           ('Curragh','14:37'):r'\bloughbrown\b',
+           ('Curragh','16:20'):r'\bfinale\s+stakes\b',
+           ('Cork','15:25'):r'\bcork\s+grand\s+national\b',
+           ('Carlisle','12:38'):r'\bgordon\s+richards\b',
+           ('Carlisle','13:48'):r'\bhoughton\b',
+           ('Carlisle','14:23'):r'\bcastletown\b',
+           ('Carlisle','14:58'):r'\bcolin\s+parker\b',
+           ('Carlisle','15:33'):r'\bcumberland\b',
+           ('Huntingdon','14:42'):r'\bmacer\s+gifford\b',
+          }
+
+          def norm(s):
+           s=unicodedata.normalize('NFKD',str(s or '').lower()).encode('ascii','ignore').decode()
+           return ' '.join(re.findall(r'[a-z0-9]+',s))
+          def course(s):return re.sub(r'\s+(ire|gb|aw)$','',norm(s))
+          def kind(s):
+           n=norm(s)
+           if n in ('chase','steeplechase','steeple chase'):return 'chase'
+           if n in ('hurdle','hurdles'):return 'hurdle'
+           if n in ('nh flat','national hunt flat','bumper'):return 'nh flat'
+           if n in ('flat','flat turf'):return 'flat'
+           return n
+
+          def num(s):
+           try:
+            v=float(s);return v if math.isfinite(v) else None
+           except (ValueError,TypeError):return None
+
+          def class_num(x):
+           if x is None:return None
+           m=re.search(r'\b([1-7])\b',str(x))
+           return int(m.group(1)) if m else None
+
+          def distance_num(v):
+           x=num(v)
+           if x is not None:return x
+           s=str(v or '').lower().replace(' ','').replace('½','.5').replace('¼','.25').replace('¾','.75')
+           m=re.search(r'(\d+(?:\.\d+)?)m',s);f=re.search(r'(\d+(?:\.\d+)?)f',s)
+           y=re.search(r'(\d+(?:\.\d+)?)y',s)
+           if not(m or f or y):return None
+           return (8*float(m.group(1)) if m else 0)+(float(f.group(1)) if f else 0)+(float(y.group(1))/220 if y else 0)
+
+          def going_score(value):
+           s=norm(value)
+           if not s:return None
+           if 'standard' in s:return -1
+           if 'heavy' in s:return 4
+           if 'soft' in s and 'yield' in s:return 2.7
+           if 'good' in s and 'soft' in s:return 2
+           if 'soft' in s:return 3
+           if 'good' in s and 'yield' in s:return 1.5
+           if 'yield' in s:return 2
+           if 'firm' in s and 'good' in s:return 0.5
+           if 'firm' in s:return 0
+           if 'good' in s:return 1
+           return None
+
+          def band(n):
+           if n is None:return 'unknown'
+           if n<=5:return '2-5'
+           if n<=9:return '6-9'
+           if n<=13:return '10-13'
+           return '14+'
+
+          def cond_flags(text):
+           s=norm(text)
+           return {
+            'handicap':bool(re.search(r'\bhandicap\b',s)),
+            'novice':bool(re.search(r'\bnovice\w*\b',s)),
+            'maiden':bool(re.search(r'\bmaiden\b',s)),
+            'mares':bool(re.search(r'\bmares?\b|\bfillies?\b',s)),
+            'juvenile':bool(re.search(r'\bjuvenile\b',s)),
+            'beginners':bool(re.search(r'\bbeginners?\b',s)),
+            'claiming':bool(re.search(r'\bclaim\w*\b',s)),
+            'listed':bool(re.search(r'\blisted\b',s)),
+            'group':bool(re.search(r'\bgroup\s*[123]\b',s)),
+            'grade':bool(re.search(r'\bgrade\s*[123]\b',s)),
+           }
+
+          def conditions_match(card,old_title,strict=True):
+           a=cond_flags(str(card['race_condition'])+' '+card['race_title']);b=cond_flags(old_title)
+           # These properties define fundamentally different races. Never treat a handicap
+           # as a non-handicap, or a juvenile/mares race as unrestricted, at strict tiers.
+           core=('handicap','novice','maiden','mares','juvenile','beginners','claiming')
+           if strict:
+            if any(a[k]!=b[k] for k in core):return False
+            if a['listed'] and not b['listed']:return False
+            if a['group'] and not b['group']:return False
+            if a['grade'] and not b['grade']:return False
+           else:
+            if a['handicap']!=b['handicap']:return False
+            if a['mares']!=b['mares']:return False
+            if a['juvenile']!=b['juvenile']:return False
+            if a['maiden'] and not b['maiden']:return False
+           return True
+
+          def season_gap(d, target):
+           # Days within seasonal window accounting for Dec/Jan and leap days.
+           return min(abs((d.replace(year=2000)-target.replace(year=2000)).days),
+                      abs((d.replace(year=2000)-target.replace(year=2000)).days-366),
+                      abs((d.replace(year=2000)-target.replace(year=2000)).days+366))
+
+          def region(c):
+           return 'IRE' if course(c) in {'cork','curragh'} else 'GB'
+
+          def writecsv(path, cols, rows):
+           with open(path,'w',newline='',encoding='utf-8-sig') as f:
+            w=csv.DictWriter(f,fieldnames=cols,extrasaction='ignore');w.writeheader();w.writerows(rows)
+
+          class Repository:
+           def __init__(self, db):
+            self.cx=sqlite3.connect('file:'+Path(db).resolve().as_posix()+'?mode=ro',uri=True)
+            self.cx.row_factory=sqlite3.Row
+            expected={'id','race_date','course','race_type','surface','distance_f','going','race_class'}
+            available={r['name'] for r in self.cx.execute('pragma table_info(historical_races)')}
+            if expected-available:raise ValueError(f'Missing historical_races columns: {expected-available}')
+            needed={'race_id','horse_name','finish_pos','outcome','age','official_rating','draw','sp_decimal','trainer','jockey'}
+            found={r['name'] for r in self.cx.execute('pragma table_info(historical_runs)')}
+            if needed-found:raise ValueError(f'Missing historical_runs columns: {needed-found}')
+            self.cache={}
+           def get_runs(self,rid):
+            if rid not in self.cache:
+             q='select horse_name,finish_pos,outcome,age,official_rating,draw,sp_decimal,trainer,jockey from historical_runs where race_id=?'
+             rows=[dict(x) for x in self.cx.execute(q,(rid,))]
+             starters=[x for x in rows if norm(x.get('outcome')).upper().replace(' ','') not in GENERIC_NO_RUN]
+             # Explicit NR strings checked separately; missing SP is not proof of non-runner.
+             starters=[x for x in starters if str(x.get('outcome') or '').strip().upper() not in GENERIC_NO_RUN]
+             winners=[x for x in starters if x['finish_pos']==1]
+             ok=2<=len(starters)<=40 and 1<=len(winners)<=3
+             self.cache[rid]={'runners':starters,'valid':ok,'field':len(starters),'winners':len(winners),'dead_heat':len(winners)>1}
+            return self.cache[rid]
+
+          def summary(n):return round(n,2) if n is not None else ''
+
+          def main():
+           ap=argparse.ArgumentParser();ap.add_argument('--db',required=True);ap.add_argument('--cards',required=True);ap.add_argument('--mapping',required=True);ap.add_argument('--out',default='sunday_strict_trends'); args=ap.parse_args()
+           out=Path(args.out);out.mkdir(parents=True,exist_ok=True)
+           cards=list(csv.DictReader(open(args.cards,encoding='utf-8-sig')))
+           assert len(cards)==36 and len({(r['course'],r['post_time']) for r in cards})==36,'Expected exactly 36 distinct Sunday races'
+           target=dt.date(2026,11,1)
+           cards=[{**c,'distance_n':distance_num(c['distance_f']),'size_n':int(c['declared_runners']), 'class_n':class_num(c['race_class']), 'ground_n':going_score(c['going'])} for c in cards]
+           db=Repository(args.db)
+           # Read race metadata and exact original titles from the previously audited
+           # race identity map; preserve source keys to the unmodified Stage 2 SQLite DB.
+           meta={}; index={}; duplicate_meta=0
+           with open(args.mapping,encoding='utf-8-sig',newline='') as f:
+            for row in csv.DictReader(f):
+             rid=row['stage2_race_id']
+             if rid in meta:duplicate_meta+=1;continue
+             meta[rid]={'race_title':row.get('race_name',''),'event_id':row.get('event_id',''), 'match_status':row.get('match_status','')}
+           if duplicate_meta:raise ValueError(f'Mapping contains {duplicate_meta} duplicate individual race keys')
+           wanted={course(c['course']) for c in cards}
+           races_by_course=collections.defaultdict(list);races_by_region_type=collections.defaultdict(list)
+           missing_map=0;all_prior=0
+           for x in db.cx.execute('select id,race_date,course,race_type,surface,distance_f,going,race_class from historical_races where race_date<?',(target.isoformat(),)):
+            try:d=dt.date.fromisoformat(str(x['race_date'])[:10])
+            except ValueError:continue
+            c=course(x['course']);t=kind(x['race_type'])
+            if t not in {'flat','nh flat','hurdle','chase'}:continue
+            source=meta.get(x['id'])
+            if source is None:missing_map+=1;continue
+            o={'rid':x['id'],'date':d,'course':c,'kind':t,'dist':num(x['distance_f']),'going':going_score(x['going']),'class':class_num(x['race_class']),'race_name':source['race_title'],'event_id':source['event_id'],'status':source['match_status'], 'raw_course':x['course'], 'raw_going':x['going'], 'raw_class':x['race_class']}
+            if c in wanted:races_by_course[c].append(o)
+            if (c in wanted or t in {'flat','nh flat','hurdle','chase'}) and region(x['course']) in ('GB','IRE'):
+             # For fallback, country membership must be verified separately below.
+             pass
+            all_prior+=1
+           # Country-wide fallback derived from the known British and Irish course names
+           # of Sunday tracks only would be misleading: no cross-track pool is generated.
+           tiers=[
+            ('A_STRICT_SAME_COURSE',0.75,60,True,True,True,True,True),
+            ('B_GOING_RELAXED',1.0,90,True,False,True,True,True),
+            ('C_CLASS_RELAXED',1.25,120,False,False,True,True,True),
+            ('D_FIELD_RELAXED',1.5,180,False,False,False,True,True),
+            ('E_SAME_COURSE_LONG_HISTORY',1.5,366,False,False,False,False,False),
+           ]
+           record_rows=[];trend_rows=[];runner_rows=[];named_rows=[];pool_rows=[];missing=[]
+           for c in cards:
+            targetkey=(c['course'],c['post_time']);potential=races_by_course[course(c['course'])]
+            valid_pool=[];chosen=None;counts={};eligible_by_tier={};
+            # Grouping controlled by historical *race date* only; today's card never appears in training.
+            for label,tolerance,window,need_class,need_ground,need_field,strict_cond,window_active in tiers:
+             eligible=[]
+             for r in potential:
+              if r['kind']!=kind(c['race_type']) or r['dist'] is None or c['distance_n'] is None:continue
+              if abs(r['dist']-c['distance_n'])>tolerance:continue
+              if window_active and season_gap(r['date'],target)>window:continue
+              if not conditions_match(c,r['race_name'],strict_cond):continue
+              if need_class and c['class_n'] is not None:
+               if r['class']!=c['class_n']:continue
+              if need_ground and c['ground_n'] is not None:
+               if r['going'] is None or abs(c['ground_n']-r['going'])>0.8:continue
+              stats=db.get_runs(r['rid'])
+              if not stats['valid']:continue
+              if need_field and band(stats['field'])!=band(c['size_n']):continue
+              eligible.append(r)
+             counts[label]=len(eligible);eligible_by_tier[label]=eligible
+             if not chosen and len(eligible)>=40:chosen=label;valid_pool=eligible
+            if chosen is None:
+             chosen=next((name for name,*_ in reversed(tiers) if counts[name]>=1),'NO_COMPARABLE_HISTORY')
+             valid_pool=eligible_by_tier.get(chosen,[])
+            size=sum(db.get_runs(r['rid'])['field'] for r in valid_pool)
+            unique_years=len({r['date'].year for r in valid_pool})
+            dh=sum(db.get_runs(r['rid'])['dead_heat'] for r in valid_pool)
+            named_anchor=NAMED_ANCHORS.get(targetkey)
+            named_history=[]
+            if named_anchor:
+             for r in potential:
+              if r['kind']!=kind(c['race_type']):continue
+              if re.search(named_anchor,norm(r['race_name'])):
+               res=db.get_runs(r['rid'])
+               if not res['valid']:continue
+               named_history.append(r)
+               wins=[v for v in res['runners'] if v['finish_pos']==1]
+               named_rows.append({'course':c['course'],'post_time':c['post_time'],'target_race':c['race_title'],'edition_year':r['date'].year,'historical_date':r['date'].isoformat(),'historical_race_name':r['race_name'],'historical_race_id':r['rid'],'provisional_event_id':r['event_id'],'identity_status':'TITLE_ANCHOR_CANDIDATE_NOT_EXTERNALLY_VERIFIED', 'winner_names':' / '.join(x['horse_name'] for x in wins),'winning_sp_decimal':' / '.join(str(x['sp_decimal'] or '') for x in wins),'field_size':res['field'],'dead_heat':res['dead_heat']})
+            rec={'meeting':c['course'],'post_time':c['post_time'],'race_title':c['race_title'],'race_type':c['race_type'],'race_class':c['race_class'],'going':c['going'],'distance_f':c['distance_n'],'declared_runners_snapshot':c['size_n'],'race_condition':c['race_condition'],'named_title_candidates':len(named_history),'named_candidate_years':len({r['date'].year for r in named_history}),'selected_tier':chosen,'historical_races_in_selected_tier':len(valid_pool),'historical_runner_starts_in_selected_tier':size,'historical_years_in_selected_tier':unique_years,'historic_dead_heat_races_in_selected_tier':dh,**counts,'evidence_strength':('DESCRIPTIVE_SAMPLE_AT_LEAST_40_RACES' if len(valid_pool)>=40 else 'SMALL_SAMPLE_DO_NOT_INFER_TRENDS' if valid_pool else 'NO_SUITABLE_HISTORICAL_RUNNERS'),'going_status':('UNKNOWN_NO_GOING_FILTER' if c['ground_n'] is None else 'SOURCE_SNAPSHOT'),'class_status':('UNSPECIFIED_CLASS_NO_CLASS_FILTER' if c['class_n'] is None else 'SOURCE_SNAPSHOT'),'source_url':c['source_url']}
+            record_rows.append(rec)
+            if not valid_pool:missing.append(rec);continue
+            attr=collections.defaultdict(lambda:[0,0.]); total=sum(db.get_runs(r['rid'])['field'] for r in valid_pool)
+            for r in valid_pool:
+             dat=db.get_runs(r['rid']);w=dat['winners'];score=1/w
+             pool_rows.append({'sunday_course':c['course'],'sunday_time':c['post_time'],'tier':chosen,'historic_race_id':r['rid'],'historic_date':r['date'].isoformat(),'historic_name':r['race_name'],'historic_class':r['raw_class'],'historic_going':r['raw_going'],'historic_field_size':dat['field'],'historic_winner_count':w,'historic_event_id':r['event_id'],'event_link_status':r['status']})
+             for x in dat['runners']:
+              iswin=x['finish_pos']==1
+              # Only use fields known prior to this historical race: age, pre-race OR and draw.
+              age=num(x['age']);orating=num(x['official_rating']);draw=num(x['draw'])
+              dimensions=[('age',str(int(age)) if age and 2<=age<=20 else 'unknown'),
+                          ('age_group',('2-3' if age<=3 else '4-5' if age<=5 else '6-7' if age<=7 else '8-9' if age<=9 else '10+') if age and age>=2 else 'unknown'),
+                          ('official_rating_10',str(int(orating//10)*10)+'-'+str(int(orating//10)*10+9) if orating is not None and 0<orating<200 else 'unknown')]
+              if kind(c['race_type'])=='flat':
+               dimensions.append(('draw_relative',('low_third' if draw<=dat['field']/3 else 'middle_third' if draw<=dat['field']*2/3 else 'high_third') if draw is not None and 1<=draw<=dat['field'] else 'unknown'))
+              for dim,v in dimensions:
+               attr[(dim,v)][0]+=1
+               if iswin:attr[(dim,v)][1]+=score
+              runner_rows.append({'sunday_course':c['course'],'sunday_time':c['post_time'],'historic_date':r['date'].isoformat(),'historic_race_id':r['rid'],'historic_horse':x['horse_name'],'historic_finish_pos':x['finish_pos'],'historic_winner_credit':round(score if iswin else 0,3),'age':x['age'],'official_rating':x['official_rating'],'draw':x['draw'],'sp_decimal':x['sp_decimal'],'trainer':x['trainer'],'jockey':x['jockey'],'pool_tier':chosen})
+            # Winner-credit denominator is number of historic races including dead heats.
+            winbase=len(valid_pool)
+            for (dim,val),(n,wins) in sorted(attr.items()):
+             if val=='unknown' or n<3:continue
+             share=n/total;wshare=wins/winbase
+             enrich=(wshare/share if share else None)
+             trend_rows.append({'course':c['course'],'post_time':c['post_time'],'race_title':c['race_title'],'tier':chosen,'historical_races':winbase,'historical_runners':total,'dimension':dim,'value':val,'runners_with_trait':n,'winner_credit_with_trait':round(wins,3),'runner_share_pct':round(100*share,2),'winner_share_pct':round(100*wshare,2),'enrichment_vs_runner_share':round(enrich,3) if enrich is not None else '', 'evidence_warning':('AT_LEAST_40_RACES_EXPLORATORY_NOT_VALIDATED' if winbase>=40 and wins>=5 else 'LOW_SAMPLE_OR_FEW_WINNERS')})
+           cols=list(record_rows[0]);writecsv(out/'sunday_race_historical_comparisons.csv',cols,record_rows)
+           if named_rows:writecsv(out/'named_annual_title_candidates.csv',list(named_rows[0]),named_rows)
+           if trend_rows:writecsv(out/'historical_winner_vs_runner_traits.csv',list(trend_rows[0]),trend_rows)
+           if pool_rows:writecsv(out/'selected_historical_races.csv',list(pool_rows[0]),pool_rows)
+           if runner_rows:writecsv(out/'actual_historical_runner_records.csv',list(runner_rows[0]),runner_rows)
+           coverage={'status':'COMPLETE','date':'2026-11-01','races_in_snapshot':len(cards),'historical_database':'Stage 2 historical_races + historical_runs (read-only)','source_named_race_mapping':'Stage 4 reference mapping, not an official identity authority','race_metadata_before_today':all_prior,'records_missing_source_title_mapping':missing_map,'races_with_40plus_historic_comparisons':sum(x['historical_races_in_selected_tier']>=40 for x in record_rows),'races_with_1plus_historic_comparisons':sum(x['historical_races_in_selected_tier']>=1 for x in record_rows),'races_without_historic_comparisons':[x['meeting']+' '+x['post_time'] for x in missing],'named_title_candidate_editions':len(named_rows),'selected_historical_runner_records':len(runner_rows),'limitations':['Historical winners compared with all actual historical starters; dead-heat winners have fractional winner-credit summing to one per race.','Tiers A-D require current course, discipline, eligible race conditions, distance and varying going/class/field size constraints. Tier E is explicitly broad.','When historical class is missing, tiers requiring class omit the race; relaxed tiers may include it.','Historic race titles are imperfect evidence of restrictions and grade. Some source metadata may be misclassified.','Named annual matching uses original title anchors, not independent proof of event continuity.','Current runner names and current form are NOT in the published 36-race snapshot; no runner ranking or win-probability claims made.','Source published going and runner counts can change, especially through non-runners.','Historical trait associations are descriptive and do NOT imply betting value, out-of-sample predictive accuracy or causal effects.','Ratings are used as pre-race official ratings; RPR and Topspeed are excluded due possible post-race data leakage.','Exact going/class restrictions in historical records can leave sparse samples; the tier selected is always recorded.','Not all available records are necessarily UK/Ireland-only; per-race comparisons are at the same known course only.']}
+           (out/'research_audit.json').write_text(json.dumps(coverage,indent=2))
+           (out/'README_FIRST.txt').write_text('Sunday 1 November 2026 — actual historical winner-vs-runner research.\nRead sunday_race_historical_comparisons.csv first.\nDo not conflate named_title_candidates with verified annual race IDs.\nA = strict; B = going relaxed; C = class relaxed; D = field relaxed; E = broad same-course context.\nLow samples cannot establish robust trends. No live recommendations in this stage.\n')
+           print(json.dumps(coverage,indent=2))
+
+          if __name__=='__main__':main()
+          SUNDAY_PYTHON_ENGINE
+      - name: Retrieve existing Stage 2 database and Stage 4 named race mapping
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'DOWNLOAD_EXISTING_ARTIFACTS'
+          import json, os, subprocess
+          from pathlib import Path
+          repo=os.environ['GITHUB_REPOSITORY']
+          result=subprocess.check_output(['gh','api',f'repos/{repo}/actions/artifacts','--method','GET','-f','per_page=100'],text=True)
+          artifacts=json.loads(result)['artifacts']
+          for wanted,folder,key,needle,extensions in [
+           ('stage2-historical-staging-database','historic_db','SOURCE_DB',None,('.sqlite','.db')),
+           ('stage4-reference-named-events-and-winners','race_identity_map','IDENTITY_MAP','all_races_with_reference_event_ids.csv',('.csv',)),
+          ]:
+           matches=[a for a in artifacts if not a['expired'] and a['name']==wanted]
+           if not matches:raise SystemExit(f'Missing or expired {wanted}. Rerun the source workflow first.')
+           a=max(matches,key=lambda x:x['created_at'])
+           print('Downloading',a['name'],'from run',a['workflow_run']['id'],flush=True)
+           subprocess.run(['gh','run','download',str(a['workflow_run']['id']),'--repo',repo,'--name',a['name'],'--dir',folder],check=True)
+           paths=[p for p in Path(folder).rglob('*') if p.is_file() and (p.name==needle if needle else p.suffix in extensions)]
+           if not paths:raise SystemExit(f'No matching file found in {wanted}: {folder}')
+           path=max(paths,key=lambda p:p.stat().st_size).resolve()
+           with open(os.environ['GITHUB_ENV'],'a') as f:print(key+'='+str(path),file=f)
+           print(key,str(path),path.stat().st_size,flush=True)
+          DOWNLOAD_EXISTING_ARTIFACTS
+      - name: Compare previous winners with every historical starter
+        run: |
+          python sunday_historical_engine.py \
+            --db "$SOURCE_DB" \
+            --mapping "$IDENTITY_MAP" \
+            --cards sunday_current_cards.csv \
+            --out sunday_historical_research
+      - name: Upload Sunday historical research report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sunday-2026-exact-historical-trends
+          path: sunday_historical_research/
+          if-no-files-found: warn
+          retention-days: 30
