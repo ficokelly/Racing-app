@@ -1,4 +1,4 @@
-name: Stage 13 - Racing Hot Pots new strategy and learning
+name: Stage 13 - Selective clear-leader strategy and learning
 
 on:
   workflow_dispatch:
@@ -971,7 +971,7 @@ jobs:
           No result from the target date is used to generate its forecasts. No live betting.
           Candidate learning is held back until chrono validation succeeds.
           """
-          import argparse, collections, csv, datetime as dt, json, math, os, re, statistics, sys, unicodedata, shutil
+          import argparse, collections, csv, datetime as dt, json, math, os, re, statistics, sys, unicodedata, shutil, sqlite3
           from pathlib import Path
           from zoneinfo import ZoneInfo
           import stage10_exact_history as exact
@@ -1064,6 +1064,84 @@ jobs:
             anchors[key]=(label,pattern,discipline);methods[key]=method
            return anchors,methods
 
+          # Courses with unambiguous historical flat surface when the Stage 2 dataset
+          # has no explicit surface (currently all historical_races.surface are NULL).
+          KNOWN_AW_FLAT={'kempton','wolverhampton','southwell','newcastle','dundalk','chelmsford city','chelmsford'}
+          KNOWN_TURF_FLAT=set('ascot ayr bath beverley brighton carlisle catterick chester cork curragh doncaster epsom goodwood gowran park haydock hamilton kilbeggan killarney leopardstown leicester limerick listowel market rasen musselburgh naas navan newbury newmarket nottingham pontefract redcar ripon salisbury sandown thirsk tipperary tramore warwick wetherby windsor worcester yarmouth york'.split(' '))
+          # Use distinct multiword names below; bare ambiguous tracks remain fail-closed.
+          KNOWN_TURF_FLAT|={'gowran park','market rasen'}
+          KNOWN_TURF_FLAT.discard('gowran');KNOWN_TURF_FLAT.discard('market')
+
+          def flat_surface(course,source_surface):
+           surf=exact.norm(source_surface)
+           if surf in ('aw','all weather','polytrack','tapeta','fibresand','synthetic'):return 'AW'
+           if surf in ('turf','grass'):return 'TURF'
+           if not surf:
+            return 'AW' if course in KNOWN_AW_FLAT else 'TURF' if course in KNOWN_TURF_FLAT else None
+           return None
+
+          def fallback_candidates(db,mapping,groups,day,already):
+           """Same course, race type, handicap status, class, surface, and tight distance.
+           No invented class/surface when source lacks those attributes; use last 5y,
+           broaden to 8y only when fewer than five comparable races are available.
+           """
+           spec={}
+           for key,rr in groups.items():
+            if key in already:continue
+            sample=rr[0];kind=exact.kind(sample.get('type'));course=key[0]
+            dist=safe_float(sample.get('distance_f'));cls=exact.norm(sample.get('race_class'))
+            title=exact.norm(sample.get('race_name'));surface=flat_surface(course,sample.get('surface')) if kind=='flat' else 'TURF'
+            if kind not in ('flat','hurdle','chase') or dist is None or not cls or not re.fullmatch(r'class [1-7]',cls):continue
+            if not surface or 'handicap' not in title:continue
+            spec[key]=(kind,cls,dist,surface,('novice' in title),('maiden' in title))
+           if not spec:return {},{}
+           courses={k[0] for k in spec}
+           target=dt.date.fromisoformat(day)
+           cutoff=(target-dt.timedelta(days=365*8+3)).isoformat()
+           cx=sqlite3.connect('file:'+str(Path(db).resolve())+'?mode=ro',uri=True)
+           cx.row_factory=sqlite3.Row
+           acceptable=collections.defaultdict(list)
+           for m in cx.execute('SELECT id,race_date,course,race_type,race_class,distance_f,surface FROM historical_races WHERE race_date>=? AND race_date<?',(cutoff,day)):
+            course=exact.norm(m['course']);date=str(m['race_date'])[:10]
+            if course not in courses:continue
+            for key,c in spec.items():
+             if key[0]!=course:continue
+             kind,cls,dist,surf,novice,maiden=c
+             md=exact.num(m['distance_f']);maxdist=0.5 if dist<=8 else 1.0
+             if exact.kind(m['race_type'])!=kind or exact.norm(m['race_class'])!=cls or md is None or abs(md-dist)>maxdist:continue
+             history_surface=flat_surface(course,m['surface']) if kind=='flat' else 'TURF'
+             if history_surface!=surf:continue
+             acceptable[key].append((str(m['id']),date))
+           cx.close()
+           wanted={rid for rows in acceptable.values() for rid,_ in rows}
+           if not wanted:return {},{}
+           maprows={}
+           with open(mapping,encoding='utf-8-sig',newline='') as file:
+            for m in csv.DictReader(file):
+             rid=m.get('stage2_race_id')
+             if rid in wanted:maprows[rid]=m
+           out={};methods={}
+           for key,rows in acceptable.items():
+            kind,cls,dist,surf,novice,maiden=spec[key]
+            eligible=[]
+            for rid,date in rows:
+             m=maprows.get(rid)
+             if not m:continue
+             text=exact.norm(m.get('race_name'))
+             if ('handicap' in text)!=True or ('novice' in text)!=novice or ('maiden' in text)!=maiden:continue
+             eligible.append((m,date))
+            last5=(target-dt.timedelta(days=365*5+2)).isoformat()
+            subset=[m for m,date in eligible if date>=last5]
+            period=5
+            if len(subset)<5:subset=[m for m,_ in eligible];period=8
+            if len(subset)<5:continue
+            # Same named-event matching always has priority; this branch can only
+            # fill races that did not meet the exact-event matching threshold.
+            out[key]=subset
+            methods[key]={'years':period,'races':len(subset), 'class':cls,'distance_f':dist,'surface':surf,'discipline':kind,
+                          'source':'SAME_COURSE_RACE_TYPE_HANDICAP_CLASS_SURFACE_DISTANCE'}
+           return out,methods
+
           def produce_history(args,races,history_dir):
            keys=sorted(races)
            cards=[]
@@ -1076,13 +1154,31 @@ jobs:
             w=csv.DictWriter(f,fieldnames=['meeting','time','race','distance_f','type']);w.writeheader();w.writerows(cards)
            anchors,methods=make_exact_anchors(args.mapping,races,args.day)
            exact.TODAY=args.day
-           exact.NAMED_EVENT_ANCHORS=anchors
-           # Stage 10 original template had the 2025 year-end cutoff; the immutable
-           # mapping currently ends 2025. Prevent matching any day >= target by patching
-           # the pre-2026 source's 2026 upper bound only in this daily wrapper.
-           exact.process(argparse.Namespace(db=args.db,mapping=args.mapping,cards=str(cards_path),out=str(history_dir)))
+           exact.NAMED_EVENT_ANCHORS=anchors.copy()
+           # Determine which exact named events REALLY have sufficient mapped editions,
+           # rather than relying on a title phrase alone.
+           preview=[{'meeting':r[0]['course'],'time':k[1],'race':r[0].get('race_name',''),'distance_f':r[0].get('distance_f') or '', 'type':r[0].get('type') or '',
+                     'key':k} for k,r in races.items()]
+           named,rejected=exact.matched_mapping(args.mapping,preview)
+           verified_named={k for k,v in named.items() if len(v)>=2}
+           fallbacks,fbmethods=fallback_candidates(args.db,args.mapping,races,args.day,verified_named)
+           for key,rows in fallbacks.items():
+            info=fbmethods[key];label=f"{info['distance_f']:g}f {info['class'].title()} {info['discipline'].title()} Handicap {info['surface']} @ {races[key][0]['course']} ({info['years']}y)"
+            exact.NAMED_EVENT_ANCHORS[key]=(label,r'(?!)',info['discipline'])
+           original_matcher=exact.matched_mapping
+           def matched_with_fallback(mapping,cards):
+            matched,bad=original_matcher(mapping,cards)
+            for k,rows in fallbacks.items():
+             if k not in verified_named:matched[k]=rows
+            return matched,bad
+           exact.matched_mapping=matched_with_fallback
+           try:exact.process(argparse.Namespace(db=args.db,mapping=args.mapping,cards=str(cards_path),out=str(history_dir)))
+           finally:exact.matched_mapping=original_matcher
            audit=read_json(history_dir/'audit.json',{})
            audit['anchor_methods']={k[0]+' '+k[1]:v for k,v in methods.items()}
+           audit['fallback_enabled']=True
+           audit['fallback_scopes']={k[0]+'|'+k[1]:v for k,v in fbmethods.items()}
+           audit['scope']='Exact named-event first. Unmatched race fallback: verified same course, handicap status, type, class, surface, and distance; most recent five years, extend to eight only if sparse.'
            write_json(history_dir/'audit.json',audit)
            return audit
 
@@ -1122,6 +1218,40 @@ jobs:
            odds=[1/(1+exp(-z)) for z in logits]
            total=sum(odds)
            return [p/total if total>0 else 1/len(rows) for p in odds]
+
+          def choose_single_selection(entry, model=None, min_research_gap=8.0):
+           """Return at most one clear leader, or a reason to abstain.
+
+           The runner-up is the next most competitive horse in the ENTIRE field,
+           not merely the next trend qualifier. Scores are research scores until
+           a separately validated probability model exists.
+           """
+           if len(entry)<2:return None, {'reason':'INSUFFICIENT_OPPOSITION','gap':None}
+           validated=bool(model and model.get('state')=='VALIDATED')
+           if validated and all(r.get('predicted_win_probability') is not None for r in entry):
+            ranked=sorted(entry,key=lambda r:float(r['predicted_win_probability']),reverse=True)
+            top,second=ranked[:2]
+            a,b=float(top['predicted_win_probability']),float(second['predicted_win_probability'])
+            gap=100*(a-b);minimum=8.0 if len(entry)<=8 else 5.0
+            base=0.23 if len(entry)<=8 else 0.16
+            quality=(a>=base and a>=b*1.25 and gap>=minimum)
+            mode='VALIDATED_PROBABILITY';reason='CLEAR_PROBABILITY_LEADER' if quality else 'PROBABILITY_LEAD_TOO_SMALL'
+           else:
+            ranked=sorted(entry,key=lambda r:(float(r.get('score') or 0),str(r.get('horse'))),reverse=True)
+            top,second=ranked[:2]
+            gap=float(top.get('score') or 0)-float(second.get('score') or 0)
+            quality=(gap>=min_research_gap and float(top.get('score') or 0)>=72.0)
+            mode='RESEARCH_SCORE_NOT_PROBABILITY';reason='CLEAR_RESEARCH_LEADER' if quality else 'RESEARCH_LEAD_TOO_SMALL'
+           details={'reason':reason,'metric':mode,'gap':round(gap,2),'minimum_gap':minimum if validated else min_research_gap,
+                    'leader':top['horse'],'second':second['horse'],
+                    'leader_value':round(a*100,2) if validated else top.get('score'),
+                    'second_value':round(b*100,2) if validated else second.get('score')}
+           if not top.get('qualifies'):
+            details['reason']='HIGHEST_RANKED_HORSE_NOT_HISTORICAL_QUALIFIER';return None,details
+           if top.get('identity_status')!='MATCHED':
+            details['reason']='LEADER_IDENTITY_NOT_VERIFIED';return None,details
+           if not quality:return None,details
+           return top,details
 
           def race_key(r):return '|'.join((str(r.get('date','')),form.norm(r.get('course')),str(r.get('time',''))))
 
@@ -1234,14 +1364,14 @@ jobs:
            hist_dir=out/'exact_history'
            cached=Path(args.cached_history) if getattr(args,'cached_history',None) else None
            cache_audit=read_json(cached/'audit.json',{}) if cached and cached.is_dir() else {}
-           if cache_audit.get('target_day')==target and cache_audit.get('status')=='COMPLETE' and (cached/'actual_historical_runners.csv').is_file():
+           if cache_audit.get('fallback_enabled') and cache_audit.get('target_day')==target and cache_audit.get('status')=='COMPLETE' and (cached/'actual_historical_runners.csv').is_file():
             shutil.copytree(cached,hist_dir,dirs_exist_ok=True)
             audit=cache_audit
             print('Reusing Stage 10 full historical exact-event research for target day',target,flush=True)
            else:audit=produce_history(args,groups,hist_dir)
            if not audit.get('matching_races'):
             report={'version':1,'day':target,'generated_at':now.isoformat(),'model_status':model.get('state') if model else 'RESEARCH_ONLY_UNVALIDATED',
-              'status':'NO_VERIFIED_NAMED_EVENT_MATCHES','races':[], 'message':'No qualifying exact named race: no fallback to other races.'}
+              'status':'NO_COMPARABLE_HISTORICAL_MATCHES','races':[], 'message':'No named-event or verified same-course same-conditions historical match.'}
            else:
             stage12_dir=out/'form_analysis'
             a=argparse.Namespace(db=args.db,stage10=str(hist_dir),cards=args.cards,odds=args.odds,repo=str(root),day=target,out=str(stage12_dir))
@@ -1322,23 +1452,41 @@ jobs:
              probabilities=predict_prob(model,entry) if model and model.get('state')=='VALIDATED' else [None]*len(entry)
              for r,pr in zip(entry,probabilities):r['predicted_win_probability']=round(pr,5) if pr is not None else None
              qualifying=[r for r in entry if r['qualifies']]
-             if qualifying:
-              top=max(qualifying,key=lambda r:r['predicted_win_probability'] if r['predicted_win_probability'] is not None else r['score'] or 0)
-             else:top=None
-             value=None
-             if model and model.get('state')=='VALIDATED':
-              choices=[r for r in qualifying if r['price_decimal'] is not None and r['predicted_win_probability'] is not None]
-              choices=[r for r in choices if r['predicted_win_probability']*r['price_decimal']>1.05]
-              value=max(choices,key=lambda r:r['predicted_win_probability']*r['price_decimal']) if choices else None
+             top,decision=choose_single_selection(entry,model)
+             # Frozen pre-off selection: later refreshes must not replace it with
+             # another horse from the same race, regardless of changing form/odds.
+             prior=next((item for item in old_results if item.get('role')=='MLW' and
+               item.get('date')==target and form.norm(item.get('course'))==key[0]
+               and item.get('time')==key[1]),None)
+             if prior:
+              prior_runner=next((r for r in entry if
+                (prior.get('horse_id') and r.get('horse_id')==prior.get('horse_id'))
+                 or form.name_norm(r.get('horse'))==form.name_norm(prior.get('horse'))),None)
+              top=prior_runner if prior_runner and prior_runner.get('qualifies') else None
+              decision={'reason':'FROZEN_FIRST_PUBLISHED_SELECTION' if top else 'PREVIOUS_SELECTION_NOT_CURRENTLY_ELIGIBLE',
+                'metric':prior.get('selection_metric','RESEARCH_SCORE_NOT_PROBABILITY'),
+                'gap':prior.get('margin'),'minimum_gap':prior.get('selection_threshold'),
+                'second':prior.get('runner_up'),'leader':prior.get('horse')}
+             # A second VALUE pick would break the one-horse-per-race rule.
+             # Betting value is metadata about the selected horse, never a second pick.
+             value_edge=(top['predicted_win_probability']*top['price_decimal']-1
+              if top and top.get('predicted_win_probability') is not None and top.get('price_decimal') else None)
              match_row=next((m for m in form.loadcsv(hist_dir/'race_match_audit.csv') if form.norm(m['meeting'])==key[0] and m['time']==key[1]),{})
              live=bool(off and off>now+dt.timedelta(minutes=3))
+             source_scope=audit.get('fallback_scopes',{}).get(key[0]+'|'+key[1])
              race_display={'course':current[0]['course'],'time':key[1],'date':target,'race_time':current[0]['race_time'],
+              'match_basis':'SAME_COURSE_SIMILAR_RACE' if source_scope else 'SAME_NAMED_EVENT',
+              'fallback_criteria':source_scope,
               'race_name':current[0].get('race_name'),'event_name':match_row.get('anchor',''),
               'historical_editions':int(match_row.get('comparable_editions') or 0), 'field_size':field,
               'status':'UPCOMING' if live else 'OFF_OR_FINISHED',
               'most_likely_winner':top['horse'] if top and live else None,
-              'best_value':value['horse'] if value and live else None,
+              'best_value':top['horse'] if top and live and value_edge is not None and value_edge>0.05 else None,
+              'selection':({k:v for k,v in top.items() if k!='features'} if top and live else None),
+              'decision':decision,
+              'selection_status':('SELECTED' if top and live else 'OFF' if not live else 'NO_SELECTION'),
               'qualifiers':[{k:v for k,v in r.items() if k!='features'} for r in entry if r['qualifies']],
+              'ranked_runners':[{'horse':r['horse'],'horse_id':r.get('horse_id'),'predicted_win_probability':r.get('predicted_win_probability'), 'score':r.get('score')} for r in entry],
               'nonqualifier_count':field-len(qualifying),
               'model_status':model.get('state') if model else 'RESEARCH_ONLY_UNVALIDATED',
               'message':'Exploratory research fit; not a validated betting edge' if not model or model.get('state')!='VALIDATED' else 'Validated candidate model; estimated probabilities remain uncertain'}
@@ -1354,8 +1502,7 @@ jobs:
                  'qualifies':r['qualifies'],'model_version':model.get('version') if model else 'research-v1'})
                 candidate_ids.add(cid)
               if top:
-               for role,sel in [('MLW',top),('VALUE',value)]:
-                if not sel or (role=='VALUE' and top and sel['horse_id']==top['horse_id']):continue
+               for role,sel in [('MLW',top)]:
                 sid=f'{target}|{form.norm(sel["course"])}|{sel["time"]}|{role}|{form.name_norm(sel["horse"])}'
                 if sid in existing:continue
                 # Price only if sampled before the off; if no price P&L will exclude.
@@ -1366,13 +1513,15 @@ jobs:
                  'model_status':model.get('state') if model else 'RESEARCH_ONLY_UNVALIDATED',
                  'fit_score':sel['score'],'winning_probability':sel.get('predicted_win_probability'),
                  'historical_positive_count':sel['positive_count'],'historical_negative_count':sel['negative_count'],
-                 'published_at':now.isoformat(),'provisional':True})
+                 'published_at':now.isoformat(),'provisional':True,
+                 'selection_metric':decision['metric'],'margin':decision['gap'],
+                 'runner_up':decision['second'],'selection_threshold':decision['minimum_gap']})
                 existing.add(sid)
             report={'version':1,'day':target,'generated_at':now.isoformat(),
              'status':'READY' if races else 'NO_ELIGIBLE_RACES','model_status':model.get('state') if model else 'RESEARCH_ONLY_UNVALIDATED',
              'model_version':model.get('version') if model else 'research-v1',
              'races':races,'matched_races':len(races),'excluded_races':len(groups)-len(races),
-             'message':'Previous editions of the same named event only. Trends first, qualified runners second, form comparison third. Predictions logged pre-off; no odds guarantee.'}
+             'message':'At most one clear leader. Exact named-event first; same-course class/discipline/handicap/surface/distance fallback only. Untrained research scores are not win probabilities.'}
            write_json(data/'strategy-selections.json',report)
            write_json(results_path,{'version':1,'updated_at':now.isoformat(),'selections':old_results})
            write_json(candidates_path,{'version':1,'updated_at':now.isoformat(),'candidates':old_candidates})
@@ -1602,8 +1751,136 @@ jobs:
              found,_=m.make_exact_anchors(p,groups,'2026-11-01');self.assertFalse(found)
           if __name__=='__main__':unittest.main()
           LEARNING_TESTS
-          python -m py_compile stage10_exact_history.py stage12_form_analysis.py stage13_driver.py
-          python -m unittest -q test_stage10.py test_stage12.py test_stage13.py
+          cat > test_selective.py <<'SELECTIVE_TESTS'
+          import unittest
+          from stage13_driver import choose_single_selection
+          class TestSelective(unittest.TestCase):
+           def h(self,name,score,yes=True):return {'horse':name,'score':score,'qualifies':yes,'identity_status':'MATCHED'}
+           def test_clear_leader(self):
+            r,ctx=choose_single_selection([self.h('Leader',84),self.h('Second',74),self.h('Third',60)])
+            self.assertEqual(r['horse'],'Leader');self.assertEqual(ctx['gap'],10)
+           def test_close_race_no_selection(self):
+            r,ctx=choose_single_selection([self.h('Leader',79),self.h('Second',77)])
+            self.assertIsNone(r);self.assertEqual(ctx['reason'],'RESEARCH_LEAD_TOO_SMALL')
+           def test_compare_with_entire_field(self):
+            r,ctx=choose_single_selection([self.h('Leader',84),self.h('Nonqualifier',81,False),self.h('Second Qualifier',68)])
+            self.assertIsNone(r)
+           def test_highest_unqualified_must_abstain(self):
+            r,ctx=choose_single_selection([self.h('Top Without Trend',86,False),self.h('Lower Qualifier',73)])
+            self.assertIsNone(r);self.assertEqual(ctx['reason'],'HIGHEST_RANKED_HORSE_NOT_HISTORICAL_QUALIFIER')
+           def test_low_quality_top(self):
+            r,_=choose_single_selection([self.h('Top',69),self.h('Other',40)]);self.assertIsNone(r)
+           def test_tie(self):
+            r,_=choose_single_selection([self.h('A',80),self.h('B',80)]);self.assertIsNone(r)
+           def test_probability_gap_8_pp(self):
+            a=self.h('A',75);b=self.h('B',74)
+            a['predicted_win_probability']=0.44;b['predicted_win_probability']=0.31
+            model={'state':'VALIDATED'}
+            r,d=choose_single_selection([a,b],model);self.assertEqual(r['horse'],'A');self.assertEqual(d['metric'],'VALIDATED_PROBABILITY')
+           def test_probability_nearby(self):
+            a=self.h('A',85);b=self.h('B',71)
+            a['predicted_win_probability']=0.38;b['predicted_win_probability']=0.35
+            r,_=choose_single_selection([a,b],{'state':'VALIDATED'});self.assertIsNone(r)
+          if __name__=='__main__':unittest.main()
+
+          class TestFallbackConditions(unittest.TestCase):
+           def test_five_year_same_course_class_handicap_surface_distance(self):
+            import csv,sqlite3,tempfile
+            from pathlib import Path
+            from stage13_driver import fallback_candidates
+            with tempfile.TemporaryDirectory() as d:
+             root=Path(d);db=root/'history.sqlite';mp=root/'map.csv';cx=sqlite3.connect(db)
+             cx.execute('CREATE TABLE historical_races(id text, race_date text, course text, race_type text, surface text, distance_f real, going text, race_class text, source text)')
+             rs=[]
+             for i in range(9):
+              distance=5 if i!=6 else 7
+              cls='Class 5' if i!=7 else 'Class 4'
+              name='Five Furlong Handicap' if i!=8 else 'Five Furlong Maiden'
+              rs.append((f'r{i}',f'202{2+i%3}-06-01','Wolverhampton','Flat',None,distance,None,cls,'test',name))
+             cx.executemany('INSERT INTO historical_races VALUES (?,?,?,?,?,?,?,?,?)',[r[:9] for r in rs]);cx.commit();cx.close()
+             with mp.open('w',newline='') as f:
+              w=csv.DictWriter(f,fieldnames=['stage2_race_id','date','course','race_name','race_type']);w.writeheader()
+              for r in rs:w.writerow({'stage2_race_id':r[0],'date':r[1],'course':r[2],'race_name':r[-1],'race_type':'Flat'})
+             key=('wolverhampton','18:30')
+             groups={key:[{'course':'Wolverhampton','race_name':'5f Handicap','type':'Flat','distance_f':'5','race_class':'Class 5','surface':'AW'}]}
+             eligible,scope=fallback_candidates(db,mp,groups,'2026-11-01',set())
+             self.assertIn(key,eligible)
+             self.assertEqual(len(eligible[key]),6)
+             self.assertEqual(scope[key]['years'],5)
+             blocked,_=fallback_candidates(db,mp,groups,'2026-11-01',{key})
+             self.assertNotIn(key,blocked)
+           def test_unknown_surface_refuses_to_assume(self):
+            from stage13_driver import flat_surface
+            self.assertIsNone(flat_surface('lingfield',None))
+            self.assertEqual(flat_surface('kempton',None),'AW')
+            self.assertEqual(flat_surface('carlisle',None),'TURF')
+          SELECTIVE_TESTS
+          cat > test_selective.py <<'SELECTIVE_TESTS'
+          import unittest
+          from stage13_driver import choose_single_selection
+          class TestSelective(unittest.TestCase):
+           def h(self,name,score,yes=True):return {'horse':name,'score':score,'qualifies':yes,'identity_status':'MATCHED'}
+           def test_clear_leader(self):
+            r,ctx=choose_single_selection([self.h('Leader',84),self.h('Second',74),self.h('Third',60)])
+            self.assertEqual(r['horse'],'Leader');self.assertEqual(ctx['gap'],10)
+           def test_close_race_no_selection(self):
+            r,ctx=choose_single_selection([self.h('Leader',79),self.h('Second',77)])
+            self.assertIsNone(r);self.assertEqual(ctx['reason'],'RESEARCH_LEAD_TOO_SMALL')
+           def test_compare_with_entire_field(self):
+            r,ctx=choose_single_selection([self.h('Leader',84),self.h('Nonqualifier',81,False),self.h('Second Qualifier',68)])
+            self.assertIsNone(r)
+           def test_highest_unqualified_must_abstain(self):
+            r,ctx=choose_single_selection([self.h('Top Without Trend',86,False),self.h('Lower Qualifier',73)])
+            self.assertIsNone(r);self.assertEqual(ctx['reason'],'HIGHEST_RANKED_HORSE_NOT_HISTORICAL_QUALIFIER')
+           def test_low_quality_top(self):
+            r,_=choose_single_selection([self.h('Top',69),self.h('Other',40)]);self.assertIsNone(r)
+           def test_tie(self):
+            r,_=choose_single_selection([self.h('A',80),self.h('B',80)]);self.assertIsNone(r)
+           def test_probability_gap_8_pp(self):
+            a=self.h('A',75);b=self.h('B',74)
+            a['predicted_win_probability']=0.44;b['predicted_win_probability']=0.31
+            model={'state':'VALIDATED'}
+            r,d=choose_single_selection([a,b],model);self.assertEqual(r['horse'],'A');self.assertEqual(d['metric'],'VALIDATED_PROBABILITY')
+           def test_probability_nearby(self):
+            a=self.h('A',85);b=self.h('B',71)
+            a['predicted_win_probability']=0.38;b['predicted_win_probability']=0.35
+            r,_=choose_single_selection([a,b],{'state':'VALIDATED'});self.assertIsNone(r)
+          if __name__=='__main__':unittest.main()
+          SELECTIVE_TESTS
+          cat > test_selective.py <<'SELECTIVE_TESTS'
+          import unittest
+          from stage13_driver import choose_single_selection
+          class TestSelective(unittest.TestCase):
+           def h(self,name,score,yes=True):return {'horse':name,'score':score,'qualifies':yes,'identity_status':'MATCHED'}
+           def test_clear_leader(self):
+            r,ctx=choose_single_selection([self.h('Leader',84),self.h('Second',74),self.h('Third',60)])
+            self.assertEqual(r['horse'],'Leader');self.assertEqual(ctx['gap'],10)
+           def test_close_race_no_selection(self):
+            r,ctx=choose_single_selection([self.h('Leader',79),self.h('Second',77)])
+            self.assertIsNone(r);self.assertEqual(ctx['reason'],'RESEARCH_LEAD_TOO_SMALL')
+           def test_compare_with_entire_field(self):
+            r,ctx=choose_single_selection([self.h('Leader',84),self.h('Nonqualifier',81,False),self.h('Second Qualifier',68)])
+            self.assertIsNone(r)
+           def test_highest_unqualified_must_abstain(self):
+            r,ctx=choose_single_selection([self.h('Top Without Trend',86,False),self.h('Lower Qualifier',73)])
+            self.assertIsNone(r);self.assertEqual(ctx['reason'],'HIGHEST_RANKED_HORSE_NOT_HISTORICAL_QUALIFIER')
+           def test_low_quality_top(self):
+            r,_=choose_single_selection([self.h('Top',69),self.h('Other',40)]);self.assertIsNone(r)
+           def test_tie(self):
+            r,_=choose_single_selection([self.h('A',80),self.h('B',80)]);self.assertIsNone(r)
+           def test_probability_gap_8_pp(self):
+            a=self.h('A',75);b=self.h('B',74)
+            a['predicted_win_probability']=0.44;b['predicted_win_probability']=0.31
+            model={'state':'VALIDATED'}
+            r,d=choose_single_selection([a,b],model);self.assertEqual(r['horse'],'A');self.assertEqual(d['metric'],'VALIDATED_PROBABILITY')
+           def test_probability_nearby(self):
+            a=self.h('A',85);b=self.h('B',71)
+            a['predicted_win_probability']=0.38;b['predicted_win_probability']=0.35
+            r,_=choose_single_selection([a,b],{'state':'VALIDATED'});self.assertIsNone(r)
+          if __name__=='__main__':unittest.main()
+          SELECTIVE_TESTS
+          python -m py_compile stage10_exact_history.py stage12_form_analysis.py stage13_driver.py test_selective.py test_selective.py test_selective.py
+          python -m unittest -q test_stage10.py test_stage12.py test_stage13.py test_selective.py
       - name: Retrieve existing historical artifact inputs (no new paid data)
         shell: bash
         env:
@@ -1669,8 +1946,364 @@ jobs:
             assert race['historical_editions']>=2
             assert race['status'] in ('UPCOMING','OFF_OR_FINISHED')
             assert all(r['qualifies'] for r in race['qualifiers'])
+            assert race['selection_status'] in ('SELECTED','OFF','NO_SELECTION')
+            assert not race.get('selection') or race['selection_status']=='SELECTED'
+            assert len([r for r in race.get('ranked_runners',[]) if r.get('predicted_win_probability') is not None]) in (0,len(race.get('ranked_runners',[])))
+            assert race['selection_status'] in ('SELECTED','OFF','NO_SELECTION')
+            assert not race.get('selection') or race['selection_status']=='SELECTED'
+            assert len([r for r in race.get('ranked_runners',[]) if r.get('predicted_win_probability') is not None]) in (0,len(race.get('ranked_runners',[])))
+            assert race['selection_status'] in ('SELECTED','OFF','NO_SELECTION')
+            assert not race.get('selection') or race['selection_status']=='SELECTED'
+            assert len([r for r in race.get('ranked_runners',[]) if r.get('predicted_win_probability') is not None]) in (0,len(race.get('ranked_runners',[])))
           print('Verified matched races',len(j.get('races',[])),'research day',j.get('day'))
           STAGE13_VERIFY
+      - name: Publish evidence-based race and horse commentary for every race
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > stage14_commentary.py <<'RHP_STAGE14_COMMENTARY'
+          #!/usr/bin/env python3
+          """Evidence-grounded race and runner summaries for all published racecards.
+          
+          This layer does not predict winners, invent probabilities, or train models. It explains
+          pre-race Stage 13 evidence where available and otherwise describes strictly
+          matched same-course research and independently verified previous form.
+          """
+          import argparse, collections, csv, datetime as dt, json, math, re, sqlite3, statistics, unicodedata
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+          
+          UTC=dt.timezone.utc
+          
+          def norm(v):
+              s=unicodedata.normalize('NFKD',str(v or '')).encode('ascii','ignore').decode().lower()
+              return re.sub('[^a-z0-9]','',s)
+          
+          def course_norm(v):
+              return norm(re.sub(r"\s*\((?:IRE|GB|AW|all.weather)\)\s*$", "", str(v or ""),flags=re.I))
+          
+          def horse_norm(v):
+              return norm(re.sub(r'\s*\((?:IRE|GB|USA|FR|GER|AUS|NZ|JPN|BRZ)\)\s*$','',str(v or ''),flags=re.I))
+          
+          def local_time(x):
+              try:
+                  d=dt.datetime.fromisoformat(str(x).replace('Z','+00:00'))
+                  return d.astimezone(ZoneInfo('Europe/Dublin')).strftime('%H:%M')
+              except (ValueError,AttributeError):return ''
+          
+          def num(v):
+              try:
+                  a=float(v)
+                  return a if math.isfinite(a) else None
+              except (TypeError,ValueError):return None
+          
+          def kind(v):
+              v=str(v or '').lower()
+              return 'chase' if 'chase' in v or 'steeple' in v else 'hurdle' if 'hurdle' in v else 'bumper' if 'nh flat' in v or 'bumper' in v else 'flat' if 'flat' in v else ''
+          
+          def handicap(v):return bool(re.search(r'\bhandicap\b',str(v or ''),re.I))
+          
+          def class_label(v):
+              m=re.search(r'(?:class\s*)([1-7])',str(v or ''),re.I)
+              return 'class '+m.group(1) if m else ''
+          
+          def surface_label(r):
+              s=str(r.get('surface') or '').lower()
+              if 'all' in s and 'weather' in s or s in ('aw','polytrack','tapeta','fibresand'):return 'aw'
+              if 'turf' in s or 'grass' in s:return 'turf'
+              return ''
+          
+          def round_ratio(a,b):return f'{a}/{b}' if b else 'not established'
+          
+          def recent_window(day,years):
+              d=dt.date.fromisoformat(day)
+              try:return d.replace(year=d.year-years).isoformat()
+              except ValueError:return d.replace(year=d.year-years,day=28).isoformat()
+          
+          def read_csv_mapping(path,needed,cutoff):
+              """Map only recent candidate race IDs; no assumptions based on class alone."""
+              names={}
+              if not path or not Path(path).exists():return names
+              with open(path,encoding='utf-8-sig',newline='') as f:
+                  for row in csv.DictReader(f):
+                      rid=row.get('stage2_race_id') or ''
+                      if rid in needed and row.get('date','')<cutoff:
+                          name=row.get('race_name','')
+                          if name:names[rid]=name
+              return names
+          
+          def trend_label(raw):
+              raw=str(raw or '')
+              if raw.startswith('AGE_'):return 'age '+raw[4:].replace('_','–').lower()
+              if raw.startswith('OFFICIAL_RATING_'):return 'official rating '+raw[len('OFFICIAL_RATING_'):].replace('_',' ').lower()
+              if raw.startswith('WEIGHT_'):return 'weight '+raw[7:].replace('_',' ').lower()
+              return raw.replace('_',' ').lower()
+          
+          def research_fragment(trends,sign):
+              if not trends:return ''
+              t=next((x for x in trends if x.get('context_status')!='FIELD_SIZE_NOT_COMPARABLE_UNSCORED' and x.get('validation')!='LIMITED_SAMPLE_OR_MARKET_COVERAGE'),None)
+              if not t:return f'{sign} historical observations exist, but their sample or field-size comparability is insufficient to score confidently.'
+              n=t.get('runners') or '?';wins=t.get('wins') or '0'
+              return f'{sign} historical observation: {trend_label(t.get("trait"))} ({wins} winner credits from {n} runners).'
+          
+          def runner_form(cur,card,date):
+              """Pre-cutoff past results only. Check pedigree and age where recorded; no same-day result leakage."""
+              key=horse_norm(card.get('horse'))
+              if not key:return None
+              raw=cur.execute('''SELECT ra.race_date,ra.course,ra.distance_f,ra.going,ru.finish_pos,ru.age,ru.sire,ru.dam,ru.rpr,ru.topspeed
+                  FROM historical_runs ru JOIN historical_races ra ON ra.id=ru.race_id
+                  WHERE ru.horse_name_norm=? AND ra.race_date<? ORDER BY ra.race_date DESC LIMIT 250''',(key.upper(),date)).fetchall()
+              if not raw:return None
+              declared_age=num(card.get('age'));declared_sire=horse_norm(card.get('sire'));declared_dam=horse_norm(card.get('dam'))
+              accepted=[];rejected=0
+              for row in raw:
+                  when,course,distance,going,pos,age,sire,dam,rpr,ts=row
+                  if declared_sire and sire and declared_sire!=horse_norm(sire):rejected+=1;continue
+                  if declared_dam and dam and declared_dam!=horse_norm(dam):rejected+=1;continue
+                  if declared_age is not None and age is not None and abs((age+int(date[:4])-int(when[:4]))-declared_age)>1:rejected+=1;continue
+                  accepted.append(row)
+              if not accepted:return {'runs':0,'identity_status':'UNVERIFIED'}
+              has_pedigree=bool(declared_sire or declared_dam)
+              confirmed=bool(has_pedigree or declared_age is not None)
+              return {'runs':len(accepted),'wins':sum(r[4]==1 for r in accepted),
+                  'places':sum(r[4] is not None and 1<=r[4]<=3 for r in accepted),
+                  'latest':accepted[:5], 'history':accepted,'identity_status':'MATCHED_CONTEXTUAL' if confirmed else 'NAME_ONLY_UNVERIFIED',
+                  'rejected_identity':rejected}
+          
+          def form_sentence(card,form):
+              if not form or not form.get('runs'):
+                  return 'No reliably linked earlier runs were found in the available historical database; prior form remains unverified.'
+              if form.get('identity_status')=='NAME_ONLY_UNVERIFIED':
+                  return 'Historical results share this name, but identity is not independently confirmed; career totals are withheld.'
+              runs=form['runs']; wins=form['wins'];places=form['places']
+              bits=[f'{wins} win{"s" if wins!=1 else ""} and {places} top-three finishes in {runs} linked prior starts']
+              last=form.get('latest') or []
+              if last:
+                  bits.append(f'{sum(r[4]==1 for r in last)} win{"s" if sum(r[4]==1 for r in last)!=1 else ""} and {sum(r[4] is not None and 1<=r[4]<=3 for r in last)} top-three finishes in the last {len(last)} recorded runs')
+              course=course_norm(card.get('course'))
+              course_runs=[r for r in form['history'] if course_norm(r[1])==course]
+              if course_runs:
+                  bits.append(f'at this course, {sum(r[4]==1 for r in course_runs)}/{len(course_runs)} wins')
+              dist=num(card.get('distance_f'))
+              dist_runs=[r for r in form['history'] if dist is not None and r[2] is not None and abs(float(r[2])-dist)<=1]
+              if len(dist_runs)>=2:bits.append(f'at similar distances, {sum(r[4]==1 for r in dist_runs)}/{len(dist_runs)} wins')
+              vals=[r[8] for r in last if r[8] is not None]
+              if len(vals)>=2:bits.append('average previous-run RPR '+str(round(statistics.mean(vals),1)))
+              return '; '.join(bits).capitalize()+'.'
+          
+          def fallback_meta(card,metadata,names,date,years=5):
+              """Exact race type/course/class/handicap and tight distance; never silently mix surfaces.
+              The staging DB lacks surface, so AW/Turf is marked UNVERIFIED unless an explicit
+              race-name hint can support it. Such comparisons are descriptive only.
+              """
+              track=course_norm(card.get('course')); k=kind(card.get('type'));cl=class_label(card.get('race_class'));hd=handicap(card.get('race_name'))
+              dist=num(card.get('distance_f'));sf=surface_label(card)
+              if not track or not k or dist is None or not cl:return {'status':'INSUFFICIENT_COMPARISON_FIELDS','editions':0}
+              earliest=recent_window(date,years)
+              candidate=[]
+              for row in metadata:
+                  rid,rd,course,rtype,rsurface,rf,going,rclass=row
+                  if rd<earliest or rd>=date or course_norm(course)!=track or kind(rtype)!=k:continue
+                  if class_label(rclass)!=cl or rf is None or abs(float(rf)-dist)>(0.5 if dist<=6 else 1.0):continue
+                  title=names.get(rid)
+                  if not title or handicap(title)!=hd:continue
+                  if rsurface and sf and sf!=rsurface:continue
+                  candidate.append(row)
+              # Same-course race type/class/distance/handicap. Not all historical surfaces are known.
+              return {'status':'COURSE_CONDITIONS_RESEARCH' if candidate else 'NO_COMPARABLE_EDITION',
+                 'editions':len(candidate),'race_ids':[r[0] for r in candidate],'years':years,
+                 'surface_verified':all(r[4] for r in candidate) if candidate else False,
+                 'field_notes':f'{dist:g}f {cl} {"handicap" if hd else "non-handicap"} {k} at {card.get("course")}',
+                 'surface':sf or 'unspecified'}
+          
+          def create_report(cards, strategy, db, day, mapping=None):
+              current=[r for r in cards.get('runners',[]) if r.get('date')==day]
+              groups=collections.defaultdict(list)
+              for r in current:
+                  t=local_time(r.get('race_time'))
+                  if r.get('course') and t:groups[(norm(r['course']),t)].append(r)
+              by_strategy={(norm(r['course']),r['time']):r for r in strategy.get('races',[]) if r.get('date')==day}
+              connection=sqlite3.connect('file:'+str(Path(db).resolve())+'?mode=ro',uri=True)
+              cur=connection.cursor()
+              start=recent_window(day,10)
+              metadata=cur.execute('''SELECT id,race_date,course,race_type,surface,distance_f,going,race_class
+                FROM historical_races WHERE race_date>=? AND race_date<?''',(start,day)).fetchall()
+              names=read_csv_mapping(mapping,{x[0] for x in metadata},day)
+              reports=[]
+              for key,rr in sorted(groups.items()):
+                  card=rr[0];given=by_strategy.get(key)
+                  if given and given.get('historical_editions',0)>=2 and given.get('match_basis')!='SAME_COURSE_SIMILAR_RACE':
+                      research={'status':'EXACT_NAMED_EVENT','editions':given['historical_editions'],'years':None,'surface_verified':True}
+                  elif given and given.get('match_basis')=='SAME_COURSE_SIMILAR_RACE' and given.get('historical_editions',0)>=2:
+                      scope=given.get('fallback_criteria') or {}
+                      research=fallback_meta(card,metadata,names,day,5)
+                      if research['editions']<12:
+                          longer=fallback_meta(card,metadata,names,day,8)
+                          if longer['editions']>research['editions']:research=longer
+                      research.update({'status':'COURSE_CONDITIONS_RESEARCH','editions':given['historical_editions'],
+                          'years':scope.get('years',research.get('years')),
+                          'research_model_scope':scope.get('source','SAME_COURSE_RACE_TYPE'),
+                          'surface_verified':False})
+                  else:
+                      research=fallback_meta(card,metadata,names,day,5)
+                      if research['editions']<12:
+                          ten=fallback_meta(card,metadata,names,day,10)
+                          if ten['editions']>research['editions']:research=ten
+                  named=research['status']=='EXACT_NAMED_EVENT'
+                  counted=len(rr);n=research.get('editions',0)
+                  if research.get('race_ids'):
+                      ids=research['race_ids']
+                      runner_sizes=[];favourites=0;winner_prices=[];price_coverage=0
+                      for ix in range(0,len(ids),250):
+                          subset=ids[ix:ix+250];holders=','.join('?'*len(subset))
+                          prior=cur.execute(f'SELECT race_id,finish_pos,sp_decimal FROM historical_runs WHERE race_id IN ({holders})',subset).fetchall()
+                          byid=collections.defaultdict(list)
+                          for row in prior:byid[row[0]].append(row)
+                          for group in byid.values():
+                              runner_sizes.append(len(group))
+                              ranks=[p for rid,pos,p in group if p is not None and p>1]
+                              winners=[p for rid,pos,p in group if pos==1 and p is not None and p>1]
+                              if ranks and winners:
+                                  price_coverage+=1
+                                  if any(abs(p-min(ranks))<0.00001 for p in winners):favourites+=1
+                                  winner_prices.extend(winners)
+                      similar=sum(n==counted if counted<=4 else abs(n-counted)<=max(2,round(counted*.2)) for n in runner_sizes)
+                      research['similar_field_editions']=similar
+                      research['price_coverage']=price_coverage
+                      if price_coverage>=8 and winner_prices:
+                          research['favourite_wins']=favourites
+                          research['median_winning_sp_decimal']=statistics.median(winner_prices)
+                  else:research['similar_field_editions']=None
+                  if named:
+                      headline=f'Exact named-race history: {n} comparable previous editions; {counted} runners declared.'
+                  elif research['status']=='COURSE_CONDITIONS_RESEARCH':
+                      headline=f'Same-course comparison: {n} races over {research["years"]} years matching the recorded type, class, handicap status and distance; {counted} declared runners.'
+                      if research.get('similar_field_editions') is not None:
+                          headline+=f' {research["similar_field_editions"]} of those historical races had a comparable field size.'
+                          if research['similar_field_editions']<5:headline+=' Field-size evidence is limited; rating-rank trends should not receive a fixed penalty.'
+                      if research.get('price_coverage',0)>=8:
+                          headline+=f' In {research["price_coverage"]} editions with usable SP, the favourite won {research["favourite_wins"]} times; median winning SP {research["median_winning_sp_decimal"]:.2f} decimal (descriptive, not a value forecast).'
+                      if not research['surface_verified']:
+                          headline+=' Historical surface is not recorded, so turf/AW comparability cannot be confirmed.'
+                  else:
+                      headline=f'No dependable exact-event or same-course comparison found for this race; {counted} declared runners. Historical trend conclusions are withheld.'
+                  horse_records=[]
+                  qualifiers={horse_norm(r['horse']):r for r in given.get('qualifiers',[])} if given else {}
+                  for horse in rr:
+                      q=qualifiers.get(horse_norm(horse.get('horse')))
+                      f=runner_form(cur,horse,day)
+                      chunks=[]
+                      if q:
+                          p=research_fragment(q.get('positive_trends'), 'Positive')
+                          nfrag=research_fragment(q.get('negative_trends'),'Negative')
+                          if p:chunks.append(p)
+                          if nfrag:chunks.append(nfrag)
+                          gap=num(q.get('rating_gap_to_top_lbs'))
+                          if gap is not None:chunks.append(f'Official rating is {gap:g}lb below the highest-rated runner in a {counted}-horse field; ranking thirds are not universal penalties.')
+                          if q.get('field_context_limitation'):chunks.append('Historical fields of this size were too scarce for reliable rating/weight-third adjustments.')
+                          if q.get('form_cautions'):chunks.append('Form cautions: '+ '; '.join(str(z) for z in q['form_cautions'][:2])+'.')
+                      else:
+                          if named:chunks.append('No supported exact-event qualifier flag is available for this runner; this is not evidence that it cannot win.')
+                          elif research['status']=='COURSE_CONDITIONS_RESEARCH':chunks.append('Course-and-conditions history is descriptive; no validated positive/negative horse trend is established.')
+                          else:chunks.append('Historical race trend evidence is insufficient for a supported classification.')
+                      chunks.append(form_sentence(horse,f))
+                      horse_records.append({'horse_id':horse.get('horse_id'),'horse':horse.get('horse'),
+                          'summary':' '.join(chunks),'form_runs':f.get('runs') if f else 0,
+                          'identity_status':f.get('identity_status') if f else 'UNVERIFIED',
+                          'model_probability':q.get('predicted_win_probability') if q and given.get('model_status')=='VALIDATED' else None,
+                          'positive_count':len(q.get('positive_trends',[])) if q else None,
+                          'negative_count':len(q.get('negative_trends',[])) if q else None})
+                  # Optional top model candidate is NOT labelled a selection without passing the clear-lead rule.
+                  if given and given.get('selection_status')=='SELECTED':
+                      sel=given.get('selection') or {}
+                      headline+=f' Model-selected clear leader: {sel.get("horse", "not available")}; available form evidence remains subject to verification.'
+                  elif given:
+                      headline+=' No clear enough model leader has been published; no selection is forced.'
+                  if research['status']!='EXACT_NAMED_EVENT':headline+=' Horse summaries reflect recorded prior form; historical comparisons do not automatically establish an edge.'
+                  reports.append({'course':card['course'],'time':key[1],'date':day,'race_time':card['race_time'],
+                      'race_id':card.get('race_id'),'race_name':card.get('race_name'),'historical_source':research['status'],
+                      'historical_editions':research['editions'],'historical_window_years':research.get('years'),
+                      'surface_verified':research.get('surface_verified'),'summary':headline,'horses':horse_records})
+              connection.close()
+              return {'version':1,'day':day,'source':'Stage 13 research + historical SQLite; comparisons audited',
+                'races':reports,'stats':{'races_analysed':len(reports),'horses_analysed':sum(len(x['horses']) for x in reports),
+                 'exact_events':sum(x['historical_source']=='EXACT_NAMED_EVENT' for x in reports),
+                 'course_comparisons':sum(x['historical_source']=='COURSE_CONDITIONS_RESEARCH' for x in reports),
+                 'no_supported_comparison':sum(x['historical_source'] not in ('EXACT_NAMED_EVENT','COURSE_CONDITIONS_RESEARCH') for x in reports)}}
+          
+          def main():
+              p=argparse.ArgumentParser();p.add_argument('--cards',required=True);p.add_argument('--strategy',required=True);p.add_argument('--db',required=True);p.add_argument('--mapping');p.add_argument('--day',required=True);p.add_argument('--out',required=True)
+              args=p.parse_args();o=create_report(json.loads(Path(args.cards).read_text()),json.loads(Path(args.strategy).read_text()),args.db,args.day,args.mapping)
+              path=Path(args.out);path.parent.mkdir(parents=True,exist_ok=True);path.write_text(json.dumps(o,ensure_ascii=False,indent=2)+'\n');print(json.dumps(o['stats']))
+          if __name__=='__main__':main()
+          RHP_STAGE14_COMMENTARY
+          cat > test_stage14_commentary.py <<'RHP_COMMENTARY_TESTS'
+          import json,sqlite3,tempfile,unittest
+          from pathlib import Path
+          import stage14_commentary as s
+          
+          class Stage14CommentaryTests(unittest.TestCase):
+           def setUp(self):
+            self.tmp=tempfile.TemporaryDirectory();self.p=Path(self.tmp.name);self.db=self.p/'data.sqlite';c=sqlite3.connect(self.db)
+            c.executescript('''CREATE TABLE historical_races(id TEXT PRIMARY KEY,race_date TEXT,course TEXT,race_type TEXT,surface TEXT,distance_f REAL,going TEXT,race_class TEXT);
+            CREATE TABLE historical_runs(race_id TEXT,horse_name_norm TEXT,finish_pos INTEGER,age INTEGER,sire TEXT,dam TEXT,rpr REAL,topspeed REAL,horse_name TEXT,sp_decimal REAL);''')
+            for id,day in [('p2024','2024-11-01'),('p2025','2025-11-01'),('future','2026-11-01')]:
+             c.execute('INSERT INTO historical_races VALUES(?,?,?,?,?,?,?,?)',(id,day,'Kempton','Flat',None,5.0,'Standard','Class 5'))
+             c.execute('INSERT INTO historical_runs VALUES(?,?,?,?,?,?,?,?,?,?)',(id,'TESTHORSE',1,4,'Sire','Dam',90,75,'Test Horse',4.0))
+            c.commit();c.close()
+            self.cards={'runners':[{'date':'2026-11-01','course':'Kempton','race_time':'2026-11-01T15:00:00+00:00',
+             'race_id':'rnow','race_name':'Class 5 Handicap Race','race_class':'Class 5', 'type':'Flat',
+             'surface':'AW','distance_f':5,'horse':'Test Horse','age':6,'sire':'Sire','dam':'Dam'}]}
+            self.mapping=self.p/'mapping.csv';self.mapping.write_text('stage2_race_id,date,race_name\np2024,2024-11-01,5 Furlongs Handicap\np2025,2025-11-01,5 Furlongs Handicap\nfuture,2026-11-01,5 Furlongs Handicap\n')
+           def tearDown(self):self.tmp.cleanup()
+           def test_exact_first(self):
+            feed={'races':[{'date':'2026-11-01','course':'Kempton','time':'15:00','match_basis':'SAME_NAMED_EVENT','historical_editions':10,'model_status':'RESEARCH_ONLY_UNVALIDATED','qualifiers':[]}]}
+            out=s.create_report(self.cards,feed,self.db,'2026-11-01',self.mapping)
+            self.assertEqual(out['races'][0]['historical_source'],'EXACT_NAMED_EVENT')
+            self.assertEqual(out['races'][0]['historical_editions'],10)
+           def test_fallback_not_mislabeled_exact(self):
+            feed={'races':[{'date':'2026-11-01','course':'Kempton','time':'15:00','match_basis':'SAME_COURSE_SIMILAR_RACE',
+               'historical_editions':2,'fallback_criteria':{'years':5},'qualifiers':[]}]}
+            out=s.create_report(self.cards,feed,self.db,'2026-11-01',self.mapping)
+            self.assertEqual(out['races'][0]['historical_source'],'COURSE_CONDITIONS_RESEARCH')
+            self.assertIn('Historical surface is not recorded',out['races'][0]['summary'])
+           def test_future_results_not_leaked(self):
+            self.assertEqual(s.runner_form(sqlite3.connect(self.db),self.cards['runners'][0],'2026-11-01')['runs'],2)
+           def test_every_race_and_horse_represented(self):
+            out=s.create_report(self.cards,{'races':[]},self.db,'2026-11-01',self.mapping)
+            self.assertEqual(out['stats']['races_analysed'],1)
+            self.assertEqual(out['stats']['horses_analysed'],1)
+            self.assertEqual(len(out['races'][0]['horses']),1)
+           def test_mismatched_pedigree_excluded(self):
+            bad=dict(self.cards['runners'][0]);bad['dam']='Different Dam'
+            got=s.runner_form(sqlite3.connect(self.db),bad,'2026-11-01')
+            self.assertEqual(got['runs'],0)
+           def test_time_and_course_normalize(self):
+            self.assertEqual(s.local_time('2026-11-01T15:00:00+00:00'),'15:00')
+            self.assertEqual(s.course_norm('Cork (IRE)'),s.course_norm('Cork'))
+          if __name__=='__main__':unittest.main()
+          RHP_COMMENTARY_TESTS
+          python -m py_compile stage14_commentary.py
+          python -m unittest -q test_stage14_commentary.py
+          DAY=$(TZ=Europe/Dublin date +%F)
+          python stage14_commentary.py --cards data/racecards.json \
+            --strategy data/strategy-selections.json --db "$STAGE13_DB" \
+            --mapping "$STAGE13_MAP" --day "$DAY" --out data/strategy-commentary.json
+          python - <<'RHP_COMMENTARY_VERIFY'
+          import json
+          from pathlib import Path
+          commentary=json.loads(Path('data/strategy-commentary.json').read_text())
+          cards=json.loads(Path('data/racecards.json').read_text())
+          target=commentary['day']
+          expected={(x['course'],x['race_time']) for x in cards.get('runners',[]) if x.get('date')==target and x.get('course') and x.get('race_time')}
+          actual={(x['course'],x['race_time']) for x in commentary['races']}
+          assert actual==expected, f'Commentary must cover all declared races: {len(actual)} != {len(expected)}'
+          for race in commentary['races']:
+           assert race['summary']
+           assert all(x.get('summary') for x in race['horses'])
+           assert len(race['horses'])==len([x for x in cards['runners'] if x.get('date')==target and x.get('course')==race['course'] and x.get('race_time')==race['race_time']])
+          print('Verified evidence-grounded commentary',commentary['stats'])
+          RHP_COMMENTARY_VERIFY
       - name: Publish fresh selections and immutable historical predictions
         shell: bash
         run: |
@@ -1678,12 +2311,12 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add data/strategy-selections.json data/strategy-results.json data/strategy-learning-history.json \
-                  data/strategy-model.json data/strategy-learning-status.json
+                  data/strategy-model.json data/strategy-learning-status.json data/strategy-commentary.json
           if git diff --cached --quiet; then
             echo 'No strategy data changes.'
             exit 0
           fi
-          git commit -m 'Update exact-race strategy selections, results and model validation'
+          git commit -m 'Update selective exact-first/course-type strategy, results and validation'
           for attempt in 1 2 3 4; do
             if git pull --rebase origin "$GITHUB_REF_NAME" && git push origin "HEAD:$GITHUB_REF_NAME"; then
               echo 'Strategy report and results published.'
@@ -1703,5 +2336,6 @@ jobs:
             stage13_run/exact_history/
             stage13_run/form_analysis/
             data/strategy-learning-status.json
+            data/strategy-commentary.json
           retention-days: 14
           if-no-files-found: warn
