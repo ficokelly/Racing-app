@@ -53,19 +53,13 @@ jobs:
         if: steps.hours.outputs.collect == 'true'
         run: python archive-odds-history.py
 
-      - name: Send newly detected Power Fav alerts
-        if: steps.hours.outputs.collect == 'true'
-        env:
-          ONESIGNAL_API_KEY: ${{ secrets.ONESIGNAL_API_KEY }}
-          ONESIGNAL_SUBSCRIPTION_ID: ${{ secrets.ONESIGNAL_SUBSCRIPTION_ID }}
-        run: python send-power-fav-alerts.py
 
       - name: Save odds history
         if: steps.hours.outputs.collect == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/latest-odds.json data/odds-history.json data/odds-archive/ data/power-fav-alert-state.json
+          git add data/latest-odds.json data/odds-history.json data/odds-archive/
           if ! git diff --cached --quiet; then
             git commit -m "Update Racing Hot Pots odds snapshots"
             git pull --rebase

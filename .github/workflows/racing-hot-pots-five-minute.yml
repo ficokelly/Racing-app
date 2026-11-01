@@ -35,11 +35,6 @@ jobs:
       - name: Archive older odds snapshots (no API call)
         run: python archive-odds-history.py
 
-      - name: Send newly detected Power Fav alerts
-        env:
-          ONESIGNAL_API_KEY: ${{ secrets.ONESIGNAL_API_KEY }}
-          ONESIGNAL_SUBSCRIPTION_ID: ${{ secrets.ONESIGNAL_SUBSCRIPTION_ID }}
-        run: python send-power-fav-alerts.py
 
       - name: Update final UK and Irish race results
         env:
@@ -64,7 +59,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add data/aw2-track-stats.json data/latest-odds.json data/odds-history.json data/odds-archive/ data/power-fav-alert-state.json data/race-results.json data/racecards.json data/racecards-archive.json
+          git add data/aw2-track-stats.json data/latest-odds.json data/odds-history.json data/odds-archive/ data/race-results.json data/racecards.json data/racecards-archive.json
           if git diff --cached --quiet; then
             echo 'No changes to publish.'
             exit 0
