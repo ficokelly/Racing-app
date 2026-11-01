@@ -1402,7 +1402,7 @@ function setup(){loadPowerResults();$('pr-period').onchange=renderPowerResults;$
 // Automatically notice freshly published GitHub Pages data, without additional bookmaker API requests.
 // A changed data file triggers a page reload; unchanged files never reload the page.
 const AUTO_REFRESH_INTERVAL_MS=60000;
-const AUTO_REFRESH_FILES=['latest-odds.json','odds-history.json','racecards.json','strike-rates.json','strategy-selections.json','strategy-results.json','strategy-commentary.json','race-results.json','racecards-archive.json'];
+const AUTO_REFRESH_FILES=['latest-odds.json','odds-history.json','racecards.json','strike-rates.json','strategy-selections.json','strategy-results.json','strategy-commentary.json','strategy-probabilities.json','race-results.json','racecards-archive.json'];
 // Preserve tab, selected filters, collapsed panels and scroll while published data refreshes.
 const RHP_REFRESH_STATE='rhp-auto-refresh-view';
 const RHP_FILTER_IDS=['rc-meeting','rc-time','rc-type','rc-odds','rc-result','rc-gear','rc-market','rc-sort','pr-period','pr-stake','period','bet-status','custom-from','custom-to','hot-min-runs','trainer-days','jockey-days'];
@@ -1481,17 +1481,21 @@ function restoreAutoRefreshView(){
 }
 
 // Stage 13 strategy feed. Legacy Power Fav data remains untouched for continuity.
-let strategySelectionsFeed=null, strategyResultsFeed=null, strategyDay='today';
+let strategySelectionsFeed=null, strategyResultsFeed=null, strategyProbabilityFeed=null, strategyDay='today';
 // A percentage is shown only when the published model has passed validation.
 // Unknown is displayed as a dash; never transform a research fit score into
 // a fabricated win probability.
 function strategyWinChance(horse,course,date,time){
- const f=strategySelectionsFeed;
- if(!f||f.model_status!=='VALIDATED')return null;
- const k=String(time||'').slice(0,5);
- const race=(f.races||[]).find(r=>r.date===date&&courseMatchKey(r.course)===courseMatchKey(course)&&r.time===k);
- const r=(race?.ranked_runners||[]).find(x=>horseMatchKey(x.horse)===horseMatchKey(horse));
- const n=Number(r?.predicted_win_probability);
+ // Probability estimates are independent of Strategy Selections: every runner
+ // in each complete race has a value, but only after chronology-based validation.
+ const f=strategyProbabilityFeed;
+ if(!f||f.state!=='VALIDATED'||f.day!==date)return null;
+ const race=(f.races||[]).find(r=>r.complete_field===true&&r.date===date&&courseMatchKey(r.course)===courseMatchKey(course)&&r.time===String(time||'').slice(0,5));
+ if(!race)return null;
+ const sum=(race.runners||[]).reduce((a,r)=>a+Number(r.probability||0),0);
+ if(Math.abs(sum-1)>0.001)return null;
+ const r=(race.runners||[]).find(x=>horseMatchKey(x.horse)===horseMatchKey(horse));
+ const n=Number(r?.probability);
  return r&&Number.isFinite(n)&&n>0&&n<=1?n:null;
 }
 function strategyWinBadge(horse,course,date,time){
@@ -1516,19 +1520,20 @@ function commentaryHorseDetails(horse,course,date,time){
 }
 async function loadStrategyData(){
  const base='./data/';const now='?v='+Date.now();
- const [sel,res,learn,comments]=await Promise.all([
+ const [sel,res,learn,comments,probs]=await Promise.all([
   fetch(base+'strategy-selections.json'+now,{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null),
   fetch(base+'strategy-results.json'+now,{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null),
   fetch(base+'strategy-learning-status.json'+now,{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null),
-  fetch(base+'strategy-commentary.json'+now,{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null)]);
- strategySelectionsFeed=sel;strategyResultsFeed=res;strategyCommentaryFeed=comments;
+  fetch(base+'strategy-commentary.json'+now,{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null),
+  fetch(base+'strategy-probabilities.json'+now,{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null)]);
+ strategySelectionsFeed=sel;strategyResultsFeed=res;strategyCommentaryFeed=comments;strategyProbabilityFeed=probs;
  strategyCommentaryRaceIndex=new Map();
  if(comments&&Array.isArray(comments.races))for(const r of comments.races){
   strategyCommentaryRaceIndex.set(commentaryKey(r.course,r.date,r.time),r);
  }
  const msg=$('strategy-model-message');
  msg.textContent=!sel?'Strategy workflow has not published its first run yet. Upload Stage 13 and run it in GitHub Actions.':
-  (sel.model_status==='VALIDATED'?'Validated learned model (still check uncertainties).':'Research-stage model: self-training is collecting outcomes; no validated winning probabilities yet.')+
+  (probs?.state==='VALIDATED'?'Historically tested model: independent runner probabilities available. This model did not beat closing SP on historical testing; winning chances are not betting edges.':'Historical probability training not yet validated: no numerical chances are shown.')+
   (learn?.candidate_rows!==undefined?' · '+learn.candidate_rows+' settled horse examples in learning history.':'')+
   (sel.generated_at?' · Last run '+when(sel.generated_at):'');
  renderStrategySelections();renderStrategyResults();
@@ -1564,7 +1569,7 @@ function renderStrategySelections(){
  // never automatic recommendations. Races that fail the separation test are skipped.
  const selected=races.filter(r=>r.selection_status==='SELECTED'&&r.selection&&r.status==='UPCOMING');
  const omitted=races.length-selected.length;
- const header=`<div class="panel"><strong>${selected.length} clear-leader selection${selected.length===1?'':'s'}</strong><p class="hint">${omitted} analysed race${omitted===1?'':'s'} without a current clear leader or already off. One horse maximum per race. No selection if the top two are too close. Research scores are not win probabilities.</p></div>`;
+ const header=`<div class="panel"><strong>${selected.length} clear-leader selection${selected.length===1?'':'s'}</strong><p class="hint">${omitted} analysed race${omitted===1?'':'s'} without a current clear leader or already off. One horse maximum per race. No selection if the top two are too close. Research scores are not win probabilities. Model win chances are independently tested and may still be uncertain.</p></div>`;
  host.innerHTML=header+(selected.length?selected.map(r=>{
   const h=r.selection,d=r.decision||{};
   const margin=d.gap==null?'Not available':`${Number(d.gap).toFixed(1)} ${d.metric==='VALIDATED_PROBABILITY'?'percentage points':'score points'}`;
