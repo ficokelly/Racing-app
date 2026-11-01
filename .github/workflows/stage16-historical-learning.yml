@@ -1,0 +1,117 @@
+name: Stage 16 - Historical Model Bootstrap and External Research
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 4 * * 0'
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: stage16-training-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  validate-historical-model:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install statistics tools
+        run: python -m pip install --disable-pip-version-check numpy scipy scikit-learn==1.6.1
+      - name: Load research-only historical trainer and external methodology scanner
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p scripts
+          printf '%s' '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' | base64 --decode | gzip --decompress > scripts/stage16_history_model.py
+          printf '%s' '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' | base64 --decode | gzip --decompress > scripts/stage16_external_research.py
+          python -m py_compile scripts/stage16_history_model.py scripts/stage16_external_research.py
+      - name: Retrieve full existing Stage 2 history artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'STAGE16_FETCH'
+          import json,os,subprocess
+          from pathlib import Path
+          repo=os.environ['GITHUB_REPOSITORY']
+          found=None
+          for page in range(1,12):
+           raw=subprocess.check_output(['gh','api','-X','GET',f'repos/{repo}/actions/artifacts','-f','per_page=100','-f',f'page={page}'],text=True)
+           arr=json.loads(raw).get('artifacts',[])
+           for item in arr:
+            if item.get('name')=='stage2-historical-staging-database' and not item.get('expired'):
+             if found is None or item['created_at']>found['created_at']:found=item
+           if found or len(arr)<100:break
+          if not found:raise SystemExit('Stage2 historical artifact missing. Re-run historical import before bootstrap.')
+          Path('stage16_history_source').mkdir(exist_ok=True)
+          subprocess.run(['gh','run','download',str(found['workflow_run']['id']),'--repo',repo,'--name',found['name'],'--dir','stage16_history_source'],check=True)
+          matches=list(Path('stage16_history_source').rglob('*.sqlite'))
+          if not matches:raise SystemExit('Artifact does not contain historical SQLite file')
+          db=max(matches,key=lambda p:p.stat().st_size).resolve()
+          with open(os.environ['GITHUB_ENV'],'a') as f:print('STAGE16_DB='+str(db),file=f)
+          print('Historical SQLite size bytes:',db.stat().st_size)
+          STAGE16_FETCH
+      - name: Train point-in-time model and test later untouched years
+        shell: bash
+        env:
+          OPENBLAS_NUM_THREADS: '1'
+          OMP_NUM_THREADS: '1'
+        run: |
+          set -euo pipefail
+          mkdir -p data
+          python scripts/stage16_history_model.py --db "$STAGE16_DB" \
+            --mod 20 --out data/strategy-historical-model-candidate.json
+          python - <<'STAGE16_PROMOTE'
+          import json,shutil
+          from pathlib import Path
+          candidate=json.loads(Path('data/strategy-historical-model-candidate.json').read_text())
+          if candidate['state']=='VALIDATED':
+           shutil.copyfile('data/strategy-historical-model-candidate.json','data/strategy-historical-model.json')
+           print('Model validated: independent test',candidate['independent_test'])
+          else:
+           print('Candidate model NOT PROMOTED; preserve existing deployed model.')
+          STAGE16_PROMOTE
+      - name: Review external methodology separately from predictions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/stage16_external_research.py --model data/strategy-historical-model-candidate.json \
+            --out data/strategy-external-research.json
+      - name: Publish trained model, external study audit and hypothesis tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/strategy-historical-model-candidate.json data/strategy-external-research.json
+          if [ -f data/strategy-historical-model.json ]; then git add data/strategy-historical-model.json; fi
+          if git diff --cached --quiet; then echo 'No changes to publish.'; exit 0; fi
+          git commit -m 'Validate chronological race probabilities and external methodology hypotheses'
+          for attempt in 1 2 3 4; do
+            if git pull --rebase origin "$GITHUB_REF_NAME" && git push origin "HEAD:$GITHUB_REF_NAME"; then exit 0; fi
+            git rebase --abort || true
+            sleep $((4*attempt))
+          done
+          exit 1
+      - name: Upload bootstrap validation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage16-historical-model-validation
+          path: |
+            data/strategy-historical-model-candidate.json
+            data/strategy-external-research.json
+          retention-days: 21
+          if-no-files-found: warn
