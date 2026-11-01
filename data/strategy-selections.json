@@ -1,25 +1,18 @@
 {
   "day": "2026-11-01",
   "excluded_races": 20,
-  "generated_at": "2026-11-01T21:57:26.780946+00:00",
+  "generated_at": "2026-11-01T23:53:07.703593+00:00",
   "matched_races": 16,
-  "message": "At most one clear leader. Exact named-event first; same-course class/discipline/handicap/surface/distance fallback only. Untrained research scores are not win probabilities.",
-  "model_status": "NOT_TRAINED",
-  "model_version": "none",
+  "message": "One leader only, after independent historical-race qualification AND validated full-field win probabilities. Abstain on close races or weak evidence.",
+  "model_status": "VALIDATED",
+  "model_version": "stage16-own-data-temporal-v2-all-starters",
   "races": [
     {
       "best_value": null,
       "course": "Carlisle",
       "date": "2026-11-01",
       "decision": {
-        "gap": 1.01,
-        "leader": "Walking On A Dream",
-        "leader_value": 62.94,
-        "metric": "RESEARCH_SCORE_NOT_PROBABILITY",
-        "minimum_gap": 8.0,
-        "reason": "HIGHEST_RANKED_HORSE_NOT_HISTORICAL_QUALIFIER",
-        "second": "Fishery Lane",
-        "second_value": 61.93
+        "reason": "NO_VERIFIED_HISTORICAL_QUALIFIER"
       },
       "event_name": "Gordon Richards",
       "fallback_criteria": null,
@@ -27,9 +20,11 @@
       "historical_editions": 7,
       "match_basis": "SAME_NAMED_EVENT",
       "message": "Exploratory research fit; not a validated betting edge",
-      "model_status": "NOT_TRAINED",
+      "model_status": "VALIDATED",
+      "model_version": "stage16-own-data-temporal-v2-all-starters",
       "most_likely_winner": null,
       "nonqualifier_count": 6,
+      "probability_complete": true,
       "qualifiers": [],
       "race_name": "Pricedup Bet Gordon Richards Novices' Limited Handicap Steeple Chase (gbb Race)",
       "race_time": "2026-11-01T12:38:00+00:00",
@@ -37,38 +32,38 @@
         {
           "horse": "Walking On A Dream",
           "horse_id": "hrs_38089296",
-          "predicted_win_probability": null,
-          "score": 62.94
+          "predicted_win_probability": 0.053004,
+          "score": 63.74
         },
         {
           "horse": "Fishery Lane",
           "horse_id": "hrs_34598095",
-          "predicted_win_probability": null,
-          "score": 61.93
+          "predicted_win_probability": 0.624165,
+          "score": 61.83
         },
         {
           "horse": "We're Red And Blue",
           "horse_id": "hrs_39808076",
-          "predicted_win_probability": null,
-          "score": 61.23
-        },
-        {
-          "horse": "Joltin N Jiving",
-          "horse_id": "hrs_40786627",
-          "predicted_win_probability": null,
-          "score": 54.74
+          "predicted_win_probability": 0.111747,
+          "score": 60.93
         },
         {
           "horse": "Patrick's Wells",
           "horse_id": "hrs_34253653",
-          "predicted_win_probability": null,
-          "score": 54.74
+          "predicted_win_probability": 0.082417,
+          "score": 54.84
+        },
+        {
+          "horse": "Joltin N Jiving",
+          "horse_id": "hrs_40786627",
+          "predicted_win_probability": 0.056688,
+          "score": 54.24
         },
         {
           "horse": "Kahavari",
           "horse_id": "hrs_45630025",
-          "predicted_win_probability": null,
-          "score": 49.24
+          "predicted_win_probability": 0.071978,
+          "score": 48.94
         }
       ],
       "selection": null,
@@ -81,14 +76,7 @@
       "course": "Carlisle",
       "date": "2026-11-01",
       "decision": {
-        "gap": 1.2,
-        "leader": "Celestial Fashion",
-        "leader_value": 74.1,
-        "metric": "RESEARCH_SCORE_NOT_PROBABILITY",
-        "minimum_gap": 8.0,
-        "reason": "HIGHEST_RANKED_HORSE_NOT_HISTORICAL_QUALIFIER",
-        "second": "Panic Attack",
-        "second_value": 72.9
+        "reason": "NO_VERIFIED_HISTORICAL_QUALIFIER"
       },
       "event_name": "Houghton Mares Chase",
       "fallback_criteria": null,
@@ -96,9 +84,11 @@
       "historical_editions": 6,
       "match_basis": "SAME_NAMED_EVENT",
       "message": "Exploratory research fit; not a validated betting edge",
-      "model_status": "NOT_TRAINED",
+      "model_status": "VALIDATED",
+      "model_version": "stage16-own-data-temporal-v2-all-starters",
       "most_likely_winner": null,
       "nonqualifier_count": 5,
+      "probability_complete": true,
       "qualifiers": [],
       "race_name": "Pricedup Boosted Prices Daily Houghton Mares' Steeple Chase (Listed Race) (GBB Race)",
       "race_time": "2026-11-01T13:48:00+00:00",
@@ -106,32 +96,32 @@
         {
           "horse": "Celestial Fashion",
           "horse_id": "hrs_28916811",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.028128,
           "score": 74.1
         },
         {
           "horse": "Panic Attack",
           "horse_id": "hrs_20789300",
-          "predicted_win_probability": null,
-          "score": 72.9
+          "predicted_win_probability": 0.179452,
+          "score": 72.8
         },
         {
           "horse": "Obsessedwithyou",
           "horse_id": "hrs_32599413",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.330463,
           "score": 68.8
         },
         {
           "horse": "Paggane",
           "horse_id": "hrs_30486407",
-          "predicted_win_probability": null,
-          "score": 67.0
+          "predicted_win_probability": 0.400347,
+          "score": 67.1
         },
         {
           "horse": "Apple Away",
           "horse_id": "hrs_29117074",
-          "predicted_win_probability": null,
-          "score": 65.7
+          "predicted_win_probability": 0.06161,
+          "score": 65.6
         }
       ],
       "selection": null,
@@ -144,14 +134,7 @@
       "course": "Carlisle",
       "date": "2026-11-01",
       "decision": {
-        "gap": 0.6,
-        "leader": "To Chase A Dream",
-        "leader_value": 70.9,
-        "metric": "RESEARCH_SCORE_NOT_PROBABILITY",
-        "minimum_gap": 8.0,
-        "reason": "HIGHEST_RANKED_HORSE_NOT_HISTORICAL_QUALIFIER",
-        "second": "Nurse Susan",
-        "second_value": 70.3
+        "reason": "NO_VERIFIED_HISTORICAL_QUALIFIER"
       },
       "event_name": "Castletown Handicap Hurdle",
       "fallback_criteria": null,
@@ -159,9 +142,11 @@
       "historical_editions": 3,
       "match_basis": "SAME_NAMED_EVENT",
       "message": "Exploratory research fit; not a validated betting edge",
-      "model_status": "NOT_TRAINED",
+      "model_status": "VALIDATED",
+      "model_version": "stage16-own-data-temporal-v2-all-starters",
       "most_likely_winner": null,
       "nonqualifier_count": 11,
+      "probability_complete": true,
       "qualifiers": [],
       "race_name": "Pricedup Bog From 10am Castletown Handicap Hurdle Race (gbb Race)",
       "race_time": "2026-11-01T14:23:00+00:00",
@@ -169,68 +154,68 @@
         {
           "horse": "To Chase A Dream",
           "horse_id": "hrs_34153448",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.039997,
           "score": 70.9
         },
         {
           "horse": "Nurse Susan",
           "horse_id": "hrs_27371855",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.089126,
           "score": 70.3
         },
         {
           "horse": "Sanilam",
           "horse_id": "hrs_50590309",
-          "predicted_win_probability": null,
-          "score": 69.8
+          "predicted_win_probability": 0.064705,
+          "score": 69.9
         },
         {
           "horse": "Perseus Way",
           "horse_id": "hrs_26834822",
-          "predicted_win_probability": null,
-          "score": 69.4
+          "predicted_win_probability": 0.118686,
+          "score": 69.5
         },
         {
           "horse": "Listentoyourheart",
           "horse_id": "hrs_37505321",
-          "predicted_win_probability": null,
-          "score": 64.5
+          "predicted_win_probability": 0.054322,
+          "score": 64.4
         },
         {
           "horse": "Madara",
           "horse_id": "hrs_29495998",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.198978,
           "score": 63.5
         },
         {
           "horse": "Railway Bell",
           "horse_id": "hrs_37701335",
-          "predicted_win_probability": null,
-          "score": 62.9
+          "predicted_win_probability": 0.047174,
+          "score": 63.0
         },
         {
           "horse": "Supremely West",
           "horse_id": "hrs_29117284",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.092332,
           "score": 62.7
         },
         {
           "horse": "Kamsinas",
           "horse_id": "hrs_29117102",
-          "predicted_win_probability": null,
-          "score": 61.5
+          "predicted_win_probability": 0.070973,
+          "score": 61.6
         },
         {
           "horse": "Knickerbockerglory",
           "horse_id": "hrs_23000348",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.089208,
           "score": 60.8
         },
         {
           "horse": "Wise Eagle",
           "horse_id": "hrs_21028140",
-          "predicted_win_probability": null,
-          "score": 59.8
+          "predicted_win_probability": 0.134499,
+          "score": 59.7
         }
       ],
       "selection": null,
@@ -243,14 +228,15 @@
       "course": "Carlisle",
       "date": "2026-11-01",
       "decision": {
-        "gap": 0.6,
-        "leader": "Wendigo",
-        "leader_value": 77.8,
-        "metric": "RESEARCH_SCORE_NOT_PROBABILITY",
+        "gap": 8.08,
+        "leader": "Doyen Quest",
+        "leader_value": 40.09,
+        "metric": "VALIDATED_PROBABILITY",
         "minimum_gap": 8.0,
-        "reason": "RESEARCH_LEAD_TOO_SMALL",
-        "second": "Doyen Quest",
-        "second_value": 77.2
+        "model_version": "stage16-own-data-temporal-v2-all-starters",
+        "reason": "CLEAR_VALIDATED_MODEL_LEADER_WITH_HISTORICAL_QUALIFICATION",
+        "second": "Potters Charm",
+        "second_value": 32.01
       },
       "event_name": "Colin Parker Memorial",
       "fallback_criteria": null,
@@ -258,9 +244,11 @@
       "historical_editions": 23,
       "match_basis": "SAME_NAMED_EVENT",
       "message": "Exploratory research fit; not a validated betting edge",
-      "model_status": "NOT_TRAINED",
+      "model_status": "VALIDATED",
+      "model_version": "stage16-own-data-temporal-v2-all-starters",
       "most_likely_winner": null,
       "nonqualifier_count": 0,
+      "probability_complete": true,
       "qualifiers": [
         {
           "bookmaker": "William Hill",
@@ -330,7 +318,7 @@
               "wins": "11.5"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.279017,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303044319",
@@ -339,7 +327,7 @@
           "rating_gap_to_top_lbs": 6.0,
           "rating_weight_effect_suppressed": -4.0,
           "research_status": "PROVISIONAL_POSITIVE_EVENT_TREND",
-          "score": 77.8,
+          "score": 77.9,
           "time": "14:58",
           "trainer": "Jamie Snowden"
         },
@@ -402,7 +390,7 @@
               "wins": "8.5"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.400873,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303044319",
@@ -483,7 +471,7 @@
               "wins": "11.5"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.320111,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303044319",
@@ -492,7 +480,7 @@
           "rating_gap_to_top_lbs": 0.0,
           "rating_weight_effect_suppressed": -4.0,
           "research_status": "PROVISIONAL_POSITIVE_EVENT_TREND",
-          "score": 74.7,
+          "score": 74.6,
           "time": "14:58",
           "trainer": "Nigel & Willy Twiston-Davies"
         }
@@ -503,20 +491,20 @@
         {
           "horse": "Wendigo",
           "horse_id": "hrs_34457227",
-          "predicted_win_probability": null,
-          "score": 77.8
+          "predicted_win_probability": 0.279017,
+          "score": 77.9
         },
         {
           "horse": "Doyen Quest",
           "horse_id": "hrs_29623195",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.400873,
           "score": 77.2
         },
         {
           "horse": "Potters Charm",
           "horse_id": "hrs_34961836",
-          "predicted_win_probability": null,
-          "score": 74.7
+          "predicted_win_probability": 0.320111,
+          "score": 74.6
         }
       ],
       "selection": null,
@@ -529,14 +517,15 @@
       "course": "Carlisle",
       "date": "2026-11-01",
       "decision": {
-        "gap": 0.6,
+        "gap": 6.57,
         "leader": "Caughtinyourtrance",
-        "leader_value": 73.3,
-        "metric": "RESEARCH_SCORE_NOT_PROBABILITY",
+        "leader_value": 25.3,
+        "metric": "VALIDATED_PROBABILITY",
         "minimum_gap": 8.0,
-        "reason": "RESEARCH_LEAD_TOO_SMALL",
-        "second": "Fortunate Man",
-        "second_value": 72.7
+        "model_version": "stage16-own-data-temporal-v2-all-starters",
+        "reason": "LEAD_NOT_STRONG_ENOUGH",
+        "second": "Guard The Moon",
+        "second_value": 18.73
       },
       "event_name": "Cumberland Handicap Chase",
       "fallback_criteria": null,
@@ -544,9 +533,11 @@
       "historical_editions": 24,
       "match_basis": "SAME_NAMED_EVENT",
       "message": "Exploratory research fit; not a validated betting edge",
-      "model_status": "NOT_TRAINED",
+      "model_status": "VALIDATED",
+      "model_version": "stage16-own-data-temporal-v2-all-starters",
       "most_likely_winner": null,
       "nonqualifier_count": 0,
+      "probability_complete": true,
       "qualifiers": [
         {
           "bookmaker": "William Hill",
@@ -613,7 +604,7 @@
               "wins": "5.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.253007,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303046256",
@@ -691,7 +682,7 @@
               "wins": "5.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.107638,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303046256",
@@ -700,7 +691,7 @@
           "rating_gap_to_top_lbs": 10.0,
           "rating_weight_effect_suppressed": 0,
           "research_status": "PROVISIONAL_POSITIVE_EVENT_TREND",
-          "score": 72.7,
+          "score": 72.4,
           "time": "15:33",
           "trainer": "Jonjo & A.J. O'Neill"
         },
@@ -772,7 +763,7 @@
               "wins": "5.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.099112,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303046256",
@@ -781,7 +772,7 @@
           "rating_gap_to_top_lbs": 24.0,
           "rating_weight_effect_suppressed": 0,
           "research_status": "PROVISIONAL_POSITIVE_EVENT_TREND",
-          "score": 71.4,
+          "score": 71.5,
           "time": "15:33",
           "trainer": "Sam England"
         },
@@ -851,7 +842,7 @@
               "wins": "5.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.155145,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303046256",
@@ -860,7 +851,7 @@
           "rating_gap_to_top_lbs": 4.0,
           "rating_weight_effect_suppressed": 0,
           "research_status": "PROVISIONAL_POSITIVE_EVENT_TREND",
-          "score": 70.2,
+          "score": 70.3,
           "time": "15:33",
           "trainer": "Joel Parkinson & Sue Smith"
         },
@@ -923,7 +914,7 @@
               "wins": "6.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.043025,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303046256",
@@ -995,7 +986,7 @@
               "wins": "3.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.060041,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303046256",
@@ -1069,7 +1060,7 @@
               "wins": "6.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.18731,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303046256",
@@ -1078,7 +1069,7 @@
           "rating_gap_to_top_lbs": 0.0,
           "rating_weight_effect_suppressed": 0,
           "research_status": "PROVISIONAL_POSITIVE_EVENT_TREND",
-          "score": 62.9,
+          "score": 62.8,
           "time": "15:33",
           "trainer": "Nigel & Willy Twiston-Davies"
         },
@@ -1141,7 +1132,7 @@
               "wins": "4.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.094721,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303046256",
@@ -1150,7 +1141,7 @@
           "rating_gap_to_top_lbs": 6.0,
           "rating_weight_effect_suppressed": 0,
           "research_status": "PROVISIONAL_POSITIVE_EVENT_TREND",
-          "score": 55.5,
+          "score": 56.0,
           "time": "15:33",
           "trainer": "Sandy Thomson"
         }
@@ -1161,50 +1152,50 @@
         {
           "horse": "Caughtinyourtrance",
           "horse_id": "hrs_34166867",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.253007,
           "score": 73.3
         },
         {
           "horse": "Fortunate Man",
           "horse_id": "hrs_34961724",
-          "predicted_win_probability": null,
-          "score": 72.7
+          "predicted_win_probability": 0.107638,
+          "score": 72.4
         },
         {
           "horse": "Passengerontheship",
           "horse_id": "hrs_35335776",
-          "predicted_win_probability": null,
-          "score": 71.4
+          "predicted_win_probability": 0.099112,
+          "score": 71.5
         },
         {
           "horse": "Grand Geste",
           "horse_id": "hrs_37407300",
-          "predicted_win_probability": null,
-          "score": 70.2
+          "predicted_win_probability": 0.155145,
+          "score": 70.3
         },
         {
           "horse": "Orkney Blue",
           "horse_id": "hrs_40473601",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.043025,
           "score": 67.9
         },
         {
           "horse": "Grozni",
           "horse_id": "hrs_21512316",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.060041,
           "score": 64.2
         },
         {
           "horse": "Guard The Moon",
           "horse_id": "hrs_37932314",
-          "predicted_win_probability": null,
-          "score": 62.9
+          "predicted_win_probability": 0.18731,
+          "score": 62.8
         },
         {
           "horse": "Egbert",
           "horse_id": "hrs_29341515",
-          "predicted_win_probability": null,
-          "score": 55.5
+          "predicted_win_probability": 0.094721,
+          "score": 56.0
         }
       ],
       "selection": null,
@@ -1217,14 +1208,15 @@
       "course": "Cork",
       "date": "2026-11-01",
       "decision": {
-        "gap": 0.2,
+        "gap": 28.68,
         "leader": "Fou De Toi",
-        "leader_value": 69.2,
-        "metric": "RESEARCH_SCORE_NOT_PROBABILITY",
-        "minimum_gap": 8.0,
-        "reason": "RESEARCH_LEAD_TOO_SMALL",
-        "second": "Le Coq Hardi",
-        "second_value": 69.0
+        "leader_value": 41.75,
+        "metric": "VALIDATED_PROBABILITY",
+        "minimum_gap": 5.0,
+        "model_version": "stage16-own-data-temporal-v2-all-starters",
+        "reason": "CLEAR_VALIDATED_MODEL_LEADER_WITH_HISTORICAL_QUALIFICATION",
+        "second": "Quantum Quest",
+        "second_value": 13.07
       },
       "event_name": "Cork Grand National",
       "fallback_criteria": null,
@@ -1232,9 +1224,11 @@
       "historical_editions": 14,
       "match_basis": "SAME_NAMED_EVENT",
       "message": "Exploratory research fit; not a validated betting edge",
-      "model_status": "NOT_TRAINED",
+      "model_status": "VALIDATED",
+      "model_version": "stage16-own-data-temporal-v2-all-starters",
       "most_likely_winner": null,
       "nonqualifier_count": 3,
+      "probability_complete": true,
       "qualifiers": [
         {
           "bookmaker": "William Hill",
@@ -1305,7 +1299,7 @@
               "wins": "9.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.417492,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303152791",
@@ -1386,7 +1380,7 @@
               "wins": "6.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.128768,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303152791",
@@ -1466,7 +1460,7 @@
               "wins": "3.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.130678,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303152791",
@@ -1548,7 +1542,7 @@
               "wins": "6.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.02535,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303152791",
@@ -1631,7 +1625,7 @@
               "wins": "3.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.034761,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303152791",
@@ -1712,7 +1706,7 @@
               "wins": "6.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.078899,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303152791",
@@ -1784,7 +1778,7 @@
               "wins": "3.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.033537,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303152791",
@@ -1804,61 +1798,61 @@
         {
           "horse": "Fou De Toi",
           "horse_id": "hrs_412711614",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.417492,
           "score": 69.2
         },
         {
           "horse": "Le Coq Hardi",
           "horse_id": "hrs_34457493",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.128768,
           "score": 69.0
         },
         {
           "horse": "Quantum Quest",
           "horse_id": "hrs_39959353",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.130678,
           "score": 66.8
         },
         {
           "horse": "Our Soldier",
           "horse_id": "hrs_34598242",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.02535,
           "score": 64.6
         },
         {
           "horse": "Banter At The Bar",
           "horse_id": "hrs_39699030",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.034761,
           "score": 61.2
         },
         {
           "horse": "Prends Garde A Toi",
           "horse_id": "hrs_34361439",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.078899,
           "score": 60.4
         },
         {
           "horse": "Weveallbeencaught",
           "horse_id": "hrs_28220472",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.033537,
           "score": 58.3
         },
         {
           "horse": "Born Braver",
           "horse_id": "hrs_32682622",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.038726,
           "score": 55.2
         },
         {
           "horse": "Positive Thinker",
           "horse_id": "hrs_24675273",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.016442,
           "score": 53.0
         },
         {
           "horse": "You Oughta Know",
           "horse_id": "hrs_35232232",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.095347,
           "score": 48.3
         }
       ],
@@ -1872,14 +1866,15 @@
       "course": "Curragh",
       "date": "2026-11-01",
       "decision": {
-        "gap": 0.9,
-        "leader": "Smoke Them Out",
-        "leader_value": 74.7,
-        "metric": "RESEARCH_SCORE_NOT_PROBABILITY",
-        "minimum_gap": 8.0,
-        "reason": "RESEARCH_LEAD_TOO_SMALL",
-        "second": "Stag Night",
-        "second_value": 73.8
+        "gap": 0.28,
+        "leader": "Gazelle d'Or",
+        "leader_value": 12.54,
+        "metric": "VALIDATED_PROBABILITY",
+        "minimum_gap": 5.0,
+        "model_version": "stage16-own-data-temporal-v2-all-starters",
+        "reason": "LEAD_NOT_STRONG_ENOUGH",
+        "second": "Staysound Susie",
+        "second_value": 12.26
       },
       "event_name": "Mongey Communications",
       "fallback_criteria": null,
@@ -1887,9 +1882,11 @@
       "historical_editions": 10,
       "match_basis": "SAME_NAMED_EVENT",
       "message": "Exploratory research fit; not a validated betting edge",
-      "model_status": "NOT_TRAINED",
+      "model_status": "VALIDATED",
+      "model_version": "stage16-own-data-temporal-v2-all-starters",
       "most_likely_winner": null,
       "nonqualifier_count": 3,
+      "probability_complete": true,
       "qualifiers": [
         {
           "bookmaker": "William Hill",
@@ -1957,7 +1954,7 @@
               "wins": "2.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.095623,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303230271",
@@ -2027,7 +2024,7 @@
               "wins": "3.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.114793,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303230271",
@@ -2108,7 +2105,7 @@
               "wins": "2.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.060975,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303230271",
@@ -2181,7 +2178,7 @@
               "wins": "3.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.102356,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303230271",
@@ -2262,7 +2259,7 @@
               "wins": "6.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.057698,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303230271",
@@ -2343,7 +2340,7 @@
               "wins": "2.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.049541,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303230271",
@@ -2415,7 +2412,7 @@
               "wins": "6.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.026409,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303230271",
@@ -2496,7 +2493,7 @@
               "wins": "3.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.125436,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303230271",
@@ -2577,7 +2574,7 @@
               "wins": "3.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.122633,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303230271",
@@ -2650,7 +2647,7 @@
               "wins": "6.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.058331,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303230271",
@@ -2670,79 +2667,79 @@
         {
           "horse": "Smoke Them Out",
           "horse_id": "hrs_42226072",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.095623,
           "score": 74.7
         },
         {
           "horse": "Stag Night",
           "horse_id": "hrs_24770480",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.114793,
           "score": 73.8
         },
         {
           "horse": "Gerrit's Gem",
           "horse_id": "hrs_37673566",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.060975,
           "score": 67.5
         },
         {
           "horse": "The Highway Rat",
           "horse_id": "hrs_23324903",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.102356,
           "score": 63.8
         },
         {
           "horse": "Bay Of Supremacy",
           "horse_id": "hrs_52087539",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.057698,
           "score": 63.54
         },
         {
           "horse": "Buddy Batt",
           "horse_id": "hrs_36123213",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.049541,
           "score": 63.0
         },
         {
           "horse": "Alnofoor",
           "horse_id": "hrs_24569461",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.026409,
           "score": 61.44
         },
         {
           "horse": "Gazelle d'Or",
           "horse_id": "hrs_412692791",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.125436,
           "score": 58.0
         },
         {
           "horse": "Magical Vision",
           "horse_id": "hrs_24921813",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.035383,
           "score": 57.8
         },
         {
           "horse": "Staysound Susie",
           "horse_id": "hrs_35446285",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.122633,
           "score": 57.7
         },
         {
           "horse": "Harry's Hill",
           "horse_id": "hrs_22250802",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.058331,
           "score": 55.64
         },
         {
           "horse": "She's Too Kool",
           "horse_id": "hrs_53081280",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.106436,
           "score": 53.0
         },
         {
           "horse": "Greek Flower",
           "horse_id": "hrs_31851442",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.044387,
           "score": 51.24
         }
       ],
@@ -2756,14 +2753,7 @@
       "course": "Curragh",
       "date": "2026-11-01",
       "decision": {
-        "gap": 4.4,
-        "leader": "Chally Chute",
-        "leader_value": 69.1,
-        "metric": "RESEARCH_SCORE_NOT_PROBABILITY",
-        "minimum_gap": 8.0,
-        "reason": "HIGHEST_RANKED_HORSE_NOT_HISTORICAL_QUALIFIER",
-        "second": "Abbotsford",
-        "second_value": 64.7
+        "reason": "NO_VERIFIED_HISTORICAL_QUALIFIER"
       },
       "event_name": "Loughbrown Stakes",
       "fallback_criteria": null,
@@ -2771,9 +2761,11 @@
       "historical_editions": 3,
       "match_basis": "SAME_NAMED_EVENT",
       "message": "Exploratory research fit; not a validated betting edge",
-      "model_status": "NOT_TRAINED",
+      "model_status": "VALIDATED",
+      "model_version": "stage16-own-data-temporal-v2-all-starters",
       "most_likely_winner": null,
       "nonqualifier_count": 11,
+      "probability_complete": true,
       "qualifiers": [],
       "race_name": "QuinnBet Loughbrown Stakes (Group 3)",
       "race_time": "2026-11-01T14:37:00+00:00",
@@ -2781,67 +2773,67 @@
         {
           "horse": "Chally Chute",
           "horse_id": "hrs_29538516",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.148466,
           "score": 69.1
         },
         {
           "horse": "Abbotsford",
           "horse_id": "hrs_58627184",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.126473,
           "score": 64.7
         },
         {
           "horse": "Absurde",
           "horse_id": "hrs_23176692",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.056769,
           "score": 62.4
         },
         {
           "horse": "Asakir",
           "horse_id": "hrs_63069608",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.089517,
           "score": 60.6
         },
         {
           "horse": "Snapretend",
           "horse_id": "hrs_50187788",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.087045,
           "score": 59.5
         },
         {
           "horse": "Marazion",
           "horse_id": "hrs_42647689",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.055023,
           "score": 59.3
         },
         {
           "horse": "Amelia Earhart",
           "horse_id": "hrs_53390211",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.13463,
           "score": 59.1
         },
         {
           "horse": "Chasing Paradise",
           "horse_id": "hrs_57877981",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.032889,
           "score": 58.6
         },
         {
           "horse": "Galileo Dame",
           "horse_id": "hrs_37617867",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.106632,
           "score": 58.5
         },
         {
           "horse": "Endless Victory",
           "horse_id": "hrs_39547837",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.071664,
           "score": 55.4
         },
         {
           "horse": "Sky Captain",
           "horse_id": "hrs_53539647",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.090891,
           "score": 53.2
         }
       ],
@@ -2855,14 +2847,7 @@
       "course": "Curragh",
       "date": "2026-11-01",
       "decision": {
-        "gap": 1.7,
-        "leader": "Invincible Will",
-        "leader_value": 72.3,
-        "metric": "RESEARCH_SCORE_NOT_PROBABILITY",
-        "minimum_gap": 8.0,
-        "reason": "HIGHEST_RANKED_HORSE_NOT_HISTORICAL_QUALIFIER",
-        "second": "Expert Dancer",
-        "second_value": 70.6
+        "reason": "NO_VERIFIED_HISTORICAL_QUALIFIER"
       },
       "event_name": "Keadeen Hotel",
       "fallback_criteria": null,
@@ -2870,9 +2855,11 @@
       "historical_editions": 9,
       "match_basis": "SAME_NAMED_EVENT",
       "message": "Exploratory research fit; not a validated betting edge",
-      "model_status": "NOT_TRAINED",
+      "model_status": "VALIDATED",
+      "model_version": "stage16-own-data-temporal-v2-all-starters",
       "most_likely_winner": null,
       "nonqualifier_count": 22,
+      "probability_complete": true,
       "qualifiers": [],
       "race_name": "Keadeen Hotel Premier Handicap",
       "race_time": "2026-11-01T15:12:00+00:00",
@@ -2880,133 +2867,133 @@
         {
           "horse": "Invincible Will",
           "horse_id": "hrs_52897117",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.072383,
           "score": 72.3
         },
         {
           "horse": "Expert Dancer",
           "horse_id": "hrs_56843801",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.083429,
           "score": 70.6
         },
         {
           "horse": "Uncle Goalie",
           "horse_id": "hrs_64847482",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.070434,
           "score": 69.8
         },
         {
           "horse": "Perry Mason",
           "horse_id": "hrs_40805541",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.045097,
           "score": 68.4
         },
         {
           "horse": "Ryefield Dasher",
           "horse_id": "hrs_56843864",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.032033,
           "score": 65.3
         },
         {
           "horse": "Majestic King",
           "horse_id": "hrs_52641358",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.035024,
           "score": 64.9
         },
         {
           "horse": "Sanctijude",
           "horse_id": "hrs_53328387",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.044666,
           "score": 64.0
         },
         {
           "horse": "Diego El Queso",
           "horse_id": "hrs_51091124",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.06261,
           "score": 63.7
         },
         {
           "horse": "Java Wood",
           "horse_id": "hrs_55882260",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.019329,
           "score": 63.2
         },
         {
           "horse": "Iamimmaculate",
           "horse_id": "hrs_55764576",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.071388,
           "score": 62.5
         },
         {
           "horse": "Victory Tip",
           "horse_id": "hrs_56843962",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.064471,
           "score": 62.4
         },
         {
           "horse": "Ribee",
           "horse_id": "hrs_47773908",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.027985,
           "score": 60.7
         },
         {
           "horse": "Titanium",
           "horse_id": "hrs_28891485",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.01472,
           "score": 59.5
         },
         {
           "horse": "Chica Guerrera",
           "horse_id": "hrs_43636859",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.083896,
           "score": 59.2
         },
         {
           "horse": "Harana",
           "horse_id": "hrs_42780969",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.034754,
           "score": 58.0
         },
         {
           "horse": "Eastwatch",
           "horse_id": "hrs_45598532",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.04904,
           "score": 53.6
         },
         {
           "horse": "Cherry Hill Girl",
           "horse_id": "hrs_54712357",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.03532,
           "score": 53.3
-        },
-        {
-          "horse": "Amplitude",
-          "horse_id": "hrs_43796445",
-          "predicted_win_probability": null,
-          "score": 51.8
         },
         {
           "horse": "Lady Lilac",
           "horse_id": "hrs_49512638",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.035119,
           "score": 51.0
         },
         {
           "horse": "Spectical",
           "horse_id": "hrs_54998083",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.017865,
           "score": 50.3
         },
         {
           "horse": "Cristal Clere",
           "horse_id": "hrs_20663755",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.037027,
           "score": 50.0
+        },
+        {
+          "horse": "Amplitude",
+          "horse_id": "hrs_43796445",
+          "predicted_win_probability": 0.029101,
+          "score": 49.9
         },
         {
           "horse": "Hellorhighwater",
           "horse_id": "hrs_53602136",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.034309,
           "score": 49.3
         }
       ],
@@ -3020,12 +3007,8 @@
       "course": "Curragh",
       "date": "2026-11-01",
       "decision": {
-        "gap": null,
-        "leader": "Thread Of Gold",
-        "metric": "RESEARCH_SCORE_NOT_PROBABILITY",
-        "minimum_gap": null,
-        "reason": "FROZEN_FIRST_PUBLISHED_SELECTION",
-        "second": null
+        "metric": null,
+        "reason": "FROZEN_PREVIOUS_PUBLICATION"
       },
       "event_name": "Finale Stakes",
       "fallback_criteria": null,
@@ -3033,9 +3016,11 @@
       "historical_editions": 12,
       "match_basis": "SAME_NAMED_EVENT",
       "message": "Exploratory research fit; not a validated betting edge",
-      "model_status": "NOT_TRAINED",
+      "model_status": "VALIDATED",
+      "model_version": "stage16-own-data-temporal-v2-all-starters",
       "most_likely_winner": null,
       "nonqualifier_count": 0,
+      "probability_complete": true,
       "qualifiers": [
         {
           "bookmaker": "William Hill",
@@ -3105,7 +3090,7 @@
               "wins": "4.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.149977,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303238019",
@@ -3185,7 +3170,7 @@
               "wins": "4.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.113416,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303238019",
@@ -3266,7 +3251,7 @@
               "wins": "5.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.065791,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303238019",
@@ -3347,7 +3332,7 @@
               "wins": "4.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.086234,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303238019",
@@ -3428,7 +3413,7 @@
               "wins": "5.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.11138,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303238019",
@@ -3507,7 +3492,7 @@
               "wins": "4.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.059678,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303238019",
@@ -3588,7 +3573,7 @@
               "wins": "5.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.044297,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303238019",
@@ -3667,7 +3652,7 @@
               "wins": "6.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.081325,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303238019",
@@ -3748,7 +3733,7 @@
               "wins": "5.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.035945,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303238019",
@@ -3830,7 +3815,7 @@
               "wins": "4.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.041591,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303238019",
@@ -3912,7 +3897,7 @@
               "wins": "3.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.046195,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303238019",
@@ -3985,7 +3970,7 @@
               "wins": "7.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.11211,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303238019",
@@ -4058,7 +4043,7 @@
               "wins": "6.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.05206,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303238019",
@@ -4078,79 +4063,79 @@
         {
           "horse": "Thread Of Gold",
           "horse_id": "hrs_56127603",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.149977,
           "score": 71.4
         },
         {
           "horse": "Zadawa",
           "horse_id": "hrs_55764520",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.113416,
           "score": 69.8
         },
         {
           "horse": "Miss Romagna",
           "horse_id": "hrs_62677720",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.065791,
           "score": 69.7
         },
         {
           "horse": "The Austrian",
           "horse_id": "hrs_65254728",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.086234,
           "score": 68.9
         },
         {
           "horse": "Together Now",
           "horse_id": "hrs_55947696",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.11138,
           "score": 68.6
         },
         {
           "horse": "Factual Fact",
           "horse_id": "hrs_34652744",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.059678,
           "score": 68.4
         },
         {
           "horse": "Mawhibah",
           "horse_id": "hrs_65287173",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.044297,
           "score": 65.6
         },
         {
           "horse": "In My Teens",
           "horse_id": "hrs_53359523",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.081325,
           "score": 64.4
         },
         {
           "horse": "Camino Vino",
           "horse_id": "hrs_59710742",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.035945,
           "score": 64.1
         },
         {
           "horse": "Contorsion",
           "horse_id": "hrs_53148158",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.041591,
           "score": 62.6
         },
         {
           "horse": "Shaool",
           "horse_id": "hrs_45855887",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.046195,
           "score": 58.8
         },
         {
           "horse": "Golden Splendour",
           "horse_id": "hrs_52555405",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.11211,
           "score": 58.3
         },
         {
           "horse": "Shosholoza",
           "horse_id": "hrs_57439158",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.05206,
           "score": 50.1
         }
       ],
@@ -4164,14 +4149,15 @@
       "course": "Huntingdon",
       "date": "2026-11-01",
       "decision": {
-        "gap": 2.2,
+        "gap": 7.48,
         "leader": "Irish Chorus",
-        "leader_value": 77.1,
-        "metric": "RESEARCH_SCORE_NOT_PROBABILITY",
+        "leader_value": 25.46,
+        "metric": "VALIDATED_PROBABILITY",
         "minimum_gap": 8.0,
-        "reason": "RESEARCH_LEAD_TOO_SMALL",
-        "second": "Jet of Dreams",
-        "second_value": 74.9
+        "model_version": "stage16-own-data-temporal-v2-all-starters",
+        "reason": "LEAD_NOT_STRONG_ENOUGH",
+        "second": "Park Annonciade",
+        "second_value": 17.98
       },
       "event_name": "Macer Gifford",
       "fallback_criteria": null,
@@ -4179,9 +4165,11 @@
       "historical_editions": 17,
       "match_basis": "SAME_NAMED_EVENT",
       "message": "Exploratory research fit; not a validated betting edge",
-      "model_status": "NOT_TRAINED",
+      "model_status": "VALIDATED",
+      "model_version": "stage16-own-data-temporal-v2-all-starters",
       "most_likely_winner": null,
       "nonqualifier_count": 0,
+      "probability_complete": true,
       "qualifiers": [
         {
           "bookmaker": "William Hill",
@@ -4251,7 +4239,7 @@
               "wins": "4.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.254636,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303057878",
@@ -4321,7 +4309,7 @@
               "wins": "7.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.123682,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303057878",
@@ -4393,7 +4381,7 @@
               "wins": "6.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.054141,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303057878",
@@ -4474,7 +4462,7 @@
               "wins": "4.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.11068,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303057878",
@@ -4483,7 +4471,7 @@
           "rating_gap_to_top_lbs": 0.0,
           "rating_weight_effect_suppressed": 0,
           "research_status": "PROVISIONAL_POSITIVE_EVENT_TREND",
-          "score": 71.6,
+          "score": 71.3,
           "time": "14:42",
           "trainer": "Ben Pauling"
         },
@@ -4555,7 +4543,7 @@
               "wins": "6.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.07621,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303057878",
@@ -4627,7 +4615,7 @@
               "wins": "5.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.096429,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303057878",
@@ -4636,7 +4624,7 @@
           "rating_gap_to_top_lbs": 10.0,
           "rating_weight_effect_suppressed": 0,
           "research_status": "PROVISIONAL_POSITIVE_EVENT_TREND",
-          "score": 67.1,
+          "score": 66.8,
           "time": "14:42",
           "trainer": "Micky Hammond"
         },
@@ -4697,7 +4685,7 @@
               "wins": "5.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.179806,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303057878",
@@ -4779,7 +4767,7 @@
               "wins": "5.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.104416,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303057878",
@@ -4799,49 +4787,49 @@
         {
           "horse": "Irish Chorus",
           "horse_id": "hrs_34456513",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.254636,
           "score": 77.1
         },
         {
           "horse": "Jet of Dreams",
           "horse_id": "hrs_29012809",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.123682,
           "score": 74.9
         },
         {
           "horse": "Rumoursareflying",
           "horse_id": "hrs_32982838",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.054141,
           "score": 71.7
         },
         {
           "horse": "Jimbo Sport",
           "horse_id": "hrs_37576630",
-          "predicted_win_probability": null,
-          "score": 71.6
+          "predicted_win_probability": 0.11068,
+          "score": 71.3
         },
         {
           "horse": "Milan Tino",
           "horse_id": "hrs_37192365",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.07621,
           "score": 68.9
         },
         {
           "horse": "Singapore Trip",
           "horse_id": "hrs_24434403",
-          "predicted_win_probability": null,
-          "score": 67.1
+          "predicted_win_probability": 0.096429,
+          "score": 66.8
         },
         {
           "horse": "Park Annonciade",
           "horse_id": "hrs_34003032",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.179806,
           "score": 62.8
         },
         {
           "horse": "Lady Kara",
           "horse_id": "hrs_54712259",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.104416,
           "score": 57.0
         }
       ],
@@ -4855,14 +4843,15 @@
       "course": "Huntingdon",
       "date": "2026-11-01",
       "decision": {
-        "gap": 0.4,
+        "gap": 3.3,
         "leader": "Kenny's Jewel",
-        "leader_value": 57.6,
-        "metric": "RESEARCH_SCORE_NOT_PROBABILITY",
+        "leader_value": 21.52,
+        "metric": "VALIDATED_PROBABILITY",
         "minimum_gap": 8.0,
-        "reason": "RESEARCH_LEAD_TOO_SMALL",
-        "second": "Upton's Mighty Oak",
-        "second_value": 57.2
+        "model_version": "stage16-own-data-temporal-v2-all-starters",
+        "reason": "LEAD_NOT_STRONG_ENOUGH",
+        "second": "Nala The Lioness",
+        "second_value": 18.23
       },
       "event_name": "20.5f Class 5 Hurdle Handicap TURF @ Huntingdon (5y)",
       "fallback_criteria": {
@@ -4878,9 +4867,11 @@
       "historical_editions": 47,
       "match_basis": "SAME_COURSE_SIMILAR_RACE",
       "message": "Exploratory research fit; not a validated betting edge",
-      "model_status": "NOT_TRAINED",
+      "model_status": "VALIDATED",
+      "model_version": "stage16-own-data-temporal-v2-all-starters",
       "most_likely_winner": null,
       "nonqualifier_count": 0,
+      "probability_complete": true,
       "qualifiers": [
         {
           "bookmaker": "William Hill",
@@ -4950,7 +4941,7 @@
               "wins": "4.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.215215,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303059815",
@@ -4959,7 +4950,7 @@
           "rating_gap_to_top_lbs": 0.0,
           "rating_weight_effect_suppressed": 0,
           "research_status": "PROVISIONAL_POSITIVE_EVENT_TREND",
-          "score": 57.6,
+          "score": 57.7,
           "time": "15:17",
           "trainer": "Dylan Cunha"
         },
@@ -5032,7 +5023,7 @@
               "wins": "4.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.117831,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303059815",
@@ -5115,7 +5106,7 @@
               "wins": "16.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.182253,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303059815",
@@ -5197,7 +5188,7 @@
               "wins": "19.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.158612,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303059815",
@@ -5278,7 +5269,7 @@
               "wins": "18.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.086272,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303059815",
@@ -5361,7 +5352,7 @@
               "wins": "4.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.163409,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303059815",
@@ -5370,7 +5361,7 @@
           "rating_gap_to_top_lbs": 10.0,
           "rating_weight_effect_suppressed": 0,
           "research_status": "PROVISIONAL_POSITIVE_EVENT_TREND",
-          "score": 45.0,
+          "score": 44.9,
           "time": "15:17",
           "trainer": "David Dennis"
         },
@@ -5433,7 +5424,7 @@
               "wins": "18.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.076407,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303059815",
@@ -5453,43 +5444,43 @@
         {
           "horse": "Kenny's Jewel",
           "horse_id": "hrs_57654534",
-          "predicted_win_probability": null,
-          "score": 57.6
+          "predicted_win_probability": 0.215215,
+          "score": 57.7
         },
         {
           "horse": "Upton's Mighty Oak",
           "horse_id": "hrs_59862509",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.117831,
           "score": 57.2
         },
         {
           "horse": "Nala The Lioness",
           "horse_id": "hrs_38865722",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.182253,
           "score": 55.0
         },
         {
           "horse": "Just A Heartbeat",
           "horse_id": "hrs_46449844",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.158612,
           "score": 51.6
         },
         {
           "horse": "Ever Ready",
           "horse_id": "hrs_34814542",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.086272,
           "score": 45.6
         },
         {
           "horse": "Georgie's Lady",
           "horse_id": "hrs_63357364",
-          "predicted_win_probability": null,
-          "score": 45.0
+          "predicted_win_probability": 0.163409,
+          "score": 44.9
         },
         {
           "horse": "Sumatran Tiger",
           "horse_id": "hrs_20917617",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.076407,
           "score": 43.7
         }
       ],
@@ -5503,14 +5494,15 @@
       "course": "Huntingdon",
       "date": "2026-11-01",
       "decision": {
-        "gap": 6.8,
-        "leader": "Matoury",
-        "leader_value": 73.7,
-        "metric": "RESEARCH_SCORE_NOT_PROBABILITY",
+        "gap": 8.14,
+        "leader": "Camshaft",
+        "leader_value": 23.46,
+        "metric": "VALIDATED_PROBABILITY",
         "minimum_gap": 8.0,
-        "reason": "RESEARCH_LEAD_TOO_SMALL",
-        "second": "Charlie My Boy",
-        "second_value": 66.9
+        "model_version": "stage16-own-data-temporal-v2-all-starters",
+        "reason": "WIN_PROBABILITY_LEADER_NOT_HISTORICAL_QUALIFIER",
+        "second": "Alan Bresil",
+        "second_value": 15.32
       },
       "event_name": "25f Class 5 Hurdle Handicap TURF @ Huntingdon (5y)",
       "fallback_criteria": {
@@ -5526,9 +5518,11 @@
       "historical_editions": 33,
       "match_basis": "SAME_COURSE_SIMILAR_RACE",
       "message": "Exploratory research fit; not a validated betting edge",
-      "model_status": "NOT_TRAINED",
+      "model_status": "VALIDATED",
+      "model_version": "stage16-own-data-temporal-v2-all-starters",
       "most_likely_winner": null,
       "nonqualifier_count": 1,
+      "probability_complete": true,
       "qualifiers": [
         {
           "bookmaker": "William Hill",
@@ -5598,7 +5592,7 @@
               "wins": "22.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.108762,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303061752",
@@ -5607,7 +5601,7 @@
           "rating_gap_to_top_lbs": 7.0,
           "rating_weight_effect_suppressed": 0,
           "research_status": "PROVISIONAL_POSITIVE_EVENT_TREND",
-          "score": 73.7,
+          "score": 73.6,
           "time": "15:52",
           "trainer": "Mike Sowersby"
         },
@@ -5669,7 +5663,7 @@
               "wins": "7.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.087797,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303061752",
@@ -5742,7 +5736,7 @@
               "wins": "7.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.038089,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303061752",
@@ -5815,7 +5809,7 @@
               "wins": "22.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.118145,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303061752",
@@ -5824,7 +5818,7 @@
           "rating_gap_to_top_lbs": 2.0,
           "rating_weight_effect_suppressed": 0,
           "research_status": "PROVISIONAL_POSITIVE_EVENT_TREND",
-          "score": 58.1,
+          "score": 58.2,
           "time": "15:52",
           "trainer": "Fergal O'Brien"
         },
@@ -5896,7 +5890,7 @@
               "wins": "22.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.143244,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303061752",
@@ -5979,7 +5973,7 @@
               "wins": "22.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.116185,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303061752",
@@ -5988,7 +5982,7 @@
           "rating_gap_to_top_lbs": 15.0,
           "rating_weight_effect_suppressed": 0,
           "research_status": "PROVISIONAL_POSITIVE_EVENT_TREND",
-          "score": 51.5,
+          "score": 51.4,
           "time": "15:52",
           "trainer": "Mike Sowersby"
         },
@@ -6060,7 +6054,7 @@
               "wins": "22.0"
             }
           ],
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.153185,
           "price_decimal": null,
           "qualifies": true,
           "race_id": "rac_32303061752",
@@ -6080,49 +6074,49 @@
         {
           "horse": "Matoury",
           "horse_id": "hrs_32278442",
-          "predicted_win_probability": null,
-          "score": 73.7
+          "predicted_win_probability": 0.108762,
+          "score": 73.6
         },
         {
           "horse": "Charlie My Boy",
           "horse_id": "hrs_27371862",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.087797,
           "score": 66.9
         },
         {
           "horse": "Quick of The Night",
           "horse_id": "hrs_29829681",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.038089,
           "score": 63.8
         },
         {
           "horse": "Camshaft",
           "horse_id": "hrs_60250127",
-          "predicted_win_probability": null,
-          "score": 58.5
+          "predicted_win_probability": 0.234593,
+          "score": 58.3
         },
         {
           "horse": "Check The Score",
           "horse_id": "hrs_32682671",
-          "predicted_win_probability": null,
-          "score": 58.1
+          "predicted_win_probability": 0.118145,
+          "score": 58.2
         },
         {
           "horse": "Captain Connor",
           "horse_id": "hrs_58931145",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.143244,
           "score": 56.2
         },
         {
           "horse": "Simiyann",
           "horse_id": "hrs_35176043",
-          "predicted_win_probability": null,
-          "score": 51.5
+          "predicted_win_probability": 0.116185,
+          "score": 51.4
         },
         {
           "horse": "Alan Bresil",
           "horse_id": "hrs_50622481",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.153185,
           "score": 50.0
         }
       ],
@@ -6136,14 +6130,7 @@
       "course": "Worcester",
       "date": "2026-11-01",
       "decision": {
-        "gap": 3.69,
-        "leader": "In The Age",
-        "leader_value": 63.23,
-        "metric": "RESEARCH_SCORE_NOT_PROBABILITY",
-        "minimum_gap": 8.0,
-        "reason": "HIGHEST_RANKED_HORSE_NOT_HISTORICAL_QUALIFIER",
-        "second": "Galeforcechopper",
-        "second_value": 59.54
+        "reason": "NO_VERIFIED_HISTORICAL_QUALIFIER"
       },
       "event_name": "20f Class 4 Chase Handicap TURF @ Worcester (8y)",
       "fallback_criteria": {
@@ -6159,9 +6146,11 @@
       "historical_editions": 6,
       "match_basis": "SAME_COURSE_SIMILAR_RACE",
       "message": "Exploratory research fit; not a validated betting edge",
-      "model_status": "NOT_TRAINED",
+      "model_status": "VALIDATED",
+      "model_version": "stage16-own-data-temporal-v2-all-starters",
       "most_likely_winner": null,
       "nonqualifier_count": 15,
+      "probability_complete": true,
       "qualifiers": [],
       "race_name": "Copybet For Premier League Profit Boosts Novices' Handicap Steeple Chase (GBB Race)",
       "race_time": "2026-11-01T12:10:00+00:00",
@@ -6169,92 +6158,92 @@
         {
           "horse": "In The Age",
           "horse_id": "hrs_39959682",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.082341,
           "score": 63.23
         },
         {
           "horse": "Galeforcechopper",
           "horse_id": "hrs_54712266",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.052125,
           "score": 59.54
         },
         {
           "horse": "Five Bar Gate",
           "horse_id": "hrs_41072801",
-          "predicted_win_probability": null,
-          "score": 58.33
+          "predicted_win_probability": 0.068589,
+          "score": 58.23
         },
         {
           "horse": "Up To Trix",
           "horse_id": "hrs_51831948",
-          "predicted_win_probability": null,
-          "score": 57.75
+          "predicted_win_probability": 0.124232,
+          "score": 57.25
         },
         {
           "horse": "Windsurfer",
           "horse_id": "hrs_37095975",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.042145,
           "score": 56.23
         },
         {
           "horse": "Le Soleil Reve",
           "horse_id": "hrs_48112162",
-          "predicted_win_probability": null,
-          "score": 55.75
+          "predicted_win_probability": 0.065767,
+          "score": 55.85
         },
         {
           "horse": "Keep Star",
           "horse_id": "hrs_40165993",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.062452,
           "score": 55.05
         },
         {
           "horse": "Kastellion",
           "horse_id": "hrs_52055528",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.043005,
           "score": 54.84
         },
         {
           "horse": "Grand Garcon",
           "horse_id": "hrs_49757155",
-          "predicted_win_probability": null,
-          "score": 54.13
+          "predicted_win_probability": 0.121102,
+          "score": 54.03
         },
         {
           "horse": "Lasko des Obeaux",
           "horse_id": "hrs_51341479",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.106735,
           "score": 54.03
         },
         {
           "horse": "Dynamite Defense",
           "horse_id": "hrs_40819569",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.014738,
           "score": 53.34
         },
         {
           "horse": "Mossy Fen Coolio",
           "horse_id": "hrs_49757750",
-          "predicted_win_probability": null,
-          "score": 52.93
+          "predicted_win_probability": 0.05417,
+          "score": 52.83
         },
         {
           "horse": "Joyau Allen",
           "horse_id": "hrs_34253282",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.068434,
           "score": 52.44
         },
         {
           "horse": "Lexie's Moon",
           "horse_id": "hrs_33975053",
-          "predicted_win_probability": null,
-          "score": 52.14
+          "predicted_win_probability": 0.039581,
+          "score": 52.04
         },
         {
           "horse": "Jukebox King",
           "horse_id": "hrs_48644533",
-          "predicted_win_probability": null,
-          "score": 51.65
+          "predicted_win_probability": 0.054585,
+          "score": 51.75
         }
       ],
       "selection": null,
@@ -6267,14 +6256,7 @@
       "course": "Worcester",
       "date": "2026-11-01",
       "decision": {
-        "gap": 2.8,
-        "leader": "Next Twist",
-        "leader_value": 69.21,
-        "metric": "RESEARCH_SCORE_NOT_PROBABILITY",
-        "minimum_gap": 8.0,
-        "reason": "HIGHEST_RANKED_HORSE_NOT_HISTORICAL_QUALIFIER",
-        "second": "Red Oak",
-        "second_value": 66.41
+        "reason": "NO_VERIFIED_HISTORICAL_QUALIFIER"
       },
       "event_name": "16.5f Class 4 Chase Handicap TURF @ Worcester (8y)",
       "fallback_criteria": {
@@ -6290,9 +6272,11 @@
       "historical_editions": 7,
       "match_basis": "SAME_COURSE_SIMILAR_RACE",
       "message": "Exploratory research fit; not a validated betting edge",
-      "model_status": "NOT_TRAINED",
+      "model_status": "VALIDATED",
+      "model_version": "stage16-own-data-temporal-v2-all-starters",
       "most_likely_winner": null,
       "nonqualifier_count": 10,
+      "probability_complete": true,
       "qualifiers": [],
       "race_name": "Copybet Pay First Past The Post Novices' Handicap Steeple Chase (GBB Race)",
       "race_time": "2026-11-01T13:55:00+00:00",
@@ -6300,62 +6284,62 @@
         {
           "horse": "Next Twist",
           "horse_id": "hrs_46233229",
-          "predicted_win_probability": null,
-          "score": 69.21
+          "predicted_win_probability": 0.198701,
+          "score": 68.71
         },
         {
           "horse": "Red Oak",
           "horse_id": "hrs_40494062",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.145134,
           "score": 66.41
         },
         {
           "horse": "Tigers Moon",
           "horse_id": "hrs_47621595",
-          "predicted_win_probability": null,
-          "score": 64.51
+          "predicted_win_probability": 0.073213,
+          "score": 64.61
         },
         {
           "horse": "Kartoon And Co",
           "horse_id": "hrs_37476614",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.071807,
           "score": 62.11
         },
         {
           "horse": "Sweeper System",
           "horse_id": "hrs_47345284",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.033456,
           "score": 61.71
-        },
-        {
-          "horse": "Beauty In The Park",
-          "horse_id": "hrs_47192201",
-          "predicted_win_probability": null,
-          "score": 60.38
         },
         {
           "horse": "Just Her Type",
           "horse_id": "hrs_41596800",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.080594,
           "score": 60.28
+        },
+        {
+          "horse": "Beauty In The Park",
+          "horse_id": "hrs_47192201",
+          "predicted_win_probability": 0.128894,
+          "score": 60.18
         },
         {
           "horse": "Kiwi Rush",
           "horse_id": "hrs_40920425",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.10832,
           "score": 54.78
         },
         {
           "horse": "Sweating Bullets",
           "horse_id": "hrs_35150402",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.124439,
           "score": 53.51
         },
         {
           "horse": "Hans Lippershey",
           "horse_id": "hrs_51735894",
-          "predicted_win_probability": null,
-          "score": 51.91
+          "predicted_win_probability": 0.035441,
+          "score": 52.01
         }
       ],
       "selection": null,
@@ -6368,14 +6352,7 @@
       "course": "Worcester",
       "date": "2026-11-01",
       "decision": {
-        "gap": 0.9,
-        "leader": "I Love You Sivola",
-        "leader_value": 55.3,
-        "metric": "RESEARCH_SCORE_NOT_PROBABILITY",
-        "minimum_gap": 8.0,
-        "reason": "HIGHEST_RANKED_HORSE_NOT_HISTORICAL_QUALIFIER",
-        "second": "Katie's Melody",
-        "second_value": 54.4
+        "reason": "NO_VERIFIED_HISTORICAL_QUALIFIER"
       },
       "event_name": "23f Class 5 Hurdle Handicap TURF @ Worcester (5y)",
       "fallback_criteria": {
@@ -6391,9 +6368,11 @@
       "historical_editions": 5,
       "match_basis": "SAME_COURSE_SIMILAR_RACE",
       "message": "Exploratory research fit; not a validated betting edge",
-      "model_status": "NOT_TRAINED",
+      "model_status": "VALIDATED",
+      "model_version": "stage16-own-data-temporal-v2-all-starters",
       "most_likely_winner": null,
       "nonqualifier_count": 9,
+      "probability_complete": true,
       "qualifiers": [],
       "race_name": "Copybet Overnight Best Odds Guaranteed Novices' Handicap Hurdle Race",
       "race_time": "2026-11-01T15:40:00+00:00",
@@ -6401,55 +6380,55 @@
         {
           "horse": "I Love You Sivola",
           "horse_id": "hrs_29647457",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.049056,
           "score": 55.3
         },
         {
           "horse": "Katie's Melody",
           "horse_id": "hrs_50666812",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.151495,
           "score": 54.4
         },
         {
           "horse": "Herbygoesbananas",
           "horse_id": "hrs_47033056",
-          "predicted_win_probability": null,
-          "score": 53.3
+          "predicted_win_probability": 0.197163,
+          "score": 53.4
         },
         {
           "horse": "Eskimo Sam",
           "horse_id": "hrs_43163729",
-          "predicted_win_probability": null,
-          "score": 52.2
+          "predicted_win_probability": 0.154113,
+          "score": 52.3
         },
         {
           "horse": "Theatre Tom",
           "horse_id": "hrs_40786361",
-          "predicted_win_probability": null,
-          "score": 52.1
+          "predicted_win_probability": 0.267091,
+          "score": 51.6
         },
         {
           "horse": "Rest Is The Best",
           "horse_id": "hrs_58900457",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.037511,
           "score": 50.5
         },
         {
           "horse": "Dexperado",
           "horse_id": "hrs_31965339",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.037176,
           "score": 49.9
         },
         {
           "horse": "Warrioress",
           "horse_id": "hrs_50622369",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.072606,
           "score": 49.2
         },
         {
           "horse": "Locked Down Lad",
           "horse_id": "hrs_40332523",
-          "predicted_win_probability": null,
+          "predicted_win_probability": 0.03379,
           "score": 48.5
         }
       ],
