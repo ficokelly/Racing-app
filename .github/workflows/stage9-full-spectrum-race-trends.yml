@@ -22,15 +22,15 @@ jobs:
           cat > stage9_history_export.py <<'STAGE9_EXPORT'
           #!/usr/bin/env python3
           """Racing Hot Pots Stage 9: chronological pre-race form and exploratory trend discovery.
-
+          
           No current-race SP, finishing position, RPR, Topspeed, or post-race comment is
           used as a predictor. Same-day results are incorporated only after EVERY race
           on that day has been assessed (safer than guessing off-times).
-
+          
           Input: Stage 2 SQLite historical_races + historical_runs. Optional Stage 4
           identity map for race title/handicap classification. Output is exploratory,
           NOT an automatically deployable, calibrated betting strategy.
-
+          
           Standard library only; streams all ~5m race starts without loading them into RAM.
           """
           import argparse
@@ -44,7 +44,7 @@ jobs:
           import statistics
           import unicodedata
           from pathlib import Path
-
+          
           NONRUN = {'NR','NON-RUNNER','NON RUNNER','WITHDRAWN','SCRATCHED','VOID','NONRUNNER'}
           WINDOWS = {'TRAIN':(1995,2017), 'VALID':(2018,2021), 'TEST':(2022,2025)}
           FEATURE_COLUMNS = [
@@ -72,18 +72,18 @@ jobs:
               'prior_graded_chase_starts','prior_graded_chase_wins',
               'prior_course_chase_starts','prior_course_chase_wins','prior_listed_starts','prior_listed_wins'
           ]
-
+          
           def norm(s):
               s=unicodedata.normalize('NFKD',str(s or '')).encode('ascii','ignore').decode().lower()
               return re.sub(r'[^a-z0-9]+',' ',s).strip()
-
+          
           def grade_from_title(title):
               s=norm(title)
               m=re.search(r'\b(?:grade|group)\s*([123])\b',s)
               if m:return ('G' if 'grade' in s else 'GRP')+m.group(1)
               if 'listed' in s:return 'LISTED'
               return ''
-
+          
           def age_restriction_from_title(title):
               s=norm(title)
               if 'juvenile' in s:return 'JUVENILE_JUMPS_RESTRICTION'
@@ -91,7 +91,7 @@ jobs:
               if re.search(r'\b(?:3yo|3 year old|three year old)\b',s):return '3YO'
               if 'mares' in s or 'fillies' in s:return 'FEMALE_ONLY'
               return ''
-
+          
           def subtype(kind,title,age):
               v=norm(title)
               if 'handicap' in v: c='NOVICE_HANDICAP' if 'novice' in v else 'HANDICAP'
@@ -101,18 +101,31 @@ jobs:
               elif 'claiming' in v:c='CLAIMING'
               else:c='UNKNOWN'
               a=numeric(age)
-              ages='2YO' if kind=='flat' and a==2 else '3YO' if kind=='flat' and a==3 else '4PLUS' if kind=='flat' and a>=4 else 'JUMPS'
+              # Unknown runner ages are common in old results. Keep the runner and
+              # make the age-specific category explicitly unknown; never treat a Flat
+              # runner with missing age as a Jumps horse or assume an age threshold.
+              if kind=='flat':
+                  if a==2:
+                      ages='2YO'
+                  elif a==3:
+                      ages='3YO'
+                  elif a is not None and a>=4:
+                      ages='4PLUS'
+                  else:
+                      ages='AGE_UNKNOWN'
+              else:
+                  ages='JUMPS'
               return f'{kind.upper()}:{c}:{ages}'
-
+          
           def course_norm(x):
               return re.sub(r'\s+(?:ire|gb|aw)$','',norm(x))
-
+          
           def numeric(x):
               try:
                   y=float(x)
                   return y if math.isfinite(y) else None
               except (ValueError,TypeError):return None
-
+          
           def going_code(s):
               s=norm(s)
               if 'standard' in s:return 'AW_STANDARD'
@@ -123,11 +136,11 @@ jobs:
               if 'firm' in s:return 'FIRM'
               if 'good' in s:return 'GOOD'
               return None
-
+          
           def day_date(value):
               try:return dt.date.fromisoformat(str(value)[:10])
               except (ValueError,TypeError):return None
-
+          
           def race_kind(s):
               v=norm(s)
               if 'chase' in v or 'steeple' in v:return 'chase'
@@ -135,7 +148,7 @@ jobs:
               if 'nh flat' in v or 'bumper' in v or 'national hunt flat' in v:return 'bumper'
               if v in ('aw','all weather') or 'flat' in v:return 'flat'
               return v or 'unknown'
-
+          
           def surface_kind(x, race_type, going=None, course=None):
               s=norm(x)
               gt=norm(going)
@@ -144,27 +157,27 @@ jobs:
               if s=='aw':return 'AW'
               if race_kind(race_type)=='flat':return 'FLAT'
               return 'JUMPS'
-
+          
           def class_level(x):
               m=re.search(r'\b([1-7])\b', str(x or ''))
               return int(m.group(1)) if m else None
-
+          
           def distance_key(d):
               return int(round(d/2)) if d is not None else None
-
+          
           def delta_days(a,b):
               return (a-b).days if b and a else None
-
+          
           def split_year(year):
               for s,(a,b) in WINDOWS.items():
                   if a<=year<=b:return s
               return 'OUT'
-
+          
           def parse_birthyear(v):
               if v is None:return None
               m=re.search(r'(?:18|19|20)\d{2}',str(v))
               return int(m.group()) if m else None
-
+          
           def key_for_horse(r,date):
               # Do not link a horse using name alone; it can refer to different animals.
               horse_id=str(r.get('horse_source_id') or '').strip()
@@ -185,12 +198,12 @@ jobs:
               if name and year is not None and sire and dam:
                   return ('PEDIGREE',name,year,sire,dam),'PEDIGREE_NAME_BIRTHYEAR_REVIEW'
               return None,'UNLINKABLE_NO_STABLE_HORSE_KEY'
-
+          
           def counter():return [0,0,0]
-
+          
           def update_counts(dct,key,win,place):
               v=dct[key];v[0]+=1;v[1]+=win;v[2]+=place
-
+          
           class Hist:
               def __init__(self):
                   self.horses={}
@@ -212,7 +225,7 @@ jobs:
                   self.trainer_subtype_cache={};self.trainer_subtype_cache_date=None
                   self.jockey_recent=collections.defaultdict(collections.deque)
                   self.horse_name_collisions=0
-
+          
               def horse(self,key):
                   if key is None:return None
                   if key not in self.horses:
@@ -223,7 +236,7 @@ jobs:
                                         'lastclass':None,'lastsurf':None,'lastgoing':None,'last_winning_or':None,
                                                 'rundates':collections.deque(maxlen=30),'seen_headgear':set()}
                   return self.horses[key]
-
+          
               def recent(self,db,key,date,n_days):
                   if not key:return (0,0)
                   q=db.get(key)
@@ -231,7 +244,7 @@ jobs:
                   cut=date-dt.timedelta(days=n_days)
                   while q and q[0][0]<cut:q.popleft()
                   return len(q),sum(a[1] for a in q)
-
+          
               def take(self,race_date,rec):
                   key=rec['key'];horse=self.horse(key)
                   d=rec['meta']['distance'];c=rec['meta']['course'];kind=rec['meta']['kind']
@@ -280,7 +293,7 @@ jobs:
                   if j:
                       self.jockey_recent[j].append((race_date,win))
                       update_counts(self.jockey_course,(j,c,kind),win,place)
-
+          
               def trainer_specialist(self,rec,date):
                   if self.trainer_subtype_cache_date!=date:
                       self.trainer_subtype_cache={};self.trainer_subtype_cache_date=date
@@ -305,7 +318,7 @@ jobs:
                         'trainer_specialist_recent_expected':expected(recent),
                         'trainer_specialist_baseline_expected':expected(baseline)}
                   return self.trainer_subtype_cache[k]
-
+          
               def features(self,rec,date):
                   key=rec['key'];meta=rec['meta'];horse=self.horses.get(key)
                   hist=list(horse['history']) if horse else []
@@ -383,8 +396,8 @@ jobs:
                   }
                   r.update(self.trainer_specialist(rec,date))
                   return r
-
-
+          
+          
           def flags(f,rec):
               """Positive trait qualifiers. An unknown is never treated as a negative trait."""
               out=set();age=numeric(rec.get('age'));rating=numeric(rec.get('official_rating'))
@@ -496,8 +509,8 @@ jobs:
               for a,b in combos:
                   if a in out and b in out:out.add(a+'__AND__'+b)
               return out
-
-
+          
+          
           def percentile(values,index):
               v=values[index]
               if v is None:return None
@@ -505,8 +518,8 @@ jobs:
               if len(nonmissing)<3:return None
               # Average tied rank; larger is stronger, except that draw is stall order.
               return (sum(x<v for x in nonmissing)+.5*sum(x==v for x in nonmissing))/len(nonmissing)
-
-
+          
+          
           def cohorts(meta, field):
               kind=meta['kind'];surf=meta['surface'];course=meta['course'];dist=meta['distance']
               results=['ALL','DISC_'+kind,'SURFACE_'+surf,'COURSE_DISC_'+course+'_'+kind]
@@ -523,7 +536,7 @@ jobs:
                   cond='HANDICAP' if 'handicap' in title else 'MAIDEN' if 'maiden' in title else 'NOVICE' if 'novice' in title else 'CONDITIONS'
                   results.append('DISC_CONDITION_'+kind+'_'+cond)
               return results
-
+          
           class Agg:
               __slots__=('races','qual_races','qual_starts','winner_credit','equal_expected','equal_var','market_expected','market_var', 'market_races','market_qual','market_winners','market_return','year_min','year_max')
               def __init__(self):
@@ -560,7 +573,7 @@ jobs:
                           'historical_sp_roi_pct':round(100*(self.market_return/self.market_qual-1),2) if self.market_qual else '',
                           'year_min':self.year_min if self.year_min<=self.year_max else '',
                           'year_max':self.year_max if self.year_max else ''}
-
+          
           class Discover:
               def __init__(self):
                   self.splits=collections.defaultdict(Agg)
@@ -635,7 +648,7 @@ jobs:
                       w=csv.DictWriter(f,fieldnames=['cohort','trait','direction','train_qualifiers','train_wins','train_market_expected','train_z_market','valid_qualifiers','valid_wins','valid_market_expected','valid_z_market','test_qualifiers','test_wins','test_market_expected','test_z_market','test_historical_sp_roi_pct','predefined_support_pass','train_fdr_by_q','valid_fdr_by_q','passed_fdr_screen','evidence_status'])
                       w.writeheader();w.writerows(candidates)
                   return candidates
-
+          
           def load_mapping(path):
               mapping={}
               if path is None:return mapping
@@ -645,7 +658,7 @@ jobs:
                       if rid and rid not in mapping:
                           mapping[rid]=(x.get('race_name',''),x.get('event_id',''),x.get('match_status',''),x.get('region_scope',''))
               return mapping
-
+          
           def load_db_rows(db,cutoff):
               cx=sqlite3.connect('file:'+str(Path(db).resolve())+'?mode=ro',uri=True)
               cx.row_factory=sqlite3.Row
@@ -673,15 +686,15 @@ jobs:
                   runners=[dict(x) for x in cx.execute(runsql,(row['id'],))]
                   yield row,runners
               cx.close()
-
+          
           def starter(r):
               return norm(r.get('outcome')).upper() not in NONRUN and str(r.get('outcome') or '').upper() not in NONRUN
-
+          
           def valid_runners(rows):
               a=[r for r in rows if starter(r)]
               winners=[r for r in a if numeric(r.get('finish_pos'))==1]
               return a,winners
-
+          
           def apply_discovery_to_cards(state,candidates,cards_path,cutoff,out,last_historical_date):
               """EXPLORATORY flags only; source is a fixed current-card snapshot, not historical labels."""
               if not cards_path or not Path(cards_path).exists():return {'status':'NO_CARD_SNAPSHOT'}
@@ -758,7 +771,7 @@ jobs:
               return {'status':'CARD_FLAGS_PRODUCED','snapshot_collected_at':cards.get('collected_at','') if isinstance(cards,dict) else '',
                       'races':len(groups),'runners':len(rows),'historical_data_latest':str(last_historical_date),
                       'history_identity_counts':dict(ambiguity),'caution':'Historical dataset incomplete after '+str(last_historical_date)}
-
+          
           def process(db,out,mapfile=None, cutoff='2026-11-01', max_races=0, export_min_year=2022, current_cards=None):
               out.mkdir(parents=True,exist_ok=True)
               identity=load_mapping(mapfile)
@@ -916,8 +929,8 @@ jobs:
                         '- **No current-day betting selections should be taken from this report without verifying data completeness.**']
               (out/'READ_ME_FIRST.md').write_text('\n'.join(lines)+'\n')
               print(json.dumps(dict(audit),indent=2))
-
-
+          
+          
           def main():
               p=argparse.ArgumentParser();p.add_argument('--db',required=True);p.add_argument('--mapping');
               p.add_argument('--out',default='stage7_output');p.add_argument('--cutoff',default='2026-11-01')
@@ -1658,9 +1671,9 @@ jobs:
           from pathlib import Path
           from stage9_race_trends import (trait_groups,make_race,analogue_trait_summaries,number,condition,
                                          signatures,Stat,by_fdr,analog_tier,split)
-          from stage9_history_export import Hist,grade_from_title,age_restriction_from_title
-
-
+          from stage9_history_export import Hist,grade_from_title,age_restriction_from_title,subtype
+          
+          
           def runner(**kwargs):
               a={'race_id':'r','race_date':'2020-11-01','course':'Worcester','race_type':'chase',
                  'race_condition':'BEGINNERS','race_name':'Beginners Chase','distance_f':20,
@@ -1669,7 +1682,7 @@ jobs:
                  'recent_runs_90d':2,'age':7,'sp_decimal':5,'winner_credit':0,'sex':'g',
                  'identity_confidence':'COMPOSITE_NAME_COUNTRY_BIRTHYEAR_REVIEW'}
               return dict(a,**kwargs)
-
+          
           class Stage9SafetyTests(unittest.TestCase):
               def test_0_previous_chases_vs_1plus(self):
                   yes=trait_groups(runner(prior_chase_starts=0))['CHASE_EXPERIENCE']
@@ -1742,6 +1755,28 @@ jobs:
               def test_source_grade_and_age(self):
                   self.assertEqual(grade_from_title('Novices Chase (Grade 3)'),'G3')
                   self.assertEqual(age_restriction_from_title('Fillies Juvenile Hurdle'),'JUVENILE_JUMPS_RESTRICTION')
+              def test_missing_historical_age_is_unknown_not_jumps(self):
+                  for age in (None, '', 'NA', 'not recorded', float('nan')):
+                      self.assertEqual(subtype('flat','Maiden Stakes',age),'FLAT:MAIDEN:AGE_UNKNOWN')
+                  self.assertEqual(subtype('flat','Maiden Stakes',2),'FLAT:MAIDEN:2YO')
+                  self.assertEqual(subtype('flat','Maiden Stakes',3),'FLAT:MAIDEN:3YO')
+                  self.assertEqual(subtype('flat','Maiden Stakes',4),'FLAT:MAIDEN:4PLUS')
+                  self.assertEqual(subtype('hurdle','Maiden Hurdle',None),'HURDLE:MAIDEN:JUMPS')
+              def test_missing_age_survives_historical_feature_generation(self):
+                  h=Hist()
+                  m={'distance':8.,'course':'kempton','kind':'flat','class':5,'surface':'AW',
+                     'going_code':'AW_STANDARD','race_name':'Maiden Stakes'}
+                  r={'key':('SRC','flat-horse'),'meta':m,'trainer':'test trainer',
+                     'jockey':'test jockey','pos':3,'win':0,'place':1,'age':None,
+                     'headgear':None,'official_rating':None,'pre_run_gap_days':None,'expected_share':None}
+                  d=dt.date(1990,1,1)
+                  f=h.features(r,d)
+                  self.assertEqual(f['trainer_subtype'],'FLAT:MAIDEN:AGE_UNKNOWN')
+                  h.take(d,r)
+                  f=h.features(r,d+dt.timedelta(days=1))
+                  self.assertEqual(f['trainer_subtype'],'FLAT:MAIDEN:AGE_UNKNOWN')
+                  self.assertEqual(f['trainer_specialist_baseline_n'],0)
+          
               def test_novice_handicaps_are_not_ordinary_handicaps(self):
                   self.assertEqual(condition({'race_condition':'novice handicap'}),'NOVICE_HANDICAP')
               def test_cannot_use_future_period_in_training(self):
@@ -1755,7 +1790,7 @@ jobs:
                   h.take(day,rec)
                   self.assertEqual(h.features(rec,day+dt.timedelta(days=1))['prior_chase_starts'],1)
                   self.assertEqual(h.features(rec,day+dt.timedelta(days=1))['previous_winning_or'],120)
-
+          
           if __name__=='__main__':unittest.main()
           STAGE9_TESTS
           cat > sunday_36_races.csv <<'STAGE9_SUNDAY'
