@@ -1,0 +1,1500 @@
+name: Stage 8 - Deep conditional trend discovery UK and Ireland
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install audited Stage 8 analysis and Sunday reference races
+        shell: bash
+        run: |
+          cat > stage8_history_export.py <<'STAGE8_HISTORY'
+          #!/usr/bin/env python3
+          """Racing Hot Pots Stage 7: chronological pre-race form and exploratory trend discovery.
+
+          No current-race SP, finishing position, RPR, Topspeed, or post-race comment is
+          used as a predictor. Same-day results are incorporated only after EVERY race
+          on that day has been assessed (safer than guessing off-times).
+
+          Input: Stage 2 SQLite historical_races + historical_runs. Optional Stage 4
+          identity map for race title/handicap classification. Output is exploratory,
+          NOT an automatically deployable, calibrated betting strategy.
+
+          Standard library only; streams all ~5m race starts without loading them into RAM.
+          """
+          import argparse
+          import collections
+          import csv
+          import datetime as dt
+          import json
+          import math
+          import re
+          import sqlite3
+          import statistics
+          import unicodedata
+          from pathlib import Path
+
+          NONRUN = {'NR','NON-RUNNER','NON RUNNER','WITHDRAWN','SCRATCHED','VOID','NONRUNNER'}
+          WINDOWS = {'TRAIN':(1995,2017), 'VALID':(2018,2021), 'TEST':(2022,2025)}
+          FEATURE_COLUMNS = [
+              'race_date','race_id','course','race_type','surface','distance_f','race_class',
+              'event_id','identity_status','horse_name','horse_id_hint','identity_confidence',
+              'trainer','jockey','age','official_rating','weight_lbs','draw','field_size',
+              'horse_prior_starts','horse_prior_wins','horse_prior_places','horse_recent_form',
+              'days_since_run','days_since_win','recent5_wins','recent5_places','recent3_places',
+              'prior_course_starts','prior_course_wins','prior_distance_starts','prior_distance_wins',
+              'prior_type_starts','prior_type_wins','prior_surface_starts','prior_surface_wins','prior_going_starts','prior_going_wins','trainer_30_starts','trainer_30_wins',
+              'trainer_course_starts','trainer_course_wins','jockey_course_starts','jockey_course_wins','jockey_30_starts','jockey_30_wins',
+              'last_distance_f','last_class','last_surface','rating_percentile','weight_percentile',
+              'draw_percentile','year_split','feature_flags','finish_pos','winner_credit',
+              'sp_decimal','market_expected_share','race_name','race_condition','going_code','sex',
+              'last_finish_pos','prior_layoff_90_starts','prior_layoff_90_wins','prior_layoff_90_places',
+              'prior_layoff_180_starts','prior_layoff_180_wins','trainer_changed_since_last_run'
+          ]
+
+          def norm(s):
+              s=unicodedata.normalize('NFKD',str(s or '')).encode('ascii','ignore').decode().lower()
+              return re.sub(r'[^a-z0-9]+',' ',s).strip()
+
+          def course_norm(x):
+              return re.sub(r'\s+(?:ire|gb|aw)$','',norm(x))
+
+          def numeric(x):
+              try:
+                  y=float(x)
+                  return y if math.isfinite(y) else None
+              except (ValueError,TypeError):return None
+
+          def going_code(s):
+              s=norm(s)
+              if 'standard' in s:return 'AW_STANDARD'
+              if 'heavy' in s:return 'HEAVY'
+              if 'soft' in s and 'good' not in s:return 'SOFT'
+              if 'yielding' in s:return 'YIELDING'
+              if 'good to soft' in s:return 'GOOD_SOFT'
+              if 'firm' in s:return 'FIRM'
+              if 'good' in s:return 'GOOD'
+              return None
+
+          def day_date(value):
+              try:return dt.date.fromisoformat(str(value)[:10])
+              except (ValueError,TypeError):return None
+
+          def race_kind(s):
+              v=norm(s)
+              if 'chase' in v or 'steeple' in v:return 'chase'
+              if 'hurdle' in v:return 'hurdle'
+              if 'nh flat' in v or 'bumper' in v or 'national hunt flat' in v:return 'bumper'
+              if v in ('aw','all weather') or 'flat' in v:return 'flat'
+              return v or 'unknown'
+
+          def surface_kind(x, race_type, going=None, course=None):
+              s=norm(x)
+              gt=norm(going)
+              if 'standard' in gt or s in ('aw','all weather') or norm(race_type) in ('aw','all weather'):return 'AW'
+              if any(z in s for z in ('all weather','polytrack','tapeta','fibresand','artificial','synthetic')):return 'AW'
+              if s=='aw':return 'AW'
+              if race_kind(race_type)=='flat':return 'FLAT'
+              return 'JUMPS'
+
+          def class_level(x):
+              m=re.search(r'\b([1-7])\b', str(x or ''))
+              return int(m.group(1)) if m else None
+
+          def distance_key(d):
+              return int(round(d/2)) if d is not None else None
+
+          def delta_days(a,b):
+              return (a-b).days if b and a else None
+
+          def split_year(year):
+              for s,(a,b) in WINDOWS.items():
+                  if a<=year<=b:return s
+              return 'OUT'
+
+          def parse_birthyear(v):
+              if v is None:return None
+              m=re.search(r'(?:18|19|20)\d{2}',str(v))
+              return int(m.group()) if m else None
+
+          def key_for_horse(r,date):
+              # Do not link a horse using name alone; it can refer to different animals.
+              horse_id=str(r.get('horse_source_id') or '').strip()
+              if horse_id and horse_id not in ('0','nan','None'):
+                  return ('SRC',horse_id),'SOURCE_ID'
+              rawname=str(r.get('horse_name') or '')
+              ending=re.search(r'\(([A-Z]{2,3})\)\s*$',rawname)
+              name=norm(re.sub(r'\s*\([A-Z]{2,3}\)\s*$','',rawname) if ending else (r.get('horse_name_norm') or rawname))
+              country=norm(r.get('horse_country') or (ending.group(1) if ending else ''))
+              year=parse_birthyear(r.get('foaled'))
+              age=numeric(r.get('age'))
+              if year is None and age is not None and date:
+                  # Annual age convention, but age may be approximate or erroneous.
+                  year=date.year-int(age)
+              if name and country and year is not None:
+                  return ('COMPOSITE',name,country,year),'COMPOSITE_NAME_COUNTRY_BIRTHYEAR_REVIEW'
+              sire=norm(r.get('sire'));dam=norm(r.get('dam'))
+              if name and year is not None and sire and dam:
+                  return ('PEDIGREE',name,year,sire,dam),'PEDIGREE_NAME_BIRTHYEAR_REVIEW'
+              return None,'UNLINKABLE_NO_STABLE_HORSE_KEY'
+
+          def counter():return [0,0,0]
+
+          def update_counts(dct,key,win,place):
+              v=dct[key];v[0]+=1;v[1]+=win;v[2]+=place
+
+          class Hist:
+              def __init__(self):
+                  self.horses={}
+                  self.courses=collections.defaultdict(counter)
+                  self.distance=collections.defaultdict(counter)
+                  self.types=collections.defaultdict(counter)
+                  self.surfaces=collections.defaultdict(counter)
+                  self.goings=collections.defaultdict(counter)
+                  self.jockey_course=collections.defaultdict(counter)
+                  self.trainer_course=collections.defaultdict(counter)
+                  self.trainer_all=collections.defaultdict(counter)
+                  self.trainer_jockey=collections.defaultdict(counter)
+                  self.trainer_recent=collections.defaultdict(collections.deque)
+                  self.jockey_recent=collections.defaultdict(collections.deque)
+                  self.horse_name_collisions=0
+
+              def horse(self,key):
+                  if key is None:return None
+                  if key not in self.horses:
+                      self.horses[key]={'starts':0,'wins':0.,'places':0.,'last':None,'lastwin':None,
+                                        'history':collections.deque(maxlen=5),'layoff_90_starts':0,
+                                        'layoff_90_wins':0.,'layoff_90_places':0.,'layoff_180_starts':0,
+                                        'layoff_180_wins':0.,'lasttrainer':None,'lastdist':None,
+                                        'lastclass':None,'lastsurf':None}
+                  return self.horses[key]
+
+              def recent(self,db,key,date,n_days):
+                  if not key:return (0,0)
+                  q=db.get(key)
+                  if not q:return (0,0)
+                  cut=date-dt.timedelta(days=n_days)
+                  while q and q[0][0]<cut:q.popleft()
+                  return len(q),sum(a[1] for a in q)
+
+              def take(self,race_date,rec):
+                  key=rec['key'];horse=self.horse(key)
+                  d=rec['meta']['distance'];c=rec['meta']['course'];kind=rec['meta']['kind']
+                  win=rec['win'];place=rec['place'];t=rec['trainer'];j=rec['jockey']
+                  if horse is not None:
+                      horse['starts']+=1;horse['wins']+=win;horse['places']+=place
+                      horse['last']=race_date
+                      if win:horse['lastwin']=race_date
+                      # All horse history is updated after the entire date is evaluated.
+                      gap=rec.get('pre_run_gap_days')
+                      if gap is not None and gap>=90:
+                          horse['layoff_90_starts']+=1
+                          horse['layoff_90_wins']+=win
+                          horse['layoff_90_places']+=place
+                          if gap>=180:
+                              horse['layoff_180_starts']+=1
+                              horse['layoff_180_wins']+=win
+                      horse['lasttrainer']=t
+                      horse['history'].append((rec.get('pos'),win,place))
+                      horse['lastdist']=d;horse['lastclass']=rec['meta']['class'];horse['lastsurf']=rec['meta']['surface']
+                      update_counts(self.courses,(key,c),win,place)
+                      if d is not None:update_counts(self.distance,(key,distance_key(d)),win,place)
+                      update_counts(self.types,(key,kind),win,place)
+                      update_counts(self.surfaces,(key,rec['meta']['surface']),win,place)
+                      if rec['meta']['going_code']:update_counts(self.goings,(key,rec['meta']['going_code']),win,place)
+                  if t:
+                      update_counts(self.trainer_all,t,win,place)
+                      update_counts(self.trainer_course,(t,c,kind),win,place)
+                      self.trainer_recent[t].append((race_date,win))
+                      if j:update_counts(self.trainer_jockey,(t,j),win,place)
+                  if j:
+                      self.jockey_recent[j].append((race_date,win))
+                      update_counts(self.jockey_course,(j,c,kind),win,place)
+
+              def features(self,rec,date):
+                  key=rec['key'];meta=rec['meta'];horse=self.horses.get(key)
+                  hist=list(horse['history']) if horse else []
+                  days=delta_days(date,horse['last']) if horse else None
+                  sincewin=delta_days(date,horse['lastwin']) if horse else None
+                  tc=self.trainer_course.get((rec['trainer'],meta['course'],meta['kind']),[0,0,0])
+                  cs=self.courses.get((key,meta['course']),[0,0,0])
+                  ds=self.distance.get((key,distance_key(meta['distance'])),[0,0,0])
+                  ts=self.types.get((key,meta['kind']),[0,0,0])
+                  ss=self.surfaces.get((key,meta['surface']),[0,0,0])
+                  gg=self.goings.get((key,meta['going_code']),[0,0,0])
+                  jc=self.jockey_course.get((rec['jockey'],meta['course'],meta['kind']),[0,0,0])
+                  tn,tw=self.recent(self.trainer_recent,rec['trainer'],date,30)
+                  jn,jw=self.recent(self.jockey_recent,rec['jockey'],date,30)
+                  r={
+                      'last_finish_pos':(hist[-1][0] if hist else None),
+                      'prior_layoff_90_starts':horse['layoff_90_starts'] if horse else None,
+                      'prior_layoff_90_wins':horse['layoff_90_wins'] if horse else None,
+                      'prior_layoff_90_places':horse['layoff_90_places'] if horse else None,
+                      'prior_layoff_180_starts':horse['layoff_180_starts'] if horse else None,
+                      'prior_layoff_180_wins':horse['layoff_180_wins'] if horse else None,
+                      'trainer_changed_since_last_run':(int(horse['lasttrainer']!=rec['trainer']) if horse and horse['starts'] and horse['lasttrainer'] and rec['trainer'] else None),
+                      'horse_prior_starts':horse['starts'] if horse else (0 if key is not None else None),
+                      'horse_prior_wins':horse['wins'] if horse else (0 if key is not None else None),
+                      'horse_prior_places':horse['places'] if horse else (0 if key is not None else None),
+                      'horse_recent_form':''.join('1' if x[1] else 'P' if x[2] else 'X' if x[0] is None else '-' for x in hist),
+                      'days_since_run':days,'days_since_win':sincewin,
+                      'recent5_wins':sum(x[1] for x in hist),'recent5_places':sum(x[2] for x in hist),
+                      'recent3_places':sum(x[2] for x in hist[-3:]),
+                      'prior_course_starts':cs[0] if key is not None else None,
+                      'prior_course_wins':cs[1] if key is not None else None,
+                      'prior_distance_starts':ds[0] if key is not None else None,
+                      'prior_distance_wins':ds[1] if key is not None else None,
+                      'prior_type_starts':ts[0] if key is not None else None,
+                      'prior_type_wins':ts[1] if key is not None else None,
+                      'prior_surface_starts':ss[0] if key is not None else None,
+                      'prior_surface_wins':ss[1] if key is not None else None,
+                      'prior_going_starts':gg[0] if key is not None and meta['going_code'] else None,
+                      'prior_going_wins':gg[1] if key is not None and meta['going_code'] else None,
+                      'trainer_30_starts':tn,'trainer_30_wins':tw,
+                      'trainer_course_starts':tc[0],'trainer_course_wins':tc[1],
+                      'jockey_course_starts':jc[0],'jockey_course_wins':jc[1],
+                      'jockey_30_starts':jn,'jockey_30_wins':jw,
+                      'last_distance_f':horse['lastdist'] if horse else None,
+                      'last_class':horse['lastclass'] if horse else None,
+                      'last_surface':horse['lastsurf'] if horse else None,
+                  }
+                  return r
+
+
+          def flags(f,rec):
+              """Positive trait qualifiers. An unknown is never treated as a negative trait."""
+              out=set();age=numeric(rec.get('age'));rating=numeric(rec.get('official_rating'))
+              if age is not None:
+                  if age<=3:out.add('AGE_LE3')
+                  if 4<=age<=5:out.add('AGE_4_5')
+                  if 6<=age<=7:out.add('AGE_6_7')
+                  if age>=8:out.add('AGE_GE8')
+              n=f['horse_prior_starts'];w=f['horse_prior_wins'];days=f['days_since_run'];form=f['horse_recent_form']
+              if n is not None:
+                  if n==0:out.add('DEBUT')
+                  if n>=3 and w==0:out.add('CAREER_NO_WIN_3PLUS')
+                  if n>=5 and w/n>=.30:out.add('CAREER_WINRATE_30PLUS')
+                  if n>=5 and w==0:out.add('CAREER_NO_WIN_5PLUS')
+              if days is not None:
+                  if 0<=days<=14:out.add('LAYOFF_0_14')
+                  if 15<=days<=45:out.add('LAYOFF_15_45')
+                  if 46<=days<=90:out.add('LAYOFF_46_90')
+                  if days>=91:out.add('LAYOFF_91PLUS')
+              if form:
+                  if form[-1]=='1':out.add('LTO_WIN')
+                  if form[-1] in ('1','P'):out.add('LTO_TOP3')
+                  if form[-1]=='X':out.add('LTO_DNF')
+                  if len(form)>=3 and f['recent3_places']>=2:out.add('LAST3_PLACED_2PLUS')
+                  if len(form)>=3 and f['recent3_places']==0:out.add('LAST3_PLACED_NONE')
+                  if len(form)>=3 and f['recent5_wins']>=2:out.add('RECENT5_WINS_2PLUS')
+              if f['prior_course_starts'] is not None:
+                  if f['prior_course_wins']>=1:out.add('COURSE_WINNER')
+                  if f['prior_course_starts']>=3 and f['prior_course_wins']==0:out.add('COURSE_NO_WIN_3PLUS')
+              if f['prior_distance_starts'] is not None:
+                  if f['prior_distance_wins']>=1:out.add('DISTANCE_WINNER')
+                  if f['prior_distance_starts']>=3 and f['prior_distance_wins']==0:out.add('DISTANCE_NO_WIN_3PLUS')
+              if f['prior_surface_starts'] is not None:
+                  if f['prior_surface_wins']>=1:out.add('SURFACE_WINNER')
+                  if f['prior_surface_starts']>=4 and f['prior_surface_wins']==0:out.add('SURFACE_NO_WIN_4PLUS')
+              if f['prior_going_starts'] is not None and f['prior_going_starts']>=3:
+                  if f['prior_going_wins']>=1:out.add('GOING_WINNER_3PLUS')
+                  if f['prior_going_wins']==0:out.add('GOING_NO_WIN_3PLUS')
+              if f['jockey_course_starts']>=20:
+                  if f['jockey_course_wins']/f['jockey_course_starts']>=.2:out.add('JOCKEY_COURSE_STRONG')
+                  if f['jockey_course_wins']==0:out.add('JOCKEY_COURSE_ZERO')
+              sx=norm(rec.get('sex'))
+              if sx in ('f','m','filly','mare'):out.add('FEMALE_HORSE')
+              if sx in ('g','gelding'):out.add('GELDING')
+              if sx in ('c','h','colt','horse','stallion'):out.add('ENTIRE_MALE')
+              if f['prior_type_starts'] is not None and f['prior_type_starts']>=4:
+                  if f['prior_type_wins']>=2:out.add('DISCIPLINE_WINS_2PLUS')
+                  if f['prior_type_wins']==0:out.add('DISCIPLINE_NO_WIN_4PLUS')
+              tn=f['trainer_30_starts'];tw=f['trainer_30_wins']
+              if tn>=10:
+                  if tw/tn>=.20:out.add('TRAINER_HOT_30')
+                  if tw==0:out.add('TRAINER_ZERO_30')
+              jn=f['jockey_30_starts'];jw=f['jockey_30_wins']
+              if jn>=10 and jw/jn>=.20:out.add('JOCKEY_HOT_30')
+              tc=f['trainer_course_starts'];twc=f['trainer_course_wins']
+              if tc>=20 and twc/tc>=.15:out.add('TRAINER_COURSE_STRONG')
+              if tc>=20 and twc==0:out.add('TRAINER_COURSE_ZERO')
+              ratingp=f.get('rating_percentile')
+              if ratingp is not None:
+                  if ratingp>=.75:out.add('RATING_TOP_QUARTER')
+                  if ratingp<=.25:out.add('RATING_BOTTOM_QUARTER')
+              weightp=f.get('weight_percentile')
+              if weightp is not None:
+                  if weightp>=.75:out.add('WEIGHT_TOP_QUARTER')
+                  if weightp<=.25:out.add('WEIGHT_BOTTOM_QUARTER')
+              drawp=f.get('draw_percentile')
+              if drawp is not None and rec['meta']['kind']=='flat':
+                  if drawp<=.25:out.add('DRAW_LOW_QUARTER')
+                  if drawp>=.75:out.add('DRAW_HIGH_QUARTER')
+              prev=f['last_distance_f'];distance=rec['meta']['distance']
+              if prev is not None and distance is not None:
+                  if distance-prev>=2:out.add('UP_TRIP_2F_PLUS')
+                  if prev-distance>=2:out.add('DOWN_TRIP_2F_PLUS')
+              lastcl=f['last_class'];currcl=rec['meta']['class']
+              if lastcl is not None and currcl is not None:
+                  if currcl-lastcl>=1:out.add('DOWN_CLASS_1PLUS')
+                  if lastcl-currcl>=1:out.add('UP_CLASS_1PLUS')
+              if f['last_surface'] and rec['meta']['surface']!=f['last_surface']:
+                  out.add('SWITCH_SURFACE')
+              # Data-driven discovery space: systematic bins rather than only article-
+              # inspired yes/no rules. Each threshold family is fixed before testing.
+              if age is not None and 2<=age<=15:out.add('AGE_EXACT_'+str(int(age)))
+              if n is not None:
+                  nb='0' if n==0 else '1_2' if n<=2 else '3_5' if n<=5 else '6_10' if n<=10 else '11_20' if n<=20 else '21PLUS'
+                  out.add('CAREER_STARTS_'+nb)
+              if days is not None:
+                  daysbin='0_7' if days<=7 else '8_21' if days<=21 else '22_45' if days<=45 else '46_90' if days<=90 else '91_180' if days<=180 else '181_365' if days<=365 else '365PLUS'
+                  out.add('RECENCY_BUCKET_'+daysbin)
+              if n is not None and n>=5:
+                  p=w/n
+                  out.add('CAREER_WINRATE_BAND_'+('ZERO' if p==0 else 'LE10' if p<=.1 else 'LE20' if p<=.2 else 'LE35' if p<=.35 else 'OVER35'))
+              if ratingp is not None:
+                  out.add('REL_RATING_QUINTILE_'+str(min(5,1+int(ratingp*5))))
+              if weightp is not None:
+                  out.add('REL_WEIGHT_QUINTILE_'+str(min(5,1+int(weightp*5))))
+              if drawp is not None and rec['meta']['kind']=='flat':
+                  out.add('REL_DRAW_QUINTILE_'+str(min(5,1+int(drawp*5))))
+              if prev is not None and distance is not None:
+                  diff=distance-prev
+                  out.add('TRIP_CHANGE_'+('DOWN4PLUS' if diff<=-4 else 'DOWN2_4' if diff<=-2 else 'DOWN_UNDER2' if diff<0 else 'SAME' if diff==0 else 'UP_UNDER2' if diff<2 else 'UP2_4' if diff<4 else 'UP4PLUS'))
+              if tn>=10:
+                  out.add('TRAINER30_BUCKET_'+('ZERO' if tw==0 else 'UNDER10' if tw/tn<.1 else '10_20' if tw/tn<.2 else '20_30' if tw/tn<.3 else '30PLUS'))
+              # Controlled two-way interactions; do not mine arbitrary combinations of dozens of flags.
+              combos=(('LTO_WIN','UP_TRIP_2F_PLUS'),('LTO_WIN','TRAINER_HOT_30'),
+                      ('LTO_WIN','COURSE_WINNER'),('LTO_DNF','LAYOFF_91PLUS'),
+                      ('TRAINER_HOT_30','COURSE_WINNER'),('LTO_TOP3','LAYOFF_15_45'),
+                      ('DOWN_CLASS_1PLUS','TRAINER_HOT_30'),('RATING_TOP_QUARTER','LTO_WIN'),
+                      ('DRAW_LOW_QUARTER','LTO_TOP3'),('CAREER_NO_WIN_5PLUS','UP_CLASS_1PLUS'))
+              for a,b in combos:
+                  if a in out and b in out:out.add(a+'__AND__'+b)
+              return out
+
+
+          def percentile(values,index):
+              v=values[index]
+              if v is None:return None
+              nonmissing=[x for x in values if x is not None]
+              if len(nonmissing)<3:return None
+              # Average tied rank; larger is stronger, except that draw is stall order.
+              return (sum(x<v for x in nonmissing)+.5*sum(x==v for x in nonmissing))/len(nonmissing)
+
+
+          def cohorts(meta, field):
+              kind=meta['kind'];surf=meta['surface'];course=meta['course'];dist=meta['distance']
+              results=['ALL','DISC_'+kind,'SURFACE_'+surf,'COURSE_DISC_'+course+'_'+kind]
+              if dist is not None:
+                  db='SHORT' if dist<8 else 'MILE' if dist<11 else 'MIDDLE' if dist<16 else 'LONG'
+                  results.append('DISC_DIST_'+kind+'_'+db)
+              c=meta['class']
+              if c is not None:results.append('DISC_CLASS_'+kind+'_'+str(c))
+              n=len(field)
+              fb='SMALL' if n<=6 else 'MID' if n<=12 else 'LARGE'
+              results.append('DISC_FIELD_'+kind+'_'+fb)
+              title=norm(meta.get('race_name'))
+              if title:
+                  cond='HANDICAP' if 'handicap' in title else 'MAIDEN' if 'maiden' in title else 'NOVICE' if 'novice' in title else 'CONDITIONS'
+                  results.append('DISC_CONDITION_'+kind+'_'+cond)
+              return results
+
+          class Agg:
+              __slots__=('races','qual_races','qual_starts','winner_credit','equal_expected','equal_var','market_expected','market_var', 'market_races','market_qual','market_winners','market_return','year_min','year_max')
+              def __init__(self):
+                  self.races=0;self.qual_races=0;self.qual_starts=0;self.winner_credit=0.
+                  self.equal_expected=0.;self.equal_var=0.;self.market_expected=0.;self.market_var=0.
+                  self.market_races=0;self.market_qual=0;self.market_winners=0.;self.market_return=0.
+                  self.year_min=9999;self.year_max=0
+              def add(self,entries,trait,date):
+                  n=len(entries);self.races+=1
+                  q=[x for x in entries if trait in x['flags']];k=len(q)
+                  self.year_min=min(self.year_min,date.year);self.year_max=max(self.year_max,date.year)
+                  if not k:return
+                  self.qual_races+=1;self.qual_starts+=k
+                  wins=sum(x['winner_credit'] for x in q);self.winner_credit+=wins
+                  pe=k/n;self.equal_expected+=pe;self.equal_var+=pe*(1-pe)
+                  if all(x['sp'] is not None and x['sp']>=1.01 for x in entries):
+                      d=sum(1/x['sp'] for x in entries)
+                      p=sum((1/x['sp'])/d for x in q)
+                      self.market_races+=1;self.market_qual+=k;self.market_expected+=p;self.market_var+=p*(1-p)
+                      self.market_winners+=wins
+                      self.market_return+=sum(x['winner_credit']*x['sp'] for x in q)
+              def output(self):
+                  eq=self.winner_credit-self.equal_expected
+                  mz=(self.market_winners-self.market_expected)/math.sqrt(self.market_var) if self.market_var>1e-9 else None
+                  ez=eq/math.sqrt(self.equal_var) if self.equal_var>1e-9 else None
+                  return {'races_with_trait_present_in_field':self.races,'races_with_qualifier':self.qual_races,'qualifying_starts':self.qual_starts,
+                          'wins_credit':round(self.winner_credit,3),'equal_expected_wins':round(self.equal_expected,3),
+                          'excess_vs_equal':round(eq,3),'z_equal':round(ez,3) if ez is not None else '',
+                          'market_evaluable_races':self.market_races,'market_qualifying_starts':self.market_qual,
+                          'market_winner_credit':round(self.market_winners,3),
+                          'market_expected_wins':round(self.market_expected,3),
+                          'excess_vs_market':round(self.market_winners-self.market_expected,3),
+                          'z_market':round(mz,3) if mz is not None else '',
+                          'historical_sp_roi_pct':round(100*(self.market_return/self.market_qual-1),2) if self.market_qual else '',
+                          'year_min':self.year_min if self.year_min<=self.year_max else '',
+                          'year_max':self.year_max if self.year_max else ''}
+
+          class Discover:
+              def __init__(self):
+                  self.splits=collections.defaultdict(Agg)
+                  self.count_by_split=collections.Counter()
+                  self.applied_races=0
+              def consider(self,day,meta,field):
+                  spl=split_year(day.year)
+                  if spl=='OUT':return
+                  self.count_by_split[spl]+=1;self.applied_races+=1
+                  # Each trait is evaluated within a race. Races with no qualifiers still
+                  # count as a trial for denominator/support; the qualification rate is explicit.
+                  alltraits=set().union(*(x['flags'] for x in field))
+                  for cohort in cohorts(meta,field):
+                      for trait in alltraits:
+                          self.splits[(spl,cohort,trait)].add(field,trait,day)
+                  # Aggregations track races with at least one qualifying runner. This is
+                  # intentional: unqualified races do not influence winner-share null tests.
+              def results(self,out):
+                  cols=['cohort','trait','split']+list(Agg().output())
+                  with (out/'all_discovered_signal_tests.csv').open('w',newline='',encoding='utf-8') as f:
+                      w=csv.DictWriter(f,fieldnames=cols);w.writeheader()
+                      for (s,c,t),a in sorted(self.splits.items()):w.writerow({'cohort':c,'trait':t,'split':s,**a.output()})
+                  # Discovery in TRAIN, confirmation VALID, sealed TEST.
+                  candidates=[]
+                  triples={(c,t) for s,c,t in self.splits if s=='TRAIN'}
+                  for c,t in triples:
+                      a=self.splits.get(('TRAIN',c,t));b=self.splits.get(('VALID',c,t));e=self.splits.get(('TEST',c,t))
+                      if not a or not b:continue
+                      aa=a.output();bb=b.output();ee=e.output() if e else {}
+                      if (a.qual_starts<200 or a.qual_races<80 or b.qual_starts<80 or b.qual_races<30):continue
+                      if (a.market_races<50 or b.market_races<20):continue
+                      az=aa['z_market'];bz=bb['z_market'];
+                      if az=='' or bz=='':continue
+                      direction='POSITIVE' if az>0 else 'NEGATIVE'
+                      survives=(az*bz>0 and abs(az)>=1.5 and abs(bz)>=.8)
+                      candidates.append({'cohort':c,'trait':t,'direction':direction,
+                                         'train_qualifiers':aa['qualifying_starts'],'train_wins':aa['wins_credit'],
+                                         'train_market_expected':aa['market_expected_wins'],'train_z_market':az,
+                                         'valid_qualifiers':bb['qualifying_starts'],'valid_wins':bb['wins_credit'],
+                                         'valid_market_expected':bb['market_expected_wins'],'valid_z_market':bz,
+                                         'test_qualifiers':ee.get('qualifying_starts',0),'test_wins':ee.get('wins_credit',0),
+                                         'test_market_expected':ee.get('market_expected_wins',0),
+                                         'test_z_market':ee.get('z_market',''),'test_historical_sp_roi_pct':ee.get('historical_sp_roi_pct',''),
+                                         'predefined_support_pass':survives,'evidence_status':'EXPLORATORY_PRE_FDR'})
+                  # Benjamini-Yekutieli (BY) correction is conservative under arbitrary
+                  # dependence among correlated traits, cohorts, and thresholds. This is
+                  # a screening heuristic, not a guarantee of a profitable strategy.
+                  def by_adjust(rows,zkey):
+                      scored=[]
+                      for i,row in enumerate(rows):
+                          z=row[zkey]
+                          if isinstance(z,(float,int)):
+                              scored.append((math.erfc(abs(z)/math.sqrt(2)),i))
+                      scored.sort();m=len(scored)
+                      harmonic=sum(1/k for k in range(1,m+1)) if m else 1
+                      current=1.0;q=[None]*len(rows)
+                      for rank in range(m-1,-1,-1):
+                          pv,idx=scored[rank]
+                          current=min(current,pv*m*harmonic/(rank+1))
+                          q[idx]=current
+                      return q,m
+                  qs_train,number_tests=by_adjust(candidates,'train_z_market')
+                  qs_valid,_=by_adjust(candidates,'valid_z_market')
+                  for i,row in enumerate(candidates):
+                      row['train_fdr_by_q']=round(qs_train[i],6) if qs_train[i] is not None else ''
+                      row['valid_fdr_by_q']=round(qs_valid[i],6) if qs_valid[i] is not None else ''
+                      row['passed_fdr_screen']=bool(row['predefined_support_pass'] and qs_train[i] is not None and qs_train[i]<=.1 and qs_valid[i] is not None and qs_valid[i]<=.1)
+                      row['evidence_status']='FDR_SCREENED_REQUIRES_TEST_CONFIRMATION' if row['passed_fdr_screen'] else 'EXPLORATORY_NOT_VALIDATED'
+                  candidates.sort(key=lambda x:(not x['passed_fdr_screen'],not x['predefined_support_pass'],-abs(x['train_z_market']),-abs(x['valid_z_market'])))
+                  path=out/'training_validation_test_trends.csv'
+                  with path.open('w',newline='',encoding='utf-8') as f:
+                      w=csv.DictWriter(f,fieldnames=['cohort','trait','direction','train_qualifiers','train_wins','train_market_expected','train_z_market','valid_qualifiers','valid_wins','valid_market_expected','valid_z_market','test_qualifiers','test_wins','test_market_expected','test_z_market','test_historical_sp_roi_pct','predefined_support_pass','train_fdr_by_q','valid_fdr_by_q','passed_fdr_screen','evidence_status'])
+                      w.writeheader();w.writerows(candidates)
+                  return candidates
+
+          def load_mapping(path):
+              mapping={}
+              if path is None:return mapping
+              with open(path,encoding='utf-8-sig',newline='') as f:
+                  for x in csv.DictReader(f):
+                      rid=x.get('stage2_race_id')
+                      if rid and rid not in mapping:
+                          mapping[rid]=(x.get('race_name',''),x.get('event_id',''),x.get('match_status',''),x.get('region_scope',''))
+              return mapping
+
+          def load_db_rows(db,cutoff):
+              cx=sqlite3.connect('file:'+str(Path(db).resolve())+'?mode=ro',uri=True)
+              cx.row_factory=sqlite3.Row
+              # Important: hist_date_idx allows ordered outer race scan. The Stage 2
+              # composite PK (race_id,runner_key) handles the per-race runner lookup.
+              run_cols={x[1] for x in cx.execute('PRAGMA table_info(historical_runs)')}
+              mandatory={'race_id','horse_name','finish_pos','trainer','jockey','age','official_rating','sp_decimal'}
+              if mandatory-run_cols:raise RuntimeError('Historical database missing: '+repr(mandatory-run_cols))
+              wanted=['horse_source_id','horse_name_norm','horse_country','foaled','weight_lbs','draw','outcome','sex','sire','dam']
+              select=['race_id','horse_name','finish_pos','trainer','jockey','age','official_rating','sp_decimal']
+              select += [x if x in run_cols else 'NULL AS '+x for x in wanted]
+              runsql='select '+','.join(select)+' from historical_runs where race_id=?'
+              for meta in cx.execute('''select id,race_date,course,race_type,surface,distance_f,race_class,going
+                                      from historical_races indexed by hist_date_idx
+                                      where race_date<? order by race_date,id''',(cutoff,)):
+                  d=day_date(meta['race_date'])
+                  if d is None:continue
+                  row=dict(meta)
+                  row['day']=d;row['course']=course_norm(row['course']);row['kind']=race_kind(row['race_type'])
+                  row['distance']=numeric(row['distance_f']);row['class']=class_level(row['race_class'])
+                  row['surface']=surface_kind(row['surface'],row['race_type'],row['going'],row['course'])
+                  row['going_code']=going_code(row['going'])
+                  runners=[dict(x) for x in cx.execute(runsql,(row['id'],))]
+                  yield row,runners
+              cx.close()
+
+          def starter(r):
+              return norm(r.get('outcome')).upper() not in NONRUN and str(r.get('outcome') or '').upper() not in NONRUN
+
+          def valid_runners(rows):
+              a=[r for r in rows if starter(r)]
+              winners=[r for r in a if numeric(r.get('finish_pos'))==1]
+              return a,winners
+
+          def apply_discovery_to_cards(state,candidates,cards_path,cutoff,out,last_historical_date):
+              """EXPLORATORY flags only; source is a fixed current-card snapshot, not historical labels."""
+              if not cards_path or not Path(cards_path).exists():return {'status':'NO_CARD_SNAPSHOT'}
+              cards=json.loads(Path(cards_path).read_text(encoding='utf-8'))
+              entries=cards.get('runners',[]) if isinstance(cards,dict) else cards
+              day=day_date(cutoff)
+              current=[x for x in entries if x.get('date')==cutoff]
+              if not current:return {'status':'NO_CARD_ROWS_ON_REQUESTED_DAY','rows_in_file':len(entries)}
+              targets={(norm(x.get('horse')),day.year-int(numeric(x.get('age')))) for x in current
+                       if x.get('horse') and numeric(x.get('age')) is not None}
+              index=collections.defaultdict(set)
+              for k in state.horses:
+                  if len(k)>=4 and k[0]=='COMPOSITE' and (k[1],k[3]) in targets:
+                      index[(k[1],k[3])].add(k)
+              groups=collections.defaultdict(list)
+              for x in current:groups[(x.get('course'),str(x.get('race_time',''))[:16])].append(x)
+              supported=collections.defaultdict(list)
+              for row in candidates:
+                  if row['predefined_support_pass']:
+                      supported[row['cohort']].append(row)
+              rows=[];ambiguity=collections.Counter()
+              for g,original in groups.items():
+                  meta={'course':course_norm(original[0].get('course')),'kind':race_kind(original[0].get('type')),
+                        'distance':numeric(original[0].get('distance_f')),
+                        'surface':surface_kind(original[0].get('surface'),original[0].get('type'),original[0].get('going'),original[0].get('course')),
+                        'class':class_level(original[0].get('race_class')),
+                        'going_code':going_code(original[0].get('going')),'race_name':original[0].get('race_name','')}
+                  rr=[]
+                  for item in original:
+                      age=numeric(item.get('age'))
+                      name=norm(re.sub(r'\s*\([A-Z]{2,3}\)\s*$','',item.get('horse') or ''))
+                      keys=index.get((name,day.year-int(age))) if age is not None else None
+                      if keys and len(keys)==1:
+                          key=next(iter(keys));verdict='UNIQUE_NAME_BIRTHYEAR_CANDIDATE_UNVERIFIED'
+                      elif keys: key=None;verdict='AMBIGUOUS_IDENTITIES_MANUAL_REVIEW'
+                      else:key=None;verdict='NO_VERIFIED_HISTORICAL_HORSE_ID'
+                      ambiguity[verdict]+=1
+                      rec={'meta':meta,'key':key,'name':item.get('horse'),
+                           'trainer':norm(item.get('trainer')),'jockey':norm(item.get('jockey')),
+                           'age':age,'sex':item.get('sex'),'official_rating':item.get('ofr'),
+                           'weight_lbs':item.get('lbs'),'draw':item.get('draw')}
+                      rr.append((rec,item,verdict))
+                  rr_ratings=[numeric(r['official_rating']) for r,_,_ in rr]
+                  rr_weights=[numeric(r['weight_lbs']) for r,_,_ in rr]
+                  rr_draws=[numeric(r['draw']) for r,_,_ in rr]
+                  for i,(rec,item,verdict) in enumerate(rr):
+                      f=state.features(rec,day)
+                      f['rating_percentile']=percentile(rr_ratings,i)
+                      f['weight_percentile']=percentile(rr_weights,i)
+                      f['draw_percentile']=percentile(rr_draws,i)
+                      fs=flags(f,rec)
+                      matches=[]
+                      for group in cohorts(meta,rr):
+                          for t in supported.get(group,[]):
+                              if t['trait'] in fs:
+                                  matches.append((t['trait'],t['direction'],group,t['passed_fdr_screen'],t['train_z_market'],t['valid_z_market'],t['test_z_market']))
+                      positive=sorted(set(x[0]+' ('+x[2]+')' for x in matches if x[1]=='POSITIVE' and x[3]))
+                      negative=sorted(set(x[0]+' ('+x[2]+')' for x in matches if x[1]=='NEGATIVE' and x[3]))
+                      tentative_positive=sorted(set(x[0]+' ('+x[2]+')' for x in matches if x[1]=='POSITIVE' and not x[3]))
+                      tentative_negative=sorted(set(x[0]+' ('+x[2]+')' for x in matches if x[1]=='NEGATIVE' and not x[3]))
+                      rows.append({'date':cutoff,'course':item.get('course'),'time':str(item.get('race_time'))[11:16],
+                                   'race':item.get('race_name'),'horse':item.get('horse'),'age':age,'ofr':item.get('ofr'),
+                                   'trainer':item.get('trainer'),'jockey':item.get('jockey'),'history_identity_status':verdict,
+                                   'prior_horse_starts':f['horse_prior_starts'],
+                                   'prior_course_wins':f['prior_course_wins'],'days_since_last_historical_run':f['days_since_run'],
+                                   'positive_fdr_screened':' | '.join(positive),
+                                   'negative_fdr_screened':' | '.join(negative),
+                                   'tentative_positive_not_validated':' | '.join(tentative_positive),
+                                   'tentative_negative_not_validated':' | '.join(tentative_negative),
+                                   'all_pre_race_flags':' | '.join(sorted(fs)),
+                                   'warning':'SOURCE_STALE_FOR_RECENT_FORM; NO_LIVE_WIN_PROBABILITY'})
+              with (out/'sunday_runner_exploratory_trend_matches.csv').open('w',encoding='utf-8',newline='') as f:
+                  w=csv.DictWriter(f,fieldnames=list(rows[0]));w.writeheader();w.writerows(rows)
+              return {'status':'CARD_FLAGS_PRODUCED','snapshot_collected_at':cards.get('collected_at','') if isinstance(cards,dict) else '',
+                      'races':len(groups),'runners':len(rows),'historical_data_latest':str(last_historical_date),
+                      'history_identity_counts':dict(ambiguity),'caution':'Historical dataset incomplete after '+str(last_historical_date)}
+
+          def process(db,out,mapfile=None, cutoff='2026-11-01', max_races=0, export_min_year=2022, current_cards=None):
+              out.mkdir(parents=True,exist_ok=True)
+              identity=load_mapping(mapfile)
+              if not identity:
+                  raise RuntimeError('Stage 4 source race mapping is required for UK/Irish scope; refusing to analyse international racing')
+              state=Hist();disc=Discover();audit=collections.Counter();lastday=None;pending=[]
+              with (out/'pre_race_runner_features.csv').open('w',newline='',encoding='utf-8') as fh:
+                  writer=csv.DictWriter(fh,fieldnames=FEATURE_COLUMNS);writer.writeheader()
+                  for meta,raws in load_db_rows(db,cutoff):
+                      day=meta['day']
+                      if day!=lastday:
+                          for rec in pending:state.take(lastday,rec)
+                          pending.clear();lastday=day
+                      audit['races_seen']+=1
+                      if audit['races_seen']%25000==0:
+                          print('Historical races processed:',audit['races_seen'],'runners:',audit['runners_seen'],'date:',day,flush=True)
+                      if max_races and audit['races_seen']>max_races:break
+                      if meta['id'] not in identity:
+                          raise RuntimeError('Missing geographic source mapping for race '+meta['id'])
+                      name,event,status,region=identity[meta['id']]
+                      # Stage 4 uses region_scope=OTHER/OTHER_OR_UNRESOLVED, and
+                      # match_status=OUT_OF_SCOPE. Do not confuse the two fields.
+                      # Royal Ascot has some legitimate UK races whose venue is recorded
+                      # literally as 'Royal Ascot' rather than Ascot, and is a documented
+                      # course-label exception in the source dataset.
+                      in_scope = (region in ('GB','IRELAND') and status != 'OUT_OF_SCOPE')
+                      if not in_scope and meta['course']!='royal ascot':
+                          audit['out_of_scope_races_excluded']+=1
+                          continue
+                      rawrows,winners=valid_runners(raws)
+                      if not (2<=len(rawrows)<=40 and 1<=len(winners)<=3):
+                          audit['invalid_fields_or_missing_winner']+=1;continue
+                      audit['races_usable']+=1;audit['runners_seen']+=len(rawrows)
+                      # Keep potentially incomplete class and questionable source typing explicit.
+                      meta['event_id']=event;meta['identity_status']=status;meta['race_name']=name
+                      recs=[]
+                      for raw in rawrows:
+                          key,confidence=key_for_horse(raw,day)
+                          audit['horse_identity_'+confidence]+=1
+                          if key is None:audit['unlinked_horse_starts']+=1
+                          win=int(numeric(raw.get('finish_pos'))==1)/len(winners)
+                          place=int(numeric(raw.get('finish_pos')) is not None and 1<=numeric(raw.get('finish_pos'))<=3)
+                          rec={'meta':meta,'key':key,'confidence':confidence,'name':raw.get('horse_name'),
+                               'trainer':norm(raw.get('trainer')),'jockey':norm(raw.get('jockey')),
+                               'age':raw.get('age'),'sex':raw.get('sex'),'official_rating':raw.get('official_rating'),
+                               'weight_lbs':raw.get('weight_lbs'),'draw':raw.get('draw'),
+                               'pos':raw.get('finish_pos'),'win':win,'place':place,'sp':numeric(raw.get('sp_decimal')),
+                               'winner_credit':win}
+                          recs.append(rec)
+                      # Per-field relative ratings, draw and weight are pre-race known.
+                      ratings=[numeric(x['official_rating']) for x in recs]
+                      weights=[numeric(x['weight_lbs']) for x in recs]
+                      draws=[numeric(x['draw']) for x in recs]
+                      sp_ok=all(x['sp'] is not None and x['sp']>=1.01 for x in recs)
+                      spden=sum(1/x['sp'] for x in recs) if sp_ok else 0.
+                      field=[]
+                      for i,rec in enumerate(recs):
+                          f=state.features(rec,day)
+                          rec['pre_run_gap_days']=f['days_since_run']
+                          f['rating_percentile']=percentile(ratings,i)
+                          f['weight_percentile']=percentile(weights,i)
+                          f['draw_percentile']=percentile(draws,i)
+                          fs=flags(f,rec)
+                          field.append({'flags':fs,'sp':rec['sp'],'winner_credit':rec['winner_credit']})
+                          if day.year>=export_min_year:
+                              row={'race_date':day.isoformat(),'race_id':meta['id'],'course':meta['course'],
+                                   'race_type':meta['kind'],'surface':meta['surface'],'distance_f':meta['distance'],
+                                   'race_class':meta['race_class'],'event_id':event,'identity_status':status,
+                                   'horse_name':rec['name'],'horse_id_hint':str(rec['key']) if rec['key'] else '',
+                                   'identity_confidence':rec['confidence'],'trainer':rec['trainer'],
+                                   'jockey':rec['jockey'],'age':rec['age'],'official_rating':rec['official_rating'],
+                                   'weight_lbs':rec['weight_lbs'],'draw':rec['draw'],'field_size':len(recs),
+                                   **f,'year_split':split_year(day.year),'feature_flags':'|'.join(sorted(fs)),
+                                   'finish_pos':rec['pos'],'winner_credit':rec['winner_credit'],
+                                   'sp_decimal':rec['sp'],'market_expected_share':(1/rec['sp'])/spden if sp_ok else '',
+                                   'race_name':name,'race_condition':('HANDICAP' if 'handicap' in norm(name) else 'MAIDEN' if 'maiden' in norm(name) else 'NOVICE' if 'novice' in norm(name) else 'CONDITIONS' if name else 'UNKNOWN'),
+                                   'going_code':meta['going_code'],'sex':rec['sex']}
+                              writer.writerow(row)
+                              audit['exported_rows']+=1
+                      disc.consider(day,meta,field)
+                      pending.extend(recs)
+                  # no need to flush last day for retrospective analysis
+              cand=disc.results(out)
+              card_audit=apply_discovery_to_cards(state,cand,current_cards,cutoff,out,lastday)
+              (out/'current_card_matching_audit.json').write_text(json.dumps(card_audit,indent=2))
+              audit.update({'train_races':disc.count_by_split['TRAIN'],'valid_races':disc.count_by_split['VALID'],
+                            'test_races':disc.count_by_split['TEST'],'tests_after_support':len(cand),
+                            'two_period_candidate_signals':sum(x['predefined_support_pass'] for x in cand),
+                            'signals_passing_fdr_screen':sum(x['passed_fdr_screen'] for x in cand),
+                            'linked_horse_keys':len(state.horses),'source_event_mapping_rows':len(identity)})
+              (out/'audit.json').write_text(json.dumps({'counts':dict(audit),'latest_historical_result_date':str(lastday),'windows':WINDOWS,
+                 'prediction_features_never_include':['current race finishing position','current race SP','current race RPR','current race Topspeed','current race comments'],
+                 'evaluation_only':['current race SP','current race finish'],
+                 'limitations':['Current-race SP used only to assess post-event market-adjusted patterns, not for prediction.',
+                   'BY FDR screen is conservative but dependent validation and confounding remain; not certified significance.',
+                   'Trainer/jockey identity is name-based; homonyms and formatting may occur.',
+                   'Stage 2 has ZERO non-null source horse IDs: composite name/country/birthyear linkage is uncertain and must be audited.',
+                   'No race-time data in Stage 2; prior calendar day only, intentionally conservative.',
+                   'Stage 2 lacks full reliable original name/grade/novice/headgear/detailed pace.',
+                   'Missing Irish 2000–2002 records in original source.',
+                   'Only GB and Irish historical races are included using required Stage 4 regional mapping; the Royal Ascot venue label is a documented exception. Rare misclassified courses still need review.',
+                   'SP evaluation is not actual available bookmaker prices and ignores deductions, dead-heat settlement, stake limits.',
+                   'Missing SP excludes corresponding race from market baseline and ROI.',
+                   'Selections based on same historical data require independent chronological test before deployment.',
+                   'Market odds represent final historical prices and are only available after the race.',
+                   'No current-day racecards are included; this script does not create live runner rankings.']},indent=2))
+              # A concise research report accompanies CSV files, never calls a tentative
+              # correlation a reliable betting edge.
+              passed=[x for x in cand if x['passed_fdr_screen']]
+              exploratory=[x for x in cand if x['predefined_support_pass']]
+              lines=['# Stage 7 — pre-race trend discovery results','',
+                     '**Status:** Automated hypothesis search; not a verified betting system.','',
+                     '## Scope',
+                     f"- Historical records examined: {audit['races_seen']:,} races and {audit['runners_seen']:,} starters.",
+                     f"- UK/Irish out-of-scope exclusions: {audit['out_of_scope_races_excluded']:,} race records.",
+                     f"- Historical file ends on {lastday}; the current runner form since that date is not present.",
+                     '- TRAIN 1995–2017; VALID 2018–2021; untouched TEST 2022–2025.',
+                     '- All feature values use races before the target race day. Current SP/finish is evaluation only.',
+                     '- Race identity based on horse name, country, age (birth-year inference) is provisional.',
+                     '', '## Findings after screening',
+                     f'- Candidate combinations meeting minimum support: {len(cand):,}.',
+                     f'- Same-direction exploratory patterns across TRAIN and VALID: {len(exploratory):,}.',
+                     f'- Additional conservative BY-FDR screen passed: {len(passed):,}.',
+                     '- These are hypothesis screens, not independently calibrated probabilities or guaranteed positive ROI.',
+                     '', '## Signals surviving FDR screen', '']
+              if passed:
+                  lines += ['| Cohort | Signal | Direction | Train z | Validation z | Future test z | Future test historical SP ROI |',
+                            '|---|---|---|---:|---:|---:|---:|']
+                  for x in passed[:60]:
+                      lines.append(f"| {x['cohort']} | {x['trait']} | {x['direction']} | {x['train_z_market']} | {x['valid_z_market']} | {x['test_z_market']} | {x['test_historical_sp_roi_pct']}% |")
+              else:
+                  lines.append('No signal passed the preconfigured conservative multiple-testing screen. Do not force selections.')
+              lines += ['', '## Read the outputs',
+                        '- `all_discovered_signal_tests.csv`: every qualifying hypothesis for each chronological window.',
+                        '- `training_validation_test_trends.csv`: support-screened signals, with positive and negative signs and held-out results.',
+                        '- `pre_race_runner_features.csv`: auditable individual runner features for recent seasons, with labels and SP only for retrospective evaluation.',
+                        '- `sunday_runner_exploratory_trend_matches.csv` (when available): current card signals; **not** predictions.',
+                        '- `audit.json` and `current_card_matching_audit.json`: gaps, linkage status and missing data.',
+                        '', '## Cautions',
+                        '- Historical SP ROI is retrospective and not evidence that the prices were available to bet.',
+                        '- SP-normalized market expectation is used for evaluation, not as a predictive input.',
+                        '- BY-FDR does not correct all model-design choices, selection bias or errors in the source database.',
+                        '- Named annual-race matching remains provisional where source evidence is unverified.',
+                        '- Original headgear, complete past race classifications, pace and actual pre-off odds require additional data.',
+                        '- **No current-day betting selections should be taken from this report without verifying data completeness.**']
+              (out/'READ_ME_FIRST.md').write_text('\n'.join(lines)+'\n')
+              print(json.dumps(dict(audit),indent=2))
+
+
+          def main():
+              p=argparse.ArgumentParser();p.add_argument('--db',required=True);p.add_argument('--mapping');
+              p.add_argument('--out',default='stage7_output');p.add_argument('--cutoff',default='2026-11-01')
+              p.add_argument('--max-races',type=int,default=0);p.add_argument('--export-min-year',type=int,default=2022)
+              p.add_argument('--current-cards',help='Optional Sunday Racing Hot Pots JSON racecards; no predictions without coverage check')
+              a=p.parse_args();process(a.db,Path(a.out),a.mapping,a.cutoff,a.max_races,a.export_min_year,a.current_cards)
+          if __name__=='__main__':main()
+
+          STAGE8_HISTORY
+          cat > stage8_conditional_discovery.py <<'STAGE8_ANALYSIS'
+          #!/usr/bin/env python3
+          """Stage 8: conditional historical discovery; independent race-level market comparison.
+
+          Only information known before each race is used in predictors. Trainer rolling
+          subgroup features are reconstructed from past dates and based on prior outcomes;
+          current event SP and outcomes are *evaluation only*. Unverified Sunday horse
+          links do not produce selections. Requires Stage8 historical CSV (Stage7B +
+          additional source fields) sorted by race_date / race_id.
+          """
+          import argparse, collections, csv, datetime as dt, gzip, itertools, json, math, re, statistics, sys
+          from pathlib import Path
+
+          DAYS_3Y=1095
+          MIN_TRAIN_STARTS=180
+          MIN_TRAIN_WINS=18
+          MIN_TRAIN_RACES=100
+          KEEP_EXPLORATORY=1800
+
+
+          def number(x):
+              try:
+                  n=float(x)
+                  return n if math.isfinite(n) else None
+              except (TypeError, ValueError): return None
+
+
+          def norm(x):
+              return re.sub(r'[^a-z0-9]+',' ',str(x or '').lower()).strip()
+
+
+          def race_condition(row):
+              c=str(row.get('race_condition') or '').upper()
+              if c in ('HANDICAP','NOVICE','MAIDEN','CONDITIONS'):return c
+              title=norm(row.get('race_name'))
+              for word in ('handicap','maiden','novice'):
+                  if word in title:return word.upper()
+              # Without a race title, cannot distinguish a novice from a handicap.
+              return 'UNKNOWN'
+
+
+          def discipline(row):
+              kind=norm(row.get('race_type'))
+              if 'chase' in kind:return 'CHASE'
+              if 'hurdle' in kind:return 'HURDLE'
+              if 'flat' in kind:return 'FLAT'
+              if 'bumper' in kind:return 'BUMPER'
+              return 'UNKNOWN'
+
+
+          def dist_band(row):
+              d=number(row.get('distance_f'))
+              if d is None:return 'UNKNOWN'
+              return 'SPRINT' if d<8 else 'MILE' if d<11 else 'MIDDLE' if d<16 else 'LONG' if d<22 else 'STAYING'
+
+
+          def class_band(row):
+              m=re.search(r'\b[1-7]\b',str(row.get('race_class') or ''))
+              return m.group() if m else 'UNKNOWN'
+
+
+          def category(row):
+              disc=discipline(row);cond=race_condition(row)
+              age=number(row.get('age'))
+              if disc=='FLAT' and age is not None:
+                  a='2YO' if age==2 else '3YO' if age==3 else '4PLUS'
+              elif disc in ('CHASE','HURDLE'):
+                  a='JUMPS'
+              else:a='UNKNOWN'
+              return f'{disc}:{cond}:{a}'
+
+
+          def contexts(row,compound):
+              disc=discipline(row);cond=race_condition(row)
+              result=['ALL']
+              if disc=='UNKNOWN':return result
+              if cond!='UNKNOWN':result.append(f'{disc}:{cond}')
+              if not compound and cond!='UNKNOWN':
+                  d=dist_band(row); cl=class_band(row)
+                  if d!='UNKNOWN':result.append(f'{disc}:{cond}:DIST_{d}')
+                  if cl!='UNKNOWN':result.append(f'{disc}:{cond}:CLASS_{cl}')
+                  course=norm(row.get('course'))
+                  if course:result.append(f'{disc}:{cond}:COURSE_{course}')
+              return result
+
+
+          class RollingTrainer:
+              """Trainer category history, date-batched to forbid same-day leakage."""
+              def __init__(self):
+                  self.recent=collections.defaultdict(collections.deque)
+                  self.long=collections.defaultdict(collections.deque)
+              @staticmethod
+              def view(q,day,span):
+                  limit=day-dt.timedelta(days=span)
+                  while q and q[0][0]<limit:q.popleft()
+                  return len(q),sum(x[1] for x in q),sum(x[2] for x in q if x[2] is not None),sum(x[2] is not None for x in q)
+              def features(self,row,day):
+                  t=norm(row.get('trainer'));cat=category(row)
+                  if not t or 'UNKNOWN' in cat.split(':'):return {'cat':cat,'recent_n':0,'recent_w':0,'baseline_n':0,'baseline_w':0,'recent_expected':None}
+                  n,w,exp,priced=self.view(self.recent[(t,cat)],day,14)
+                  bn,bw,bexp,bpriced=self.view(self.long[(t,cat)],day,DAYS_3Y)
+                  # Compare 14-day specialist form against the PRECEDING historical
+                  # baseline: don't count the recent winners on both sides of a contrast.
+                  bn-=n; bw-=w
+                  if priced==n and bpriced>=priced:
+                      bexp-=exp; bpriced-=priced
+                  else:bpriced=-1
+                  return {'cat':cat,'recent_n':n,'recent_w':w,'baseline_n':bn,'baseline_w':bw,
+                          'recent_expected':exp if priced==n else None,
+                          'baseline_expected':bexp if bpriced==bn and bn>=0 else None}
+              def settle(self,row,day):
+                  t=norm(row.get('trainer'))
+                  if not t:return
+                  cat=category(row)
+                  if 'UNKNOWN' in cat.split(':'):return
+                  win=number(row.get('winner_credit')) or 0.
+                  expected=number(row.get('market_expected_share'))
+                  item=(day,win,expected)
+                  self.recent[(t,cat)].append(item)
+                  self.long[(t,cat)].append(item)
+
+
+          def tag_families(row,trainer):
+              """Feature *descriptions*, not assumed positive/negative directions."""
+              groups={}
+              def add(f,v):groups.setdefault(f,[]).append(v)
+              age=number(row.get('age'))
+              if age is not None:
+                  band='2' if age==2 else '3' if age==3 else '4-5' if age<=5 else '6-8' if age<=8 else '9+'
+                  add('AGE','AGE_'+band)
+              starts=number(row.get('horse_prior_starts'))
+              if starts is not None:
+                  add('EXPERIENCE','PRIOR_0' if starts==0 else 'PRIOR_1-3' if starts<=3 else 'PRIOR_4-10' if starts<=10 else 'PRIOR_11-25' if starts<=25 else 'PRIOR_26+')
+              form=str(row.get('horse_recent_form') or '')
+              if starts and form:
+                  last=form[-1]
+                  # The extended exporter supplies the original finishing position.
+                  # Stage 7's old '-' shorthand can mean a 4th+ finish OR a missing
+                  # finish, so it is NOT safe to call it a defeat without this field.
+                  last_pos=number(row.get('last_finish_pos'))
+                  last_raw=norm(row.get('last_finish_pos')).upper()
+                  if last_pos is not None:
+                      if last_pos==1:add('FORM','LAST_WIN')
+                      elif last_pos<=3:add('FORM','LAST_PLACED')
+                      elif last_pos>=4:add('FORM','LAST_FINISHED_4PLUS')
+                  elif last_raw in ('PU','P','F','UR','U','BD','RO','REF','RR','SU'):
+                      add('FORM','LAST_NONFINISH_RECORDED')
+                  elif last=='1':add('FORM','LAST_WIN')
+                  elif last=='P':add('FORM','LAST_PLACED')
+                  # Missing or ambiguous result stays UNKNOWN, never a negative.
+                  r3=number(row.get('recent3_places'))
+                  if r3 is not None and r3>=2:add('RECENT_FORM','TWO_PLACES_LAST3')
+              r5=number(row.get('recent5_wins'))
+              if r5 is not None and r5>=2:add('RECENT_FORM','TWO_WINS_LAST5')
+              gap=number(row.get('days_since_run'))
+              if gap is not None:
+                  add('LAYOFF','DAYS_0-14' if gap<=14 else 'DAYS_15-45' if gap<=45 else 'DAYS_46-90' if gap<=90 else 'DAYS_91-180' if gap<=180 else 'DAYS_181+')
+              if gap is not None and gap>=90:
+                  prevn=number(row.get('prior_layoff_90_starts'));prevw=number(row.get('prior_layoff_90_wins'))
+                  if prevn is not None and prevn>=2 and prevw is not None:
+                      add('FRESH_HORSE','LONG_BREAK_PREVIOUS_WIN' if prevw>=1 else 'LONG_BREAK_NO_PREVIOUS_WIN_FROM_2+')
+              for stem,code in [('prior_course','COURSE'),('prior_distance','DISTANCE'),('prior_going','GOING'),('prior_type','RACE_DISC')]:
+                  n=number(row.get(stem+'_starts')); w=number(row.get(stem+'_wins'))
+                  if n is not None and n>=2 and w is not None:
+                      add('SUITABILITY_'+code,code+'_WON_BEFORE' if w>0 else code+'_UNWON_2+')
+              if discipline(row)=='FLAT':
+                  draw=number(row.get('draw_percentile'))
+                  if draw is not None and (number(row.get('field_size')) or 0)>=7:
+                      add('DRAW','LOW_DRAW_QUARTILE' if draw<=.25 else 'HIGH_DRAW_QUARTILE' if draw>=.75 else 'MIDDLE_DRAW')
+              sex=norm(row.get('sex'))
+              if sex in ('f','filly','mare','female'):add('SEX','FEMALE')
+              elif sex in ('c','colt','g','gelding','h','horse','male'):add('SEX','MALE')
+              rating=number(row.get('rating_percentile'))
+              if rating is not None:
+                  add('REL_RATING','RATING_TOP25' if rating>=.75 else 'RATING_BOTTOM25' if rating<=.25 else 'RATING_MIDDLE')
+              change=number(row.get('trainer_changed_since_last_run'))
+              if change is not None and starts and change==1:
+                  add('TRAINER_CHANGE','FIRST_REC_SWITCH')
+              lastcl=number(row.get('last_class'));curcl=number(class_band(row))
+              if lastcl is not None and curcl is not None and lastcl!=curcl:
+                  add('CLASS_SHIFT','CLASS_DROP' if curcl>lastcl else 'CLASS_RISE')
+              lastdist=number(row.get('last_distance_f'));dist=number(row.get('distance_f'))
+              if lastdist is not None and dist is not None:
+                  delta=dist-lastdist
+                  if abs(delta)>=4:add('TRIP_SHIFT','TRIP_UP_4PLUS' if delta>0 else 'TRIP_DOWN_4PLUS')
+              n,w=trainer['recent_n'],trainer['recent_w'];bn,bw=trainer['baseline_n'],trainer['baseline_w']
+              if n>=8 and bn>=30:
+                  recent=w/n; baseline=bw/bn
+                  if recent>=baseline+.12 and w>=3:
+                      add('TRAINER_SPECIALIST','TRAINER_SUBTYPE_UP12PP')
+                  elif recent<=baseline-.12:
+                      add('TRAINER_SPECIALIST','TRAINER_SUBTYPE_DOWN12PP')
+                  if trainer['recent_expected'] is not None:
+                      exp=trainer['recent_expected'];
+                      if w-exp>=2.5:add('TRAINER_SPECIALIST_MARKET','TRAINER_SUBTYPE_OVER_MARKET_2.5W')
+                      elif exp-w>=2.5:add('TRAINER_SPECIALIST_MARKET','TRAINER_SUBTYPE_UNDER_MARKET_2.5W')
+              tn=number(row.get('trainer_30_starts'));tw=number(row.get('trainer_30_wins'))
+              if tn is not None and tw is not None and tn>=20:
+                  add('TRAINER_OVERALL','TRAINER_30_HIGH' if tw/tn>=.25 else 'TRAINER_30_LOW' if tw/tn<.10 else 'TRAINER_30_MID')
+              tc=number(row.get('trainer_course_starts'));wc=number(row.get('trainer_course_wins'))
+              if tc is not None and wc is not None and tc>=15:
+                  add('TRAINER_COURSE','TRAINER_COURSE_HIGH' if wc/tc>=.2 else 'TRAINER_COURSE_LOW' if wc/tc<.08 else 'TRAINER_COURSE_MID')
+              # Limit interactions to independently sourced families; never count LTO & last3 as independent.
+              return groups
+
+
+          def signatures(groups):
+              singles=sorted(set(s for family in groups.values() for s in family))
+              # One representative per family, chosen deterministically. Limit search space
+              # and avoid manufacturing huge numbers of correlated thresholds.
+              order=['AGE','EXPERIENCE','FORM','RECENT_FORM','LAYOFF','FRESH_HORSE',
+                     'SUITABILITY_COURSE','SUITABILITY_DISTANCE','SUITABILITY_GOING','DRAW','SEX',
+                     'REL_RATING','TRAINER_CHANGE','CLASS_SHIFT','TRIP_SHIFT',
+                     'TRAINER_SPECIALIST','TRAINER_SPECIALIST_MARKET',
+                     'TRAINER_OVERALL','TRAINER_COURSE']
+              chosen=[groups[f][0] for f in order if f in groups]
+              # Controlled family pairs: dozens of meaningful *different* relationships,
+              # not thousands of variations of an overall trainer strike-rate threshold.
+              family_pairs=[
+                ('AGE','FORM'),('AGE','EXPERIENCE'),('AGE','TRAINER_SPECIALIST'),('SEX','DRAW'),('DRAW','FORM'),('DRAW','TRAINER_SPECIALIST'),
+                ('EXPERIENCE','FORM'),('EXPERIENCE','LAYOFF'),('EXPERIENCE','TRAINER_SPECIALIST'),
+                ('FORM','LAYOFF'),('FORM','TRAINER_CHANGE'),('FORM','CLASS_SHIFT'),
+                ('FORM','TRIP_SHIFT'),('FORM','REL_RATING'),('FORM','TRAINER_SPECIALIST'),
+                ('FORM','TRAINER_COURSE'),('FORM','TRAINER_OVERALL'),('FORM','SUITABILITY_COURSE'),
+                ('FORM','SUITABILITY_DISTANCE'),('FORM','SUITABILITY_GOING'),
+                ('RECENT_FORM','TRAINER_SPECIALIST'),('RECENT_FORM','CLASS_SHIFT'),
+                ('LAYOFF','TRAINER_SPECIALIST'),('LAYOFF','TRAINER_CHANGE'),
+                ('LAYOFF','FRESH_HORSE'),('LAYOFF','SUITABILITY_DISTANCE'),
+                ('FRESH_HORSE','TRAINER_SPECIALIST'),('FRESH_HORSE','TRAINER_CHANGE'),
+                ('TRAINER_CHANGE','TRAINER_SPECIALIST'),('TRAINER_CHANGE','REL_RATING'),
+                ('TRAINER_SPECIALIST','TRAINER_OVERALL'),('TRAINER_SPECIALIST','TRAINER_COURSE'),
+                ('TRAINER_SPECIALIST_MARKET','FORM'),('TRAINER_SPECIALIST_MARKET','AGE'),
+                ('TRAINER_SPECIALIST_MARKET','REL_RATING'),
+                ('REL_RATING','CLASS_SHIFT'),('REL_RATING','TRIP_SHIFT'),
+                ('SUITABILITY_COURSE','TRAINER_COURSE'),
+                ('SUITABILITY_DISTANCE','TRIP_SHIFT'),('SUITABILITY_GOING','TRAINER_SPECIALIST')]
+              pairs=[' + '.join(sorted((groups[a][0],groups[b][0])))
+                     for a,b in family_pairs if a in groups and b in groups]
+              # Pre-specified three-way interactions across horse state + preparation + context.
+              thirds=[]
+              bundles=[('FORM','LAYOFF','TRAINER_SPECIALIST'),('FORM','TRAINER_CHANGE','LAYOFF'),
+                       ('FORM','SUITABILITY_DISTANCE','TRAINER_SPECIALIST'),
+                       ('AGE','FORM','TRAINER_SPECIALIST'),
+                       ('REL_RATING','FORM','TRAINER_SPECIALIST'),
+                       ('EXPERIENCE','LAYOFF','TRAINER_SPECIALIST'),
+                       ('SUITABILITY_COURSE','FORM','TRAINER_SPECIALIST'),
+                       ('FORM','CLASS_SHIFT','TRAINER_SPECIALIST'),
+                       ('FRESH_HORSE','FORM','TRAINER_SPECIALIST')]
+              for b in bundles:
+                  if all(f in groups for f in b):thirds.append(' + '.join(sorted(groups[f][0] for f in b)))
+              return [(x,1) for x in singles]+[(x,2) for x in sorted(set(pairs))]+[(x,3) for x in sorted(set(thirds))]
+
+
+          class Agg:
+              __slots__=('starts','wins','market_wins','races','expected','variance','return_units','market_starts','year_first','year_last')
+              def __init__(self):
+                  self.starts=0;self.wins=0.;self.market_wins=0.;self.races=0;self.expected=0.;self.variance=0.
+                  self.return_units=0.;self.market_starts=0;self.year_first=9999;self.year_last=0
+              def add(self,rows,dateyear):
+                  self.races+=1;self.starts+=len(rows);self.wins+=sum(r['win'] for r in rows)
+                  self.year_first=min(self.year_first,dateyear);self.year_last=max(self.year_last,dateyear)
+                  if all(r['p'] is not None and r['sp'] is not None for r in rows):
+                      # Caller ensures entire race has prices, not only qualifiers.
+                      p=sum(r['p'] for r in rows)
+                      self.expected+=p;self.variance+=p*(1-p)
+                      self.market_wins+=sum(r['win'] for r in rows)
+                      self.return_units+=sum(r['win']*r['sp'] for r in rows)
+                      self.market_starts+=len(rows)
+              def stats(self):
+                  z=(self.market_wins-self.expected)/math.sqrt(self.variance) if self.variance>0 else None
+                  return {'starts':self.starts,'races':self.races,'wins':round(self.wins,3),
+                          'market_expected_wins':round(self.expected,3),
+                          'excess_wins':round(self.market_wins-self.expected,3),
+                          'market_z':round(z,4) if z is not None else None,
+                          'historical_sp_roi_pct':round(100*(self.return_units/self.market_starts-1),2) if self.market_starts else None,
+                          'market_covered_starts':self.market_starts,'first_year':self.year_first if self.year_first<9999 else None,'last_year':self.year_last or None}
+
+
+          def split(year,train_end=2017,valid_end=2021,test_end=2025):
+              if year<1995 or year>test_end:return None
+              return 'train' if year<=train_end else 'valid' if year<=valid_end else 'test'
+
+
+          def augmented_events(input_path,train_end=2017,valid_end=2021,test_end=2025):
+              trainer=RollingTrainer();day=None;batch=[]
+              opener=gzip.open if str(input_path).endswith('.gz') else open
+              with opener(input_path,'rt',newline='',encoding='utf-8') as f:
+                  for row in csv.DictReader(f):
+                      date=dt.date.fromisoformat(row['race_date'][:10])
+                      if day is not None and date<day:raise ValueError('Input historical features not in chronological date order')
+                      if day is not None and date!=day:
+                          for r in batch:trainer.settle(r,day)
+                          batch=[]
+                      day=date
+                      data=trainer.features(row,date)
+                      groups=tag_families(row,data)
+                      win=number(row.get('winner_credit')) or 0
+                      p=number(row.get('market_expected_share'))
+                      sp=number(row.get('sp_decimal'))
+                      entry={'race':row['race_id'],'date':date.isoformat(),'win':win,'p':p,'sp':sp,
+                             'tags':signatures(groups),'row':row,'trainer_recent_n':data['recent_n'],
+                             'trainer_recent_w':data['recent_w'],'trainer_base_n':data['baseline_n'],
+                             'trainer_base_w':data['baseline_w'],'trainer_category':data['cat']}
+                      batch.append(row)
+                      yield entry
+                  # End of last day: do not settle for subsequent racing.
+
+
+          def iter_races(events):
+              # Input sorted by (date, race_id) in original exporter. For any potential
+              # interleaving race IDs, group by day to be safe.
+              lastday=None;daily=collections.defaultdict(list)
+              for e in events:
+                  if lastday is not None and e['date']!=lastday:
+                      for rid,rows in daily.items():yield rows
+                      daily.clear()
+                  lastday=e['date'];daily[e['race']].append(e)
+              for rows in daily.values():yield rows
+
+
+          def race_patterns(rows,selection=None):
+              """Yield market-complete race aggregates per pattern, allowing no look-ahead."""
+              exemplar=rows[0]['row'];year=int(rows[0]['date'][:4]);covered=all(x['p'] is not None and x['sp'] is not None for x in rows)
+              selected=collections.defaultdict(list)
+              for e in rows:
+                  for sig,depth in e['tags']:
+                      for ctx in contexts(exemplar,compound=(depth>1)):
+                          key=(ctx,sig)
+                          if selection is None or key in selection:selected[key].append(e)
+              for k,qualifiers in selected.items():
+                  # Evaluation requires the full race to have SP; if not, blank the
+                  # market expectation/ROI for every qualifier in that race.
+                  if not covered:qualifiers=[dict(x,p=None,sp=None) for x in qualifiers]
+                  yield k,qualifiers,year
+
+
+          def discover_train(input_path,args):
+              aggs=collections.defaultdict(Agg);count=collections.Counter()
+              for i,rows in enumerate(iter_races(augmented_events(input_path))):
+                  year=int(rows[0]['date'][:4]);cohort=split(year,args.train_end,args.valid_end,args.test_end)
+                  if cohort!='train':continue
+                  count['train_races']+=1;count['train_starts']+=len(rows)
+                  for key,qualifiers,yr in race_patterns(rows):aggs[key].add(qualifiers,yr)
+                  if count['train_races']%30000==0:print('Train scan:',count['train_races'],'races; candidate keys:',len(aggs),flush=True)
+              return aggs,count
+
+
+          def pvalue(z):return math.erfc(abs(z)/math.sqrt(2)) if z is not None else 1.
+
+
+          def selection_train(aggs):
+              eligible=[]
+              for key,a in aggs.items():
+                  if a.starts<MIN_TRAIN_STARTS or a.wins<MIN_TRAIN_WINS or a.races<MIN_TRAIN_RACES or a.market_starts < MIN_TRAIN_STARTS*.8:continue
+                  z=a.stats()['market_z']
+                  if z is None:continue
+                  eligible.append((key,a,z,pvalue(z)))
+              eligible.sort(key=lambda x:x[3]);m=len(eligible)
+              # Benjamini-Yekutieli FDR controls dependence between overlapping patterns.
+              correction=sum(1/i for i in range(1,m+1)) if m else 1
+              accepted=set()
+              for rank,(key,a,z,p) in enumerate(eligible,1):
+                  if p<=rank*.05/(m*correction):accepted.add(key)
+              # BY step-up uses *largest* passing rank and includes everything earlier.
+              if accepted:
+                  cutoff=max(i for i,entry in enumerate(eligible,1) if entry[0] in accepted)
+                  accepted={e[0] for e in eligible[:cutoff]}
+              exploratory={entry[0] for entry in eligible[:KEEP_EXPLORATORY]}
+              return eligible,accepted,exploratory
+
+
+          def validate(input_path,selected,args):
+              aggs={'valid':collections.defaultdict(Agg),'test':collections.defaultdict(Agg)}
+              count=collections.Counter()
+              for rows in iter_races(augmented_events(input_path)):
+                  year=int(rows[0]['date'][:4]);sp=split(year,args.train_end,args.valid_end,args.test_end)
+                  if sp not in aggs:continue
+                  count[sp+'_races']+=1
+                  for key,qualifiers,yr in race_patterns(rows,selected):aggs[sp][key].add(qualifiers,yr)
+                  if count[sp+'_races']%30000==0:print('Validate:',sp,count[sp+'_races'],'races',flush=True)
+              return aggs,count
+
+
+          def write_results(out,eligible,accepted,evals):
+              headings=['cohort','pattern','feature_count','train_starts','train_races','train_wins','train_expected','train_z','train_sp_roi',
+                        'valid_starts','valid_races','valid_wins','valid_expected','valid_z','valid_sp_roi',
+                        'test_starts','test_races','test_wins','test_expected','test_z','test_sp_roi',
+                        'train_by_fdr','validated_before_test','independent_test_direction','independent_test_significant','evidence_label']
+              records=[]
+              for key,a,z,p in eligible:
+                  v=evals['valid'].get(key,Agg());t=evals['test'].get(key,Agg())
+                  vs=v.stats();ts=t.stats();tr=a.stats()
+                  consistent=vs['market_z'] is not None and z*vs['market_z']>0 and vs['market_covered_starts']>=60 and abs(vs['market_z'])>=1.96
+                  confirmed=bool(key in accepted and consistent)
+                  testdir=ts['market_z'] is not None and z*ts['market_z']>0 and ts['market_covered_starts']>=60
+                  testsig=bool(confirmed and testdir and abs(ts['market_z'])>=1.96)
+                  label='TEST_REPLICATED_ASSOCIATION_NO_PROFIT_CLAIM' if testsig else 'PRETEST_VALIDATED_NOT_REPLICATED' if confirmed else 'TRAIN_FDR_ONLY' if key in accepted else 'EXPLORATORY'
+                  r={'cohort':key[0],'pattern':key[1],'feature_count':len(key[1].split(' + ')),
+                     'train_starts':a.starts,'train_races':a.races,'train_wins':tr['wins'],'train_expected':tr['market_expected_wins'],'train_z':tr['market_z'],'train_sp_roi':tr['historical_sp_roi_pct'],
+                     'valid_starts':v.starts,'valid_races':v.races,'valid_wins':vs['wins'],'valid_expected':vs['market_expected_wins'],'valid_z':vs['market_z'],'valid_sp_roi':vs['historical_sp_roi_pct'],
+                     'test_starts':t.starts,'test_races':t.races,'test_wins':ts['wins'],'test_expected':ts['market_expected_wins'],'test_z':ts['market_z'],'test_sp_roi':ts['historical_sp_roi_pct'],
+                     'train_by_fdr':key in accepted,'validated_before_test':confirmed,'independent_test_direction':testdir,'independent_test_significant':testsig,'evidence_label':label}
+                  records.append(r)
+              with (out/'conditional_trend_validation.csv').open('w',newline='',encoding='utf-8') as f:
+                  w=csv.DictWriter(f,fieldnames=headings);w.writeheader();w.writerows(records)
+              return records
+
+
+          def sunday_report(out,records,path):
+              if not path or not Path(path).exists():return {'status':'NO_SUNDAY_RACE_AUDIT'}
+              with open(path,encoding='utf-8-sig',newline='') as f:races=list(csv.DictReader(f))
+              outrows=[]
+              for r in races:
+                  kind=norm(r.get('discipline'))
+                  d='CHASE' if 'chase' in kind else 'HURDLE' if 'hurdle' in kind else 'FLAT' if 'flat' in kind or 'aw' in kind else 'BUMPER' if 'bumper' in kind else 'UNKNOWN'
+                  cond=norm(r.get('conditions'))
+                  condition='HANDICAP' if 'handicap' in cond else 'MAIDEN' if 'maiden' in cond else 'NOVICE' if 'novice' in cond else 'CONDITIONS'
+                  cf=f'{d}:{condition}'
+                  course=norm(r.get('meeting'))
+                  dd=number(r.get('distance_f'))
+                  db='SPRINT' if dd is not None and dd<8 else 'MILE' if dd is not None and dd<11 else 'MIDDLE' if dd is not None and dd<16 else 'LONG' if dd is not None and dd<22 else 'STAYING' if dd is not None else 'UNKNOWN'
+                  relevant=[]
+                  for row in records:
+                      ctx=row['cohort']
+                      # A narrow context belongs to this race ONLY if all qualifiers
+                      # match. Never report another distance or another course's stats.
+                      if ctx not in ('ALL',cf) and not ctx.startswith(cf+':'):continue
+                      if ':DIST_' in ctx and not ctx.endswith('DIST_'+db):continue
+                      if ':COURSE_' in ctx and not ctx.endswith('COURSE_'+course):continue
+                      # Source Sunday race audit did not include a verified class;
+                      # skip class-specific results instead of guessing.
+                      if ':CLASS_' in ctx:continue
+                      # Don't rank from train-only evidence.
+                      if row['validated_before_test']:relevant.append(row)
+                  relevant.sort(key=lambda x:(not x['validated_before_test'],-abs(x['valid_z'] or 0),-abs(x['train_z'] or 0)))
+                  positives=[x for x in relevant if x['train_z']>0]
+                  negatives=[x for x in relevant if x['train_z']<0]
+                  def fmt(items):
+                      return ' | '.join(f"{x['pattern']} [cohort={x['cohort']}; train {x['train_starts']} starts, z={x['train_z']}; validation z={x['valid_z']}; independent z={x['test_z']}; test SP ROI={x['test_sp_roi']}%; {x['evidence_label']}]" for x in items[:6])
+                  outrows.append({'meeting':r.get('meeting'),'time':r.get('time'),'race':r.get('race'),'category':cf,
+                                  'independent_positive_trends':fmt([x for x in positives if x['independent_test_significant']]),
+                                  'independent_negative_trends':fmt([x for x in negatives if x['independent_test_significant']]),
+                                  'unconfirmed_positive_candidates':fmt([x for x in positives if not x['independent_test_significant']]),
+                                  'unconfirmed_negative_candidates':fmt([x for x in negatives if not x['independent_test_significant']]),
+                                  'data_caveat':'RACE CATEGORY INFERRED; RECHECK SOURCE TITLE/CONDITIONS; NO VERIFIED 2026 LIVE HORSE LINKS'})
+              with (out/'sunday_36_races_deep_trends.csv').open('w',newline='',encoding='utf-8') as f:
+                  w=csv.DictWriter(f,fieldnames=list(outrows[0]) if outrows else []);w.writeheader();w.writerows(outrows)
+              return {'status':'RACE_CONTEXT_REPORT_ONLY_NO_RUNNER_RANKINGS','races':len(outrows)}
+
+
+          def main():
+              pa=argparse.ArgumentParser()
+              pa.add_argument('--features',required=True);pa.add_argument('--out',required=True)
+              pa.add_argument('--sunday-races');pa.add_argument('--train-end',type=int,default=2017)
+              pa.add_argument('--valid-end',type=int,default=2021)
+              pa.add_argument('--test-end',type=int,default=2025)
+              args=pa.parse_args()
+              if not (1995<=args.train_end<args.valid_end<args.test_end<=2025):pa.error('split years must increase and test no later than 2025')
+              out=Path(args.out);out.mkdir(parents=True,exist_ok=True)
+              print('Stage 8 discovery start',flush=True)
+              aggs,train_counts=discover_train(args.features,args)
+              eligible,accepted,exploratory=selection_train(aggs)
+              print('Training inventory:',len(aggs),'eligible:',len(eligible),'train FDR:',len(accepted),'testing:',len(accepted|exploratory),flush=True)
+              evals,heldout_counts=validate(args.features,accepted|exploratory,args)
+              records=write_results(out,eligible,accepted,evals)
+              sunday=sunday_report(out,records,args.sunday_races)
+              audit={'train':train_counts,'heldout':heldout_counts,'candidate_patterns':len(aggs),'training_supported':len(eligible),
+                     'passed_train_by_fdr':len(accepted),'passed_validation_before_test':sum(r['validated_before_test'] for r in records),
+                     'independent_test_replicated':sum(r['independent_test_significant'] for r in records),
+                     'test_period_used_for_selection':False,'sunday':sunday,
+                     'design_limitations':['Source horse IDs are not verified; horse history and stable-switch features are provisional.',
+                                           'Trainer segmentation uses calendar-day-lagged previous results; source may have trainer aliases.',
+                                           'Race condition derived from race title; unknown conditions cannot support specialisation.',
+                                           'No headgear/wind surgery/pace/sire/pre-race odds history in existing database; unavailable signals are NOT scored.',
+                                           'SP is a post-race evaluation-only field; historic SP ROI does not establish price availability.',
+                                           'Selection of final model on test results would invalidate test. Test must remain untouched for selection.',
+                                           'Training BY-FDR and subsequent tests reduce false positives but do not guarantee independent profitability.',
+                                           'Horse-specific Sunday ratings blocked pending verified horse IDs, ages, missing Oct form and current conditions.',
+                                           'Named recurring race historical identity remains provisional where not externally verified.']}
+              (out/'audit.json').write_text(json.dumps(audit,indent=2,default=dict))
+              lines=['# Stage 8: conditional race-trend research','',
+                 'This is an *actual discovery pipeline*, not a hand-selected list of generic positives and negatives.','',
+                 f'- Training patterns tested: {len(aggs):,}',f'- Adequately supported for multiple testing: {len(eligible):,}',
+                 f'- Passed train BY-FDR: {len(accepted):,}',
+                 f'- Passed validation before looking at independent test: {audit["passed_validation_before_test"]:,}',
+                 f'- Independently replicated in 2022–2025 (unless running an explicitly labeled smoke pilot): {audit["independent_test_replicated"]:,}',
+                 '', 'Methods: trainer 14-day category wins versus their own 3-year category baseline; past-market surprise; horse past comparable layoffs; stable changes; class/trip change; relative ratings; several context-specific two/three-factor combinations. No unsupported signal is called a positive/negative.','',
+                 '**All race-level signals must be judged in their actual cohort with sample sizes and validation. No horse ranking until identity and live form are verified.**',
+                 '', 'Not covered by available source: surgery, headgear, pace, sire, and timestamped opening odds.']
+              (out/'README.md').write_text('\n'.join(lines)+'\n')
+              print(json.dumps(audit,indent=2,default=dict),flush=True)
+
+          if __name__=='__main__':main()
+
+          STAGE8_ANALYSIS
+          cat > test_stage8.py <<'STAGE8_TESTS'
+          import datetime as dt,unittest,tempfile,csv,os
+          from stage8_conditional_discovery import RollingTrainer,category,contexts,tag_families,signatures,Agg,split,race_condition,augmented_events
+
+          class ResearchSafetyTests(unittest.TestCase):
+           def test_unknown_condition_is_not_assumed_handicap(self):
+            row={'race_type':'hurdle','race_name':'','age':'5'}
+            self.assertEqual(race_condition(row),'UNKNOWN')
+            self.assertEqual(category(row),'HURDLE:UNKNOWN:JUMPS')
+            self.assertNotIn('HURDLE:HANDICAP',contexts(row,False))
+           def test_same_date_trainer_results_not_visible(self):
+            hist=RollingTrainer();date=dt.date(2025,1,1)
+            r={'trainer':'Sample Trainer','race_type':'flat','race_condition':'MAIDEN','age':'2',
+               'winner_credit':'1','market_expected_share':'.2'}
+            self.assertEqual(hist.features(r,date)['recent_n'],0)
+            # Production runner buffers the whole day; this test checks if settled
+            # on the previous date, the next date sees exactly one historical record.
+            hist.settle(r,date)
+            self.assertEqual(hist.features(r,date+dt.timedelta(days=1))['recent_n'],1)
+            self.assertEqual(hist.features(r,date+dt.timedelta(days=1))['recent_w'],1)
+           def test_actual_streamer_buffers_entire_racing_day(self):
+            fd,path=tempfile.mkstemp(suffix='.csv');os.close(fd)
+            try:
+             fields=['race_date','race_id','trainer','race_type','race_condition','age','horse_prior_starts','winner_credit','market_expected_share','sp_decimal']
+             with open(path,'w',newline='') as f:
+              w=csv.DictWriter(f,fieldnames=fields);w.writeheader()
+              for date,rid in [('2025-01-01','race1'),('2025-01-01','race2'),('2025-01-02','race3')]:
+               w.writerow({'race_date':date,'race_id':rid,'trainer':'X','race_type':'flat','race_condition':'MAIDEN','age':'2','horse_prior_starts':'0','winner_credit':'1','market_expected_share':'.3','sp_decimal':'3.0'})
+             out=list(augmented_events(path))
+             self.assertEqual([x['trainer_recent_n'] for x in out],[0,0,2])
+            finally:os.remove(path)
+           def test_category_specialisation(self):
+            date=dt.date(2025,1,1);h=RollingTrainer()
+            maiden={'trainer':'Trainer A','race_type':'flat','race_condition':'MAIDEN','age':'2',
+                    'winner_credit':'1','market_expected_share':'.25'}
+            handicap=dict(maiden,race_condition='HANDICAP',winner_credit='0')
+            for i in range(8):h.settle(maiden,date-dt.timedelta(days=i+1))
+            for i in range(9):h.settle(handicap,date-dt.timedelta(days=i+1))
+            self.assertEqual(h.features(maiden,date)['recent_w'],8)
+            self.assertEqual(h.features(handicap,date)['recent_w'],0)
+            self.assertEqual(h.features(maiden,date)['recent_n'],8)
+           def test_last_run_finished_fourth_is_not_misread_as_unknown_or_dnf(self):
+            record={'horse_prior_starts':'10','horse_recent_form':'1-P--','last_finish_pos':'5'}
+            f=tag_families(record,{'recent_n':0,'recent_w':0,'baseline_n':0,'baseline_w':0})
+            self.assertEqual(f['FORM'],['LAST_FINISHED_4PLUS'])
+            record['last_finish_pos']='PU'
+            f=tag_families(record,{'recent_n':0,'recent_w':0,'baseline_n':0,'baseline_w':0})
+            self.assertEqual(f['FORM'],['LAST_NONFINISH_RECORDED'])
+            record['last_finish_pos']=''
+            f=tag_families(record,{'recent_n':0,'recent_w':0,'baseline_n':0,'baseline_w':0})
+            self.assertNotIn('FORM',f)
+           def test_prior_layoff_unknown_not_negative(self):
+            r={'horse_prior_starts':'11','days_since_run':'183','race_type':'hurdle'}
+            group=tag_families(r,{'recent_n':0,'recent_w':0,'baseline_n':0,'baseline_w':0})
+            self.assertEqual(group['LAYOFF'],['DAYS_181+'])
+            self.assertNotIn('FRESH_HORSE',group)
+           def test_own_layoff_records(self):
+            r={'horse_prior_starts':'11','days_since_run':'183','race_type':'hurdle',
+               'prior_layoff_90_starts':'3','prior_layoff_90_wins':'1'}
+            group=tag_families(r,{'recent_n':0,'recent_w':0,'baseline_n':0,'baseline_w':0})
+            self.assertIn('LONG_BREAK_PREVIOUS_WIN',group['FRESH_HORSE'])
+           def test_price_missing_does_not_inflate_market_z(self):
+            a=Agg();a.add([{'win':1,'p':None,'sp':None}],2022)
+            self.assertIsNone(a.stats()['market_z'])
+            self.assertEqual(a.stats()['wins'],1)
+           def test_wins_and_expectation_market_only(self):
+            a=Agg();a.add([{'win':1,'p':.3,'sp':4.0}],2022)
+            a.add([{'win':1,'p':None,'sp':None}],2022)
+            self.assertAlmostEqual(a.market_wins,1)
+            self.assertAlmostEqual(a.stats()['excess_wins'],.7)
+           def test_do_not_call_train_test_validation(self):
+            self.assertEqual(split(2017),'train')
+            self.assertEqual(split(2018),'valid')
+            self.assertEqual(split(2022),'test')
+            self.assertIsNone(split(2026))
+           def test_interactions_include_trainer_speciality_and_horse_form(self):
+            g={'FORM':['LAST_WIN'],'TRAINER_SPECIALIST':['TRAINER_SUBTYPE_UP12PP'],'LAYOFF':['DAYS_91-180']}
+            ss=[x for x,d in signatures(g)]
+            self.assertIn('LAST_WIN + TRAINER_SUBTYPE_UP12PP',ss)
+            self.assertTrue(any(x.count(' + ')==2 for x in ss))
+          if __name__=='__main__':unittest.main()
+
+          STAGE8_TESTS
+          cat > test_history_export.py <<'STAGE8_EXPORT_TESTS'
+          import unittest,datetime as dt
+          from stage8_history_export import Hist
+
+          class SourceChronologyTests(unittest.TestCase):
+           def meta(self):return {'distance':20.,'course':'worcester','kind':'hurdle','class':3,'surface':'JUMPS','going_code':'GOOD'}
+           def rec(self,trainer='trainer a',gap=None,win=0.):
+            return {'key':('SRC','one'),'meta':self.meta(),'trainer':trainer,'jockey':'jockey',
+                    'pos':1 if win else 4,'win':win,'place':bool(win),'pre_run_gap_days':gap}
+           def test_prior_layoff_win_is_only_known_after_result(self):
+            history=Hist();d0=dt.date(2022,1,1)
+            x=self.rec(win=0.);history.take(d0,x)
+            x=self.rec(gap=150,win=1.)
+            f=history.features(x,d0+dt.timedelta(days=150))
+            self.assertEqual(f['prior_layoff_90_starts'],0)
+            history.take(d0+dt.timedelta(days=150),x)
+            f2=history.features(self.rec(trainer='trainer b'),d0+dt.timedelta(days=300))
+            self.assertEqual(f2['prior_layoff_90_starts'],1)
+            self.assertEqual(f2['prior_layoff_90_wins'],1)
+            self.assertEqual(f2['trainer_changed_since_last_run'],1)
+           def test_no_horse_identity_does_not_create_false_layoff(self):
+            h=Hist();x=self.rec();x['key']=None
+            self.assertIsNone(h.features(x,dt.date(2024,1,1))['prior_layoff_90_starts'])
+          if __name__=='__main__':unittest.main()
+
+          STAGE8_EXPORT_TESTS
+          cat > stage8_sunday_36_races.csv <<'STAGE8_SUNDAY_RACES'
+          meeting,time,race,discipline,conditions,distance_f
+          Carlisle,12:38,Pricedup Bet Gordon Richards Novices Limited Handicap Chase,Chase,novice handicap,21.0
+          Carlisle,13:13,Pricedup Now With Best Odds Guaranteed Novices Hurdle,Hurdle,novice,20.0
+          Carlisle,13:48,Pricedup Boosted Prices Daily Houghton Mares Chase (Listed),Chase,mares listed,20.0
+          Carlisle,14:23,Pricedup BOG From 10AM Castletown Handicap Hurdle,Hurdle,handicap,20.0
+          Carlisle,14:58,Colin Parker Memorial Intermediate Chase (Listed),Chase,listed intermediate,20.0
+          Carlisle,15:33,Pricedup Boosts And BOG Cumberland Handicap Chase,Chase,handicap,26.0
+          Carlisle,16:10,Pricedup Bet Open National Hunt Flat Race,NH Flat,nh flat,17.0
+          Cork,12:30,Paddy Power From The Horses Mouth Podcast Maiden Hurdle,Hurdle,maiden,16.0
+          Cork,13:05,Paddy Power Did You Watch The Breeders Cup At All Mares Maiden Hurdle,Hurdle,mares maiden,16.0
+          Cork,13:40,Paddy Power I Still Call It Twitter Handicap Hurdle,Hurdle,handicap,20.0
+          Cork,14:15,Paddy Power How Many Days Til Christmas Irish EBF Novice Hurdle (Listed),Hurdle,novice listed,24.25
+          Cork,14:50,Paddy Power Betting Shops Irish EBF Novice Steeplechase (Grade 3),Chase,novice graded,20.0
+          Cork,15:25,Paddy Power Cork Grand National Handicap Chase,Chase,handicap,28.0
+          Cork,16:00,Ballymaloe Foods Handicap Hurdle,Hurdle,handicap,16.0
+          Curragh,12:17,Irish EBF Maiden Smullen Series,Flat,2yo maiden,8.0
+          Curragh,12:52,Mongey Communications Sprint Handicap,Flat,handicap,5.0
+          Curragh,13:27,Ryans Cleaning Race,Flat,conditions,7.0
+          Curragh,14:02,Isuzu Ireland Handicap,Flat,handicap,7.0
+          Curragh,14:37,QuinnBet Loughbrown Stakes (Group 3),Flat,group 3,16.32
+          Curragh,15:12,Keadeen Hotel Premier Handicap,Flat,handicap,8.0
+          Curragh,15:47,Velo Coffee At The Curragh Maiden,Flat,maiden,12.0
+          Curragh,16:20,QuinnBet Finale Stakes (Listed),Flat,listed,12.0
+          Huntingdon,12:22,CopyBet Support Safer Gambling Claiming Hurdle,Hurdle,claiming,16.0
+          Huntingdon,12:57,CopyBet For Football Profit Boosts Novices Hurdle,Hurdle,novice,16.0
+          Huntingdon,13:32,CopyBet Proudly Backs UK Horse Racing Novices Limited Handicap Chase,Chase,novice handicap,23.5
+          Huntingdon,14:07,CopyBet Follow Us On X Mares Novices Hurdle,Hurdle,mares novice,19.5
+          Huntingdon,14:42,CopyBet Pay First Past The Post Macer Gifford Handicap Chase,Chase,handicap,16.5
+          Huntingdon,15:17,CopyBet BOG Now For Racing Tomorrow Mares Handicap Hurdle,Hurdle,mares handicap,20.5
+          Huntingdon,15:52,CopyBet Overnight Best Odds Guaranteed Handicap Hurdle,Hurdle,handicap,25.0
+          Worcester,12:10,Copybet For Premier League Profit Boosts Novices Handicap Chase,Chase,novice handicap,20.0
+          Worcester,12:45,Copybet Support Safer Gambling Handicap Chase,Chase,handicap,20.0
+          Worcester,13:20,FBC Manby Bowdler Chasing Excellence Beginners Chase,Chase,beginners,23.0
+          Worcester,13:55,Copybet Pay First Past The Post Novices Handicap Chase,Chase,novice handicap,16.5
+          Worcester,14:30,PJ Nicholls KGM Fillies Juvenile Maiden Hurdle,Hurdle,fillies juvenile maiden,16.0
+          Worcester,15:05,Copybet Follow Us On X Maiden Hurdle,Hurdle,maiden,16.0
+          Worcester,15:40,Copybet Overnight Best Odds Guaranteed Novices Handicap Hurdle,Hurdle,novice handicap,23.0
+
+          STAGE8_SUNDAY_RACES
+      - name: Safety tests - no future form, incorrect condition, missing price
+        run: python -m unittest -v test_stage8 test_history_export
+      - name: Download historical SQLite and geographic/event mapping
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          python - <<'STAGE8_ARTIFACT_FETCH'
+          import json,os,subprocess
+          from pathlib import Path
+          repo=os.environ['GITHUB_REPOSITORY']
+          records=json.loads(subprocess.check_output(['gh','api',f'repos/{repo}/actions/artifacts','--method','GET','-f','per_page=100'],text=True))['artifacts']
+          for expected,root,key,target,suffix in [
+            ('stage2-historical-staging-database','stage2_database','STAGE2_DB',None,('.sqlite','.db')),
+            ('stage4-reference-named-events-and-winners','stage4_identity','STAGE4_MAP','all_races_with_reference_event_ids.csv',('.csv',)),
+          ]:
+            chosen=sorted((a for a in records if a['name']==expected and not a.get('expired')),key=lambda z:z['created_at'],reverse=True)
+            if not chosen:raise SystemExit('Required artifact absent or expired: '+expected)
+            a=chosen[0]
+            print('Downloading',a['name'],'artifact',a['id'],'bytes',a['size_in_bytes'],flush=True)
+            Path(root).mkdir(exist_ok=True)
+            subprocess.run(['gh','run','download',str(a['workflow_run']['id']),'--repo',repo,'--name',expected,'--dir',root],check=True)
+            allfiles=[p for p in Path(root).rglob('*') if p.is_file() and (p.name==target if target else p.suffix in suffix)]
+            if not allfiles:raise SystemExit('Artifact unpacked but required file is absent: '+expected)
+            path=max(allfiles,key=lambda z:z.stat().st_size).resolve()
+            print(key,path,'bytes',path.stat().st_size,flush=True)
+            with open(os.environ['GITHUB_ENV'],'a') as f:print(key+'='+str(path),file=f)
+          STAGE8_ARTIFACT_FETCH
+      - name: Rebuild all 1995-2025 pre-race features with trainer switches and personal layoffs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python stage8_history_export.py \
+            --db "$STAGE2_DB" --mapping "$STAGE4_MAP" \
+            --cutoff 2026-01-01 --export-min-year 1995 \
+            --out stage8_history_temp
+      - name: Discover race-type specialisation and conditional patterns
+        shell: bash
+        run: |
+          set -euo pipefail
+          python stage8_conditional_discovery.py \
+            --features stage8_history_temp/pre_race_runner_features.csv \
+            --out stage8_results \
+            --train-end 2017 --valid-end 2021 --test-end 2025 \
+            --sunday-races stage8_sunday_36_races.csv
+      - name: Upload independent validation audit and every Sunday race analysis
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage8-deep-race-and-trainer-trends
+          path: stage8_results/
+          retention-days: 30
+          if-no-files-found: warn
