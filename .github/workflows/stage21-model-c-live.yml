@@ -1,25 +1,22 @@
-name: Stage 21 - Model C Historical Research and Live Selections
+name: Stage 22 - Model C Full History and Independent Live Scoring
 
 on:
   workflow_dispatch:
-  workflow_run:
-    workflows:
-      - Stage 13 & 16 - Trend-first Strategy, Model Probabilities and Learning
-    types: [completed]
+  schedule:
+    - cron: "12 7,10,13,16 * * *"
 
 permissions:
   contents: write
   actions: read
 
 concurrency:
-  group: racing-model-c-live
+  group: racing-model-c-v2
   cancel-in-progress: false
 
 jobs:
   collect-and-score:
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 120
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -57,7 +54,7 @@ jobs:
             echo 'Collecting today/tomorrow racecards from the existing free API plan.'
             python collect-racecards.py
           fi
-      - name: Install independent historical Model C and frozen scorer
+      - name: Install shared historical feature engine and verified settlement utilities
         shell: bash
         run: |
           python - <<'C_INSTALL'
@@ -519,6 +516,8 @@ jobs:
             ),
           }
           for name, pieces in assets.items():
+           # Old C was found unfit: never overwrite the new v2 champion or 2025 audit.
+           if name.startswith('data/strategy-model-c-'):continue
            content=gzip.decompress(base64.b64decode(''.join(pieces)))
            target=pathlib.Path(name);target.parent.mkdir(parents=True,exist_ok=True)
            target.write_bytes(content)
@@ -526,6 +525,8 @@ jobs:
           C_INSTALL
           python -m py_compile scripts/stage21_train_c.py scripts/stage21_live_c.py scripts/stage21_publish_c.py
           (cd scripts && python -m unittest -q test_stage21.py)
+          test -f scripts/stage22_model_c.py || { echo 'Missing scripts/stage22_model_c.py. Upload the new file to scripts/ before running.' >&2; exit 1; }
+          python scripts/stage22_model_c.py self-test
       - name: Download existing historical database and named-event mapping
         shell: bash
         env:
@@ -560,22 +561,35 @@ jobs:
            with open(os.environ['GITHUB_ENV'],'a') as f:print(f'{env}={path}',file=f)
            print('Historical data ready',name,'bytes',path.stat().st_size,flush=True)
           HIST_DOWNLOAD
-      - name: Independently score today's entire declared fields and research public sources
+      - name: Train new unsampled all-history Model C (or retain fresh frozen champion)
         shell: bash
         run: |
           set -euo pipefail
-          python scripts/stage21_live_c.py --repo . --db "$STAGE21_DB" --mapping "$STAGE21_MAP"
+          python scripts/stage22_model_c.py train --repo . --db "$STAGE21_DB" --mapping "$STAGE21_MAP"
+          python - <<'VALIDATE_C'
+          import json
+          from pathlib import Path
+          j=json.loads(Path('data/strategy-model-c-historical.json').read_text())
+          assert j.get('version')=='model-c-v2-all-history-2026-11'
+          assert j.get('split_counts',{}).get('test_2025',0)>=100
+          print('Historical v2 model ready; 2025 untouched testing:',j['honest_test'])
+          VALIDATE_C
+      - name: Publish live Model C v2 selections and settle verified outcomes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/stage22_model_c.py live --repo . --db "$STAGE21_DB" --mapping "$STAGE21_MAP"
           python scripts/stage21_publish_c.py --repo .
           cp data/strategy-c-probabilities.json /tmp/stage21-c-probabilities.json
           cp data/strategy-c-external-evidence.json /tmp/stage21-c-external.json
-          python - <<'REPORT'
+          python - <<'VALIDATE_LIVE'
           import json
           from pathlib import Path
-          p=Path('data/strategy-c-probabilities.json')
-          j=json.loads(p.read_text())
-          print('Model C:',j.get('state'),len(j.get('races',[])),'races,',j.get('selections',0),'potential selections')
-          assert j.get('state') in ('READY','NO_RACECARDS_FOR_DAY','NO_UPCOMING_COMPLETE_FIELDS')
-          REPORT
+          j=json.loads(Path('data/strategy-c-probabilities.json').read_text())
+          assert j.get('version')==2 and j.get('model_version')=='model-c-v2-all-history-2026-11'
+          assert j['state'] in ('READY','NO_RACECARDS_FOR_DAY','NO_UPCOMING_COMPLETE_FIELDS')
+          print('V2 live:',j['state'],len(j['races']),'future races,',j['selections'],'selections')
+          VALIDATE_LIVE
       - name: Publish pre-race C research and immutable outcome logs
         shell: bash
         run: |
@@ -585,6 +599,9 @@ jobs:
           git add data/racecards.json data/racecards-archive.json
           git add data/strategy-model-c-historical.json data/strategy-model-c-2025-report.json
           git add data/strategy-c-probabilities.json data/strategy-c-external-evidence.json data/strategy-c-history.json data/strategy-c-results.json data/strategy-c-learning.json
+          for extra in data/strategy-c-v1-archived.json data/strategy-model-c-v2-challenger.json; do
+            if test -f "$extra"; then git add "$extra"; fi
+          done
           if git diff --cached --quiet; then echo 'No changed C data';exit 0;fi
           git commit -m 'Publish independently trained Model C pre-race evidence and settlement'
           for attempt in 1 2 3 4; do
@@ -598,6 +615,7 @@ jobs:
             cp /tmp/stage21-c-external.json data/strategy-c-external-evidence.json
             python scripts/stage21_publish_c.py --repo .
             git add data/strategy-model-c-historical.json data/strategy-model-c-2025-report.json data/strategy-c-*.json
+            if test -f data/strategy-model-c-v2-challenger.json; then git add data/strategy-model-c-v2-challenger.json; fi
             if git diff --cached --quiet; then echo 'Already published';exit 0;fi
             git commit -m 'Reconcile Model C with latest frozen pre-off records'
             sleep $((attempt * 4))
@@ -608,7 +626,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: stage21-model-c-decision-audit
+          name: stage22-model-c-v2-decision-audit
           path: |
             data/strategy-model-c-historical.json
             data/strategy-model-c-2025-report.json
@@ -617,5 +635,7 @@ jobs:
             data/strategy-c-history.json
             data/strategy-c-results.json
             data/strategy-c-learning.json
+            data/strategy-c-v1-archived.json
+            data/strategy-model-c-v2-challenger.json
           retention-days: 30
           if-no-files-found: warn
