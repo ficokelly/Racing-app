@@ -25,10 +25,10 @@
     "course_race_run_count"
   ],
   "independent_test": {
-    "brier": 0.09790728016531515,
+    "brier": 0.09790728086436291,
     "closing_sp_reference_logloss": 1.8228969459935955,
     "closing_sp_reference_races": 813,
-    "logloss": 2.063482455301543,
+    "logloss": 2.063481490919403,
     "races": 873,
     "reliability": {
       "bins": [
@@ -101,30 +101,30 @@
   },
   "model": {
     "coefficients": [
-      -0.09581690363818958,
-      -0.006529488849512786,
-      0.10489262279730256,
-      0.11739665741321144,
-      0.03193796252390879,
-      -0.35290223944186644,
-      -0.06589481979672478,
-      0.07026630150448362,
-      -0.06469534126355851,
-      -0.013840991390018792,
-      -0.015680126427430066,
-      0.30459923823329543,
-      -0.09154557589553437,
-      0.030775477673387563,
-      0.029073684808876923,
-      0.04065526617754287,
-      0.1137966104276114,
-      0.08187190346048506,
-      0.0632970165794125,
-      0.06905140043418709,
-      0.08868771512003475,
-      -0.013690201745239036
+      -0.09581690363817104,
+      -0.006529488849536573,
+      0.10489262279731008,
+      0.11739665741320941,
+      0.03193796252389758,
+      -0.35290223944189025,
+      -0.06589481979673283,
+      0.07026630150447169,
+      -0.06469534126357461,
+      -0.01384099138997874,
+      -0.01568012642735352,
+      0.30459923823326196,
+      -0.0915455758955037,
+      0.030775477673392608,
+      0.029073684808901032,
+      0.040655266177580016,
+      0.11379661042766157,
+      0.08187190346047807,
+      0.06329701657943552,
+      0.06905140043419701,
+      0.08868771512001083,
+      -0.013690201745255922
     ],
-    "intercept": -2.4128523982663443,
+    "intercept": -2.4128523982663674,
     "means": [
       4.899489402770996,
       43.50995635986328,
@@ -202,7 +202,7 @@
         "distance_f",
         "course_race_run_count"
       ],
-      "independent_test_logloss_gain": 0.0,
+      "independent_test_logloss_gain": -0.0,
       "supported_on_both_periods": false
     },
     "jockey_course_specialisation": {
@@ -265,7 +265,7 @@
   },
   "sampled_races": {
     "calibration_races": 1628,
-    "races_seen": 493558,
+    "races_seen": 493559,
     "test_races": 873,
     "train_races": 22224
   },
@@ -284,10 +284,10 @@
   "tested_through": "2025-12-31",
   "trained_through": "2022-12-31",
   "validation": {
-    "brier": 0.09720412561291963,
+    "brier": 0.09720412561291943,
     "closing_sp_reference_logloss": 1.8315137311429857,
     "closing_sp_reference_races": 1521,
-    "logloss": 2.0958555478095233,
+    "logloss": 2.0958555478095167,
     "races": 1628,
     "reliability": {
       "bins": [
@@ -358,5 +358,7 @@
     "top_hit_rate": 0.22358722358722358,
     "uniform_logloss": 2.221754781242136
   },
-  "version": "stage16-own-data-temporal-v2-all-starters"
+  "version": "stage16-own-data-temporal-v2-all-starters",
+  "history_integrity_version": "stage24-2026-11-history-identity-v1",
+  "identity_note": "Former model independently invalidated; this model trained on canonical pedigree histories only."
 }
