@@ -1,8 +1,12 @@
 name: Stage 17 - A and B Independent Strategy Comparison
 
-# Manual only: Stage 13 and Stage 18 must finish before A/B comparison.
+# Run B's live comparison after the corrected A feed finishes.
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows:
+      - "Stage 13 & 16 - Trend-first Strategy, Model Probabilities and Learning"
+    types: [completed]
 
 permissions:
   contents: write
@@ -14,6 +18,7 @@ concurrency:
 
 jobs:
   compare-and-track:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:

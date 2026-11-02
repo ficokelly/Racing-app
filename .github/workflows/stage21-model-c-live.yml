@@ -52,7 +52,8 @@ jobs:
           then echo 'Reusing fresh published racecards.'
           else
             echo 'Collecting today/tomorrow racecards from the existing free API plan.'
-            python collect-racecards.py
+            python scripts/stage26_feed_capture.py racecards
+            python scripts/stage26_nonrunner_monitor.py --repo .
           fi
       - name: Install shared historical feature engine and verified settlement utilities
         shell: bash

@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: rhp-five-minute-update
@@ -30,7 +31,7 @@ jobs:
       - name: Update UK and Irish bookmaker odds
         env:
           PUNTERSEDGE_API_KEY: ${{ secrets.PUNTERSEDGE_API_KEY }}
-        run: python collect-odds.py
+        run: python scripts/stage26_feed_capture.py odds
 
       - name: Archive older odds snapshots (no API call)
         run: python archive-odds-history.py
@@ -73,8 +74,17 @@ jobs:
           then
             echo 'Racecards up to date; no extra free-tier API request.'
           else
-            python collect-racecards.py
+            python scripts/stage26_feed_capture.py racecards
           fi
+
+      - name: Detect confirmed non-runners and archive pre-change decisions
+        id: nonrunners
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/stage26_nonrunner_monitor.py --repo . | tee /tmp/stage26-monitor.log
+          count=$(sed -n 's/^STAGE26_NR_NEW=//p' /tmp/stage26-monitor.log | tail -1)
+          echo "new=${count:-0}" >> "$GITHUB_OUTPUT"
 
       - name: Refresh AW (2) historical track strike rates (offline)
         run: python calculate-aw2-track-stats.py
@@ -83,7 +93,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add data/aw2-track-stats.json data/latest-odds.json data/odds-history.json data/odds-archive/ data/power-fav-alert-state.json data/race-results.json data/racecards.json data/racecards-archive.json
+          git add data/aw2-track-stats.json data/latest-odds.json data/odds-history.json data/odds-archive/ data/power-fav-alert-state.json data/race-results.json data/racecards.json data/racecards-archive.json data/nonrunner-monitor.json data/nonrunner-decision-history.json
           if git diff --cached --quiet; then
             echo 'No changes to publish.'
             exit 0
@@ -99,3 +109,17 @@ jobs:
           done
           echo 'Could not publish; check for concurrent legacy workflow writes.' >&2
           exit 1
+
+      - name: Reassess all three models on confirmed non-runner changes
+        if: ${{ steps.nonrunners.outputs.new != '0' && steps.nonrunners.outputs.new != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Stage 13 rebuilds A against the changed field. Stage 17 is triggered
+          # by successful Stage 13 completion and rebuilds B's live decisions.
+          gh workflow run stage13-strategy-learning.yml --ref main
+          # Stage 22 independently rebuilds Model C's full-field rankings.
+          gh workflow run stage21-model-c-live.yml --ref main
+          echo 'Triggered genuine all-runner reassessment, not simple odds renormalisation.'
