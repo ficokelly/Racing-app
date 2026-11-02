@@ -1,11 +1,8 @@
 name: Stage 17 - A and B Independent Strategy Comparison
 
+# Manual only: Stage 13 and Stage 18 must finish before A/B comparison.
 on:
   workflow_dispatch:
-  workflow_run:
-    workflows:
-      - Stage 13 & 16 - Trend-first Strategy, Model Probabilities and Learning
-    types: [completed]
 
 permissions:
   contents: write
@@ -17,7 +14,6 @@ concurrency:
 
 jobs:
   compare-and-track:
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
@@ -203,6 +199,20 @@ jobs:
           cd scripts
           python -m unittest -q test_stage17.py
           python -m py_compile stage23_ab_repair.py
+      - name: Verify both historical models use Stage 25 corrected identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'CHECK_AB_IDENTITY'
+          import json
+          from pathlib import Path
+          a=json.loads(Path('data/strategy-historical-model.json').read_text())
+          b=json.loads(Path('data/strategy-model-b-historical.json').read_text())
+          assert a.get('history_integrity_version')=='stage25-2026-11-starter-identity-v2', 'Stage 13 must finish with corrected A first.'
+          assert a.get('version')=='stage16-own-data-temporal-v3-stage25-starters', 'Stage 13 probability version is stale.'
+          assert b.get('version')=='stage18-historical-trends-form-conditional-v2-stage25', 'Stage 18 must retrain B before comparing.'
+          print('Stage 25 A/B shared-history compatibility verified')
+          CHECK_AB_IDENTITY
       - name: Publish separate Model A and Model B selections and results
         shell: bash
         run: |
