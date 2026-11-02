@@ -1,0 +1,364 @@
+{
+  "calibrated_through": "2024-12-31",
+  "features": [
+    "age",
+    "rating",
+    "weight",
+    "rating_relative",
+    "weight_relative",
+    "field_size",
+    "distance_f",
+    "horse_starts",
+    "horse_win_rate",
+    "horse_place_rate",
+    "horse_last5_win_rate",
+    "horse_last5_place_rate",
+    "days_since_last",
+    "horse_course_win_rate",
+    "horse_distance_win_rate",
+    "horse_going_win_rate",
+    "trainer_win_rate",
+    "trainer_course_win_rate",
+    "jockey_win_rate",
+    "jockey_course_win_rate",
+    "trainer_jockey_win_rate",
+    "course_race_run_count"
+  ],
+  "independent_test": {
+    "brier": 0.09790728086436291,
+    "closing_sp_reference_logloss": 1.8228969459935955,
+    "closing_sp_reference_races": 813,
+    "logloss": 2.063481490919403,
+    "races": 873,
+    "reliability": {
+      "bins": [
+        {
+          "interval": "0-10%",
+          "n": 5377,
+          "observed_win_rate": 0.0588,
+          "predicted_mean": 0.0615
+        },
+        {
+          "interval": "10-20%",
+          "n": 2453,
+          "observed_win_rate": 0.1353,
+          "predicted_mean": 0.1367
+        },
+        {
+          "interval": "20-30%",
+          "n": 534,
+          "observed_win_rate": 0.2715,
+          "predicted_mean": 0.2382
+        },
+        {
+          "interval": "30-40%",
+          "n": 126,
+          "observed_win_rate": 0.381,
+          "predicted_mean": 0.3372
+        },
+        {
+          "interval": "40-50%",
+          "n": 57,
+          "observed_win_rate": 0.4211,
+          "predicted_mean": 0.4481
+        },
+        {
+          "interval": "50-60%",
+          "n": 17,
+          "observed_win_rate": 0.3529,
+          "predicted_mean": 0.5448
+        },
+        {
+          "interval": "60-70%",
+          "n": 2,
+          "observed_win_rate": 0.5,
+          "predicted_mean": 0.6662
+        },
+        {
+          "interval": "70-80%",
+          "n": 1,
+          "observed_win_rate": 1.0,
+          "predicted_mean": 0.7823
+        },
+        {
+          "interval": "80-90%",
+          "n": 0,
+          "observed_win_rate": null,
+          "predicted_mean": null
+        },
+        {
+          "interval": "90-100%",
+          "n": 0,
+          "observed_win_rate": null,
+          "predicted_mean": null
+        }
+      ],
+      "expected_calibration_error": 0.00549,
+      "runner_count": 8567
+    },
+    "top_hit_rate": 0.2554410080183276,
+    "uniform_logloss": 2.2090848124547424
+  },
+  "model": {
+    "coefficients": [
+      -0.09581690363817104,
+      -0.006529488849536573,
+      0.10489262279731008,
+      0.11739665741320941,
+      0.03193796252389758,
+      -0.35290223944189025,
+      -0.06589481979673283,
+      0.07026630150447169,
+      -0.06469534126357461,
+      -0.01384099138997874,
+      -0.01568012642735352,
+      0.30459923823326196,
+      -0.0915455758955037,
+      0.030775477673392608,
+      0.029073684808901032,
+      0.040655266177580016,
+      0.11379661042766157,
+      0.08187190346047807,
+      0.06329701657943552,
+      0.06905140043419701,
+      0.08868771512001083,
+      -0.013690201745255922
+    ],
+    "intercept": -2.4128523982663674,
+    "means": [
+      4.899489402770996,
+      43.50995635986328,
+      135.35142517089844,
+      -0.06624184548854828,
+      -0.19601495563983917,
+      11.782201766967773,
+      12.271297454833984,
+      2.0719046592712402,
+      0.11829183250665665,
+      0.290512353181839,
+      0.10928747057914734,
+      0.3120650053024292,
+      91.0264663696289,
+      0.12249616533517838,
+      0.12423624098300934,
+      0.12188901007175446,
+      0.10382714122533798,
+      0.11176398396492004,
+      0.10087960213422775,
+      0.10856976360082626,
+      0.12347310781478882,
+      8.692922592163086
+    ],
+    "stds": [
+      2.2333297729492188,
+      43.207420349121094,
+      15.675293922424316,
+      5.7071356773376465,
+      6.023177623748779,
+      4.397762298583984,
+      6.020712852478027,
+      1.1389060020446777,
+      0.05630180612206459,
+      0.1005941778421402,
+      0.1730596274137497,
+      0.2839944362640381,
+      129.65863037109375,
+      0.035133782774209976,
+      0.049175046384334564,
+      0.044565413147211075,
+      0.04933972284197807,
+      0.05573514848947525,
+      0.04382362961769104,
+      0.0516585111618042,
+      0.05684112757444382,
+      1.723145842552185
+    ],
+    "temperature": 0.90093
+  },
+  "notes": "Future results, same-day results, current-race RPR, current-race topspeed and SP excluded from predictors. All confirmed starters, including DNF and disqualified horses, count as starts/losses. Non-runners and withdrawn excluded; ambiguous unverified outcomes not presumed to have started.",
+  "research_hypothesis_evaluations": {
+    "course_distance_going": {
+      "calibration_logloss_gain": 0.00313,
+      "evidence_label": "OWN_HISTORICAL_HOLDOUT_ABLATION_NOT_CAUSAL",
+      "external_hypothesis_sources": [
+        "https://www.racingpost.com/welcome-to-racing/news/smart-view/"
+      ],
+      "feature_group": [
+        "horse_course_win_rate",
+        "horse_distance_win_rate",
+        "horse_going_win_rate"
+      ],
+      "independent_test_logloss_gain": 0.00891,
+      "supported_on_both_periods": true
+    },
+    "field_size_and_distance": {
+      "calibration_logloss_gain": 0.0,
+      "evidence_label": "OWN_HISTORICAL_HOLDOUT_ABLATION_NOT_CAUSAL",
+      "external_hypothesis_sources": [
+        "https://pmc.ncbi.nlm.nih.gov/articles/PMC13543210/"
+      ],
+      "feature_group": [
+        "field_size",
+        "distance_f",
+        "course_race_run_count"
+      ],
+      "independent_test_logloss_gain": -0.0,
+      "supported_on_both_periods": false
+    },
+    "jockey_course_specialisation": {
+      "calibration_logloss_gain": 0.00904,
+      "evidence_label": "OWN_HISTORICAL_HOLDOUT_ABLATION_NOT_CAUSAL",
+      "external_hypothesis_sources": [
+        "https://www.racingpost.com/welcome-to-racing/news/smart-view/"
+      ],
+      "feature_group": [
+        "jockey_win_rate",
+        "jockey_course_win_rate"
+      ],
+      "independent_test_logloss_gain": 0.00934,
+      "supported_on_both_periods": true
+    },
+    "ratings_and_handicap_weights": {
+      "calibration_logloss_gain": 0.00145,
+      "evidence_label": "OWN_HISTORICAL_HOLDOUT_ABLATION_NOT_CAUSAL",
+      "external_hypothesis_sources": [
+        "https://pmc.ncbi.nlm.nih.gov/articles/PMC13646064/"
+      ],
+      "feature_group": [
+        "rating",
+        "weight",
+        "rating_relative",
+        "weight_relative"
+      ],
+      "independent_test_logloss_gain": 0.00767,
+      "supported_on_both_periods": false
+    },
+    "recent_horse_form": {
+      "calibration_logloss_gain": 0.0503,
+      "evidence_label": "OWN_HISTORICAL_HOLDOUT_ABLATION_NOT_CAUSAL",
+      "external_hypothesis_sources": [
+        "https://www.racingpost.com/welcome-to-racing/news/smart-view/"
+      ],
+      "feature_group": [
+        "horse_last5_win_rate",
+        "horse_last5_place_rate",
+        "days_since_last",
+        "horse_starts"
+      ],
+      "independent_test_logloss_gain": 0.06603,
+      "supported_on_both_periods": true
+    },
+    "trainer_course_specialisation": {
+      "calibration_logloss_gain": 0.03245,
+      "evidence_label": "OWN_HISTORICAL_HOLDOUT_ABLATION_NOT_CAUSAL",
+      "external_hypothesis_sources": [
+        "https://www.racingpost.com/welcome-to-racing/news/smart-view/"
+      ],
+      "feature_group": [
+        "trainer_win_rate",
+        "trainer_course_win_rate",
+        "trainer_jockey_win_rate"
+      ],
+      "independent_test_logloss_gain": 0.02352,
+      "supported_on_both_periods": true
+    }
+  },
+  "sampled_races": {
+    "calibration_races": 1628,
+    "races_seen": 493559,
+    "test_races": 873,
+    "train_races": 22224
+  },
+  "sampling_modulus": 20,
+  "selection_policy": {
+    "min_lead_pp_large_field": 5.0,
+    "min_lead_pp_small_field": 8.0,
+    "min_probability_large_field": 0.16,
+    "min_probability_ratio": 1.25,
+    "min_probability_small_field": 0.23,
+    "status": "CONSERVATIVE_INITIAL_POLICY_NOT_PROFIT_VALIDATED"
+  },
+  "source": "Own historical staging DB only. External research is never a prediction input.",
+  "starter_policy": "all_confirmed_starters",
+  "state": "VALIDATED",
+  "tested_through": "2025-12-31",
+  "trained_through": "2022-12-31",
+  "validation": {
+    "brier": 0.09720412561291943,
+    "closing_sp_reference_logloss": 1.8315137311429857,
+    "closing_sp_reference_races": 1521,
+    "logloss": 2.0958555478095167,
+    "races": 1628,
+    "reliability": {
+      "bins": [
+        {
+          "interval": "0-10%",
+          "n": 10312,
+          "observed_win_rate": 0.0599,
+          "predicted_mean": 0.0624
+        },
+        {
+          "interval": "10-20%",
+          "n": 4436,
+          "observed_win_rate": 0.1463,
+          "predicted_mean": 0.1372
+        },
+        {
+          "interval": "20-30%",
+          "n": 963,
+          "observed_win_rate": 0.2347,
+          "predicted_mean": 0.239
+        },
+        {
+          "interval": "30-40%",
+          "n": 260,
+          "observed_win_rate": 0.2846,
+          "predicted_mean": 0.338
+        },
+        {
+          "interval": "40-50%",
+          "n": 86,
+          "observed_win_rate": 0.5465,
+          "predicted_mean": 0.4393
+        },
+        {
+          "interval": "50-60%",
+          "n": 24,
+          "observed_win_rate": 0.4167,
+          "predicted_mean": 0.5426
+        },
+        {
+          "interval": "60-70%",
+          "n": 8,
+          "observed_win_rate": 0.375,
+          "predicted_mean": 0.6239
+        },
+        {
+          "interval": "70-80%",
+          "n": 1,
+          "observed_win_rate": 0.0,
+          "predicted_mean": 0.7456
+        },
+        {
+          "interval": "80-90%",
+          "n": 2,
+          "observed_win_rate": 0.5,
+          "predicted_mean": 0.8277
+        },
+        {
+          "interval": "90-100%",
+          "n": 0,
+          "observed_win_rate": null,
+          "predicted_mean": null
+        }
+      ],
+      "expected_calibration_error": 0.00617,
+      "runner_count": 16092
+    },
+    "top_hit_rate": 0.22358722358722358,
+    "uniform_logloss": 2.221754781242136
+  },
+  "version": "stage16-own-data-temporal-v2-all-starters",
+  "history_integrity_version": "stage24-2026-11-history-identity-v1",
+  "identity_note": "Former model independently invalidated; this model trained on canonical pedigree histories only."
+}
