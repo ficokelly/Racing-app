@@ -594,6 +594,27 @@ function loadRacecardIndex(raw){
   if(!racecardIndex.has(k))racecardIndex.set(k,r);
  }
 }
+// Display a clearly marked partial market listing when the racecards API is missing.
+// No unpriced runner, trainer, race classification or model evidence is invented.
+function supplementRacecardsFromMarket(){
+ const published=new Map();
+ for(const r of racecardRunners){if(!r?.horse||!r?.course)continue;
+  published.set(racecardKey(r.horse,r.course,r.date||dateKey(r.race_time)),r);
+ }
+ let additions=0;
+ for(const x of rows){
+  if(!x?.horse||!x?.course||!x?.starts||!x?.day)continue;
+  if(x.day!==marketDateFor('today')&&x.day!==marketDateFor('tomorrow'))continue;
+  const k=racecardKey(x.horse,x.course,x.day);
+  if(published.has(k))continue;
+  published.set(k,{horse:x.horse,course:x.course,date:x.day,
+   race_time:x.starts,race_id:x.race_id,
+   type:x.raceType||'',surface:x.surface||'',
+   trainer:x.trainer||null,jockey:x.jockey||null,
+   marketListingOnly:true});additions++;
+ }
+ if(additions)loadRacecardIndex({runners:[...published.values()]});
+}
 function build(latest,history){
  const series=new Map(); const current=Array.isArray(latest.prices)?latest.prices:[];
  for(const snap of history){if(!snap||!Array.isArray(snap.prices))continue;for(const p of snap.prices){if(!p||p.stale===true)continue;const od=num(p.decimal_odds);if(od===null||od<=1)continue;const k=key(p);if(!series.has(k))series.set(k,[]);series.get(k).push({at:p.collected_at||snap.collected_at,od});}}
@@ -611,7 +632,7 @@ function build(latest,history){
  }}return out;
 }
 const selOpts=(id,opts,selected)=>{$(id).innerHTML=opts.map(([v,t])=>`<option value="${safe(v)}">${safe(t)}</option>`).join('');$(id).value=selected};
-function refreshSelects(){const arr=rows.filter(x=>selectedDate==='all'||x.day===selectedDate);const books=[...new Set(['William Hill',...arr.map(x=>x.bookmaker)])].sort();if(selectedBook!=='all'&&!books.includes(selectedBook))selectedBook='William Hill';selOpts('bookie',[['all','All bookmakers'],...books.map(b=>[b,b])],selectedBook);
+function refreshSelects(){const arr=rows.filter(x=>selectedDate==='all'||x.day===selectedDate);const books=[...new Set(['Paddy Power',...arr.map(x=>x.bookmaker)])].sort((a,b)=>a==='Paddy Power'?-1:b==='Paddy Power'?1:a.localeCompare(b));if(selectedBook!=='all'&&!books.includes(selectedBook))selectedBook='Paddy Power';selOpts('bookie',[['all','All bookmakers'],...books.map(b=>[b,b])],selectedBook);
  const relevant=arr.filter(x=>selectedBook==='all'||x.bookmaker===selectedBook),meetings=[...new Set(relevant.map(x=>x.course))].sort();if(selectedMeeting!=='all'&&!meetings.includes(selectedMeeting))selectedMeeting='all';selOpts('meeting',[['all','All meetings'],...meetings.map(x=>[x,x])],selectedMeeting);
  const times=[...new Set(relevant.filter(x=>selectedMeeting==='all'||x.course===selectedMeeting).map(x=>x.time))].filter(x=>x!=='Unknown').sort();if(selectedTime!=='all'&&!times.includes(selectedTime))selectedTime='all';selOpts('race-time',[['all','All race times'],...times.map(x=>[x,x])],selectedTime);
 }
@@ -1103,9 +1124,10 @@ function renderRaceNavigation(){
  strip.innerHTML=upcoming.length?upcoming.map(r=>{const minutes=Math.round((Date.parse(r.off)-now)/60000);const label=rcSelectedDay==='yesterday'?'Result':rcSelectedDay==='tomorrow'?'Tomorrow':minutes<=0?'Off now':minutes<=2?'Next off':`In ${minutes} min`;
   return `<button type="button" class="rc-next-tile ${rcSelectedDay!=='yesterday'&&minutes<=2?'rc-next-now':''}" data-rc-jump="${r.i}"><span class="rc-next-state">${label}</span><b>${safe(clock(r.off))} · ${safe(r.course)}</b><small>${r.type==='aw'?'All-Weather':r.type==='turf'?'Flat Turf':r.type==='jumps'?'Jumps':'Race'} · ${r.runners} listed runners${r.distance?' · '+safe(rcDisplayDistance(r.distance)):''}</small></button>`}).join(''):(rcSelectedDay==='yesterday'?'<div class="rc-next-empty">No archived race results available for yesterday yet.</div>':rcSelectedDay==='tomorrow'?'<div class="rc-next-empty">Tomorrow’s racecards are not published yet. They will appear automatically when available.</div>':'<div class="rc-next-empty">No upcoming races left in today’s published feed.</div>');
  strip.scrollLeft=oldScroll;
+ const partialMarketOnly=rcViewingRunners().some(r=>r.marketListingOnly);
  const byMeeting=new Map();for(let i=0;i<rcNavRaces.length;i++){const r=rcNavRaces[i];if(!byMeeting.has(r.course))byMeeting.set(r.course,[]);byMeeting.get(r.course).push({...r,i})}
  const openMeetings=new Set([...schedule.querySelectorAll('details[open]')].map(el=>el.dataset.rcCourse));
- schedule.innerHTML=[...byMeeting.entries()].sort((a,b)=>Date.parse(a[1][0].off)-Date.parse(b[1][0].off)).map(([course,races])=>`<details class="rc-schedule-meeting" data-rc-course="${safe(course)}" ${openMeetings.has(course)?'open':''}><summary><strong>${safe(course)}</strong><small>${races.length} races · ${safe(clock(races[0].off))}–${safe(clock(races[races.length-1].off))}</small></summary>${races.map(r=>`<button type="button" class="rc-schedule-race" data-rc-jump="${r.i}"><b>${safe(clock(r.off))}</b><span>${r.type==='aw'?'AW':r.type==='turf'?'Flat Turf':r.type==='jumps'?'Jumps':'Race'} · ${r.runners} runners${r.distance?' · '+safe(rcDisplayDistance(r.distance)):''}${r.raceName?' · '+safe(r.raceName):''}</span><em>View ›</em></button>`).join('')}</details>`).join('')||(rcSelectedDay==='yesterday'?'<p class="rc-next-empty">No archived results available for yesterday yet.</p>':rcSelectedDay==='tomorrow'?'<p class="rc-next-empty">No tomorrow racecards available yet.</p>':'<p class="rc-next-empty">No meetings in today’s racecards feed.</p>');
+ schedule.innerHTML=(partialMarketOnly?'<p class="hint">Partial bookmaker-market listing: some meetings and priced horses are shown from collected odds while official racecards are unavailable. Other runners and form may be missing.</p>':'')+[...byMeeting.entries()].sort((a,b)=>Date.parse(a[1][0].off)-Date.parse(b[1][0].off)).map(([course,races])=>`<details class="rc-schedule-meeting" data-rc-course="${safe(course)}" ${openMeetings.has(course)?'open':''}><summary><strong>${safe(course)}</strong><small>${races.length} races · ${safe(clock(races[0].off))}–${safe(clock(races[races.length-1].off))}</small></summary>${races.map(r=>`<button type="button" class="rc-schedule-race" data-rc-jump="${r.i}"><b>${safe(clock(r.off))}</b><span>${r.type==='aw'?'AW':r.type==='turf'?'Flat Turf':r.type==='jumps'?'Jumps':'Race'} · ${r.runners} runners${r.distance?' · '+safe(rcDisplayDistance(r.distance)):''}${r.raceName?' · '+safe(r.raceName):''}</span><em>View ›</em></button>`).join('')}</details>`).join('')||(rcSelectedDay==='yesterday'?'<p class="rc-next-empty">No archived results available for yesterday yet.</p>':rcSelectedDay==='tomorrow'?'<p class="rc-next-empty">No tomorrow racecards available yet.</p>':'<p class="rc-next-empty">No meetings in today’s racecards feed.</p>');
 }
 function rcJumpToRace(index){
  const r=rcNavRaces[Number(index)];if(!r)return;
@@ -1280,7 +1302,7 @@ function rhpRaceVerdict(list,completed){
 
 function rcModelRace(course,date,time){
  const target=commentaryKey(course,date,time);
- if(rcSelectedModel==='C')return strategyCFeed?.day===date?(strategyCFeed.races||[]).find(r=>commentaryKey(r.course,r.date,r.time)===target):null;
+ if(rcSelectedModel==='C')return strategyCFeed?.version===2&&strategyCFeed?.day===date?(strategyCFeed.races||[]).find(r=>commentaryKey(r.course,r.date,r.time)===target):null;
  if(rcSelectedModel==='B')return strategyBProbFeed?.day===date?(strategyBProbFeed.races||[]).find(r=>commentaryKey(r.course,r.date,r.time)===target):null;
  return commentaryRace(course,date,time);
 }
@@ -1303,9 +1325,9 @@ function rhpSelectedModelVerdict(sample,date,field){
    const a=entries[0],b=entries[1];
    return `<div class="rhp-verdict"><strong>Model B · historical trends and individual form</strong><p>${safe(a.horse)} ranks first (${(100*Number(a.probability)).toFixed(1)}%), ahead of ${safe(b.horse)} (${(100*Number(b.probability)).toFixed(1)}%). Historical match: ${safe(race.match_basis||'not supported')}. This model has not shown positive overall historical ROI.</p></div>`;
  }
- if(!race)return '<div class="rhp-verdict"><strong>Model C · independent research</strong><p>No verified pre-race Model C assessment published for this field. Historical training is available, but a new racecard and a successful live analysis are required.</p></div>';
+ if(!race)return '<div class="rhp-verdict"><strong>Model C · independent research</strong><p>New Model C v2 assessment not yet published for this field. It requires a completed Stage 22 full-history run and a complete current racecard.</p></div>';
  const sourceLinks=(race.decision?.external_sources||[]).slice(0,2).map(x=>`<a href="${safe(x.source_url)}" target="_blank" rel="noopener noreferrer">External source</a>`).join(' · ');
- return `<div class="rhp-verdict"><strong>Model C · independent historical + external research</strong><p>${safe(race.verdict||'Assessment not available')}</p>${sourceLinks?`<p class="hint">Sources: ${sourceLinks}</p>`:''}<p class="hint">2025 historical ROI negative; predictions are experimental.</p></div>`;
+ return `<div class="rhp-verdict"><strong>Model C v2 · full-history and independent external research</strong><p>${safe(race.verdict||'Assessment not available')}</p>${sourceLinks?`<p class="hint">Sources: ${sourceLinks}</p>`:''}<p class="hint">This version has a new independent 2025 holdout test. Historical SP profit is not proof of live profit.</p></div>`;
 }
 function rhpSelectedHorseComment(r,x,date){
  if(rcSelectedModel==='A'){
@@ -1317,7 +1339,7 @@ function rhpSelectedHorseComment(r,x,date){
  if(rcSelectedModel==='C'){
    const prob=Number(horse.win_probability);
    const odds=horse.paddypower_decimal;
-   return `Model C estimates ${Number.isFinite(prob)?(prob*100).toFixed(1)+'%':'no'} win probability; ${safe(horse.form_runs??'—')} historic runs, ${safe(horse.positive_count??'—')} positive and ${safe(horse.negative_count??'—')} negative historical signals. Paddy Power ${odds>1?safe(Number(odds).toFixed(2)):'not available'}; ${safe(horse.external_source_count||0)} qualifying external references. Experimental estimate, not a guarantee.`;
+   return `Model C v2 estimates ${Number.isFinite(prob)?(prob*100).toFixed(1)+'%':'no'} win probability; ${safe(horse.form_runs??'—')} historic runs, ${safe(horse.positive_count??'—')} positive and ${safe(horse.negative_count??'—')} negative historical signals. Paddy Power ${odds>1?safe(Number(odds).toFixed(2)):'not available'}; ${safe(horse.external_source_count||0)} qualifying external references. Experimental estimate, not a guarantee.`;
  }
  return `Model B estimated win chance: ${(100*Number(horse.probability||0)).toFixed(1)}%; ${safe(horse.positive_count??'—')} positive and ${safe(horse.negative_count??'—')} negative evidence. ${safe(horse.prior_starts??'—')} historical starts. This model has not shown positive overall ROI.`;
 }
@@ -1462,7 +1484,7 @@ function renderPowerResults(){
  }).join(''):'<div class="empty">No qualifying T−15 observations in this period.</div>';
 }
 async function loadFeed(){loadForm();loadFinishedRaceFeed();try{const q='?v='+Date.now(),responses=await Promise.all([fetch('./data/latest-odds.json'+q,{cache:'no-store'}),fetch('./data/odds-history.json'+q,{cache:'no-store'}),fetch('./data/racecards.json'+q,{cache:'no-store'}).catch(()=>null)]);
-  if(responses[2]?.ok){try{const live=await responses[2].json();let history=[];try{const a=await fetch('./data/racecards-archive.json?v='+Date.now(),{cache:'no-store'});if(a.ok){const j=await a.json();history=Array.isArray(j.runners)?j.runners:[]}}catch(e){}const current=Array.isArray(live.runners)?live.runners:[];const merged=new Map();for(const r of history){if(r&&r.horse&&r.course)merged.set(racecardKey(r.horse,r.course,r.date||dateKey(r.race_time)),r)}for(const r of current){if(r&&r.horse&&r.course){const k=racecardKey(r.horse,r.course,r.date||dateKey(r.race_time));merged.set(k,{...(merged.get(k)||{}),...r})}}loadRacecardIndex({runners:[...merged.values()]})}catch(e){loadRacecardIndex(null)}}if(!responses[0].ok||!responses[1].ok)throw Error('Odds files unavailable');const latest=await responses[0].json(),hist=await responses[1].json();if(!Array.isArray(hist)||!Array.isArray(latest.prices))throw Error('Invalid JSON feed');rows=build(latest,hist);autoWatchQualifiers();historyCount=hist.length;$('status').textContent='● ODDS SYNCED';$('asof').textContent=`Last collected: ${when(latest.collected_at)} (Irish time) · ${latest.races_returned} races · ${latest.prices_collected} bookmaker quotes · ${hist.length} snapshots`;
+  if(responses[2]?.ok){try{const live=await responses[2].json();let history=[];try{const a=await fetch('./data/racecards-archive.json?v='+Date.now(),{cache:'no-store'});if(a.ok){const j=await a.json();history=Array.isArray(j.runners)?j.runners:[]}}catch(e){}const current=Array.isArray(live.runners)?live.runners:[];const merged=new Map();for(const r of history){if(r&&r.horse&&r.course)merged.set(racecardKey(r.horse,r.course,r.date||dateKey(r.race_time)),r)}for(const r of current){if(r&&r.horse&&r.course){const k=racecardKey(r.horse,r.course,r.date||dateKey(r.race_time));merged.set(k,{...(merged.get(k)||{}),...r})}}loadRacecardIndex({runners:[...merged.values()]})}catch(e){loadRacecardIndex(null)}}if(!responses[0].ok||!responses[1].ok)throw Error('Odds files unavailable');const latest=await responses[0].json(),hist=await responses[1].json();if(!Array.isArray(hist)||!Array.isArray(latest.prices))throw Error('Invalid JSON feed');rows=build(latest,hist);supplementRacecardsFromMarket();autoWatchQualifiers();historyCount=hist.length;$('status').textContent='● ODDS SYNCED';$('asof').textContent=`Last collected: ${when(latest.collected_at)} (Irish time) · ${latest.races_returned} races · ${latest.prices_collected} bookmaker quotes · ${hist.length} snapshots`;
  const dates=[...new Set(rows.map(x=>x.day).filter(Boolean))].sort().reverse();selectedDate=['today','tomorrow'].map(marketDateFor).includes(selectedDate)?selectedDate:marketDateFor('today');selOpts('race-date',[['all','All available dates'],...dates.map(d=>[d,d])],selectedDate);refreshSelects();renderPersonFilters('markets');renderPersonFilters('power');renderMarkets();await loadAw2Stats();renderPower();renderStrategyA();renderStrategyB();renderHot();rcSetupFilters();restoreRefreshFiltersAfterFeed();renderRacecards();showTab(activeTab,true);if(refreshScrollPosition!==null){const pos=refreshScrollPosition;refreshScrollPosition=null;requestAnimationFrame(()=>setTimeout(()=>window.scrollTo(0,pos),160))}}catch(e){$('status').textContent='NO DATA';$('asof').textContent='Could not load odds feed: '+e.message;}}
 // Within each card/list area, opening one collapsible card closes its siblings.
 // Filter panels and expanded sections inside a horse remain independent.
@@ -1647,7 +1669,7 @@ async function loadStrategyData(){
    fetch(base+'strategy-c-results.json'+now,{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null),
    fetch(base+'strategy-model-c-2025-report.json'+now,{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null),
    fetch(base+'strategy-b-probabilities.json'+now,{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null)]);
- strategySelectionsFeed=sel;strategyResultsFeed=res;strategyCommentaryFeed=comments;strategyProbabilityFeed=probs;strategyABSelectionsFeed=absel;strategyABResultsFeed=abres;strategyABHistoricalROIFeed=historicalAB;strategyCFeed=cprob;strategyCResultsFeed=cres;strategyC2025Feed=c2025;strategyBProbFeed=bprob;
+ strategySelectionsFeed=sel;strategyResultsFeed=res;strategyCommentaryFeed=comments;strategyProbabilityFeed=probs;strategyABSelectionsFeed=absel;strategyABResultsFeed=abres;strategyABHistoricalROIFeed=historicalAB;strategyCFeed=cprob?.version===2?cprob:null;strategyCResultsFeed=cres?.version===2?cres:null;strategyC2025Feed=c2025?.version===2?c2025:null;strategyBProbFeed=bprob;
  strategyCommentaryRaceIndex=new Map();
  if(comments&&Array.isArray(comments.races))for(const r of comments.races){
   strategyCommentaryRaceIndex.set(commentaryKey(r.course,r.date,r.time),r);
@@ -1718,8 +1740,8 @@ function renderStrategyResultsLegacy(){
 // Stage17 A/B experiment. These are distinct models, not the legacy Power Fav A/B.
 // Model A powers the odds-adjacent percentages across the whole app.
 function abSelectionState(model){
- if(model==='C')return strategyCFeed?.races?.map(r=>({...r,status:'UPCOMING',model:'C',model_validation:'HISTORICALLY_TRAINED_EXPERIMENTAL',historical_editions:r.historical_examples,
-   selection:r.selection?{...r.selection,score:100*Number(r.selection.win_probability||0),positive_count:r.selection.positive_count,negative_count:r.selection.negative_count,price_decimal:r.selection.paddypower_decimal,predicted_win_probability:r.selection.win_probability}:null}));
+ if(model==='C')return strategyCFeed?.version===2?strategyCFeed.races.map(r=>({...r,status:'UPCOMING',model:'C',model_validation:'HISTORICALLY_TRAINED_V2',historical_editions:r.historical_examples,
+   selection:r.selection?{...r.selection,score:100*Number(r.selection.win_probability||0),positive_count:r.selection.positive_count,negative_count:r.selection.negative_count,price_decimal:r.selection.paddypower_decimal,predicted_win_probability:r.selection.win_probability}:null})):null;
  const feed=strategyABSelectionsFeed;
  if(feed?.models?.[model]?.races)return feed.models[model].races;
  // Safe fallback for the pre-existing Model A; B is NEVER fabricated from A.
@@ -1741,7 +1763,7 @@ function abPickCard(r){
  if(r.model==='C'){
   const h=r.selection,d=r.decision||{},od=h.paddypower_decimal;
   const links=(d.external_sources||[]).map(x=>`<a href="${safe(x.source_url)}" target="_blank" rel="noopener noreferrer">Source</a>`).join(' · ');
-  return `<section class="panel">${abRaceHead(r)}<h3 style="margin:9px 0">Model C · ${safe(h.horse)}</h3><div class="rhp-strategy-meta"><span>Estimated win ${(100*Number(h.win_probability||0)).toFixed(1)}%</span><span>Paddy Power ${od>1?safe(fmt(od)):'no verified price'}</span><span>Lead ${safe(d.margin_pp??'—')} pp</span><span>Historical positives ${safe(h.positive_count??'—')}</span><span>Negatives ${safe(h.negative_count??'—')}</span></div><p>${safe(r.verdict||'Model C commentary unavailable')}</p>${links?`<p class="hint">Pre-off external evidence: ${links}</p>`:''}<p class="hint">Experimental strategy · 2025 historical SP ROI negative · no implied guarantee or proven edge.</p></section>`;
+  return `<section class="panel">${abRaceHead(r)}<h3 style="margin:9px 0">Model C v2 · ${safe(h.horse)}</h3><div class="rhp-strategy-meta"><span>Estimated win ${(100*Number(h.win_probability||0)).toFixed(1)}%</span><span>Paddy Power ${od>1?safe(fmt(od)):'no verified price'}</span><span>Lead ${safe(d.margin_pp??'—')} pp</span><span>Historical positives ${safe(h.positive_count??'—')}</span><span>Negatives ${safe(h.negative_count??'—')}</span></div><p>${safe(r.verdict||'Model C commentary unavailable')}</p>${links?`<p class="hint">Pre-off external evidence: ${links}</p>`:''}<p class="hint">Model C v2 · unsampled long-history research with an independent holdout. Prices and external tip adjustments are experimental; no guaranteed betting edge.</p></section>`;
  }
 
  const h=r.selection,d=r.decision||{};
@@ -1759,16 +1781,18 @@ function renderStrategySelections(){
  if(!all){host.innerHTML=`<div class="rhp-ab-empty">Model ${safe(state.model)} feed not published yet. No predictions will be fabricated.</div>`;return;}
  if(state.model!=='C'&&strategyABSelectionsFeed&&strategyABSelectionsFeed.day!==target){host.innerHTML=`<div class="rhp-ab-empty">No ${safe(state.model)} research published for ${safe(target)}. Latest day: ${safe(strategyABSelectionsFeed.day||'unknown')}.</div>`;return;}
  if(state.model!=='C'&&!strategyABSelectionsFeed&&strategySelectionsFeed?.day!==target){host.innerHTML=`<div class="rhp-ab-empty">No research published for ${safe(target)}.</div>`;return;}
- if(state.model==='C'&&strategyCFeed?.day!==target){host.innerHTML=`<div class="rhp-ab-empty">Model C has no published live forecast for ${safe(target)}. Latest: ${safe(strategyCFeed?.day||'none')}.</div>`;return;}
+ if(state.model==='C'&&(strategyCFeed?.version!==2||strategyCFeed?.day!==target)){host.innerHTML=`<div class="rhp-ab-empty">Model C has no published live forecast for ${safe(target)}. Latest: ${safe(strategyCFeed?.day||'none')}.</div>`;return;}
  const filtered=all.filter(r=>abTypeMatches(r,state.type));
  const selected=filtered.filter(r=>r.selection&&r.selection_status==='SELECTED'&&r.status==='UPCOMING');
  const model=state.model;
- const text=model==='A'?'Model A uses its separately trained full-field probability model.':model==='B'?'Model B investigates previous named-race editions, comparable conditions and individual form.':'Model C independently learned historical form/trend interactions and can use clearly verified pre-race external analysis as additional experimental evidence. Its historical 2025 ROI was negative.';
+ const text=model==='A'?'Model A uses its separately trained full-field probability model.':model==='B'?'Model B investigates previous named-race editions, comparable conditions and individual form.':'Model C v2 researches the full available historical period, evaluates multi-year trends against form and trainer/course strength, and can apply small identified external tip signals with timestamped evidence. Its latest independent 2025 results are shown below.';
+ if(model==='C'){const msg=$('strategy-model-message');if(msg)msg.textContent=strategyCFeed?.version===2?('New Model C v2 · '+safe(strategyCFeed.state)+' · Full historical period, distinct 2023/2024/2025 validation, logged external evidence. Predictions are experimental, not guaranteed profits.'): 'Replacing old Model C: new Stage 22 model is not yet published. Run the new workflow; old C picks are hidden.';}
+ else {const msg=$('strategy-model-message');if(msg)msg.textContent=model==='A'?'Model A · independently trained and validated probability model.':'Model B · historical named-event trends and individual form.';}
  const lead=`<div class="panel"><strong>Model ${model} · ${selected.length} live selection${selected.length===1?'':'s'}</strong><p class="hint">${safe(text)} One horse maximum per qualifying race; no forced picks. ${filtered.length-selected.length} race${filtered.length-selected.length===1?'':'s'} without a current selection or already off. Model A supplies the odds-adjacent win percentages throughout the app.</p></div>`;
- host.innerHTML=lead+(selected.length?selected.map(abPickCard).join(''):'<div class="rhp-ab-empty">No pre-off selection meets this model’s criteria for the chosen date and race type.</div>');
+ host.innerHTML=lead+(selected.length?selected.map(abPickCard).join(''):'<div class="rhp-ab-empty">No pre-off selection meets this model’s independently derived criteria for the chosen date and race type.</div>');
 }
 function abResultsRows(model){
- if(model==='C')return strategyCResultsFeed?.selections||[];
+ if(model==='C')return strategyCResultsFeed?.version===2?strategyCResultsFeed.selections||[]:[];
  const a=strategyABResultsFeed?.models?.[model]?.selections;
  if(Array.isArray(a))return a;
  return model==='A'?(strategyResultsFeed?.selections||[]):[];
@@ -1776,9 +1800,9 @@ function abResultsRows(model){
 function renderHistoricalABROI(model,type){
  const host=$('strategy-historical-roi');if(!host)return;
  if(model==='C'){
-   const data=strategyC2025Feed;
+   const data=strategyC2025Feed?.version===2?strategyC2025Feed:null;
    const top=data?.top,cond=data?.conditional;
-   host.innerHTML=data?`<p class="hint"><strong>Model C independent 2025 holdout</strong> · ${safe(top?.races??'—')} races, top-ranked win rate ${safe(top?.strike_rate_pct??'—')}%, SP ROI ${safe(top?.sp_roi_pct??'—')}%; ${safe(cond?.races??'—')} provisional selections, win rate ${safe(cond?.strike_rate_pct??'—')}%, SP ROI ${safe(cond?.sp_roi_pct??'—')}%. External evidence was not used in this historical test.</p>`:'<p class="hint">Model C historical training report has not been published.</p>';
+   host.innerHTML=data?`<p class="hint"><strong>Model C v2 · unsampled independent 2025 holdout</strong> · ${safe(top?.races??'—')} races, top-ranked win rate ${safe(top?.strike_rate_pct??'—')}%, SP ROI ${safe(top?.sp_roi_pct??'—')}%; ${safe(cond?.races??'—')} provisional selections, win rate ${safe(cond?.strike_rate_pct??'—')}%, SP ROI ${safe(cond?.sp_roi_pct??'—')}%. External evidence was not used in this historical test.</p>`:'<p class="hint">Model C historical training report has not been published.</p>';
    return;
  }
  const data=strategyABHistoricalROIFeed;
@@ -1813,7 +1837,7 @@ function renderStrategyResults(){
  $('strategy-results-roi').textContent=roi==null?'—':roi.toFixed(1)+'%';
  renderHistoricalABROI(model,type);
  sum.textContent=`Model ${model} · ${list.length} recorded · ${settled.length} settled (${wins} won, ${settled.length-wins} lost) · ${list.filter(s=>s.status==='Pending').length} pending · ${list.filter(s=>s.status==='Non-runner').length} non-runners · ${priced.length} priced settlements. ROI uses the frozen pre-off bookmaker quote, not SP. No impact on actual My Bets/P&L.`;
- const missing=model==='B'&&!strategyABResultsFeed||model==='C'&&!strategyCResultsFeed;
+ const missing=model==='B'&&!strategyABResultsFeed||model==='C'&&strategyCResultsFeed?.version!==2;
  host.innerHTML=missing?'<div class="rhp-ab-empty">Model B results will appear after the first Stage 17 A/B run. No past selections will be fabricated.</div>':list.length?list.map(s=>`<article class="horse"><div class="horse-top"><div><div class="name">${safe(s.horse)}</div><div class="meta">Model ${model} · ${safe(s.date)} · ${safe(s.time)} ${safe(s.course)} · ${safe(abCategory(s.race_type)==='unknown'?'Race type unclassified':abCategory(s.race_type).toUpperCase())}</div></div><span class="pill ${s.status==='Won'?'yes':s.status==='Lost'?'no':''}">${safe(s.status)}</span></div><div class="rhp-strategy-meta"><span>Recorded odds ${s.odds>1?fmt(s.odds):'Unavailable'}</span>${s.winning_probability!=null?`<span>Model ${safe(model)} ${(Number(s.winning_probability)*100).toFixed(1)}% win</span>`:model==='B'?`<span>B research score ${s.score==null?'—':Number(s.score).toFixed(1)}</span>`:''}${s.position?`<span>Finish ${safe(s.position)}</span>`:''}</div><p class="hint">Saved pre-off ${safe(s.published_at?when(s.published_at):'time unknown')}. ${model==='B'?'B research ranking is not a validated winning percentage.':'Independent historical probability model.'}</p></article>`).join(''):'<div class="rhp-ab-empty">No Model '+model+' predictions have been recorded in this period and race type.</div>';
 }
 document.addEventListener('click',event=>{
