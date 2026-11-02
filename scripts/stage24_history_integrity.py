@@ -191,6 +191,115 @@ def install_identity_patch(filename):
  return True
 
 
+
+# External historical result proof (not a model-generated guess). The results
+# archive omitted this 2025 Worcester debut for the declared 2026 horse.
+# https://www.irishracing.com/fast-results/Tue-13th-May-2025/Worcester
+# https://gg.co.uk/horse/coastal-command/
+# The racecard/proven pedigree is confirmed independently; the 2013 horse of
+# the same name is a different animal and MUST NOT be silently linked.
+VERIFIED_COASTAL_FORM = {
+ 'date':'2025-05-13','course':'worcester','horse':'coastalcommand',
+ 'sire':'Scorpion','dam':'Spring Flight','age':5,'position':3,
+ 'trainer':'Nicky Henderson','jockey':'James Bowen',
+ 'sp_decimal':5.0,'distance_f':16.0,'race_time':'15:30',
+ 'source_urls':[
+   'https://www.irishracing.com/fast-results/Tue-13th-May-2025/Worcester',
+   'https://gg.co.uk/horse/coastal-command/',
+   'https://www.horseracing.net/results/worcester/13-05-25'
+ ]
+}
+
+
+def restore_verified_worcester_form(con,through_date):
+ '''Recover exactly one proven past start without joining homonymous careers.
+
+ Only the runner on 2025-05-13 at Worcester is eligible. If the whole source
+ race is not identifiable, preserve its single verified runner in a *form-only*
+ synthetic group. The one-run group is excluded from race-level testing
+ (which requires >=2 starters and a single winner), yet contributes a genuine
+ chronologically earlier start to individual-form statistics.
+ '''
+ spec=VERIFIED_COASTAL_FORM
+ audit={'horse':'Coastal Command','date':spec['date'],'course':'Worcester',
+        'source_urls':spec['source_urls'],'type':'verified_external_result',
+        'form_only':True,'original_pedigree_preserved':True}
+ if through_date<spec['date']:
+  audit['state']='NOT_YET_APPLICABLE';return audit
+ candidates=con.execute('''SELECT h.race_id,h.runner_key,h.horse_name,h.sire,h.dam,
+   h.finish_pos,h.age,h.trainer,h.jockey,r.course
+   FROM historical_runs h JOIN historical_races r ON r.id=h.race_id
+   WHERE r.race_date=?''',(spec['date'],)).fetchall()
+ matching=[r for r in candidates if clean(r[9])==spec['course'] and clean(r[2])==spec['horse']]
+ if len(matching)>1:
+  raise RuntimeError('Worcester 2025 Coastal Command has ambiguous duplicate source rows; no automatic form merge')
+ if matching:
+  row=matching[0]
+  if row[5]!=spec['position'] or (row[6] is not None and row[6]!=spec['age']):
+   raise RuntimeError('Worcester 2025 Coastal Command source result conflicts in finish/age')
+  if (row[3] and clean(row[3])!=clean(spec['sire'])) or (row[4] and clean(row[4])!=clean(spec['dam'])):
+   raise RuntimeError('Worcester 2025 Coastal Command source pedigree contradicts independent evidence')
+  if clean(row[3])==clean(spec['sire']) and clean(row[4])==clean(spec['dam']):
+   audit['state']='PRESENT_AND_IDENTITY_CONFIRMED'
+   audit['form_only']=False
+  else:
+   # A pedigree-less source runner gets an auditable correction only for the
+   # independently verified date+venue+name+position+age record.
+   con.execute('UPDATE historical_runs SET sire=?,dam=? WHERE race_id=? AND runner_key=?',
+     (row[3] or spec['sire'],row[4] or spec['dam'],row[0],row[1]))
+   audit['state']='EXISTING_SOURCE_ROW_CORRECTED'
+   audit['form_only']=False
+  audit['matched_race_id']=row[0];con.commit();return audit
+
+ # Confirm we are not overlooking a different identity on the same dated card.
+ # Look for the historically recorded winner in the *correct* 15:30 division.
+ # Date/course alone is NOT enough: Worcester had two NHF divisions that day.
+ winners=con.execute('''SELECT DISTINCT h.race_id,r.course
+    FROM historical_runs h JOIN historical_races r ON r.id=h.race_id
+    WHERE r.race_date=? AND h.finish_pos=1''',(spec['date'],)).fetchall()
+ candidates=[]
+ for rid,course in winners:
+  if clean(course)!=spec['course']:continue
+  names=[(clean(v[0]),v[1]) for v in con.execute('SELECT horse_name,finish_pos FROM historical_runs WHERE race_id=?',(rid,))]
+  if ('iceintheveins',1) in names and any(name=='lyricalchoice' for name,_ in names):
+   candidates.append(rid)
+ if len(candidates)>1:
+  raise RuntimeError('Multiple possible Worcester 15:30 2025 source races; refusing guessed linkage')
+ if candidates:
+  rid=candidates[0]
+  audit['state']='RECOVERED_IN_EXISTING_FIELD'
+  audit['form_only']=False
+ else:
+  # Unmatched source race: never fabricate its eight other runners or a
+  # winner. This single confirmed third-place start contributes to form only.
+  rid='rhp-st24-verified-form:2025-05-13:worcester:1530:coastalcommand'
+  con.execute('''INSERT OR IGNORE INTO historical_races
+    (id,race_date,course,race_type,surface,distance_f,going,race_class,source)
+    VALUES (?,?,?,?,?,?,?,?,?)''',
+    (rid,spec['date'],'Worcester','NH Flat','turf',spec['distance_f'],None,
+     'Class 5','rhp-stage24-verified-form-only-external-evidence'))
+  audit['state']='RECOVERED_AS_FORM_ONLY_EVIDENCE'
+
+ run={'race_id':rid,'runner_key':'verified:coastalcommand:2025-05-13:worcester:1530',
+      'horse_source_id':None,'horse_name':'Coastal Command',
+      'horse_name_norm':'COASTALCOMMAND','horse_country':'GB','foaled':None,
+      'finish_pos':spec['position'],'outcome':'FINISHED','trainer':spec['trainer'],
+      'jockey':spec['jockey'],'official_rating':None,'weight_lbs':156,
+      'sp_decimal':spec['sp_decimal'],'draw':None,'age':spec['age'],
+      'sex':'G','sire':spec['sire'],'dam':spec['dam'],'rpr':None,
+      'ts':None,'comment':None,'beaten':None}
+ cols=sorted(columns(con,'historical_runs'))
+ con.execute('INSERT OR IGNORE INTO historical_runs ('+','.join(cols)+') VALUES ('+','.join('?'*len(cols))+')',
+             [run.get(k) for k in cols])
+ # An existing row with an identical key but contradictory pedigree must
+ # never be silently accepted by INSERT OR IGNORE.
+ check=con.execute('SELECT sire,dam,finish_pos FROM historical_runs WHERE race_id=? AND runner_key=?',
+                   (rid,run['runner_key'])).fetchone()
+ if not check or clean(check[0])!=clean(spec['sire']) or clean(check[1])!=clean(spec['dam']) or check[2]!=spec['position']:
+  raise RuntimeError('Verified Worcester form insert could not be independently checked')
+ con.commit();audit['matched_race_id']=rid
+ return audit
+
 def audit_today(con,repo,day):
  path=Path(repo)/'data/racecards.json'
  try:cards=json.loads(path.read_text()).get('runners',[])
@@ -220,6 +329,7 @@ def run(args):
  con=sqlite3.connect(db)
  try:
   audit=ingest(con,repo/'data/racing-results',day,args.strict)
+  audit['verified_form_repairs']=[restore_verified_worcester_form(con,day)]
   audit['monitored_horses']=audit_today(con,repo,(dt.date.fromisoformat(day)+dt.timedelta(days=1)).isoformat())
  finally:con.close()
  runtime=repo/'scripts/stage16_history_model.py'
@@ -264,6 +374,24 @@ def self_test():
   ctx={};exec(source.read_text(),ctx)
   assert ctx['history_key']('Hard Stare','Passing Glance (GB)','Farewellatmidnight (GB)')==ctx['history_key']('Hard Stare','Passing Glance','Farewellatmidnight')
   assert ctx['history_key']('Same Name','A','B')!=ctx['history_key']('Same Name','C','D')
+  # Test the historic same-name trap: a 2013 horse is NOT Coastal Command
+  # (Scorpion x Spring Flight), and the 2025 Worcester debut is missing.
+  con.execute("INSERT INTO historical_races(id,race_date,course) VALUES('same-name-2013','2013-05-09','Clonmel')")
+  con.execute("INSERT INTO historical_runs(race_id,runner_key,horse_name,horse_name_norm,finish_pos,outcome,sire,dam) VALUES('same-name-2013','old','Coastal Command','COASTALCOMMAND',NULL,'PU','Different Sire','Different Dam')")
+  audit=restore_verified_worcester_form(con,'2026-10-08')
+  assert audit['state']=='RECOVERED_AS_FORM_ONLY_EVIDENCE'
+  assert con.execute("SELECT COUNT(*) FROM historical_runs WHERE horse_name_norm='COASTALCOMMAND' AND sire='Scorpion' AND dam='Spring Flight'").fetchone()[0]==1
+  assert restore_verified_worcester_form(con,'2026-10-08')['state']=='PRESENT_AND_IDENTITY_CONFIRMED'
+  assert con.execute("SELECT sire FROM historical_runs WHERE race_id='same-name-2013'").fetchone()[0]=='Different Sire'
+  # A preexisting verified-result row lacking parents can be repaired without
+  # fabricating a new starter or using the unrelated 2013 horse.
+  con.execute("INSERT INTO historical_races(id,race_date,course) VALUES('work2','2025-05-13','Worcester')")
+  # This deliberately creates a *second* 2025 source row, which must fail
+  # if a fully-verified original already exists: duplicate guard test below.
+  con.execute("INSERT INTO historical_runs(race_id,runner_key,horse_name,horse_name_norm,finish_pos,outcome,age) VALUES('work2','c','Coastal Command','COASTALCOMMAND',3,'FINISHED',5)")
+  try:restore_verified_worcester_form(con,'2026-10-08')
+  except RuntimeError as error:assert 'ambiguous duplicate' in str(error)
+  else:raise AssertionError('Ambiguous same-name 2025 duplicate was not rejected')
   con.close()
  print('Stage24 history integrity unit tests passed')
 
