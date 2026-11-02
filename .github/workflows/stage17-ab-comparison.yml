@@ -202,11 +202,13 @@ jobs:
           PY_STAGE17
           cd scripts
           python -m unittest -q test_stage17.py
+          python -m py_compile stage23_ab_repair.py
       - name: Publish separate Model A and Model B selections and results
         shell: bash
         run: |
           set -euo pipefail
           python scripts/stage17_ab.py --repo . --build --settle
+          python scripts/stage23_ab_repair.py --repo .
           python scripts/stage17_learning.py --repo .
           python - <<'PY_VERIFY_AB'
           import json
@@ -232,7 +234,7 @@ jobs:
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add data/strategy-ab-selections.json data/strategy-ab-results.json
+          git add data/strategy-ab-selections.json data/strategy-ab-results.json data/strategy-b-probabilities.json
           if test -f data/strategy-b-history.json; then git add data/strategy-b-history.json; fi
           if test -f data/strategy-b-evidence.json; then git add data/strategy-b-evidence.json; fi
           git add data/strategy-b-calibration.json data/strategy-ab-learning.json data/strategy-ab-commentary-learning.json
@@ -250,8 +252,9 @@ jobs:
             git fetch origin "$GITHUB_REF_NAME"
             git reset --hard "origin/$GITHUB_REF_NAME"
             python scripts/stage17_ab.py --repo . --build --settle
+            python scripts/stage23_ab_repair.py --repo .
             python scripts/stage17_learning.py --repo .
-            git add data/strategy-ab-selections.json data/strategy-ab-results.json
+            git add data/strategy-ab-selections.json data/strategy-ab-results.json data/strategy-b-probabilities.json
             if test -f data/strategy-b-history.json; then git add data/strategy-b-history.json; fi
             if test -f data/strategy-b-evidence.json; then git add data/strategy-b-evidence.json; fi
             git add data/strategy-b-calibration.json data/strategy-ab-learning.json data/strategy-ab-commentary-learning.json
@@ -268,6 +271,7 @@ jobs:
           name: stage17-ab-decision-audit
           path: |
             data/strategy-ab-selections.json
+            data/strategy-b-probabilities.json
             data/strategy-ab-results.json
             data/strategy-b-history.json
             data/strategy-b-evidence.json

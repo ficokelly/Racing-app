@@ -451,6 +451,18 @@ jobs:
            with open(os.environ['GITHUB_ENV'],'a') as f:print(f'{env}={p}',file=f)
            print(env,'size',p.stat().st_size,flush=True)
           STAGE18_DOWNLOAD
+      - name: Repair historical result gap and match canonical pedigrees before Model B training
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/stage24_history_integrity.py self-test
+          python scripts/stage24_history_integrity.py prepare --db "$STAGE18_DB" --repo . --strict
+          python - <<'SAVE_OLD_B'
+          from pathlib import Path
+          import shutil
+          x=Path('data/strategy-model-b-historical.json')
+          if x.exists():shutil.copyfile(x,'data/strategy-model-b-pre-stage24.json')
+          SAVE_OLD_B
       - name: Train independent Model B and calculate A versus B 2025 SP ROI
         shell: bash
         run: |
@@ -489,6 +501,8 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add data/strategy-model-b-historical.json data/strategy-ab-historical-roi.json
+          if test -f data/strategy-model-b-pre-stage24.json; then git add data/strategy-model-b-pre-stage24.json; fi
+          git add data/history-integrity-audit.json
           if git diff --cached --quiet; then echo 'Historical report already current';exit 0;fi
           git commit -m 'Publish held-out 2025 Model A/B SP ROI and historical Model B'
           for attempt in 1 2 3 4; do

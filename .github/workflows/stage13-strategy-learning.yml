@@ -3,7 +3,7 @@ name: Stage 13 & 16 - Trend-first Strategy, Model Probabilities and Learning
 on:
   workflow_dispatch:
   schedule:
-    - cron: '30 7,10,13,17,23 * * *'
+    - cron: '30 9,11,14,17 * * *'  # after daytime racecards; dispatch manually when cards arrive
 
 permissions:
   contents: write
@@ -16,7 +16,7 @@ concurrency:
 jobs:
   strategy-research-and-track:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 120
     steps:
       - name: Check out latest Racing Hot Pots
         uses: actions/checkout@v4
@@ -101,6 +101,55 @@ jobs:
               with open(os.environ['GITHUB_ENV'],'a') as f:print(f'{env}={path}',file=f)
               print('Historical source',name,'size',path.stat().st_size,flush=True)
           STAGE13_DOWNLOAD
+      - name: Repair 8 October onward history and unify verified pedigree format
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/stage24_history_integrity.py self-test
+          python scripts/stage24_history_integrity.py prepare --db "$STAGE13_DB" --repo . --strict --assert-form
+      - name: Revalidate Model A on corrected identity features before publishing probabilities
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'CHECK_HISTORY_MODEL'
+          import json,shutil
+          from pathlib import Path
+          p=Path('data/strategy-historical-model.json')
+          candidate=json.loads(p.read_text()) if p.exists() else {}
+          if candidate.get('history_integrity_version')=='stage24-2026-11-history-identity-v1':
+           print('Validated or rejected identity-aware A model already on disk')
+           Path('/tmp/stage24_train_a').write_text('no')
+          else:
+           if p.exists():shutil.copyfile(p,'data/strategy-historical-model-pre-stage24.json')
+           Path('/tmp/stage24_train_a').write_text('yes')
+          CHECK_HISTORY_MODEL
+          if test "$(cat /tmp/stage24_train_a)" = yes; then
+            python scripts/stage16_history_model.py --db "$STAGE13_DB" --mod 20 --out data/strategy-historical-model-stage24-candidate.json
+            python - <<'MODEL_A_VALIDATION'
+          import json
+          from pathlib import Path
+          p=Path('data/strategy-historical-model-stage24-candidate.json')
+          result=json.loads(p.read_text())
+          result['history_integrity_version']='stage24-2026-11-history-identity-v1'
+          result['identity_note']='Former model independently invalidated; this model trained on canonical pedigree histories only.'
+          Path('data/strategy-historical-model.json').write_text(json.dumps(result,indent=2)+'\n')
+          print('A revalidation outcome:',result['state'])
+          MODEL_A_VALIDATION
+          fi
+      - name: Require populated current-day racecards before any A/B output can be published
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'AB_CARDS_PREFLIGHT'
+          import datetime,json
+          from zoneinfo import ZoneInfo
+          from pathlib import Path
+          day=datetime.datetime.now(ZoneInfo('Europe/Dublin')).date().isoformat()
+          c=json.loads(Path('data/racecards.json').read_text())
+          races={(r.get('course'),r.get('race_time')) for r in c.get('runners',[]) if r.get('date')==day and r.get('horse')}
+          print('A/B preflight',day,'declared races:',len(races),flush=True)
+          if len(races)<3:raise SystemExit('Current-day racecards missing or incomplete: refusing to overwrite previous predictions with EMPTY files. Re-run after racecards collection.')
+          AB_CARDS_PREFLIGHT
       - name: Score all declared runners with separately validated historical model
         shell: bash
         run: |
@@ -116,6 +165,7 @@ jobs:
            if d['state']=='VALIDATED':
             assert r['complete_field'] and abs(sum(x['probability'] for x in r['runners'])-1)<0.001
            else:assert all(x.get('probability') is None for x in r['runners'])
+          assert d['races'], 'No Stage16 races; refusing to publish an empty A feed'
           print('Stage16 all-runner estimates',d['state'],len(d['races']))
           STAGE16_PROBS_CHECK
       - name: Build trend-first selections; settle and check training thresholds
