@@ -107,6 +107,8 @@ jobs:
           set -euo pipefail
           python scripts/stage24_history_integrity.py self-test
           python scripts/stage24_history_integrity.py prepare --db "$STAGE13_DB" --repo . --strict --assert-form
+          python scripts/stage24_history_integrity.py patch-stage12 --repo .
+          python -m py_compile stage12_form_analysis.py
       - name: Revalidate Model A on corrected identity features before publishing probabilities
         shell: bash
         run: |
@@ -116,11 +118,11 @@ jobs:
           from pathlib import Path
           p=Path('data/strategy-historical-model.json')
           candidate=json.loads(p.read_text()) if p.exists() else {}
-          if candidate.get('history_integrity_version')=='stage24-2026-11-history-identity-v1':
+          if candidate.get('history_integrity_version')=='stage25-2026-11-starter-identity-v2':
            print('Validated or rejected identity-aware A model already on disk')
            Path('/tmp/stage24_train_a').write_text('no')
           else:
-           if p.exists():shutil.copyfile(p,'data/strategy-historical-model-pre-stage24.json')
+           if p.exists():shutil.copyfile(p,'data/strategy-historical-model-pre-stage25.json')
            Path('/tmp/stage24_train_a').write_text('yes')
           CHECK_HISTORY_MODEL
           if test "$(cat /tmp/stage24_train_a)" = yes; then
@@ -130,7 +132,8 @@ jobs:
           from pathlib import Path
           p=Path('data/strategy-historical-model-stage24-candidate.json')
           result=json.loads(p.read_text())
-          result['history_integrity_version']='stage24-2026-11-history-identity-v1'
+          result['history_integrity_version']='stage25-2026-11-starter-identity-v2'
+          result['version']='stage16-own-data-temporal-v3-stage25-starters'
           result['identity_note']='Former model independently invalidated; this model trained on canonical pedigree histories only.'
           Path('data/strategy-historical-model.json').write_text(json.dumps(result,indent=2)+'\n')
           print('A revalidation outcome:',result['state'])
@@ -215,6 +218,8 @@ jobs:
           printf '%s' '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' | base64 --decode | gzip --decompress > test_stage14_commentary.py
           python -m py_compile stage14_commentary.py
           python -m unittest -q test_stage14_commentary.py
+          python scripts/stage24_history_integrity.py patch-commentary --repo .
+          python -m py_compile stage14_commentary.py
           DAY=$(TZ=Europe/Dublin date +%F)
           python stage14_commentary.py --cards data/racecards.json \
             --strategy data/strategy-selections.json --db "$STAGE13_DB" \
