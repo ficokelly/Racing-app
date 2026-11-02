@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+import re
 
 API_URL = "https://api.theracingapi.com/v1/results/today/free"
 USERNAME = os.environ["RACING_API_USERNAME"]
@@ -81,14 +82,40 @@ for date, races in by_date.items():
 
     existing = {}
 
+    def stable_key(race):
+        """Old archived results may have NO race_id. Never crash or discard them.
+        Prefer date/course/off slot; fall back to the provider's actual ID.
+        A synthetic merge key is never mistaken for a provider race ID.
+        """
+        course = re.sub(r"[^a-z0-9]+", "", str(race.get("course") or "").lower())
+        off = str(race.get("off_dt") or race.get("race_time") or race.get("off") or "")
+        day = str(race.get("date") or date)
+        # Use the scheduled start to reconcile archived entries with a new API ID.
+        if day and course and off:
+            return ("slot", day, course, off[11:16] if "T" in off else off)
+        if race.get("race_id"):
+            return ("id", str(race["race_id"]))
+        # Preserve distinct legacy observations even when metadata is incomplete.
+        return ("legacy", day, course, off, str(race.get("race_name") or ""))
+
     if path.exists():
         old_data = json.loads(path.read_text())
         for race in old_data.get("results", []):
-            existing[race["race_id"]] = race
+            if not isinstance(race, dict):
+                continue
+            existing[stable_key(race)] = race
 
-    existing.update({
-        race["race_id"]: race for race in races
-    })
+    for race in races:
+        key = stable_key(race)
+        prior = existing.get(key)
+        # Preserve the fuller set of runners if the new API response is partial.
+        if prior and len(prior.get("runners") or []) > len(race.get("runners") or []):
+            merged = dict(prior)
+            if race.get("race_id") and not merged.get("race_id"):
+                merged["race_id"] = race["race_id"]
+            existing[key] = merged
+        else:
+            existing[key] = race
 
     output = {
         "date": date,
