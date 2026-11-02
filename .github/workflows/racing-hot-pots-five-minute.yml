@@ -93,7 +93,11 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add data/aw2-track-stats.json data/latest-odds.json data/odds-history.json data/odds-archive/ data/power-fav-alert-state.json data/race-results.json data/racecards.json data/racecards-archive.json data/nonrunner-monitor.json data/nonrunner-decision-history.json
+          git add data/aw2-track-stats.json data/latest-odds.json data/odds-history.json data/odds-archive/ data/power-fav-alert-state.json data/race-results.json data/racecards.json data/racecards-archive.json data/nonrunner-monitor.json
+          # This file is created only after a confirmed non-runner. It is optional.
+          if [ -f data/nonrunner-decision-history.json ]; then
+            git add data/nonrunner-decision-history.json
+          fi
           if git diff --cached --quiet; then
             echo 'No changes to publish.'
             exit 0
