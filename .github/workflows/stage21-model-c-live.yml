@@ -572,12 +572,12 @@ jobs:
           import json,shutil
           data=Path('data')
           old=json.loads((data/'strategy-model-c-historical.json').read_text()) if (data/'strategy-model-c-historical.json').exists() else {}
-          if old.get('version')=='model-c-v2-all-history-2026-11':
+          if old.get('version') in ('model-c-v2-all-history-2026-11','model-c-v2-stage24-identity-corrected-2026-11'):
            for name in ('strategy-model-c-historical.json','strategy-model-c-2025-report.json',
                         'strategy-c-probabilities.json','strategy-c-history.json',
                         'strategy-c-results.json','strategy-c-learning.json'):
             path=data/name
-            if path.exists():shutil.copyfile(path,data/(path.stem+'-pre-stage24.json'))
+            if path.exists():shutil.copyfile(path,data/(path.stem+'-pre-stage25.json'))
            # A new feature/identity schema starts a new learning era, never merge
            # its live decisions with the old C v2 immutable observation records.
            (data/'strategy-c-history.json').write_text(json.dumps({'version':2,'races':[]},indent=2)+'\n')
@@ -592,7 +592,7 @@ jobs:
           import json
           from pathlib import Path
           j=json.loads(Path('data/strategy-model-c-historical.json').read_text())
-          assert j.get('version')=='model-c-v2-stage24-identity-corrected-2026-11'
+          assert j.get('version')=='model-c-v2-stage25-verified-starters-2026-11'
           assert j.get('split_counts',{}).get('test_2025',0)>=100
           print('Historical v2 model ready; 2025 untouched testing:',j['honest_test'])
           VALIDATE_C
@@ -608,7 +608,7 @@ jobs:
           import json
           from pathlib import Path
           j=json.loads(Path('data/strategy-c-probabilities.json').read_text())
-          assert j.get('version')==2 and j.get('model_version')=='model-c-v2-stage24-identity-corrected-2026-11'
+          assert j.get('version')==2 and j.get('model_version')=='model-c-v2-stage25-verified-starters-2026-11'
           assert j['state'] in ('READY','NO_RACECARDS_FOR_DAY','NO_UPCOMING_COMPLETE_FIELDS')
           print('V2 live:',j['state'],len(j['races']),'future races,',j['selections'],'selections')
           VALIDATE_LIVE
@@ -620,7 +620,7 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add data/racecards.json data/racecards-archive.json
           git add data/strategy-model-c-historical.json data/strategy-model-c-2025-report.json data/history-integrity-audit.json
-          for f in data/strategy-model-c-historical-pre-stage24.json data/strategy-model-c-2025-report-pre-stage24.json data/strategy-c-*-pre-stage24.json; do
+          for f in data/strategy-model-c-historical-pre-stage25.json data/strategy-model-c-2025-report-pre-stage25.json data/strategy-c-*-pre-stage25.json; do
             if test -f "$f"; then git add "$f"; fi
           done
           git add data/strategy-c-probabilities.json data/strategy-c-external-evidence.json data/strategy-c-history.json data/strategy-c-results.json data/strategy-c-learning.json
@@ -661,9 +661,9 @@ jobs:
             data/strategy-c-results.json
             data/strategy-c-learning.json
             data/history-integrity-audit.json
-            data/strategy-model-c-historical-pre-stage24.json
-            data/strategy-model-c-2025-report-pre-stage24.json
-            data/strategy-c-*-pre-stage24.json
+            data/strategy-model-c-historical-pre-stage25.json
+            data/strategy-model-c-2025-report-pre-stage25.json
+            data/strategy-c-*-pre-stage25.json
             data/strategy-c-v1-archived.json
             data/strategy-model-c-v2-challenger.json
           retention-days: 30
