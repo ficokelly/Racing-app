@@ -59,6 +59,8 @@ jobs:
           python scripts/stage28_selection_discovery.py
           python -m py_compile scripts/stage29_sp_repair.py
           python scripts/stage29_sp_repair.py --test
+          python scripts/stage29_sp_repair.py --help | grep -F -- '--from-date'
+          python scripts/stage29_sp_repair.py --help | grep -F -- '--through'
           python scripts/stage24_history_integrity.py self-test
       - name: Download latest nonexpired Stage 2 historical SQLite artifact
         env:
@@ -174,9 +176,18 @@ jobs:
           set -euo pipefail
           mkdir -p stage29_report
           python -u scripts/stage29_sp_repair.py \
-            --db "$STAGE27_DB" --start 2026-10-08 --end 2026-11-01 \
+            --db "$STAGE27_DB" --from-date 2026-10-08 --through 2026-11-01 \
             --output stage29_report/sp-backfill-audit.json
           test -s stage29_report/sp-backfill-audit.json
+          python - <<'STAGE29_BACKFILL_AUDIT'
+          import json
+          from pathlib import Path
+          result=json.loads(Path('stage29_report/sp-backfill-audit.json').read_text())
+          assert result['period']==['2026-10-08','2026-11-01'],result.get('period')
+          print('Stage29 SP repair:',result.get('backfilled_runner_rows'), 'prices recovered; source quality:', result.get('coverage_pct'),'% coverage')
+          if result.get('fetch_problem_dates'):
+           print('Incomplete SP source dates:', ', '.join(result['fetch_problem_dates']))
+          STAGE29_BACKFILL_AUDIT
       - name: Discover ROI-positive race subgroups with at least 10 bets per week as target
         run: |
           set -euo pipefail
