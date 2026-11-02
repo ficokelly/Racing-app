@@ -49,6 +49,7 @@ def augment(root,now=None):
     ab=load(data/'strategy-ab-selections.json',{})
     prob=load(data/'strategy-probabilities.json',{})
     stage=load(data/'strategy-selections.json',{})
+    commentary=load(data/'strategy-commentary.json',{})
     day=ab.get('day') or stage.get('day') or now.astimezone(TZ).date().isoformat()
     groups=collections.defaultdict(list)
     for x in cards.get('runners',[]):
@@ -61,6 +62,7 @@ def augment(root,now=None):
     valid=prob.get('state')=='VALIDATED' and prob.get('day')==day
     pindex={race_key(r):r for r in prob.get('races',[])} if valid else {}
     stageindex={race_key(r):r for r in stage.get('races',[]) if r.get('date',day)==day}
+    commentaryindex={race_key(r):r for r in commentary.get('races',[]) if r.get('date',day)==day}
     bform=[];valid_A=0;researched_B=0
     for model in ('A','B'):
         previous=ab['models'].get(model,{}).get('races',[])
@@ -77,6 +79,16 @@ def augment(root,now=None):
                 'decision':{'reason':'NO_VERIFIED_WHOLE_FIELD_RESEARCH','leader':None},
             }
             if older:prepared.update(older)
+            # A stored selection is valid only while that horse remains in this
+            # pre-off declared field. Never silently roll a withdrawn pick forward.
+            selected=prepared.get('selection')
+            selected_name=selected.get('horse') if isinstance(selected,dict) else (selected if isinstance(selected,str) else None)
+            if selected_name and norm(selected_name) not in {norm(z.get('horse')) for z in field}:
+                prepared['selection']=None
+                prepared['selection_status']='NO_SELECTION' if upcoming(sample,now) else 'OFF'
+                prepared['decision']={'reason':'PRIOR_SELECTION_NOT_IN_CURRENT_DECLARED_FIELD_REASSESSMENT_REQUIRED'}
+            prepared['status']='UPCOMING' if upcoming(sample,now) else 'OFF_OR_FINISHED'
+
             src=stageindex.get(k,{})
             if model=='A':
                 pf=pindex.get(k,{})
@@ -104,15 +116,44 @@ def augment(root,now=None):
                     and {norm(x.get('horse')) for x in ranked}=={norm(x['horse']) for x in field})
                 prepared['research_complete']=covered
                 if covered:researched_B+=1
-                prepared['ranked_runners']=[{'horse':z.get('horse'),'score':z.get('score'),
-                    'positive_count':z.get('positive_count'),'negative_count':z.get('negative_count'),
-                    'form_runs':z.get('form_runs'),'form_wins':z.get('form_wins'),
-                    'historical_rank':z.get('rank')} for z in ranked] if covered else []
-                prepared['verdict']=prepared.get('verdict') or ('A complete historical named-race/form comparison was published. The score is a research ranking, not a win probability.' if covered else 'No verified same-event or comparable-course research for the whole field. Model B has not selected a horse; missing evidence is not negative form.')
+                if covered:
+                    prepared['ranked_runners']=[{'horse':z.get('horse'),'score':z.get('score'),
+                        'positive_count':z.get('positive_count'),'negative_count':z.get('negative_count'),
+                        'form_runs':z.get('form_runs'),'form_wins':z.get('form_wins'),
+                        'historical_rank':z.get('rank'),'evidence_type':'VERIFIED_B_TREND_FORM'} for z in ranked]
+                else:
+                    # Separate verified, horse-specific observations from the B model's
+                    # whole-field historical research. Never invent a B score or a pick.
+                    sr=commentaryindex.get(k,{})
+                    horse_notes={norm(z.get('horse')):z for z in sr.get('horses',[]) if isinstance(z,dict)}
+                    prepared['ranked_runners']=[]
+                    for runner in field:
+                        evidence=horse_notes.get(norm(runner['horse']),{})
+                        starts=evidence.get('form_runs')
+                        try: starts=int(starts) if starts is not None else None
+                        except (TypeError,ValueError): starts=None
+                        safe_identity=str(evidence.get('identity_status') or '').startswith('MATCHED')
+                        # Date-specific research produced with Stage13 from pre-race history.
+                        # It is descriptive evidence, not a B model ranking/probability.
+                        linked=bool(safe_identity and starts is not None and starts>0)
+                        prepared['ranked_runners'].append({
+                            'horse':runner['horse'],'score':None,'historical_rank':None,
+                            'form_runs':starts if linked else None,'form_wins':None,
+                            'positive_count':None,'negative_count':None,
+                            'evidence_type':'VERIFIED_HORSE_FORM_ONLY' if linked else 'HISTORY_UNVERIFIED',
+                            'evidence_summary':str(evidence.get('summary') or '')[:850] if linked else '',
+                            'identity_status':evidence.get('identity_status') if linked else 'UNVERIFIED',
+                        })
+                    prepared['partial_research']=True
+                    prepared['research_complete']=False
+                    prepared['match_basis']=sr.get('historical_source') or 'NO_WHOLE_FIELD_COMPARISON'
+                    prepared['verdict']='No validated Model B whole-field trend ranking for this race. Individual historical form is shown where safely linked, without a fabricated B score or selection.'
+                if covered:prepared['verdict']=prepared.get('verdict') or 'Complete verified B historical research. Scores are research rankings, not win probabilities.'
                 if not older:prepared['decision']={'reason':'NO_VERIFIED_COMPARABLE_HISTORICAL_CANDIDATE' if not covered else 'RESEARCH_ONLY_NO_BETTING_SELECTION'}
                 bform.append({'date':day,'course':sample['course'],'time':clock(sample['race_time']),'race_time':sample['race_time'],
                     'race_type':cat(sample),'complete_field':covered,'match_basis':prepared.get('match_basis'),
-                    'runners':prepared['ranked_runners'],'state':'RESEARCH_SCORE_NOT_CALIBRATED' if covered else 'NO_VERIFIED_B_RESEARCH',
+                    'runners':prepared['ranked_runners'],'partial_research':not covered,
+                    'state':'RESEARCH_SCORE_NOT_CALIBRATED' if covered else 'PARTIAL_HORSE_FORM_EVIDENCE',
                     'verdict':prepared['verdict']})
             rebuilt.append(prepared)
         ab['models'][model]={'races':rebuilt}
