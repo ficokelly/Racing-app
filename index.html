@@ -377,6 +377,47 @@ summary,a{color:#77e4b8}details .history{color:#b7d7ce}.notice{color:#f1c984}
 .rhp-ab-type button.active{background:#214b5a;color:white;border-color:#87dfc0}
 .rhp-ab-label{font-size:11px;color:#9fe5d6;margin-top:5px}
 .rhp-ab-empty{border:1px dashed #57717b;border-radius:14px;padding:24px 15px;color:#c1ced3;text-align:center}
+
+/* Stage 21 colour-theme integration for Model A/B/C analysis and strategy screens.
+   Visual-only: keep Midnight Emerald original styling, preserve odds and betting logic.
+   Use the same theme tokens as the existing site navigation and racecard buttons. */
+:root[data-rhp-theme]:not([data-rhp-theme="emerald"]) :is(.rhp-ab-switch button,.rhp-ab-type button){
+  background:var(--theme-inner)!important;
+  color:var(--theme-text)!important;
+  border-color:var(--theme-border)!important;
+  box-shadow:none!important;
+}
+:root[data-rhp-theme]:not([data-rhp-theme="emerald"]) :is(.rhp-ab-switch button.active,.rhp-ab-type button.active){
+  background:var(--theme-accent)!important;
+  color:var(--theme-accent-text)!important;
+  border-color:var(--theme-accent)!important;
+}
+:root[data-rhp-theme]:not([data-rhp-theme="emerald"]) :is(.rhp-ab-switch button,.rhp-ab-type button):focus-visible{
+  outline:2px solid var(--theme-accent)!important;
+  outline-offset:3px;
+}
+:root[data-rhp-theme]:not([data-rhp-theme="emerald"]) :is(.rhp-ab-label,.rhp-strategy-items summary){
+  color:var(--theme-accent)!important;
+}
+:root[data-rhp-theme]:not([data-rhp-theme="emerald"]) :is(.rhp-ab-empty,.rhp-strategy-empty){
+  background:var(--theme-panel)!important;
+  color:var(--theme-muted)!important;
+  border-color:var(--theme-border)!important;
+}
+:root[data-rhp-theme]:not([data-rhp-theme="emerald"]) :is(.rhp-strategy-meta span,.rhp-win-chance,.rhp-trend-row){
+  background:var(--theme-inner)!important;
+  color:var(--theme-text)!important;
+  border-color:var(--theme-border)!important;
+}
+:root[data-rhp-theme]:not([data-rhp-theme="emerald"]) .rhp-trend-row.positive{border-left-color:var(--theme-good)!important}
+:root[data-rhp-theme]:not([data-rhp-theme="emerald"]) .rhp-trend-row.negative{border-left-color:var(--theme-bad)!important}
+/* High-contrast text within newly added strategy content on both light themes. */
+:root[data-rhp-theme="white"] :is(.rhp-strategy-panel,.rhp-strategy-items,.rhp-strategy-items .panel,.rhp-strategy-items .horse,.rhp-ab-empty,.rhp-strategy-empty){
+  color:var(--theme-text)!important;
+}
+:root[data-rhp-theme="heritage"] :is(.rhp-strategy-panel,.rhp-strategy-items,.rhp-strategy-items .panel,.rhp-strategy-items .horse,.rhp-ab-empty,.rhp-strategy-empty){
+  color:var(--theme-text)!important;
+}
 </style><link rel="manifest" href="./manifest.webmanifest">
 <link rel="apple-touch-icon" href="./racing-icon.png">
 <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
