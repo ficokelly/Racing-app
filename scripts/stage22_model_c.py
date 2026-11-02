@@ -21,7 +21,7 @@ import stage19_live_b as LB
 import stage21_live_c as OLD
 
 UTC=dt.timezone.utc; TZ=ZoneInfo('Europe/Dublin')
-VERSION='model-c-v2-all-history-2026-11'
+VERSION='model-c-v2-stage24-identity-corrected-2026-11'
 WINDOWS=(3,5,10,20,100)
 BASE=B.B_FEATURES+['recent_trainer_synergy','course_specialism','relative_form_strength','trainer_jockey_course_form']
 EXTRA=[f'history_age_{w}y' for w in WINDOWS]+[f'history_rating_{w}y' for w in WINDOWS]+[f'history_weight_{w}y' for w in WINDOWS]+[f'history_sample_{w}y' for w in WINDOWS]
@@ -294,6 +294,7 @@ def train(db,mapping,root,force=False):
  holdout_all=summary(allrows);holdout_selected=selection_summary(holdout,chosen,gate)
  bydisc={t:summary([r for r in allrows if r['discipline']==t]) for t in ('flat','aw','jumps')}
  new={'version':VERSION,'state':'HISTORICALLY_TRAINED_V2','trained_at':now.isoformat(),
+  'history_integrity_version':'stage24-2026-11-history-identity-v1',
   'source_first_date':coverage['first_date'],'source_last_date':coverage['last_date'],
   'source_races_all_periods':coverage['total_races_in_db'],'features':FEATURES,'model':chosen,
   'selected_gate':gate,'selected_candidate':choices[0][2],
@@ -382,7 +383,7 @@ def live(db,mapping,root,day=None):
  root=Path(root);data=root/'data';day=day or dt.datetime.now(TZ).date().isoformat();now=dt.datetime.now(UTC)
  model=read(data/'strategy-model-c-historical.json')
  output={'version':2,'model':'C','model_version':model.get('version'),'day':day,'generated_at':now.isoformat(),
-  'state':'UNAVAILABLE','races':[],'selections':0,'warning':'Model C v2 unverified as profitable; external evidence may be uncalibrated.'}
+  'state':'UNAVAILABLE','races':[],'selections':0,'warning':'Model C v2 is unproven on ROI; sparse form and extreme model/market disagreement block official picks. Original discoveries remain archived.'}
  if model.get('version')!=VERSION or model.get('state')!='HISTORICALLY_TRAINED_V2':
   output['reason']='NO_VALIDATED_V2_MODEL';atomic_json(data/'strategy-c-probabilities.json',output);return output
  cards=read(data/'racecards.json');odds=read(data/'latest-odds.json')
@@ -453,21 +454,36 @@ def live(db,mapping,root,day=None):
     'paddypower_decimal':actual,'bookmaker_prices':allbooks,
     'expected_roi_if_price_current_pct':round(100*(float(p[idx])*actual-1),2) if actual else None,
     'external_source_count':sum(norm(z.get('horse'))==norm(r.get('horse')) for z in signals)})
+  # Live risk review is a CONSERVATIVE safety screen, not an optimized or validated ROI strategy.
+  # In particular, very sparse runner form or extreme disagreement with market
+  # prices must not become a promoted pick just because a probability model is confident.
+  discovery_selected=bool(selected)
+  risk_reasons=[]
+  leader=picks[i]
+  if leader['form_runs']<3:risk_reasons.append('FEWER_THAN_3_RECORDED_PRIOR_RUNS')
+  pp_odds=leader.get('paddypower_decimal')
+  if not pp_odds or pp_odds<=1:risk_reasons.append('NO_MATCHED_PADDY_POWER_PRICE')
+  elif float(p[i])/(1/pp_odds)>1.65:risk_reasons.append('UNVALIDATED_MODEL_MARKET_DISAGREEMENT')
+  if discovery_selected and risk_reasons:
+   selected=False
   sources_matched=[s for s in signals if norm(s.get('horse'))==norm(rs[i]['horse']) and (ts:=parse(s.get('observed_at'))) and ts<off]
   a=rs[i]['horse'];b=rs[j]['horse']
+  caution=(' Earlier C discovery gate nominated this horse, but the live safety review withheld selection: '+', '.join(risk_reasons)+'.') if discovery_selected and not selected else ''
   message=(f'Model C v2 ranks {a} first at {100*p[i]:.1f}% versus {b} at {100*p[j]:.1f}%. '
    f'Long-horizon historical comparison: {len(past)} earlier comparable races ({match.lower().replace("_"," ")}). '
-   f'Pre-race form: {int(round(math.expm1(features[i]["horse_starts"]))) } recorded runs. '
+   f'Pre-race form: {int(round(math.expm1(features[i]["horse_starts"]))) } matched previous runs; this is not a guaranteed complete career record. '
    f'External evidence: {len(sources_matched)} matching explicit tips; small pre-off adjustment is experimental and unvalidated. '
-   +('Selected by the frozen discovery-era gap rule.' if selected else 'No forced pick: historical confidence and separation insufficient.'))
+   +('Experimental selection passed the sparse-form and market-sanity checks. No verified positive ROI is claimed.' if selected else 'No official selection after independent model/policy review.')+caution)
   output['races'].append({'model':'C','model_version':VERSION,'date':day,'course':rs[0]['course'],'time':t,
    'race_time':rs[0]['race_time'],'race_id':rs[0].get('race_id'),'race_name':rs[0].get('race_name'),
    'race_type':B.surf(rs[0]['course'],LB.norm_type(rs[0]),rs[0].get('surface'),rs[0].get('going')),
    'field_size':len(rs),'match_basis':match,'historical_examples':len(past),'runners':picks,
    'ranking':[{'horse':rs[k]['horse'],'probability':round(float(p[k]),6)} for k in rank],
-   'selection':picks[i] if selected else None,'selection_status':'SELECTED' if selected else 'NO_SELECTION',
+   'selection':picks[i] if selected else None,'selection_status':'SELECTED' if selected else ('RISK_FILTERED' if discovery_selected else 'NO_SELECTION'),
+   'provisional_discovery_leader':{'horse':leader['horse'],'win_probability':leader['win_probability'],'form_runs':leader['form_runs'],'paddypower_decimal':leader['paddypower_decimal']} if discovery_selected and not selected else None,
    'decision':{'leader':a,'second':b,'margin_pp':round(100*float(p[i]-p[j]),2),
     'threshold_frozen':True,'selected_gate':model['selected_gate'],'external_sources':sources_matched,
+    'safety_review':{'discovery_selected':discovery_selected,'pass':not risk_reasons,'reasons':risk_reasons,'min_form_runs':3,'max_model_to_market_ratio':1.65,'note':'Not empirically calibrated or proven profitable'},
     'features_snapshot':x.round(6).tolist(),'shadow':shadow,'historical_model_probabilities':raw_p.round(6).tolist()},
    'verdict':message,'published_at':now.isoformat(),'complete_field':True})
  output['state']='READY' if output['races'] else 'NO_UPCOMING_COMPLETE_FIELDS'
