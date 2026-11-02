@@ -457,17 +457,31 @@ jobs:
           set -euo pipefail
           python scripts/stage24_history_integrity.py self-test
           python scripts/stage24_history_integrity.py prepare --db "$STAGE18_DB" --repo . --strict
+          python - <<'REQUIRE_CORRECTED_MODEL_A'
+          import json
+          d=json.load(open('data/strategy-historical-model.json'))
+          assert d.get('history_integrity_version')=='stage25-2026-11-starter-identity-v2', 'Run corrected Stage 13 before Stage 18; Model A features must be aligned.'
+          print('A/B comparability: same corrected pedigree and starter policy')
+          REQUIRE_CORRECTED_MODEL_A
           python - <<'SAVE_OLD_B'
           from pathlib import Path
           import shutil
           x=Path('data/strategy-model-b-historical.json')
-          if x.exists():shutil.copyfile(x,'data/strategy-model-b-pre-stage24.json')
+          if x.exists():shutil.copyfile(x,'data/strategy-model-b-pre-stage25.json')
           SAVE_OLD_B
       - name: Train independent Model B and calculate A versus B 2025 SP ROI
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p stage18_audit data
+          python - <<'B_VERSION'
+          from pathlib import Path
+          p=Path('scripts/stage18_historical_ab.py')
+          original=p.read_text()
+          assert 'stage18-historical-trends-form-conditional-v1' in original
+          p.write_text(original.replace('stage18-historical-trends-form-conditional-v1',
+                                      'stage18-historical-trends-form-conditional-v2-stage25'))
+          B_VERSION
           python -u scripts/stage18_historical_ab.py \
             --db "$STAGE18_DB" --mapping "$STAGE18_MAP" \
             --model-a data/strategy-historical-model.json \
@@ -501,7 +515,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add data/strategy-model-b-historical.json data/strategy-ab-historical-roi.json
-          if test -f data/strategy-model-b-pre-stage24.json; then git add data/strategy-model-b-pre-stage24.json; fi
+          if test -f data/strategy-model-b-pre-stage25.json; then git add data/strategy-model-b-pre-stage25.json; fi
           git add data/history-integrity-audit.json
           if git diff --cached --quiet; then echo 'Historical report already current';exit 0;fi
           git commit -m 'Publish held-out 2025 Model A/B SP ROI and historical Model B'
