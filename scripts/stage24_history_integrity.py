@@ -212,13 +212,12 @@ VERIFIED_COASTAL_FORM = {
 
 
 def restore_verified_worcester_form(con,through_date):
- '''Recover exactly one proven past start without joining homonymous careers.
+ '''Recover independently documented 2025 Worcester run without merging identities.
 
- Only the runner on 2025-05-13 at Worcester is eligible. If the whole source
- race is not identifiable, preserve its single verified runner in a *form-only*
- synthetic group. The one-run group is excluded from race-level testing
- (which requires >=2 starters and a single winner), yet contributes a genuine
- chronologically earlier start to individual-form statistics.
+ Source rows with conflicting pedigree MUST remain untouched and visible in
+ the audit. A verified form-only row represents the documented start in a
+ separate single-run race excluded from race-level testing and ROI, and only
+ contributes to chronologically earlier individual form.
  '''
  spec=VERIFIED_COASTAL_FORM
  audit={'horse':'Coastal Command','date':spec['date'],'course':'Worcester',
@@ -226,61 +225,89 @@ def restore_verified_worcester_form(con,through_date):
         'form_only':True,'original_pedigree_preserved':True}
  if through_date<spec['date']:
   audit['state']='NOT_YET_APPLICABLE';return audit
+ form_rid='rhp-st24-verified-form:2025-05-13:worcester:1530:coastalcommand'
+ form_key='verified:coastalcommand:2025-05-13:worcester:1530'
+
+ # A prior run of the repair may have inserted the form-only record. Keep
+ # these runs idempotent; never count that record as an ambiguous source row.
+ prior=con.execute('''SELECT h.sire,h.dam,h.finish_pos,h.age,r.source
+  FROM historical_runs h JOIN historical_races r ON r.id=h.race_id
+  WHERE h.race_id=? AND h.runner_key=?''',(form_rid,form_key)).fetchone()
+ if prior:
+  if (clean(prior[0]),clean(prior[1]),prior[2])!=(clean(spec['sire']),clean(spec['dam']),spec['position']):
+   raise RuntimeError('Previously inserted Worcester form-only evidence no longer matches verified identity')
+  audit['state']='FORM_ONLY_ALREADY_PRESENT'
+  audit['matched_race_id']=form_rid
+  return audit
+
  candidates=con.execute('''SELECT h.race_id,h.runner_key,h.horse_name,h.sire,h.dam,
    h.finish_pos,h.age,h.trainer,h.jockey,r.course
    FROM historical_runs h JOIN historical_races r ON r.id=h.race_id
-   WHERE r.race_date=?''',(spec['date'],)).fetchall()
+   WHERE r.race_date=? AND r.id<>?''',(spec['date'],form_rid)).fetchall()
  matching=[r for r in candidates if clean(r[9])==spec['course'] and clean(r[2])==spec['horse']]
  if len(matching)>1:
   raise RuntimeError('Worcester 2025 Coastal Command has ambiguous duplicate source rows; no automatic form merge')
+ conflicting_source=False
  if matching:
   row=matching[0]
   if row[5]!=spec['position'] or (row[6] is not None and row[6]!=spec['age']):
    raise RuntimeError('Worcester 2025 Coastal Command source result conflicts in finish/age')
-  if (row[3] and clean(row[3])!=clean(spec['sire'])) or (row[4] and clean(row[4])!=clean(spec['dam'])):
-   raise RuntimeError('Worcester 2025 Coastal Command source pedigree contradicts independent evidence')
-  if clean(row[3])==clean(spec['sire']) and clean(row[4])==clean(spec['dam']):
+  conflicting_source=bool((row[3] and clean(row[3])!=clean(spec['sire'])) or
+                          (row[4] and clean(row[4])!=clean(spec['dam'])))
+  if conflicting_source:
+   # The source row may belong to a homonymous animal, or its pedigree may be
+   # incorrectly recorded. Either way, never alter its identity or quietly
+   # attach verified details to it. Use isolated evidence instead.
+   audit['conflicting_source']={
+     'race_id':row[0], 'runner_key':row[1], 'horse':row[2],
+     'source_sire':row[3], 'source_dam':row[4],
+     'source_trainer':row[7], 'source_jockey':row[8],
+     'resolution':'QUARANTINED_SOURCE_ROW_UNCHANGED'}
+  elif clean(row[3])==clean(spec['sire']) and clean(row[4])==clean(spec['dam']):
    audit['state']='PRESENT_AND_IDENTITY_CONFIRMED'
    audit['form_only']=False
+   audit['matched_race_id']=row[0]
+   return audit
   else:
-   # A pedigree-less source runner gets an auditable correction only for the
-   # independently verified date+venue+name+position+age record.
+   # Both row identity and finishing position agree; fill ONLY missing
+   # pedigree fields, preserving any existing nonmissing values.
    con.execute('UPDATE historical_runs SET sire=?,dam=? WHERE race_id=? AND runner_key=?',
      (row[3] or spec['sire'],row[4] or spec['dam'],row[0],row[1]))
    audit['state']='EXISTING_SOURCE_ROW_CORRECTED'
    audit['form_only']=False
-  audit['matched_race_id']=row[0];con.commit();return audit
+   audit['matched_race_id']=row[0]
+   con.commit();return audit
 
- # Confirm we are not overlooking a different identity on the same dated card.
- # Look for the historically recorded winner in the *correct* 15:30 division.
- # Date/course alone is NOT enough: Worcester had two NHF divisions that day.
- winners=con.execute('''SELECT DISTINCT h.race_id,r.course
+ # Only when no same-name source row conflicts may the verified result be
+ # attached to a uniquely identified full historical field.
+ if not conflicting_source:
+  winners=con.execute('''SELECT DISTINCT h.race_id,r.course
     FROM historical_runs h JOIN historical_races r ON r.id=h.race_id
     WHERE r.race_date=? AND h.finish_pos=1''',(spec['date'],)).fetchall()
- candidates=[]
- for rid,course in winners:
-  if clean(course)!=spec['course']:continue
-  names=[(clean(v[0]),v[1]) for v in con.execute('SELECT horse_name,finish_pos FROM historical_runs WHERE race_id=?',(rid,))]
-  if ('iceintheveins',1) in names and any(name=='lyricalchoice' for name,_ in names):
-   candidates.append(rid)
- if len(candidates)>1:
-  raise RuntimeError('Multiple possible Worcester 15:30 2025 source races; refusing guessed linkage')
- if candidates:
-  rid=candidates[0]
-  audit['state']='RECOVERED_IN_EXISTING_FIELD'
-  audit['form_only']=False
+  existing=[]
+  for rid,course in winners:
+   if clean(course)!=spec['course']:continue
+   names=[(clean(v[0]),v[1]) for v in con.execute('SELECT horse_name,finish_pos FROM historical_runs WHERE race_id=?',(rid,))]
+   if ('iceintheveins',1) in names and any(name=='lyricalchoice' for name,_ in names):
+    existing.append(rid)
+  if len(existing)>1:
+   raise RuntimeError('Multiple possible Worcester 15:30 2025 source races; refusing guessed linkage')
+  if existing:
+   rid=existing[0];audit['state']='RECOVERED_IN_EXISTING_FIELD';audit['form_only']=False
+  else:
+   rid=form_rid;audit['state']='RECOVERED_AS_FORM_ONLY_EVIDENCE'
  else:
-  # Unmatched source race: never fabricate its eight other runners or a
-  # winner. This single confirmed third-place start contributes to form only.
-  rid='rhp-st24-verified-form:2025-05-13:worcester:1530:coastalcommand'
+  # Intentionally do NOT change the conflicting source race's runner count,
+  # which would otherwise contaminate training or SP/ROI backtests.
+  rid=form_rid;audit['state']='CONFLICTING_SOURCE_QUARANTINED_FORM_ONLY'
+
+ if rid==form_rid:
   con.execute('''INSERT OR IGNORE INTO historical_races
     (id,race_date,course,race_type,surface,distance_f,going,race_class,source)
     VALUES (?,?,?,?,?,?,?,?,?)''',
     (rid,spec['date'],'Worcester','NH Flat','turf',spec['distance_f'],None,
      'Class 5','rhp-stage24-verified-form-only-external-evidence'))
-  audit['state']='RECOVERED_AS_FORM_ONLY_EVIDENCE'
-
- run={'race_id':rid,'runner_key':'verified:coastalcommand:2025-05-13:worcester:1530',
+ run={'race_id':rid,'runner_key':form_key,
       'horse_source_id':None,'horse_name':'Coastal Command',
       'horse_name_norm':'COASTALCOMMAND','horse_country':'GB','foaled':None,
       'finish_pos':spec['position'],'outcome':'FINISHED','trainer':spec['trainer'],
@@ -291,14 +318,13 @@ def restore_verified_worcester_form(con,through_date):
  cols=sorted(columns(con,'historical_runs'))
  con.execute('INSERT OR IGNORE INTO historical_runs ('+','.join(cols)+') VALUES ('+','.join('?'*len(cols))+')',
              [run.get(k) for k in cols])
- # An existing row with an identical key but contradictory pedigree must
- # never be silently accepted by INSERT OR IGNORE.
  check=con.execute('SELECT sire,dam,finish_pos FROM historical_runs WHERE race_id=? AND runner_key=?',
                    (rid,run['runner_key'])).fetchone()
  if not check or clean(check[0])!=clean(spec['sire']) or clean(check[1])!=clean(spec['dam']) or check[2]!=spec['position']:
   raise RuntimeError('Verified Worcester form insert could not be independently checked')
  con.commit();audit['matched_race_id']=rid
  return audit
+
 
 def audit_today(con,repo,day):
  path=Path(repo)/'data/racecards.json'
@@ -381,14 +407,32 @@ def self_test():
   audit=restore_verified_worcester_form(con,'2026-10-08')
   assert audit['state']=='RECOVERED_AS_FORM_ONLY_EVIDENCE'
   assert con.execute("SELECT COUNT(*) FROM historical_runs WHERE horse_name_norm='COASTALCOMMAND' AND sire='Scorpion' AND dam='Spring Flight'").fetchone()[0]==1
-  assert restore_verified_worcester_form(con,'2026-10-08')['state']=='PRESENT_AND_IDENTITY_CONFIRMED'
+  assert restore_verified_worcester_form(con,'2026-10-08')['state']=='FORM_ONLY_ALREADY_PRESENT'
   assert con.execute("SELECT sire FROM historical_runs WHERE race_id='same-name-2013'").fetchone()[0]=='Different Sire'
+  # A contradictory same-date, same-venue, same-name pedigree must NOT
+  # be overwritten, but it must not block independently documented form.
+  con.execute("INSERT INTO historical_races(id,race_date,course) VALUES('work-conflict','2025-05-13','Worcester')")
+  con.execute("INSERT INTO historical_runs(race_id,runner_key,horse_name,horse_name_norm,finish_pos,outcome,age,sire,dam,trainer) VALUES('work-conflict','c','Coastal Command','COASTALCOMMAND',3,'FINISHED',5,'Other Sire','Other Dam','Original Trainer')")
+  con.execute("DELETE FROM historical_runs WHERE race_id='rhp-st24-verified-form:2025-05-13:worcester:1530:coastalcommand'")
+  con.execute("DELETE FROM historical_races WHERE id='rhp-st24-verified-form:2025-05-13:worcester:1530:coastalcommand'")
+  conflict=restore_verified_worcester_form(con,'2026-10-08')
+  assert conflict['state']=='CONFLICTING_SOURCE_QUARANTINED_FORM_ONLY'
+  assert conflict['conflicting_source']['source_sire']=='Other Sire'
+  assert con.execute("SELECT sire,dam,trainer FROM historical_runs WHERE race_id='work-conflict'").fetchone()==('Other Sire','Other Dam','Original Trainer')
+  assert con.execute("SELECT COUNT(*) FROM historical_runs WHERE race_id='rhp-st24-verified-form:2025-05-13:worcester:1530:coastalcommand'").fetchone()[0]==1
+  assert restore_verified_worcester_form(con,'2026-10-08')['state']=='FORM_ONLY_ALREADY_PRESENT'
+  con.execute("DELETE FROM historical_runs WHERE race_id='work-conflict'")
+  con.execute("DELETE FROM historical_races WHERE id='work-conflict'")
+  con.execute("DELETE FROM historical_runs WHERE race_id='rhp-st24-verified-form:2025-05-13:worcester:1530:coastalcommand'")
+  con.execute("DELETE FROM historical_races WHERE id='rhp-st24-verified-form:2025-05-13:worcester:1530:coastalcommand'")
   # A preexisting verified-result row lacking parents can be repaired without
   # fabricating a new starter or using the unrelated 2013 horse.
   con.execute("INSERT INTO historical_races(id,race_date,course) VALUES('work2','2025-05-13','Worcester')")
   # This deliberately creates a *second* 2025 source row, which must fail
   # if a fully-verified original already exists: duplicate guard test below.
   con.execute("INSERT INTO historical_runs(race_id,runner_key,horse_name,horse_name_norm,finish_pos,outcome,age) VALUES('work2','c','Coastal Command','COASTALCOMMAND',3,'FINISHED',5)")
+  con.execute("INSERT INTO historical_races(id,race_date,course) VALUES('work3','2025-05-13','Worcester')")
+  con.execute("INSERT INTO historical_runs(race_id,runner_key,horse_name,horse_name_norm,finish_pos,outcome,age) VALUES('work3','c','Coastal Command','COASTALCOMMAND',3,'FINISHED',5)")
   try:restore_verified_worcester_form(con,'2026-10-08')
   except RuntimeError as error:assert 'ambiguous duplicate' in str(error)
   else:raise AssertionError('Ambiguous same-name 2025 duplicate was not rejected')
