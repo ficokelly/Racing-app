@@ -21,7 +21,7 @@ import stage19_live_b as LB
 import stage21_live_c as OLD
 
 UTC=dt.timezone.utc; TZ=ZoneInfo('Europe/Dublin')
-VERSION='model-c-v2-stage24-identity-corrected-2026-11'
+VERSION='model-c-v2-stage25-verified-starters-2026-11'
 WINDOWS=(3,5,10,20,100)
 BASE=B.B_FEATURES+['recent_trainer_synergy','course_specialism','relative_form_strength','trainer_jockey_course_form']
 EXTRA=[f'history_age_{w}y' for w in WINDOWS]+[f'history_rating_{w}y' for w in WINDOWS]+[f'history_weight_{w}y' for w in WINDOWS]+[f'history_sample_{w}y' for w in WINDOWS]
@@ -294,7 +294,7 @@ def train(db,mapping,root,force=False):
  holdout_all=summary(allrows);holdout_selected=selection_summary(holdout,chosen,gate)
  bydisc={t:summary([r for r in allrows if r['discipline']==t]) for t in ('flat','aw','jumps')}
  new={'version':VERSION,'state':'HISTORICALLY_TRAINED_V2','trained_at':now.isoformat(),
-  'history_integrity_version':'stage24-2026-11-history-identity-v1',
+  'history_integrity_version':'stage25-2026-11-starter-identity-v2',
   'source_first_date':coverage['first_date'],'source_last_date':coverage['last_date'],
   'source_races_all_periods':coverage['total_races_in_db'],'features':FEATURES,'model':chosen,
   'selected_gate':gate,'selected_candidate':choices[0][2],
