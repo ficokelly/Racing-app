@@ -35,30 +35,46 @@ jobs:
       - name: Archive older odds snapshots (no API call)
         run: python archive-odds-history.py
 
+      - name: Send newly detected Power Fav alerts
+        env:
+          ONESIGNAL_API_KEY: ${{ secrets.ONESIGNAL_API_KEY }}
+          ONESIGNAL_SUBSCRIPTION_ID: ${{ secrets.ONESIGNAL_SUBSCRIPTION_ID }}
+        run: python send-power-fav-alerts.py
 
       - name: Update final UK and Irish race results
         env:
           PUNTERSEDGE_API_KEY: ${{ secrets.PUNTERSEDGE_API_KEY }}
         run: python collect-puntersedge-results.py
 
-      - name: Preserve all verified final results before rolling feed changes
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p stage16_tmp
-          printf '%s' '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' | base64 --decode | gzip --decompress > stage16_tmp/stage16_results.py
-          python stage16_tmp/stage16_results.py --repo . --archive
-
       - name: Update and archive complete racecards once an hour
         env:
           RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
           RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
         run: |
-          if [ "${{ github.event_name }}" != "workflow_dispatch" ] && [ "$(date -u +%M)" -ge 5 ]; then
-            echo 'Skipping racecards this run; hourly archive refresh only.'
-            exit 0
+          set -euo pipefail
+          # GitHub's scheduled runners frequently start after hh:05. Compare the
+          # published refresh hour, not the wall-clock start minute. This runs
+          # at most once per UTC hour, but catches up immediately if stale.
+          if python - <<'RHP_RACECARD_FRESHNESS'
+          import datetime as dt,json
+          from pathlib import Path
+          path=Path('data/racecards.json')
+          try:
+           payload=json.loads(path.read_text())
+           last=dt.datetime.fromisoformat(payload['collected_at'].replace('Z','+00:00'))
+           fresh=(dt.datetime.now(dt.timezone.utc)-last).total_seconds()<3600 and last.astimezone(dt.timezone.utc).hour==dt.datetime.now(dt.timezone.utc).hour
+           if fresh and payload.get('runners'):
+            print('Racecards already collected this UTC hour:',last.isoformat())
+            raise SystemExit(0)
+          except (OSError,ValueError,TypeError,KeyError) as exc:
+           print('Racecards need refresh:',exc)
+          raise SystemExit(1)
+          RHP_RACECARD_FRESHNESS
+          then
+            echo 'Racecards up to date; no extra free-tier API request.'
+          else
+            python collect-racecards.py
           fi
-          python collect-racecards.py
 
       - name: Refresh AW (2) historical track strike rates (offline)
         run: python calculate-aw2-track-stats.py
@@ -67,7 +83,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A data/
+          git add data/aw2-track-stats.json data/latest-odds.json data/odds-history.json data/odds-archive/ data/power-fav-alert-state.json data/race-results.json data/racecards.json data/racecards-archive.json
           if git diff --cached --quiet; then
             echo 'No changes to publish.'
             exit 0
