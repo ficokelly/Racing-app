@@ -1362,27 +1362,35 @@ function rhpRaceVerdict(list,completed){
 function rcModelRace(course,date,time){
  const target=commentaryKey(course,date,time);
  if(rcSelectedModel==='C')return strategyCFeed?.version===2&&strategyCFeed?.day===date?(strategyCFeed.races||[]).find(r=>commentaryKey(r.course,r.date,r.time)===target):null;
- if(rcSelectedModel==='B')return strategyBProbFeed?.day===date?(strategyBProbFeed.races||[]).find(r=>commentaryKey(r.course,r.date,r.time)===target):null;
+ if(rcSelectedModel==='B'){
+   const fromResearch=strategyBProbFeed?.day===date?(strategyBProbFeed.races||[]).find(r=>commentaryKey(r.course,r.date,r.time)===target):null;
+   if(fromResearch)return fromResearch;
+   return strategyABSelectionsFeed?.day===date?(strategyABSelectionsFeed.models?.B?.races||[]).find(r=>commentaryKey(r.course,r.date,r.time)===target):null;
+ }
  return commentaryRace(course,date,time);
+
 }
 function rcModelHorse(horse,course,date,time){
  const r=rcModelRace(course,date,time);
  if(!r)return null;
- const a=r.runners||[];
+ const a=r.runners||r.ranked_runners||[];
  return a.find(x=>horseMatchKey(x.horse)===horseMatchKey(horse))||null;
 }
 function rhpSelectedModelVerdict(sample,date,field){
  const time=clock(sample.race_time),race=rcModelRace(sample.course,date,time),model=rcSelectedModel;
  if(model==='A'){
    const summary=race?.verdict?.summary||race?.summary;
-   return summary?`<div class="rhp-verdict"><strong>Model A · historical probability verdict</strong><p>${safe(summary)}</p></div>`:
-    `<div class="rhp-verdict"><strong>Model A</strong><p>No published Model A commentary for this race. Probabilities are only shown where they have been validated.</p></div>`;
+   if(summary)return `<div class="rhp-verdict"><strong>Model A · historical probability verdict</strong><p>${safe(summary)}</p></div>`;
+   const pf=strategyProbabilityFeed?.state==='VALIDATED'&&strategyProbabilityFeed.day===date?(strategyProbabilityFeed.races||[]).find(x=>x.complete_field===true&&commentaryKey(x.course,x.date,x.time)===commentaryKey(sample.course,date,time)):null;
+   const ranking=(pf?.runners||[]).filter(x=>Number.isFinite(Number(x.probability))).sort((x,y)=>Number(y.probability)-Number(x.probability));
+   if(ranking.length>1)return `<div class="rhp-verdict"><strong>Model A · validated probability ranking</strong><p>${safe(ranking[0].horse)} ${(100*Number(ranking[0].probability)).toFixed(1)}%, followed by ${safe(ranking[1].horse)} ${(100*Number(ranking[1].probability)).toFixed(1)}%. No verified race-specific commentary was published. These are estimated winning chances, not proven value bets.</p></div>`;
+   return `<div class="rhp-verdict"><strong>Model A · data unavailable</strong><p>No complete validated probability assessment was published for this field. Rerun Stage 13 after the racecards have been collected; no percentages will be invented.</p></div>`;
  }
  if(model==='B'){
-   const entries=Array.isArray(race?.runners)?[...race.runners].sort((a,b)=>Number(b.probability||0)-Number(a.probability||0)):[];
-   if(entries.length<2)return '<div class="rhp-verdict"><strong>Model B</strong><p>Awaiting a complete historical-form probability assessment for this race.</p></div>';
+   const entries=Array.isArray(race?.runners)?[...race.runners].filter(x=>x.score!=null&&Number.isFinite(Number(x.score))).sort((a,b)=>Number(b.score)-Number(a.score)):[];
+   if(entries.length<2)return `<div class="rhp-verdict"><strong>Model B · historical-first research</strong><p>${safe(race?.verdict||'No verified named-event or same-course comparable research has been published for the whole field. This is a missing-data status, not a negative judgement on any runner.')}</p></div>`;
    const a=entries[0],b=entries[1];
-   return `<div class="rhp-verdict"><strong>Model B · historical trends and individual form</strong><p>${safe(a.horse)} ranks first (${(100*Number(a.probability)).toFixed(1)}%), ahead of ${safe(b.horse)} (${(100*Number(b.probability)).toFixed(1)}%). Historical match: ${safe(race.match_basis||'not supported')}. This model has not shown positive overall historical ROI.</p></div>`;
+   return `<div class="rhp-verdict"><strong>Model B · trend and individual form ranking</strong><p>${safe(a.horse)} leads on research score ${Number(a.score).toFixed(1)}, followed by ${safe(b.horse)} at ${Number(b.score).toFixed(1)}. ${safe(race?.verdict||'')} These are research scores, NOT calibrated win probabilities or betting recommendations.</p></div>`;
  }
  if(!race)return '<div class="rhp-verdict"><strong>Model C · independent research</strong><p>New Model C v2 assessment not yet published for this field. It requires a completed Stage 22 full-history run and a complete current racecard.</p></div>';
  const sourceLinks=(race.decision?.external_sources||[]).slice(0,2).map(x=>`<a href="${safe(x.source_url)}" target="_blank" rel="noopener noreferrer">External source</a>`).join(' · ');
@@ -1391,7 +1399,10 @@ function rhpSelectedModelVerdict(sample,date,field){
 function rhpSelectedHorseComment(r,x,date){
  if(rcSelectedModel==='A'){
    const own=commentaryHorse(r.horse,r.course,date,clock(r.race_time));
-   return safe(own?.summary||'No individual Model A commentary is available yet.');
+   if(own?.summary)return safe(own.summary);
+   const pf=strategyProbabilityFeed?.state==='VALIDATED'&&strategyProbabilityFeed.day===date?(strategyProbabilityFeed.races||[]).find(x=>x.complete_field===true&&commentaryKey(x.course,x.date,x.time)===commentaryKey(r.course,date,clock(r.race_time))):null;
+   const horse=(pf?.runners||[]).find(x=>horseMatchKey(x.horse)===horseMatchKey(r.horse));
+   return horse&&Number.isFinite(Number(horse.probability))?`Model A estimates ${(100*Number(horse.probability)).toFixed(1)}% win chance using verified pre-race information. Historic starts: ${safe(horse.prior_starts??'—')}; trainer course win rate ${horse.trainer_course_historical_rate!=null?(100*Number(horse.trainer_course_historical_rate)).toFixed(1)+'%':'unavailable'}. Individual event commentary has not been published.`:'No validated Model A probability or individual commentary has been published for this runner.';
  }
  const horse=rcModelHorse(r.horse,r.course,date,clock(r.race_time));
  if(!horse)return `Model ${safe(rcSelectedModel)} has no independently published assessment for this runner.`;
@@ -1400,13 +1411,14 @@ function rhpSelectedHorseComment(r,x,date){
    const odds=horse.paddypower_decimal;
    return `Model C v2 estimates ${Number.isFinite(prob)?(prob*100).toFixed(1)+'%':'no'} win probability; ${safe(horse.form_runs??'—')} historic runs, ${safe(horse.positive_count??'—')} positive and ${safe(horse.negative_count??'—')} negative historical signals. Paddy Power ${odds>1?safe(Number(odds).toFixed(2)):'not available'}; ${safe(horse.external_source_count||0)} qualifying external references. Experimental estimate, not a guarantee.`;
  }
- return `Model B estimated win chance: ${(100*Number(horse.probability||0)).toFixed(1)}%; ${safe(horse.positive_count??'—')} positive and ${safe(horse.negative_count??'—')} negative evidence. ${safe(horse.prior_starts??'—')} historical starts. This model has not shown positive overall ROI.`;
+ return horse.score!=null&&Number.isFinite(Number(horse.score))?`Model B research score ${Number(horse.score).toFixed(1)}/100; ${safe(horse.positive_count??'—')} positive and ${safe(horse.negative_count??'—')} negative historical traits; ${safe(horse.form_runs??'—')} verified historic form runs. This score is NOT a winning probability.`:'No verified Model B whole-field research score available for this runner.';
 }
 function rhpSelectedModelBadge(horse,course,date,time){
  if(rcSelectedModel==='A')return strategyWinBadge(horse,course,date,time);
  const row=rcModelHorse(horse,course,date,time);
- const v=Number(rcSelectedModel==='C'?row?.win_probability:row?.probability);
- return `<span class="rhp-win-chance">Model ${safe(rcSelectedModel)} win ${row&&Number.isFinite(v)?(100*v).toFixed(1)+'%':'—'}</span>`;
+ if(rcSelectedModel==='B')return `<span class="rhp-win-chance" title="Uncalibrated form research score, not win probability">Model B score ${row?.score!=null&&Number.isFinite(Number(row.score))?Number(row.score).toFixed(1):'—'}</span>`;
+ const v=Number(row?.win_probability);
+ return `<span class="rhp-win-chance" title="Experimental estimate. Model C has not demonstrated positive ROI.">Model C win ${row&&Number.isFinite(v)?(100*v).toFixed(1)+'%':'—'}</span>`;
 }
 
 function renderRacecards(popupRace=null){const host=popupRace?$('race-runner-list'):$('rc-list');if(!host)return;if(!popupRace)document.querySelectorAll('[data-rc-day]').forEach(b=>{const chosen=b.dataset.rcDay===rcSelectedDay;b.classList.toggle('active',chosen);b.setAttribute('aria-pressed',String(chosen))});if(!popupRace)$('rc-meetings-heading').textContent=rcSelectedDay==='yesterday'?'Yesterday’s Meetings & Results':rcSelectedDay==='tomorrow'?'Tomorrow’s Meetings & Races':'Today’s Meetings & Races';const navTitle=document.querySelector('.rc-next-head h2');if(navTitle&&!popupRace)navTitle.textContent=rcSelectedDay==='yesterday'?'🏇 Yesterday’s Races':'🏇 Next Races';if(!popupRace){renderRaceNavigation();rhpSelectDefaultRace();rhpMarkRaceNav();}const today=popupRace?popupRace.day:rcDateKey();const m=$('rc-meeting').value,t=$('rc-time').value,kind=$('rc-type').value,last=$('rc-result').value,gear=$('rc-gear').value,market=$('rc-market').value,sort=$('rc-sort').value;
@@ -1643,7 +1655,7 @@ function setup(){rhpSetupNavigation();loadPowerResults();$('pr-period').onchange
 // Automatically notice freshly published GitHub Pages data, without additional bookmaker API requests.
 // A changed data file triggers a page reload; unchanged files never reload the page.
 const AUTO_REFRESH_INTERVAL_MS=60000;
-const AUTO_REFRESH_FILES=['latest-odds.json','odds-history.json','racecards.json','strike-rates.json','strategy-selections.json','strategy-results.json','strategy-commentary.json','strategy-probabilities.json','strategy-ab-selections.json','strategy-ab-results.json','strategy-c-probabilities.json','strategy-c-results.json','race-results.json','racecards-archive.json'];
+const AUTO_REFRESH_FILES=['latest-odds.json','odds-history.json','racecards.json','strike-rates.json','strategy-selections.json','strategy-results.json','strategy-commentary.json','strategy-probabilities.json','strategy-ab-selections.json','strategy-ab-results.json','strategy-c-probabilities.json','strategy-c-results.json','strategy-b-probabilities.json','race-results.json','racecards-archive.json'];
 // Preserve tab, selected filters, collapsed panels and scroll while published data refreshes.
 const RHP_REFRESH_STATE='rhp-auto-refresh-view';
 const RHP_FILTER_IDS=['rc-meeting','rc-time','rc-type','rc-odds','rc-result','rc-gear','rc-market','rc-sort','pr-period','pr-stake','period','bet-status','custom-from','custom-to','hot-min-runs','trainer-days','jockey-days'];
@@ -1899,7 +1911,9 @@ function renderStrategySelections(){
  if(model==='C'){const msg=$('strategy-model-message');if(msg)msg.textContent=strategyCFeed?.version===2?('New Model C v2 · '+safe(strategyCFeed.state)+' · Full historical period, distinct 2023/2024/2025 validation, logged external evidence. Predictions are experimental, not guaranteed profits.'): 'Replacing old Model C: new Stage 22 model is not yet published. Run the new workflow; old C picks are hidden.';}
  else {const msg=$('strategy-model-message');if(msg)msg.textContent=model==='A'?'Model A · independently trained and validated probability model.':'Model B · historical named-event trends and individual form.';}
  const lead=`<div class="panel"><strong>Model ${model} · ${selected.length} live selection${selected.length===1?'':'s'}</strong><p class="hint">${safe(text)} One horse maximum per qualifying race; no forced picks. ${filtered.length-selected.length} race${filtered.length-selected.length===1?'':'s'} without a current selection or already off. Model A supplies the odds-adjacent win percentages throughout the app.</p></div>`;
- host.innerHTML=lead+(selected.length?selected.map(abPickCard).join(''):'<div class="rhp-ab-empty">No pre-off selection meets this model’s independently derived criteria for the chosen date and race type.</div>');
+ const withheld=model==='C'?filtered.filter(r=>r.selection_status==='RISK_FILTERED'&&r.provisional_discovery_leader):[];
+ const withheldMessage=withheld.length?`<div class="rhp-ab-empty"><strong>${withheld.length} earlier C forecast${withheld.length===1?'':'s'} withheld by the new risk review</strong><p class="hint">${withheld.map(r=>safe(r.time+' '+r.course+' — '+r.provisional_discovery_leader.horse)).join(' · ')}. The original pre-off decisions are preserved for auditing, but these are no longer shown as current picks. No replacement was invented.</p></div>`:'';
+ host.innerHTML=lead+(selected.length?selected.map(abPickCard).join(''):'<div class="rhp-ab-empty">No pre-off selection meets this model’s independently derived criteria for the chosen date and race type.</div>')+withheldMessage;
 }
 function abResultsRows(model){
  if(model==='C')return strategyCResultsFeed?.version===2?strategyCResultsFeed.selections||[]:[];
