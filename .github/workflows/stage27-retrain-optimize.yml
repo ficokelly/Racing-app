@@ -1,0 +1,161 @@
+name: Stage 27 - Historical A B C Weighting Research (Safe / No Live Changes)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: stage27-historical-abc-audit
+  cancel-in-progress: false
+
+jobs:
+  corrected-history-research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Check out Racing-app (research only)
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install historical training dependencies
+        run: python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1
+      - name: Restore self-contained challenger optimizer
+        run: |
+          python - <<'STAGE27_RESTORE'
+          import base64,gzip,pathlib
+          pathlib.Path('scripts').mkdir(exist_ok=True)
+          payload='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'
+          pathlib.Path('scripts/stage27_retrain_optimize.py').write_bytes(gzip.decompress(base64.b64decode(payload)))
+          print('Restored independently tested 84-combination challenger optimizer')
+          STAGE27_RESTORE
+      - name: Unit-test the independent retrospective engine
+        run: |
+          python -m py_compile scripts/stage27_retrain_optimize.py
+          python scripts/stage27_retrain_optimize.py --self-test
+          python scripts/stage24_history_integrity.py self-test
+      - name: Download latest nonexpired Stage 2 historical SQLite artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'STAGE27_DOWNLOAD'
+          import json,os,subprocess
+          from pathlib import Path
+          name='stage2-historical-staging-database'
+          repo=os.environ['GITHUB_REPOSITORY']
+          best=None
+          for page in range(1,21):
+           raw=subprocess.check_output(['gh','api','-X','GET',f'repos/{repo}/actions/artifacts','-f','per_page=100','-f',f'page={page}'],text=True)
+           objs=json.loads(raw).get('artifacts',[])
+           for a in objs:
+            if a.get('name')==name and not a.get('expired') and (best is None or a.get('created_at','')>best.get('created_at','')):best=a
+           if len(objs)<100:break
+          if not best:raise SystemExit('Missing unexpired Stage 2 historical SQLite artifact. Run Stage 2 import first.')
+          folder=Path('stage27_sources');folder.mkdir(exist_ok=True)
+          runid=str(best['workflow_run']['id'])
+          print('Downloading corrected-history base artifact',name,'run',runid,flush=True)
+          subprocess.run(['gh','run','download',runid,'--repo',repo,'--name',name,'--dir',str(folder)],check=True)
+          matches=list(folder.rglob('*.sqlite'))
+          if not matches:raise SystemExit('No SQLite file in Stage 2 artifact')
+          p=max(matches,key=lambda q:q.stat().st_size).resolve()
+          print('Historical base SQLite bytes',p.stat().st_size,flush=True)
+          with open(os.environ['GITHUB_ENV'],'a') as f:print('STAGE27_DB='+str(p),file=f)
+          STAGE27_DOWNLOAD
+      - name: Download named-event historical race mapping (same annual race ID)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'STAGE27_MAPPING'
+          import json,os,subprocess
+          from pathlib import Path
+          repo=os.environ['GITHUB_REPOSITORY'];name='stage4-reference-named-events-and-winners'
+          best=None
+          for page in range(1,21):
+           raw=subprocess.check_output(['gh','api','-X','GET',f'repos/{repo}/actions/artifacts','-f','per_page=100','-f',f'page={page}'],text=True)
+           batch=json.loads(raw).get('artifacts',[])
+           for a in batch:
+            if a.get('name')==name and not a.get('expired') and (best is None or a.get('created_at','')>best.get('created_at','')):best=a
+           if len(batch)<100:break
+          if not best:raise SystemExit('Stage 4 exact named-event mapping artifact has expired. Re-run Stage 4 first.')
+          folder=Path('stage27_mapping');folder.mkdir(exist_ok=True)
+          subprocess.run(['gh','run','download',str(best['workflow_run']['id']),'--repo',repo,'--name',name,'--dir',str(folder)],check=True)
+          matches=list(folder.rglob('all_races_with_reference_event_ids.csv'))
+          if not matches:raise SystemExit('Missing all_races_with_reference_event_ids.csv in named-event artifact')
+          path=max(matches,key=lambda q:q.stat().st_size).resolve()
+          with open(os.environ['GITHUB_ENV'],'a') as f:print('STAGE27_MAP='+str(path),file=f)
+          print('Named event mapping bytes:',path.stat().st_size,flush=True)
+          STAGE27_MAPPING
+      - name: Apply Stage 25 integrity repairs and check declared data quality
+        run: |
+          set -euo pipefail
+          python scripts/stage24_history_integrity.py prepare --db "$STAGE27_DB" --repo . --strict --assert-form
+          python - <<'STAGE27_INTEGRITY'
+          import json
+          from pathlib import Path
+          f=Path('data/history-integrity-audit.json')
+          if not f.exists():raise SystemExit('No Stage 25 audit')
+          d=json.loads(f.read_text())
+          assert d.get('coverage_verified_through','')>='2026-11-01', d.get('coverage_verified_through')
+          print('Stage 25 coverage verified through',d.get('coverage_verified_through'))
+          print('Data quality',d.get('quality'))
+          print('Unresolved pedigree rows',d.get('missing_pedigree_runs'),'— missing identity is never guessed')
+          STAGE27_INTEGRITY
+      - name: Retrain independent A B C challenger variants and test unseen recent races
+        run: |
+          set -euo pipefail
+          python -u scripts/stage27_retrain_optimize.py \
+            --db "$STAGE27_DB" --mapping "$STAGE27_MAP" \
+            --recent-start 2026-10-08 --recent-end 2026-11-01 \
+            --output stage27_report
+          python - <<'STAGE27_CHECK'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('stage27_report/stage27-model-comparison.json').read_text())
+          assert d['recent_race_count']>=100,'Too few 2026 historical races available for meaningful comparison'
+          for model in 'ABC':
+           item=d['models'][model]
+           assert item['candidates_tested']>=20
+           assert item['untouched_2025']['races']>=100
+           assert item['untouched_recent_2026']['races']>=100
+           print(model,item['chosen_variant'],item['recent_retrained_on_all_history_through_2025'])
+          print('No live model file has been changed; research-only results verified')
+          STAGE27_CHECK
+      - name: Publish research-only reports as individually accessible files
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage27
+          cp stage27_report/stage27-model-comparison.json reports/stage27/
+          cp stage27_report/stage27-recent-races.csv reports/stage27/
+          cp stage27_report/stage27-recent-races.json reports/stage27/
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add reports/stage27/
+          if git diff --cached --quiet; then
+            echo 'Reports already up to date.'
+            exit 0
+          fi
+          git commit -m 'Publish Stage 27 research-only A B C historical audit'
+          for attempt in 1 2 3 4; do
+            if git pull --rebase origin main && git push origin HEAD:main; then
+              echo 'Published three research-only reports.'
+              exit 0
+            fi
+            git rebase --abort || true
+            sleep $((attempt * 3))
+          done
+          echo 'Report push failed; Actions artifact is still available.' >&2
+          exit 1
+      - name: Upload individual reports (no live model updates)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage27-corrected-history-a-b-c-comparison
+          path: stage27_report/
+          retention-days: 30
+          if-no-files-found: warn
