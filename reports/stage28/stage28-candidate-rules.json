@@ -1,0 +1,1353 @@
+{
+  "research": "Stage 28 race-specific positive-ROI discovery",
+  "live_models_changed": false,
+  "price_policy": "Final SP used ONLY for settlement; never to decide historical selections. No pre-off price archive for 2023/24.",
+  "confidence_note": "Discovery 2023; confirmation 2024; untouched 2025 and recent 2026. Hundreds of combinations create multiple-testing risk; forward validation required.",
+  "no_daily_bet_quota": true,
+  "minimum_bets_each_year": 35,
+  "minimum_distinct_days_each_year": 18,
+  "max_winner_sp_for_robustness": 11.0,
+  "price_coverage_requirement_2023_2024": 0.9,
+  "roi_reliable_only_if_settlement_coverage_above_80pct": true,
+  "models": {
+    "A": {
+      "state": "RESEARCH_ONLY_POSITIVE_VALIDATION",
+      "model": "A",
+      "variant": "A:trainer:0.0001:t0.7",
+      "weighted_features": {
+        "model": "A:trainer:0.0001",
+        "temperature": 0.7,
+        "features": [
+          "horse_win",
+          "horse_place",
+          "horse_last5_win",
+          "horse_last5_place",
+          "horse_starts",
+          "trainer_win",
+          "trainer_course_win",
+          "jockey_win",
+          "jockey_course_win",
+          "trainer_jockey_win",
+          "course_win",
+          "distance_win",
+          "recency",
+          "rating_relative",
+          "weight_relative",
+          "field_size",
+          "missing_pedigree"
+        ]
+      },
+      "tested_variants": 24,
+      "expanded_variants": 6,
+      "candidate_rules": 19830,
+      "chosen_rule": {
+        "variant": "A:trainer:0.0001:t0.7",
+        "conditions": [
+          {
+            "group": "trainer_course",
+            "name": "trainer course win >= 0.22",
+            "value": 0.22
+          },
+          {
+            "group": "class",
+            "name": "class Class 3",
+            "value": "Class 3"
+          },
+          {
+            "group": "horse_starts",
+            "name": "horse starts >= 12",
+            "value": 2.5649493574615367
+          }
+        ],
+        "name": "trainer course win >= 0.22 AND class Class 3 AND horse starts >= 12",
+        "validation_score": 49.5839,
+        "validate_profitability": true,
+        "results": {
+          "2023": {
+            "races": 40,
+            "win_count_all": 16,
+            "strike_all": 40.0,
+            "nominated": 40,
+            "bets": 39,
+            "coverage": 0.975,
+            "wins": 16,
+            "strike": 41.026,
+            "profit": 27.936,
+            "roi": 71.63,
+            "capped_roi": 51.117,
+            "largest_winner_excluded_roi": 26.147,
+            "days": 38,
+            "months": 12,
+            "max_losing_streak": 5
+          },
+          "2024": {
+            "races": 36,
+            "win_count_all": 14,
+            "strike_all": 38.889,
+            "nominated": 36,
+            "bets": 35,
+            "coverage": 0.9722,
+            "wins": 14,
+            "strike": 40.0,
+            "profit": 34.242,
+            "roi": 97.833,
+            "capped_roi": 97.833,
+            "largest_winner_excluded_roi": 74.24,
+            "days": 34,
+            "months": 12,
+            "max_losing_streak": 8
+          },
+          "2025": {
+            "races": 59,
+            "win_count_all": 18,
+            "strike_all": 30.508,
+            "nominated": 59,
+            "bets": 57,
+            "coverage": 0.9661,
+            "wins": 17,
+            "strike": 29.825,
+            "profit": 36.367,
+            "roi": 63.802,
+            "capped_roi": 23.452,
+            "largest_winner_excluded_roi": 6.013,
+            "days": 52,
+            "months": 12,
+            "max_losing_streak": 6
+          },
+          "recent": {
+            "races": 8,
+            "win_count_all": 4,
+            "strike_all": 50.0,
+            "nominated": 8,
+            "bets": 0,
+            "coverage": 0.0,
+            "wins": 0,
+            "strike": null,
+            "profit": null,
+            "roi": null,
+            "capped_roi": null,
+            "largest_winner_excluded_roi": null,
+            "days": 0,
+            "months": 0,
+            "max_losing_streak": null
+          }
+        }
+      },
+      "top_alternatives": [
+        {
+          "variant": "A:trainer:0.0001:t0.7",
+          "indices": [
+            34,
+            122,
+            38
+          ],
+          "name": "trainer course win >= 0.22 AND class Class 3 AND horse starts >= 12",
+          "score": 49.5839,
+          "roi_2023": 71.63,
+          "roi_2024": 97.833,
+          "robust_2023": 51.117,
+          "robust_2024": 97.833,
+          "bets_2023": 39,
+          "bets_2024": 35
+        },
+        {
+          "variant": "A:trainer:0.0001:t0.7",
+          "indices": [
+            38,
+            98
+          ],
+          "name": "horse starts >= 12 AND course Curragh (IRE)",
+          "score": 28.7327,
+          "roi_2023": 45.476,
+          "roi_2024": 41.835,
+          "robust_2023": 39.762,
+          "robust_2024": 36.121,
+          "bets_2023": 35,
+          "bets_2024": 35
+        },
+        {
+          "variant": "A:trainer:0.0001:t0.7",
+          "indices": [
+            38,
+            98,
+            0
+          ],
+          "name": "horse starts >= 12 AND course Curragh (IRE) AND Flat",
+          "score": 28.7327,
+          "roi_2023": 45.476,
+          "roi_2024": 41.835,
+          "robust_2023": 39.762,
+          "robust_2024": 36.121,
+          "bets_2023": 35,
+          "bets_2024": 35
+        },
+        {
+          "variant": "A:trainer:0.0001:t0.7",
+          "indices": [
+            90,
+            123,
+            11
+          ],
+          "name": "course Carlisle AND class Class 5 AND top score >= 0.16",
+          "score": 27.1626,
+          "roi_2023": 37.815,
+          "roi_2024": 69.007,
+          "robust_2023": 33.27,
+          "robust_2024": 46.785,
+          "bets_2023": 44,
+          "bets_2024": 36
+        },
+        {
+          "variant": "A:trainer:0.0001:t0.7",
+          "indices": [
+            90,
+            123,
+            17
+          ],
+          "name": "course Carlisle AND class Class 5 AND lead >= 0.010",
+          "score": 25.5908,
+          "roi_2023": 35.864,
+          "roi_2024": 84.982,
+          "robust_2023": 31.419,
+          "robust_2024": 55.714,
+          "bets_2023": 45,
+          "bets_2024": 41
+        },
+        {
+          "variant": "A:trainer:0.0001:t0.7",
+          "indices": [
+            7,
+            124,
+            50
+          ],
+          "name": "7-10f AND class Class 1 AND relative OR -5 to 5",
+          "score": 24.8644,
+          "roi_2023": 36.559,
+          "roi_2024": 54.247,
+          "robust_2023": 31.559,
+          "robust_2024": 42.708,
+          "bets_2023": 40,
+          "bets_2024": 52
+        },
+        {
+          "variant": "A:trainer:0.0001:t0.7",
+          "indices": [
+            90,
+            123,
+            25
+          ],
+          "name": "course Carlisle AND class Class 5 AND comparable profile >= 18",
+          "score": 23.653,
+          "roi_2023": 33.214,
+          "roi_2024": 60.206,
+          "robust_2023": 29.133,
+          "robust_2024": 33.539,
+          "bets_2023": 49,
+          "bets_2024": 45
+        },
+        {
+          "variant": "A:trainer:0.0001:t0.7",
+          "indices": [
+            90,
+            123,
+            24
+          ],
+          "name": "course Carlisle AND class Class 5 AND comparable profile >= 9",
+          "score": 21.4465,
+          "roi_2023": 30.664,
+          "roi_2024": 56.964,
+          "robust_2023": 26.742,
+          "robust_2024": 31.964,
+          "bets_2023": 51,
+          "bets_2024": 48
+        },
+        {
+          "variant": "A:trainer:0.0001:t0.7",
+          "indices": [
+            90,
+            123,
+            28
+          ],
+          "name": "course Carlisle AND class Class 5 AND age trend >= 0.35",
+          "score": 21.1053,
+          "roi_2023": 30.55,
+          "roi_2024": 72.984,
+          "robust_2023": 26.55,
+          "robust_2024": 46.317,
+          "bets_2023": 50,
+          "bets_2024": 45
+        },
+        {
+          "variant": "A:trainer:0.0001:t0.7",
+          "indices": [
+            34,
+            122,
+            50
+          ],
+          "name": "trainer course win >= 0.22 AND class Class 3 AND relative OR -5 to 5",
+          "score": 20.6323,
+          "roi_2023": 27.427,
+          "roi_2024": 26.223,
+          "robust_2023": 27.427,
+          "robust_2024": 26.223,
+          "bets_2023": 65,
+          "bets_2024": 63
+        },
+        {
+          "variant": "A:trainer:0.0001:t0.7",
+          "indices": [
+            34,
+            122,
+            40
+          ],
+          "name": "trainer course win >= 0.22 AND class Class 3 AND horse place >= 0.28",
+          "score": 20.2939,
+          "roi_2023": 29.389,
+          "roi_2024": 28.848,
+          "robust_2023": 21.841,
+          "robust_2024": 28.848,
+          "bets_2023": 106,
+          "bets_2024": 106
+        },
+        {
+          "variant": "A:trainer:0.0001:t0.7",
+          "indices": [
+            90,
+            123,
+            23
+          ],
+          "name": "course Carlisle AND class Class 5 AND comparable profile >= 4",
+          "score": 19.1059,
+          "roi_2023": 28.151,
+          "roi_2024": 55.685,
+          "robust_2023": 24.305,
+          "robust_2024": 31.685,
+          "bets_2023": 52,
+          "bets_2024": 50
+        },
+        {
+          "variant": "A:trainer:0.0001:t0.7",
+          "indices": [
+            34,
+            122,
+            11
+          ],
+          "name": "trainer course win >= 0.22 AND class Class 3 AND top score >= 0.16",
+          "score": 18.4155,
+          "roi_2023": 28.641,
+          "roi_2024": 21.978,
+          "robust_2023": 22.292,
+          "robust_2024": 21.978,
+          "bets_2023": 126,
+          "bets_2024": 114
+        },
+        {
+          "variant": "A:trainer:0.0001:t0.7",
+          "indices": [
+            34,
+            122,
+            37
+          ],
+          "name": "trainer course win >= 0.22 AND class Class 3 AND horse starts >= 6",
+          "score": 17.8982,
+          "roi_2023": 28.106,
+          "roi_2024": 59.511,
+          "robust_2023": 19.41,
+          "robust_2024": 59.511,
+          "bets_2023": 92,
+          "bets_2024": 84
+        },
+        {
+          "variant": "A:trainer:0.0001:t0.7",
+          "indices": [
+            90,
+            123,
+            43
+          ],
+          "name": "course Carlisle AND class Class 5 AND last5 place >= 0.25",
+          "score": 17.2072,
+          "roi_2023": 27.103,
+          "roi_2024": 76.915,
+          "robust_2023": 22.848,
+          "robust_2024": 49.642,
+          "bets_2023": 47,
+          "bets_2024": 44
+        },
+        {
+          "variant": "A:trainer:0.0001:t0.7",
+          "indices": [
+            90,
+            123
+          ],
+          "name": "course Carlisle AND class Class 5",
+          "score": 16.7921,
+          "roi_2023": 25.733,
+          "roi_2024": 55.685,
+          "robust_2023": 21.96,
+          "robust_2024": 31.685,
+          "bets_2023": 53,
+          "bets_2024": 50
+        },
+        {
+          "variant": "A:trainer:0.0001:t0.7",
+          "indices": [
+            90,
+            123,
+            22
+          ],
+          "name": "course Carlisle AND class Class 5 AND comparable profile >= 1",
+          "score": 16.7921,
+          "roi_2023": 25.733,
+          "roi_2024": 55.685,
+          "robust_2023": 21.96,
+          "robust_2024": 31.685,
+          "bets_2023": 53,
+          "bets_2024": 50
+        },
+        {
+          "variant": "A:trainer:0.0001:t0.7",
+          "indices": [
+            90,
+            123,
+            27
+          ],
+          "name": "course Carlisle AND class Class 5 AND age trend >= 0.15",
+          "score": 16.7921,
+          "roi_2023": 25.733,
+          "roi_2024": 55.685,
+          "robust_2023": 21.96,
+          "robust_2024": 31.685,
+          "bets_2023": 53,
+          "bets_2024": 50
+        },
+        {
+          "variant": "A:trainer:0.0001:t0.7",
+          "indices": [
+            34,
+            122,
+            28
+          ],
+          "name": "trainer course win >= 0.22 AND class Class 3 AND age trend >= 0.35",
+          "score": 16.1653,
+          "roi_2023": 24.683,
+          "roi_2024": 21.862,
+          "robust_2023": 18.529,
+          "robust_2024": 21.862,
+          "bets_2023": 130,
+          "bets_2024": 120
+        },
+        {
+          "variant": "A:trainer:0.0001:t0.7",
+          "indices": [
+            7,
+            124,
+            40
+          ],
+          "name": "7-10f AND class Class 1 AND horse place >= 0.28",
+          "score": 15.6219,
+          "roi_2023": 22.338,
+          "roi_2024": 29.585,
+          "robust_2023": 19.807,
+          "robust_2024": 21.477,
+          "bets_2023": 79,
+          "bets_2024": 74
+        }
+      ],
+      "promotion_ready": false,
+      "held_out_2025_positive": true,
+      "recent_retrained_on_pre_period_results": true,
+      "warning": "No selection rule is automatically deployed; recent 2026 SP coverage must be audited."
+    },
+    "B": {
+      "state": "RESEARCH_ONLY_NOT_VALIDATED",
+      "model": "B",
+      "variant": "B:historical=0.5:recent=1.0:trainer=1.0",
+      "weighted_features": {
+        "historical_weight": 0.5,
+        "recent_form_weight": 1.0,
+        "trainer_weight": 1.0,
+        "minimum_comparable_winners": 5
+      },
+      "tested_variants": 36,
+      "expanded_variants": 6,
+      "candidate_rules": 21663,
+      "chosen_rule": {
+        "variant": "B:historical=0.5:recent=1.0:trainer=1.0",
+        "conditions": [
+          {
+            "group": "field",
+            "name": "8-11 runners",
+            "value": [
+              8.0,
+              11.0
+            ]
+          },
+          {
+            "group": "course",
+            "name": "course Ffos Las",
+            "value": "Ffos Las"
+          },
+          {
+            "group": "trend",
+            "name": "comparable profile >= 9",
+            "value": 2.302585092994046
+          }
+        ],
+        "name": "8-11 runners AND course Ffos Las AND comparable profile >= 9",
+        "validation_score": 51.8044,
+        "validate_profitability": true,
+        "results": {
+          "2023": {
+            "races": 63,
+            "win_count_all": 18,
+            "strike_all": 28.571,
+            "nominated": 63,
+            "bets": 59,
+            "coverage": 0.9365,
+            "wins": 18,
+            "strike": 30.508,
+            "profit": 36.188,
+            "roi": 61.336,
+            "capped_roi": 56.251,
+            "largest_winner_excluded_roi": 41.703,
+            "days": 22,
+            "months": 12,
+            "max_losing_streak": 8
+          },
+          "2024": {
+            "races": 45,
+            "win_count_all": 12,
+            "strike_all": 26.667,
+            "nominated": 45,
+            "bets": 44,
+            "coverage": 0.9778,
+            "wins": 12,
+            "strike": 27.273,
+            "profit": 29.886,
+            "roi": 67.922,
+            "capped_roi": 65.649,
+            "largest_winner_excluded_roi": 43.92,
+            "days": 18,
+            "months": 9,
+            "max_losing_streak": 9
+          },
+          "2025": {
+            "races": 66,
+            "win_count_all": 12,
+            "strike_all": 18.182,
+            "nominated": 66,
+            "bets": 65,
+            "coverage": 0.9848,
+            "wins": 12,
+            "strike": 18.462,
+            "profit": -11.742,
+            "roi": -18.064,
+            "capped_roi": -18.064,
+            "largest_winner_excluded_roi": -33.971,
+            "days": 24,
+            "months": 11,
+            "max_losing_streak": 15
+          },
+          "recent": {
+            "races": 0,
+            "win_count_all": 0,
+            "strike_all": null,
+            "nominated": 0,
+            "bets": 0,
+            "coverage": 0.0,
+            "wins": 0,
+            "strike": null,
+            "profit": null,
+            "roi": null,
+            "capped_roi": null,
+            "largest_winner_excluded_roi": null,
+            "days": 0,
+            "months": 0,
+            "max_losing_streak": null
+          }
+        }
+      },
+      "top_alternatives": [
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=1.0",
+          "indices": [
+            3,
+            67,
+            24
+          ],
+          "name": "8-11 runners AND course Ffos Las AND comparable profile >= 9",
+          "score": 51.8044,
+          "roi_2023": 61.336,
+          "roi_2024": 67.922,
+          "robust_2023": 56.251,
+          "robust_2024": 65.649,
+          "bets_2023": 59,
+          "bets_2024": 44
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=1.0",
+          "indices": [
+            24,
+            67,
+            3
+          ],
+          "name": "comparable profile >= 9 AND course Ffos Las AND 8-11 runners",
+          "score": 51.8044,
+          "roi_2023": 61.336,
+          "roi_2024": 67.922,
+          "robust_2023": 56.251,
+          "robust_2024": 65.649,
+          "bets_2023": 59,
+          "bets_2024": 44
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=1.0",
+          "indices": [
+            3,
+            67,
+            28
+          ],
+          "name": "8-11 runners AND course Ffos Las AND age trend >= 0.35",
+          "score": 51.7797,
+          "roi_2023": 64.117,
+          "roi_2024": 60.621,
+          "robust_2023": 58.945,
+          "robust_2024": 58.447,
+          "bets_2023": 58,
+          "bets_2024": 46
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=1.0",
+          "indices": [
+            28,
+            67,
+            3
+          ],
+          "name": "age trend >= 0.35 AND course Ffos Las AND 8-11 runners",
+          "score": 51.7797,
+          "roi_2023": 64.117,
+          "roi_2024": 60.621,
+          "robust_2023": 58.945,
+          "robust_2024": 58.447,
+          "bets_2023": 58,
+          "bets_2024": 46
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=1.0",
+          "indices": [
+            3,
+            67,
+            33
+          ],
+          "name": "8-11 runners AND course Ffos Las AND trainer course win >= 0.12",
+          "score": 49.0722,
+          "roi_2023": 61.251,
+          "roi_2024": 76.718,
+          "robust_2023": 54.274,
+          "robust_2024": 74.015,
+          "bets_2023": 43,
+          "bets_2024": 37
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=1.0",
+          "indices": [
+            3,
+            67,
+            23
+          ],
+          "name": "8-11 runners AND course Ffos Las AND comparable profile >= 4",
+          "score": 48.5033,
+          "roi_2023": 61.336,
+          "roi_2024": 57.204,
+          "robust_2023": 56.251,
+          "robust_2024": 55.076,
+          "bets_2023": 59,
+          "bets_2024": 47
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=1.0",
+          "indices": [
+            23,
+            67,
+            3
+          ],
+          "name": "comparable profile >= 4 AND course Ffos Las AND 8-11 runners",
+          "score": 48.5033,
+          "roi_2023": 61.336,
+          "roi_2024": 57.204,
+          "robust_2023": 56.251,
+          "robust_2024": 55.076,
+          "bets_2023": 59,
+          "bets_2024": 47
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=1.0",
+          "indices": [
+            3,
+            67,
+            25
+          ],
+          "name": "8-11 runners AND course Ffos Las AND comparable profile >= 18",
+          "score": 47.2901,
+          "roi_2023": 63.966,
+          "roi_2024": 57.038,
+          "robust_2023": 58.703,
+          "robust_2024": 54.599,
+          "bets_2023": 57,
+          "bets_2024": 41
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=1.0",
+          "indices": [
+            25,
+            67,
+            3
+          ],
+          "name": "comparable profile >= 18 AND course Ffos Las AND 8-11 runners",
+          "score": 47.2901,
+          "roi_2023": 63.966,
+          "roi_2024": 57.038,
+          "robust_2023": 58.703,
+          "robust_2024": 54.599,
+          "bets_2023": 57,
+          "bets_2024": 41
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=1.0",
+          "indices": [
+            3,
+            67
+          ],
+          "name": "8-11 runners AND course Ffos Las",
+          "score": 45.0415,
+          "roi_2023": 56.046,
+          "roi_2024": 53.929,
+          "robust_2023": 51.128,
+          "robust_2024": 51.845,
+          "bets_2023": 61,
+          "bets_2024": 48
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=1.0",
+          "indices": [
+            3,
+            67,
+            22
+          ],
+          "name": "8-11 runners AND course Ffos Las AND comparable profile >= 1",
+          "score": 45.0415,
+          "roi_2023": 56.046,
+          "roi_2024": 53.929,
+          "robust_2023": 51.128,
+          "robust_2024": 51.845,
+          "bets_2023": 61,
+          "bets_2024": 48
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=1.0",
+          "indices": [
+            3,
+            67,
+            27
+          ],
+          "name": "8-11 runners AND course Ffos Las AND age trend >= 0.15",
+          "score": 45.0415,
+          "roi_2023": 56.046,
+          "roi_2024": 53.929,
+          "robust_2023": 51.128,
+          "robust_2024": 51.845,
+          "bets_2023": 61,
+          "bets_2024": 48
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=1.0",
+          "indices": [
+            22,
+            67,
+            3
+          ],
+          "name": "comparable profile >= 1 AND course Ffos Las AND 8-11 runners",
+          "score": 45.0415,
+          "roi_2023": 56.046,
+          "roi_2024": 53.929,
+          "robust_2023": 51.128,
+          "robust_2024": 51.845,
+          "bets_2023": 61,
+          "bets_2024": 48
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=1.0",
+          "indices": [
+            27,
+            67,
+            3
+          ],
+          "name": "age trend >= 0.15 AND course Ffos Las AND 8-11 runners",
+          "score": 45.0415,
+          "roi_2023": 56.046,
+          "roi_2024": 53.929,
+          "robust_2023": 51.128,
+          "robust_2024": 51.845,
+          "bets_2023": 61,
+          "bets_2024": 48
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=1.0",
+          "indices": [
+            51,
+            67,
+            37
+          ],
+          "name": "relative OR -5 to 5 AND course Ffos Las AND horse starts >= 6",
+          "score": 42.1888,
+          "roi_2023": 58.801,
+          "roi_2024": 63.958,
+          "robust_2023": 43.907,
+          "robust_2024": 61.875,
+          "bets_2023": 47,
+          "bets_2024": 48
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=1.0",
+          "indices": [
+            37,
+            67,
+            51
+          ],
+          "name": "horse starts >= 6 AND course Ffos Las AND relative OR -5 to 5",
+          "score": 42.1888,
+          "roi_2023": 58.801,
+          "roi_2024": 63.958,
+          "robust_2023": 43.907,
+          "robust_2024": 61.875,
+          "bets_2023": 47,
+          "bets_2024": 48
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=1.0",
+          "indices": [
+            38,
+            67,
+            28
+          ],
+          "name": "horse starts >= 12 AND course Ffos Las AND age trend >= 0.35",
+          "score": 39.3169,
+          "roi_2023": 47.101,
+          "roi_2024": 67.622,
+          "robust_2023": 47.101,
+          "robust_2024": 67.622,
+          "bets_2023": 40,
+          "bets_2024": 36
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=1.0",
+          "indices": [
+            28,
+            67,
+            38
+          ],
+          "name": "age trend >= 0.35 AND course Ffos Las AND horse starts >= 12",
+          "score": 39.3169,
+          "roi_2023": 47.101,
+          "roi_2024": 67.622,
+          "robust_2023": 47.101,
+          "robust_2024": 67.622,
+          "bets_2023": 40,
+          "bets_2024": 36
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=1.0",
+          "indices": [
+            47,
+            66,
+            40
+          ],
+          "name": "30-90 days since AND course Kempton (AW) AND horse place >= 0.28",
+          "score": 39.0578,
+          "roi_2023": 55.934,
+          "roi_2024": 64.049,
+          "robust_2023": 53.553,
+          "robust_2024": 37.733,
+          "bets_2023": 42,
+          "bets_2024": 57
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=1.0",
+          "indices": [
+            3,
+            67,
+            36
+          ],
+          "name": "8-11 runners AND course Ffos Las AND horse starts >= 3",
+          "score": 36.1237,
+          "roi_2023": 46.225,
+          "roi_2024": 49.74,
+          "robust_2023": 42.058,
+          "robust_2024": 47.468,
+          "bets_2023": 48,
+          "bets_2024": 44
+        }
+      ],
+      "promotion_ready": false,
+      "held_out_2025_positive": false,
+      "recent_retrained_on_pre_period_results": true,
+      "warning": "No selection rule is automatically deployed; recent 2026 SP coverage must be audited."
+    },
+    "C": {
+      "state": "RESEARCH_ONLY_NOT_VALIDATED",
+      "model": "C",
+      "variant": "C:form:0.001:t0.7",
+      "weighted_features": {
+        "model": "C:form:0.001",
+        "temperature": 0.7,
+        "features": [
+          "horse_win",
+          "horse_place",
+          "horse_last5_win",
+          "horse_last5_place",
+          "horse_starts",
+          "trainer_win",
+          "trainer_course_win",
+          "jockey_win",
+          "jockey_course_win",
+          "trainer_jockey_win",
+          "course_win",
+          "distance_win",
+          "recency",
+          "rating_relative",
+          "weight_relative",
+          "draw_relative",
+          "age_relative",
+          "field_size",
+          "missing_pedigree",
+          "trainer_horse_synergy"
+        ]
+      },
+      "tested_variants": 24,
+      "expanded_variants": 6,
+      "candidate_rules": 19278,
+      "chosen_rule": {
+        "variant": "C:form:0.001:t0.7",
+        "conditions": [
+          {
+            "group": "horse_starts",
+            "name": "horse starts >= 6",
+            "value": 1.9459101490553132
+          },
+          {
+            "group": "course",
+            "name": "course Doncaster",
+            "value": "Doncaster"
+          },
+          {
+            "group": "distance",
+            "name": "0-7f",
+            "value": [
+              0.0,
+              7.0
+            ]
+          }
+        ],
+        "name": "horse starts >= 6 AND course Doncaster AND 0-7f",
+        "validation_score": 53.0419,
+        "validate_profitability": true,
+        "results": {
+          "2023": {
+            "races": 36,
+            "win_count_all": 8,
+            "strike_all": 22.222,
+            "nominated": 36,
+            "bets": 35,
+            "coverage": 0.9722,
+            "wins": 8,
+            "strike": 22.857,
+            "profit": 41.75,
+            "roi": 119.286,
+            "capped_roi": 53.571,
+            "largest_winner_excluded_roi": 25.735,
+            "days": 21,
+            "months": 7,
+            "max_losing_streak": 6
+          },
+          "2024": {
+            "races": 40,
+            "win_count_all": 13,
+            "strike_all": 32.5,
+            "nominated": 40,
+            "bets": 39,
+            "coverage": 0.975,
+            "wins": 12,
+            "strike": 30.769,
+            "profit": 30.65,
+            "roi": 78.59,
+            "capped_roi": 78.59,
+            "largest_winner_excluded_roi": 56.974,
+            "days": 19,
+            "months": 9,
+            "max_losing_streak": 7
+          },
+          "2025": {
+            "races": 46,
+            "win_count_all": 6,
+            "strike_all": 13.043,
+            "nominated": 46,
+            "bets": 45,
+            "coverage": 0.9783,
+            "wins": 6,
+            "strike": 13.333,
+            "profit": -2.5,
+            "roi": -5.556,
+            "capped_roi": -18.889,
+            "largest_winner_excluded_roi": -42.045,
+            "days": 24,
+            "months": 9,
+            "max_losing_streak": 10
+          },
+          "recent": {
+            "races": 0,
+            "win_count_all": 0,
+            "strike_all": null,
+            "nominated": 0,
+            "bets": 0,
+            "coverage": 0.0,
+            "wins": 0,
+            "strike": null,
+            "profit": null,
+            "roi": null,
+            "capped_roi": null,
+            "largest_winner_excluded_roi": null,
+            "days": 0,
+            "months": 0,
+            "max_losing_streak": null
+          }
+        }
+      },
+      "top_alternatives": [
+        {
+          "variant": "C:form:0.001:t0.7",
+          "indices": [
+            35,
+            73,
+            6
+          ],
+          "name": "horse starts >= 6 AND course Doncaster AND 0-7f",
+          "score": 53.0419,
+          "roi_2023": 119.286,
+          "roi_2024": 78.59,
+          "robust_2023": 53.571,
+          "robust_2024": 78.59,
+          "bets_2023": 35,
+          "bets_2024": 39
+        },
+        {
+          "variant": "C:form:0.001:t0.7",
+          "indices": [
+            32,
+            93,
+            30
+          ],
+          "name": "trainer course win >= 0.12 AND course Haydock AND trainer win >= 0.1",
+          "score": 47.6395,
+          "roi_2023": 67.338,
+          "roi_2024": 78.458,
+          "robust_2023": 41.202,
+          "robust_2024": 70.537,
+          "bets_2023": 88,
+          "bets_2024": 101
+        },
+        {
+          "variant": "C:form:0.001:t0.7",
+          "indices": [
+            30,
+            93,
+            32
+          ],
+          "name": "trainer win >= 0.1 AND course Haydock AND trainer course win >= 0.12",
+          "score": 47.6395,
+          "roi_2023": 67.338,
+          "roi_2024": 78.458,
+          "robust_2023": 41.202,
+          "robust_2024": 70.537,
+          "bets_2023": 88,
+          "bets_2024": 101
+        },
+        {
+          "variant": "C:form:0.001:t0.7",
+          "indices": [
+            32,
+            93,
+            24
+          ],
+          "name": "trainer course win >= 0.12 AND course Haydock AND comparable profile >= 18",
+          "score": 47.0901,
+          "roi_2023": 66.582,
+          "roi_2024": 74.993,
+          "robust_2023": 40.739,
+          "robust_2024": 67.226,
+          "bets_2023": 89,
+          "bets_2024": 103
+        },
+        {
+          "variant": "C:form:0.001:t0.7",
+          "indices": [
+            32,
+            93,
+            27
+          ],
+          "name": "trainer course win >= 0.12 AND course Haydock AND age trend >= 0.35",
+          "score": 46.3866,
+          "roi_2023": 66.088,
+          "roi_2024": 73.31,
+          "robust_2023": 39.952,
+          "robust_2024": 65.618,
+          "bets_2023": 88,
+          "bets_2024": 104
+        },
+        {
+          "variant": "C:form:0.001:t0.7",
+          "indices": [
+            32,
+            93
+          ],
+          "name": "trainer course win >= 0.12 AND course Haydock",
+          "score": 45.5503,
+          "roi_2023": 64.256,
+          "roi_2024": 68.451,
+          "robust_2023": 39.525,
+          "robust_2024": 60.974,
+          "bets_2023": 93,
+          "bets_2024": 107
+        },
+        {
+          "variant": "C:form:0.001:t0.7",
+          "indices": [
+            32,
+            93,
+            23
+          ],
+          "name": "trainer course win >= 0.12 AND course Haydock AND comparable profile >= 9",
+          "score": 43.8251,
+          "roi_2023": 62.921,
+          "roi_2024": 71.659,
+          "robust_2023": 37.646,
+          "robust_2024": 64.04,
+          "bets_2023": 91,
+          "bets_2024": 105
+        },
+        {
+          "variant": "C:form:0.001:t0.7",
+          "indices": [
+            32,
+            93,
+            21
+          ],
+          "name": "trainer course win >= 0.12 AND course Haydock AND comparable profile >= 1",
+          "score": 42.246,
+          "roi_2023": 61.15,
+          "roi_2024": 68.451,
+          "robust_2023": 36.15,
+          "robust_2024": 60.974,
+          "bets_2023": 92,
+          "bets_2024": 107
+        },
+        {
+          "variant": "C:form:0.001:t0.7",
+          "indices": [
+            32,
+            93,
+            22
+          ],
+          "name": "trainer course win >= 0.12 AND course Haydock AND comparable profile >= 4",
+          "score": 42.246,
+          "roi_2023": 61.15,
+          "roi_2024": 68.451,
+          "robust_2023": 36.15,
+          "robust_2024": 60.974,
+          "bets_2023": 92,
+          "bets_2024": 107
+        },
+        {
+          "variant": "C:form:0.001:t0.7",
+          "indices": [
+            32,
+            93,
+            26
+          ],
+          "name": "trainer course win >= 0.12 AND course Haydock AND age trend >= 0.15",
+          "score": 42.246,
+          "roi_2023": 61.15,
+          "roi_2024": 68.451,
+          "robust_2023": 36.15,
+          "robust_2024": 60.974,
+          "bets_2023": 92,
+          "bets_2024": 107
+        },
+        {
+          "variant": "C:form:0.001:t0.7",
+          "indices": [
+            32,
+            93,
+            41
+          ],
+          "name": "trainer course win >= 0.12 AND course Haydock AND last5 place >= 0.25",
+          "score": 39.8065,
+          "roi_2023": 86.103,
+          "roi_2024": 44.805,
+          "robust_2023": 53.708,
+          "robust_2024": 44.805,
+          "bets_2023": 71,
+          "bets_2024": 81
+        },
+        {
+          "variant": "C:form:0.001:t0.7",
+          "indices": [
+            6,
+            93,
+            16
+          ],
+          "name": "0-7f AND course Haydock AND lead >= 0.010",
+          "score": 37.5397,
+          "roi_2023": 131.952,
+          "roi_2024": 49.472,
+          "robust_2023": 60.899,
+          "robust_2024": 44.343,
+          "bets_2023": 38,
+          "bets_2024": 39
+        },
+        {
+          "variant": "C:form:0.001:t0.7",
+          "indices": [
+            16,
+            93,
+            6
+          ],
+          "name": "lead >= 0.010 AND course Haydock AND 0-7f",
+          "score": 37.5397,
+          "roi_2023": 131.952,
+          "roi_2024": 49.472,
+          "robust_2023": 60.899,
+          "robust_2024": 44.343,
+          "bets_2023": 38,
+          "bets_2024": 39
+        },
+        {
+          "variant": "C:form:0.001:t0.7",
+          "indices": [
+            32,
+            93,
+            34
+          ],
+          "name": "trainer course win >= 0.12 AND course Haydock AND horse starts >= 3",
+          "score": 35.2664,
+          "roi_2023": 66.816,
+          "roi_2024": 51.69,
+          "robust_2023": 31.432,
+          "robust_2024": 49.158,
+          "bets_2023": 65,
+          "bets_2024": 79
+        },
+        {
+          "variant": "C:form:0.001:t0.7",
+          "indices": [
+            32,
+            93,
+            11
+          ],
+          "name": "trainer course win >= 0.12 AND course Haydock AND top score >= 0.16",
+          "score": 35.239,
+          "roi_2023": 103.174,
+          "roi_2024": 47.422,
+          "robust_2023": 77.312,
+          "robust_2024": 37.898,
+          "bets_2023": 58,
+          "bets_2024": 63
+        },
+        {
+          "variant": "C:form:0.001:t0.7",
+          "indices": [
+            11,
+            93,
+            32
+          ],
+          "name": "top score >= 0.16 AND course Haydock AND trainer course win >= 0.12",
+          "score": 35.239,
+          "roi_2023": 103.174,
+          "roi_2024": 47.422,
+          "robust_2023": 77.312,
+          "robust_2024": 37.898,
+          "bets_2023": 58,
+          "bets_2024": 63
+        },
+        {
+          "variant": "C:form:0.001:t0.7",
+          "indices": [
+            32,
+            93,
+            35
+          ],
+          "name": "trainer course win >= 0.12 AND course Haydock AND horse starts >= 6",
+          "score": 34.3063,
+          "roi_2023": 64.483,
+          "roi_2024": 44.879,
+          "robust_2023": 43.97,
+          "robust_2024": 40.798,
+          "bets_2023": 39,
+          "bets_2024": 49
+        },
+        {
+          "variant": "C:form:0.001:t0.7",
+          "indices": [
+            6,
+            93,
+            30
+          ],
+          "name": "0-7f AND course Haydock AND trainer win >= 0.1",
+          "score": 33.1668,
+          "roi_2023": 66.842,
+          "roi_2024": 58.823,
+          "robust_2023": 22.58,
+          "robust_2024": 55.49,
+          "bets_2023": 61,
+          "bets_2024": 60
+        },
+        {
+          "variant": "C:form:0.001:t0.7",
+          "indices": [
+            30,
+            93,
+            6
+          ],
+          "name": "trainer win >= 0.1 AND course Haydock AND 0-7f",
+          "score": 33.1668,
+          "roi_2023": 66.842,
+          "roi_2024": 58.823,
+          "robust_2023": 22.58,
+          "robust_2024": 55.49,
+          "bets_2023": 61,
+          "bets_2024": 60
+        },
+        {
+          "variant": "C:form:0.001:t0.7",
+          "indices": [
+            32,
+            93,
+            38
+          ],
+          "name": "trainer course win >= 0.12 AND course Haydock AND horse place >= 0.28",
+          "score": 32.9844,
+          "roi_2023": 52.61,
+          "roi_2024": 67.389,
+          "robust_2023": 34.428,
+          "robust_2024": 64.111,
+          "bets_2023": 44,
+          "bets_2024": 61
+        }
+      ],
+      "promotion_ready": false,
+      "held_out_2025_positive": false,
+      "recent_retrained_on_pre_period_results": true,
+      "warning": "No selection rule is automatically deployed; recent 2026 SP coverage must be audited."
+    }
+  },
+  "promotion_ready": false
+}
