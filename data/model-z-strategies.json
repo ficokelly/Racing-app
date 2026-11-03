@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "portfolio_name": "Model Z",
+  "mode": "RESEARCH_AND_PAPER_ONLY",
+  "updated_at": "2026-11-03",
+  "policy": {
+    "manual_promotion_required": true,
+    "never_auto_promote_from_historical_roi": true,
+    "require_frozen_rules_and_no_lookahead": true,
+    "require_independent_forward_shadow_evidence": true,
+    "forward_review_min_selections": 30,
+    "forward_review_min_days": 90,
+    "require_positive_forward_roi": true,
+    "require_positive_roi_without_largest_win": true,
+    "require_actual_attainable_pre_off_prices": true,
+    "no_bet_if_no_validated_selection": true,
+    "do_not_change_models_a_b_c_d": true,
+    "paper_stake_units": 1,
+    "research_cohort_caution": "Stage34 weights chosen using 2023; 2018-22 replay is retrospective, 2024 validation and 2025 previously viewed. No historical result alone authorizes promotion."
+  },
+  "active_strategy_ids": [],
+  "strategies": [
+    {
+      "id": "stage34-dundalk-aw",
+      "name": "Dundalk AW · frozen Stage 34 D",
+      "course": "dundalk",
+      "course_display": "Dundalk",
+      "discipline": "aw",
+      "status": "CANDIDATE",
+      "live_enabled": false,
+      "paper_tracking_enabled": true,
+      "selection_automation_enabled": false,
+      "model_version": "stage34-d-course-distance-validation-v1",
+      "frozen_profile_ref": "reports/stage34/stage34-frozen-track-profiles.json",
+      "frozen_profile_key": "aw|dundalk",
+      "selection_margin": 0.14,
+      "weights_pct": {
+        "Ability": 7.01049,
+        "Trainer": 9.91976,
+        "Jockey": 5.93356,
+        "Course": 17.58771,
+        "Draw": 17.72561,
+        "Distance": 9.42711,
+        "Ground": 20.39097,
+        "Jumping": 12.00478
+      },
+      "stage34_2025": {"selected_races": 51, "roi_pct": 33.469},
+      "notes": "2024 ROI was negative; Stage37 replay and genuinely forward shadow testing required. Stage35 did not reproduce the candidate."
+    },
+    {
+      "id": "stage34-newmarket-flat",
+      "name": "Newmarket Flat · frozen Stage 34 D",
+      "course": "newmarket",
+      "course_display": "Newmarket",
+      "discipline": "flat",
+      "status": "CANDIDATE",
+      "live_enabled": false,
+      "paper_tracking_enabled": true,
+      "selection_automation_enabled": false,
+      "model_version": "stage34-d-course-distance-validation-v1",
+      "frozen_profile_ref": "reports/stage34/stage34-frozen-track-profiles.json",
+      "frozen_profile_key": "flat|newmarket",
+      "selection_margin": 0.2,
+      "weights_pct": {
+        "Ability": 8.83772,
+        "Trainer": 5.68457,
+        "Jockey": 3.55285,
+        "Course": 47.83647,
+        "Draw": 7.77187,
+        "Distance": 7.08668,
+        "Ground": 15.87999,
+        "Jumping": 3.34984
+      },
+      "stage34_2025": {"selected_races": 41, "roi_pct": 29.829},
+      "notes": "Positive 2023-25 historical ROI but not a proven forward edge. Stage37 replay and forward shadow testing required."
+    }
+  ]
+}
