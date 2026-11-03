@@ -1,0 +1,88 @@
+name: Stage 32 - Repair Form Statistics and Model C Racecards
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: racing-hot-pots-stage32-form-model-c
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout current app and archive
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Verify source files and syntax
+        run: |
+          set -euo pipefail
+          test -s scripts/stage32_form_rebuild.py
+          test -s scripts/stage32_repair_source.py
+          test -s data/racecards-archive.json
+          test -s index.html
+          python -m py_compile scripts/stage32_form_rebuild.py scripts/stage32_repair_source.py
+
+      - name: Restore verified persons, deduplicate results, rebuild 1-14 day strike rates
+        run: |
+          set -euo pipefail
+          python scripts/stage32_form_rebuild.py --backfill
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          x = json.loads(Path('data/strike-rates.json').read_text())
+          a = json.loads(Path('reports/stage32/form-rebuild-audit.json').read_text())
+          assert x['deduplicated'] is True
+          assert x['periods']['14']['runners'] > 1000, 'Too few verified runners; cannot publish'
+          assert a['counts']['duplicate_runner_rows_removed'] >= 0
+          print('14-day as of:',x['as_of'])
+          print('Gordon Elliott:',a.get('gordon_elliott'))
+          print('Jack Kennedy:',a.get('jack_kennedy'))
+          print('Missing trainer identities:',a.get('fourteen_day_missing_trainer_rows'))
+          PY
+
+      - name: Fix racecard person form and Model C prediction display
+        run: |
+          set -euo pipefail
+          python scripts/stage32_repair_source.py
+          python - <<'PY'
+          import re
+          from pathlib import Path
+          html=Path('index.html').read_text(encoding='utf-8')
+          assert 'RHP_STAGE32_FORM_AND_MODEL_C_UI' in html
+          assert 'function rhpCFieldChanged(' in html
+          scripts=re.findall(r'<script(?:\s[^>]*)?>([\s\S]*?)</script>',html,flags=re.I)
+          if not scripts:raise SystemExit('Missing inline JavaScript')
+          Path('/tmp/stage32-racing-app.js').write_text('\n'.join(scripts),encoding='utf-8')
+          PY
+          node --check /tmp/stage32-racing-app.js
+
+      - name: Commit only validated form + UI repair, not betting models
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html calculate-strike-rates.py data/strike-rates.json data/form-identity-cache.json reports/stage32/form-rebuild-audit.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'Stage 32: deduplicate and restore trainer form; show Model C racecard chances'
+            git push
+          else
+            echo 'Stage 32 already applied; no new changes.'
+          fi
+
+      - name: Explain remaining external-data gaps
+        if: always()
+        run: |
+          if test -f reports/stage32/form-rebuild-audit.json; then
+            echo 'The published audit is under reports/stage32/form-rebuild-audit.json.'
+            echo 'Any remaining mismatch with Racing Post is NOT filled by inventing runs.'
+          fi
