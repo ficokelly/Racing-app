@@ -1,0 +1,263 @@
+{
+  "status": "RESEARCH_ONLY",
+  "live_models_changed": false,
+  "test_year": 2025,
+  "learning_years": [
+    2023,
+    2024
+  ],
+  "historical_form_start": "earliest_available",
+  "all_model_gap_aware": true,
+  "model_d_exclusive_metrics": [
+    "Ability",
+    "Trainer",
+    "Jockey",
+    "Course",
+    "Draw",
+    "Distance",
+    "Ground",
+    "Jumping"
+  ],
+  "models_abc_note": "A/B/C are new gap-aware challengers preserving a historical trends component, not in-place updates to existing live code.",
+  "named_event_map": {
+    "status": "unrecognised_format",
+    "columns": [
+      "region_scope",
+      "event_id",
+      "match_status",
+      "method",
+      "confidence",
+      "edition_year",
+      "date",
+      "course",
+      "race_type",
+      "distance",
+      "race_name",
+      "stage2_race_id",
+      "source_race_id",
+      "evidence",
+      "review_reason"
+    ]
+  },
+  "source_coverage": {
+    "runner_rows": 4994581,
+    "uk_ie_races_scanned": 395631,
+    "non_uk_ie_races_excluded": 97927,
+    "evaluated_races": {
+      "2023": 12860,
+      "2024": 12855,
+      "2025": 12997
+    },
+    "gap_sources": {
+      "training_runner_rows": 242845,
+      "Ability_has_evidence": 362107,
+      "Trainer_has_evidence": 361935,
+      "Jockey_only_population_prior": 677,
+      "Course_has_evidence": 362268,
+      "Distance_has_evidence": 362158,
+      "Ground_has_evidence": 362242,
+      "Jumping_has_evidence": 128242,
+      "Comparable-race trend_has_evidence": 362268,
+      "Jockey_has_evidence": 361591,
+      "returning_after_90_days": 51671,
+      "horse_specific_prior_layoff_evidence": 33958,
+      "observed_debut": 24177,
+      "sire_2yo_debut_evidence": 19838,
+      "dam_2yo_debut_evidence": 9595,
+      "Trainer_only_population_prior": 333,
+      "Draw_has_evidence": 221622,
+      "Ability_only_population_prior": 161,
+      "Distance_only_population_prior": 110,
+      "observed_2yo_debut": 9779,
+      "Jumping_only_population_prior": 2,
+      "Ground_only_population_prior": 26,
+      "2025_runner_rows": 119423
+    }
+  },
+  "model_results": {
+    "A": {
+      "chosen_combination": "A-016-gap14",
+      "training_and_validation_objective": -6.474,
+      "weights_pct": {
+        "Ability": 1.98,
+        "Trainer": 1.78,
+        "Jockey": 1.64,
+        "Course": 34.31,
+        "Draw": 4.53,
+        "Distance": 20.51,
+        "Ground": 0.01,
+        "Jumping": 6.08,
+        "Comparable-race trend": 29.16
+      },
+      "selection_margin": 0.14,
+      "all_races_2025": {
+        "2025_all_races": 12997,
+        "2025_all_wins": 2748,
+        "2025_all_strike_pct": 21.143,
+        "2025_all_priced_bets": 12660,
+        "2025_all_price_coverage_pct": 97.41,
+        "2025_all_profit_units": -2023.755,
+        "2025_all_roi_pct": -15.985,
+        "2025_all_roi_capped_20to1_pct": -17.241,
+        "2025_all_roi_without_largest_winner_pct": -16.301,
+        "2025_all_average_weekly_bets": 249.27,
+        "2025_all_weeks_ge10": 53
+      },
+      "selected_races_2025": {
+        "2025_selected_races": 1156,
+        "2025_selected_wins": 362,
+        "2025_selected_strike_pct": 31.315,
+        "2025_selected_priced_bets": 1121,
+        "2025_selected_price_coverage_pct": 96.97,
+        "2025_selected_profit_units": -135.334,
+        "2025_selected_roi_pct": -12.073,
+        "2025_selected_roi_capped_20to1_pct": -12.073,
+        "2025_selected_roi_without_largest_winner_pct": -13.143,
+        "2025_selected_average_weekly_bets": 22.17,
+        "2025_selected_weeks_ge10": 53
+      },
+      "combinations_tested": 332
+    },
+    "B": {
+      "chosen_combination": "B-015-gap14",
+      "training_and_validation_objective": -8.277,
+      "weights_pct": {
+        "Ability": 2.08,
+        "Trainer": 7.77,
+        "Jockey": 2.32,
+        "Course": 24.37,
+        "Draw": 9.15,
+        "Distance": 23.67,
+        "Ground": 1.2,
+        "Jumping": 0.04,
+        "Comparable-race trend": 29.39
+      },
+      "selection_margin": 0.14,
+      "all_races_2025": {
+        "2025_all_races": 12997,
+        "2025_all_wins": 2788,
+        "2025_all_strike_pct": 21.451,
+        "2025_all_priced_bets": 12645,
+        "2025_all_price_coverage_pct": 97.29,
+        "2025_all_profit_units": -2177.131,
+        "2025_all_roi_pct": -17.217,
+        "2025_all_roi_capped_20to1_pct": -18.143,
+        "2025_all_roi_without_largest_winner_pct": -17.478,
+        "2025_all_average_weekly_bets": 249.27,
+        "2025_all_weeks_ge10": 53
+      },
+      "selected_races_2025": {
+        "2025_selected_races": 1330,
+        "2025_selected_wins": 429,
+        "2025_selected_strike_pct": 32.256,
+        "2025_selected_priced_bets": 1292,
+        "2025_selected_price_coverage_pct": 97.14,
+        "2025_selected_profit_units": -164.752,
+        "2025_selected_roi_pct": -12.752,
+        "2025_selected_roi_capped_20to1_pct": -12.752,
+        "2025_selected_roi_without_largest_winner_pct": -13.68,
+        "2025_selected_average_weekly_bets": 25.51,
+        "2025_selected_weeks_ge10": 53
+      },
+      "combinations_tested": 332
+    },
+    "C": {
+      "chosen_combination": "C-021-gap14",
+      "training_and_validation_objective": -9.773,
+      "weights_pct": {
+        "Ability": 11.88,
+        "Trainer": 5.11,
+        "Jockey": 0.05,
+        "Course": 50.34,
+        "Draw": 0.1,
+        "Distance": 1.92,
+        "Ground": 11.28,
+        "Jumping": 4.72,
+        "Comparable-race trend": 14.6
+      },
+      "selection_margin": 0.14,
+      "all_races_2025": {
+        "2025_all_races": 12997,
+        "2025_all_wins": 2800,
+        "2025_all_strike_pct": 21.543,
+        "2025_all_priced_bets": 12639,
+        "2025_all_price_coverage_pct": 97.25,
+        "2025_all_profit_units": -2130.357,
+        "2025_all_roi_pct": -16.855,
+        "2025_all_roi_capped_20to1_pct": -17.971,
+        "2025_all_roi_without_largest_winner_pct": -17.172,
+        "2025_all_average_weekly_bets": 249.27,
+        "2025_all_weeks_ge10": 53
+      },
+      "selected_races_2025": {
+        "2025_selected_races": 2266,
+        "2025_selected_wins": 685,
+        "2025_selected_strike_pct": 30.229,
+        "2025_selected_priced_bets": 2201,
+        "2025_selected_price_coverage_pct": 97.13,
+        "2025_selected_profit_units": -223.668,
+        "2025_selected_roi_pct": -10.162,
+        "2025_selected_roi_capped_20to1_pct": -11.207,
+        "2025_selected_roi_without_largest_winner_pct": -11.661,
+        "2025_selected_average_weekly_bets": 43.46,
+        "2025_selected_weeks_ge10": 53
+      },
+      "combinations_tested": 332
+    },
+    "D": {
+      "chosen_combination": "D-064-gap14",
+      "training_and_validation_objective": -12.877,
+      "weights_pct": {
+        "Ability": 13.93,
+        "Trainer": 8.96,
+        "Jockey": 5.6,
+        "Course": 17.77,
+        "Draw": 12.25,
+        "Distance": 11.17,
+        "Ground": 25.03,
+        "Jumping": 5.28
+      },
+      "selection_margin": 0.14,
+      "all_races_2025": {
+        "2025_all_races": 12997,
+        "2025_all_wins": 2860,
+        "2025_all_strike_pct": 22.005,
+        "2025_all_priced_bets": 12621,
+        "2025_all_price_coverage_pct": 97.11,
+        "2025_all_profit_units": -2172.521,
+        "2025_all_roi_pct": -17.214,
+        "2025_all_roi_capped_20to1_pct": -18.244,
+        "2025_all_roi_without_largest_winner_pct": -17.736,
+        "2025_all_average_weekly_bets": 249.27,
+        "2025_all_weeks_ge10": 53
+      },
+      "selected_races_2025": {
+        "2025_selected_races": 2712,
+        "2025_selected_wins": 820,
+        "2025_selected_strike_pct": 30.236,
+        "2025_selected_priced_bets": 2633,
+        "2025_selected_price_coverage_pct": 97.09,
+        "2025_selected_profit_units": -338.994,
+        "2025_selected_roi_pct": -12.875,
+        "2025_selected_roi_capped_20to1_pct": -13.369,
+        "2025_selected_roi_without_largest_winner_pct": -13.938,
+        "2025_selected_average_weekly_bets": 52.01,
+        "2025_selected_weeks_ge10": 53
+      },
+      "combinations_tested": 328
+    }
+  },
+  "limitations": [
+    "2025 never used to choose weights or selection cutoffs; viewing every combination on 2025 must not be used to re-optimise retrospectively.",
+    "Candidate eligibility demands at least 520 selections and 85% settlement price coverage separately in 2023 and 2024; no profit percentage from a handful of bets can win selection.",
+    "Horse last-five and trainer recent form, sire/dam progeny, trainer debut and layoff return records are used only if observed before race day; unverified claims are not invented.",
+    "Observed debut is the first entry in an imperfect historical archive, not proof of a true career debut.",
+    "Final SP is used solely for historical win-bet settlement (one unit per selection), never as a selection or training feature.",
+    "When no direct or indirect evidence exists, a conditional neutral population prior remains and is audited rather than an invented estimate.",
+    "Racecourse whitelist excludes non-UK/Irish races; incomplete and ambiguous historical identities affect reliability.",
+    "Reported sample_evidence_count is raw supporting outcome occurrences, may overlap between fallback tiers, and is not an independent sample-size or confidence interval.",
+    "RPR/Topspeed are excluded because they may contain future/post-race information.",
+    "Flat/AW disables Jumping; Jumps disables Draw; weights redistribute within each race.",
+    "This retrospective research does not claim live bookmaker execution, stable odds or profits."
+  ]
+}
