@@ -1,0 +1,226 @@
+name: Stage 37 - Frozen Dundalk Newmarket Course Challenger Audit
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: stage37-frozen-stage34-course-audit
+  cancel-in-progress: false
+
+jobs:
+  research-frozen-course-challengers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - name: Checkout exact published Stage34 profiles
+        uses: actions/checkout@v4
+
+      - name: Configure Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install historical research dependencies
+        run: |
+          python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1 kagglehub
+
+      - name: Verify research sources and run self-tests
+        run: |
+          set -euo pipefail
+          for file in \
+            scripts/stage30_gap_aware_abcd.py \
+            scripts/stage34_model_d_course_research.py \
+            scripts/stage35_model_d_going_5years.py \
+            scripts/stage37_frozen_dundalk_newmarket.py \
+            reports/stage30/stage30-summary.json \
+            reports/stage34/stage34-summary.json \
+            reports/stage34/stage34-frozen-track-profiles.json; do
+              test -s "$file" || { echo "Required research file missing: $file"; exit 1; }
+          done
+          python -m py_compile scripts/stage30_gap_aware_abcd.py scripts/stage34_model_d_course_research.py scripts/stage35_model_d_going_5years.py scripts/stage37_frozen_dundalk_newmarket.py
+          python scripts/stage30_gap_aware_abcd.py --self-test
+          python scripts/stage34_model_d_course_research.py --self-test
+          python scripts/stage35_model_d_going_5years.py --self-test
+          python scripts/stage37_frozen_dundalk_newmarket.py --self-test
+          python scripts/stage24_history_integrity.py self-test
+
+      - name: Download original Stage2 database or rebuild after artifact expiry
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, subprocess, sys
+          from pathlib import Path
+          repo=os.environ['GITHUB_REPOSITORY']
+          target=Path('stage37_db')
+          target.mkdir(exist_ok=True)
+          winner=None
+          for page in range(1,21):
+              raw=subprocess.check_output(['gh','api','-X','GET',f'repos/{repo}/actions/artifacts',
+                                           '-f','per_page=100','-f',f'page={page}'],text=True)
+              items=json.loads(raw).get('artifacts',[])
+              for row in items:
+                  if row.get('name')=='stage2-historical-staging-database' and not row.get('expired'):
+                      if not winner or row.get('created_at','')>winner.get('created_at',''):
+                          winner=row
+              if len(items)<100:
+                  break
+          matches=[]
+          if winner:
+              rid=str(winner['workflow_run']['id'])
+              try:
+                  subprocess.run(['gh','run','download',rid,'--repo',repo,'--name',
+                                  winner['name'],'--dir',str(target)],check=True)
+                  matches=list(target.rglob('*.sqlite'))
+                  print('Downloaded original Stage2 database artifact from run:',rid,flush=True)
+              except subprocess.CalledProcessError:
+                  print('Original Stage2 artifact download failed; rebuilding it',flush=True)
+          if matches:
+              db=max(matches,key=lambda p:p.stat().st_size).resolve()
+              source='original_stage2_artifact'
+          else:
+              import kagglehub
+              print('Stage2 SQLite expired: rebuilding with the same Kaggle source and import script',flush=True)
+              archive=kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025')
+              db=(target/'historical_ukie_staging.sqlite').resolve()
+              subprocess.run([sys.executable,'import_historical_ukie.py',
+                              '--mode','import','--input',str(archive),
+                              '--min-date','1988-01-01','--max-date','2026-10-07',
+                              '--database',str(db),
+                              '--report',str(target/'import-report.json')],check=True)
+              subprocess.run([sys.executable,'audit_history_coverage.py',
+                              '--database',str(db),'--expect-first-year','1988',
+                              '--output',str(target/'historical-annual-coverage.csv'),
+                              '--summary',str(target/'historical-coverage.json')],check=True)
+              source='reconstructed_original_source'
+          if not db.is_file() or db.stat().st_size<10_000_000:
+              raise SystemExit('Historical SQLite file not present or unexpectedly small')
+          with open(os.environ['GITHUB_ENV'],'a') as f:
+              print('STAGE37_DB='+str(db),file=f)
+              print('STAGE37_SOURCE='+source,file=f)
+          print('Historical data:',source,'size:',db.stat().st_size,flush=True)
+          PY
+
+      - name: Restore verified historical integrity dependencies
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import base64,gzip,json,os,pathlib,re,urllib.request,py_compile
+          repo=os.environ['GITHUB_REPOSITORY']
+          def workflow(name):
+              req=urllib.request.Request('https://api.github.com/repos/'+repo+'/contents/.github/workflows/'+name,
+                headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],
+                         'Accept':'application/vnd.github+json'})
+              with urllib.request.urlopen(req,timeout=45) as response: data=json.load(response)
+              return base64.b64decode(data['content']).decode('utf-8')
+          src=workflow('stage18-historical-ab.yml')
+          pairs=re.findall(r"pathlib\.Path\('([^']+\.py)'\)\.write_bytes\(gzip\.decompress\(base64\.b64decode\('''(.*?)'''\)\)\)",src,re.S)
+          restored=set()
+          for file,b64 in pairs:
+              p=pathlib.Path(file)
+              p.parent.mkdir(parents=True,exist_ok=True)
+              p.write_bytes(gzip.decompress(base64.b64decode(b64)))
+              restored.add(file)
+          required={'scripts/stage16_history_model.py','scripts/stage18_historical_ab.py'}
+          if not required.issubset(restored):
+              raise SystemExit('Missing historical integrity dependencies: '+str(required-restored))
+          src13=workflow('stage13-strategy-learning.yml')
+          encoded=re.findall(r"printf '%s' '([A-Za-z0-9+/=]+)' \| base64 --decode \| gzip --decompress > ([\w./-]+\.py)",src13)
+          wanted={'stage12_form_analysis.py','scripts/stage16_score.py','scripts/stage16_integrate.py'}
+          for b64,file in encoded:
+              if file in wanted:
+                  p=pathlib.Path(file)
+                  p.parent.mkdir(parents=True,exist_ok=True)
+                  p.write_bytes(gzip.decompress(base64.b64decode(b64)))
+                  restored.add(file)
+          for file in restored:
+              py_compile.compile(file,doraise=True)
+          print('Restored verified integrity dependencies:',len(restored))
+          PY
+
+      - name: Verify historical database integrity
+        run: |
+          set -euo pipefail
+          python scripts/stage24_history_integrity.py prepare --db "$STAGE37_DB" --repo . --strict --assert-form
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          audit=json.loads(Path('data/history-integrity-audit.json').read_text())
+          if not audit.get('coverage_verified_through'):
+              raise SystemExit('Historical integrity report lacks source coverage date')
+          print('Verified source coverage through:',audit['coverage_verified_through'])
+          PY
+
+      - name: Replay unchanged Stage34 Dundalk and Newmarket challengers
+        run: |
+          set -euo pipefail
+          python -u scripts/stage37_frozen_dundalk_newmarket.py \
+            --db "$STAGE37_DB" \
+            --stage34-profiles reports/stage34/stage34-frozen-track-profiles.json \
+            --stage34-summary reports/stage34/stage34-summary.json \
+            --stage30-summary reports/stage30/stage30-summary.json \
+            --output stage37_report
+          python - <<'PY'
+          import csv,json
+          from pathlib import Path
+          out=Path('stage37_report')
+          s=json.loads((out/'stage37-summary.json').read_text())
+          assert s['status']=='RESEARCH_ONLY_NOT_LIVE'
+          assert s['frozen_course_models_modified'] is False
+          assert s['betfair_required'] is False
+          assert set(s['by_course'])=={'aw|dundalk','flat|newmarket'}
+          for key in ('aw|dundalk','flat|newmarket'):
+              a=s['by_course'][key]
+              assert sum(a['historical_races_by_year'][str(y)] for y in range(2018,2023))>=100
+              assert a['2025_reviewed_audit']['stage34_frozen_course']['all']['races']>30
+              assert s['stage34_2025_reproduction_checks'][key]['reproduces_published_stage34'] is True
+          for file in ('stage37-frozen-all-races-2018-2026.csv',
+                       'stage37-frozen-selected-races-2018-2026.csv',
+                       'stage37-year-by-year-head-to-head.csv',
+                       'stage37-conditions-descriptive-not-optimised.csv',
+                       'stage37-unchanged-frozen-models.json'):
+              assert (out/file).stat().st_size>200,file
+          print('Stage37 historical 2025 Stage34 reproduction verified for both courses')
+          print('Stage37 2026 forward status:',s['forward_2026_status'])
+          PY
+
+      - name: Publish research report only without changing live models
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage37
+          cp stage37_report/stage37-* reports/stage37/
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add reports/stage37/
+          if git diff --cached --quiet; then
+            echo 'No changed research reports'
+            exit 0
+          fi
+          git commit -m 'Stage37: frozen Stage34 Dundalk and Newmarket historical audit'
+          for attempt in 1 2 3 4 5; do
+            if git pull --rebase origin main && git push origin HEAD:main; then
+              echo 'Stage37 reports published'; exit 0
+            fi
+            git rebase --abort || true
+            sleep "$((attempt*3))"
+          done
+          echo 'Reports generated but GitHub push failed; use Actions artifact' >&2
+          exit 1
+
+      - name: Preserve Stage37 research output files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage37-frozen-dundalk-newmarket-audit
+          path: stage37_report/
+          retention-days: 30
+          if-no-files-found: warn
