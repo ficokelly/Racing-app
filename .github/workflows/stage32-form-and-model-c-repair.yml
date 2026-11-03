@@ -44,15 +44,48 @@ jobs:
           assert x['deduplicated'] is True
           assert x['periods']['14']['runners'] > 1000, 'Too few verified runners; cannot publish'
           assert a['counts']['duplicate_runner_rows_removed'] >= 0
-          print('14-day as of:',x['as_of'])
-          print('Gordon Elliott:',a.get('gordon_elliott'))
-          print('Jack Kennedy:',a.get('jack_kennedy'))
-          print('Missing trainer identities:',a.get('fourteen_day_missing_trainer_rows'))
+          print('14-day as of:', x['as_of'])
+          print('Gordon Elliott:', a.get('gordon_elliott'))
+          print('Jack Kennedy:', a.get('jack_kennedy'))
+          print('Missing trainer identities:', a.get('fourteen_day_missing_trainer_rows'))
           PY
 
-      - name: Fix racecard person form and Model C prediction display
+      - name: Fix exact Model C code anchors and repair Racecards UI
         run: |
           set -euo pipefail
+          # Existing Stage 32 script expected 2 leading spaces in three code
+          # anchors, but the deployed index.html uses 1. Correct ONLY those
+          # three named matches; keep all other assertions unchanged.
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/stage32_repair_source.py')
+          s = p.read_text(encoding='utf-8')
+          old = '''    c = source.count(old)
+              if c != 1:
+                  raise SystemExit(f"{name}: expected exactly one target, found {c}")
+              source = source.replace(old, new, 1)'''
+          new = '''    c = source.count(old)
+              if c == 0 and name in (
+                  "C ranked race verdict",
+                  "C individual horse commentary stale guard",
+                  "C horse win chance stale guard",
+              ):
+                  corrected = re.sub(r"(?m)^ {2}", " ", old)
+                  if source.count(corrected) == 1:
+                      old = corrected
+                      c = 1
+              if c != 1:
+                  raise SystemExit(f"{name}: expected exactly one target, found {c}")
+              source = source.replace(old, new, 1)'''
+          if s.count(old) != 1:
+              if 'corrected = re.sub(r"(?m)^ {2}", " ", old)' not in s:
+                  raise SystemExit('Unexpected Stage 32 patch script; refusing unsafe modification')
+              print('Exact-anchor patch already applied')
+          else:
+              p.write_text(s.replace(old, new, 1), encoding='utf-8')
+              print('Corrected the 3 verified Model C anchor indentation mismatches')
+          PY
+          python -m py_compile scripts/stage32_repair_source.py
           python scripts/stage32_repair_source.py
           python - <<'PY'
           import re
@@ -60,18 +93,18 @@ jobs:
           html=Path('index.html').read_text(encoding='utf-8')
           assert 'RHP_STAGE32_FORM_AND_MODEL_C_UI' in html
           assert 'function rhpCFieldChanged(' in html
-          scripts=re.findall(r'<script(?:\s[^>]*)?>([\s\S]*?)</script>',html,flags=re.I)
-          if not scripts:raise SystemExit('Missing inline JavaScript')
-          Path('/tmp/stage32-racing-app.js').write_text('\n'.join(scripts),encoding='utf-8')
+          scripts=re.findall(r'<script(?:\s[^>]*)?>([\s\S]*?)</script>', html, flags=re.I)
+          if not scripts: raise SystemExit('Missing inline JavaScript')
+          Path('/tmp/stage32-racing-app.js').write_text('\n'.join(scripts), encoding='utf-8')
           PY
           node --check /tmp/stage32-racing-app.js
 
-      - name: Commit only validated form + UI repair, not betting models
+      - name: Commit only validated form and UI repair, not betting models
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add index.html calculate-strike-rates.py data/strike-rates.json data/form-identity-cache.json reports/stage32/form-rebuild-audit.json
+          git add index.html calculate-strike-rates.py data/strike-rates.json data/form-identity-cache.json reports/stage32/form-rebuild-audit.json scripts/stage32_repair_source.py
           if ! git diff --cached --quiet; then
             git commit -m 'Stage 32: deduplicate and restore trainer form; show Model C racecard chances'
             git push
