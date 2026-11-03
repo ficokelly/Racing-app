@@ -1,18 +1,23 @@
 {
-  "model_a_leader_wins": 1,
-  "model_a_verdicts_settled": 5,
+  "model_a_leader_wins": 3,
+  "model_a_verdicts_settled": 13,
   "model_b": {
-    "assessed_races": 2,
+    "assessed_races": 4,
     "by_historical_match": {
       "SAME_COURSE_SIMILAR_RACE": {
         "races": 2,
         "strike_rate_pct": 0.0,
         "wins": 0
+      },
+      "SAME_NAMED_EVENT": {
+        "races": 2,
+        "strike_rate_pct": 50.0,
+        "wins": 1
       }
     },
     "commentary_factor_observations": {},
-    "leader_win_pct": 0.0,
-    "leader_wins": 0
+    "leader_win_pct": 25.0,
+    "leader_wins": 1
   },
   "policy": "Positive and negative form evidence are evaluated against verified starts; changes only after unseen later dates. Never rewrite pre-race commentary, never use external tips as selection inputs."
 }
