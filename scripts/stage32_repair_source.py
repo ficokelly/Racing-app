@@ -20,6 +20,15 @@ def between(start, end, replacement, name):
 def exact(old, new, name):
     global source
     c = source.count(old)
+    if c == 0 and name in (
+        "C ranked race verdict",
+        "C individual horse commentary stale guard",
+        "C horse win chance stale guard",
+    ):
+        corrected = re.sub(r"(?m)^ {2}", " ", old)
+        if source.count(corrected) == 1:
+            old = corrected
+            c = 1
     if c != 1:
         raise SystemExit(f"{name}: expected exactly one target, found {c}")
     source = source.replace(old, new, 1)

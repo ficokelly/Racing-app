@@ -1,0 +1,43 @@
+{
+  "status": "AUDITED_PARTIAL_COVERAGE",
+  "as_of": "2026-11-02",
+  "date_start_14d": "2026-10-20",
+  "counts": {
+    "identity_cache_new": 6957,
+    "racecard_identity_conflicts": 10,
+    "races_source_rows": 526,
+    "source_starters": 4960,
+    "result_card_jockey_disagreement": 596,
+    "result_card_trainer_disagreement": 4,
+    "rows_with_identity_enrichment": 2056,
+    "duplicate_runner_rows_removed": 195,
+    "contradictory_results_removed": 12,
+    "unique_starters": 4765
+  },
+  "fourteen_day_form_runners": 4753,
+  "fourteen_day_missing_trainer_rows": 9,
+  "fourteen_day_missing_jockey_rows": 597,
+  "gordon_elliott": {
+    "name": "Gordon Elliott",
+    "runs": 44,
+    "wins": 9,
+    "strike_rate": 20.5
+  },
+  "jack_kennedy": {
+    "name": "Jack Kennedy",
+    "rides": 22,
+    "wins": 6,
+    "strike_rate": 27.3
+  },
+  "reference_screenshot_2026_11_03": {
+    "gordon_elliott_wins": 9,
+    "gordon_elliott_runners": 45,
+    "note": "Racing Post displayed last 14 days at 12:01 Nov 3; our rolling window ends at latest archived results day. Do not force an exact match across nonidentical time windows."
+  },
+  "warnings": [
+    "Racing API coverage is not assured complete; unmatched identities are withheld.",
+    "No selection or probability models were changed.",
+    "Duplicated runner records are counted once, not twice.",
+    "This fixes form result identity linking, not the original API source coverage."
+  ]
+}

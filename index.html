@@ -507,7 +507,7 @@ OneSignalDeferred.push(async function(OneSignal) {
   }
 });
 </script>
-</head><body><header><div class="top"><div><div class="brand"><span class="brand-icon">♞</span><span class="brand-words">Racing <span>Hot Pots</span></span></div><div class="sub">UK & IRELAND ◆ RACING INTELLIGENCE</div></div><div class="live" id="status">Checking feed</div></div></header><main><div id="rhp-nav-overlay" class="hidden" role="dialog" aria-modal="true" aria-label="Racing Hot Pots sections"><div class="rhp-nav-sheet"><div class="rhp-nav-sheet-head"><strong>All sections</strong><button type="button" id="rhp-nav-close" class="action small outline" aria-label="Close sections menu">✕</button></div><nav id="section-buttons" aria-label="Racing Hot Pots sections"><div class="nav-column"><button type="button" data-section="racecards">🏇 Racecards</button><button type="button" data-section="markets">📈 Market Movers</button><button type="button" data-section="watchlist">⭐ Watchlist</button><button type="button" data-section="hot">🔥 Hot Trainers</button></div><div class="nav-column"><button type="button" data-section="power">🎯 Strategy Selections</button><button type="button" data-section="powerresults">📊 Strategy Results</button><button type="button" data-section="bets">📁 My Bets</button><button type="button" data-section="pnl">📊 P&amp;L</button></div></nav></div></div><div class="rhp-main-toolbar"><h1 id="pageTitle">📈 Market Movers</h1><button type="button" id="rhp-advanced-shortcut" class="rhp-header-settings" aria-label="Open advanced controls">⚙ <span>Settings</span></button></div><div class="rhp-update-line"><div class="muted" id="asof">Loading odds…</div><button type="button" class="action outline" id="rhp-refresh-odds" aria-label="Refresh latest published odds">↻ Refresh Odds</button></div>
+<!-- RHP_STAGE32_FORM_AND_MODEL_C_UI --></head><body><header><div class="top"><div><div class="brand"><span class="brand-icon">♞</span><span class="brand-words">Racing <span>Hot Pots</span></span></div><div class="sub">UK & IRELAND ◆ RACING INTELLIGENCE</div></div><div class="live" id="status">Checking feed</div></div></header><main><div id="rhp-nav-overlay" class="hidden" role="dialog" aria-modal="true" aria-label="Racing Hot Pots sections"><div class="rhp-nav-sheet"><div class="rhp-nav-sheet-head"><strong>All sections</strong><button type="button" id="rhp-nav-close" class="action small outline" aria-label="Close sections menu">✕</button></div><nav id="section-buttons" aria-label="Racing Hot Pots sections"><div class="nav-column"><button type="button" data-section="racecards">🏇 Racecards</button><button type="button" data-section="markets">📈 Market Movers</button><button type="button" data-section="watchlist">⭐ Watchlist</button><button type="button" data-section="hot">🔥 Hot Trainers</button></div><div class="nav-column"><button type="button" data-section="power">🎯 Strategy Selections</button><button type="button" data-section="powerresults">📊 Strategy Results</button><button type="button" data-section="bets">📁 My Bets</button><button type="button" data-section="pnl">📊 P&amp;L</button></div></nav></div></div><div class="rhp-main-toolbar"><h1 id="pageTitle">📈 Market Movers</h1><button type="button" id="rhp-advanced-shortcut" class="rhp-header-settings" aria-label="Open advanced controls">⚙ <span>Settings</span></button></div><div class="rhp-update-line"><div class="muted" id="asof">Loading odds…</div><button type="button" class="action outline" id="rhp-refresh-odds" aria-label="Refresh latest published odds">↻ Refresh Odds</button></div>
 <div id="bet-overlay" class="hidden" role="dialog" aria-modal="true" aria-label="Add to My Bets"><div id="bet-dialog"><div id="bet-dialog-header"><strong>Add to My Bets</strong><button type="button" class="action small outline" id="close-bet">✕ Close</button></div><div id="bet-modal-content"></div></div></div>
 <section id="racecardsview" class="hidden"><div class="rc-day-toggle" role="group" aria-label="Racecard date"><button type="button" data-rc-day="yesterday">Yesterday</button><button type="button" data-rc-day="today" class="active">Today</button><button type="button" data-rc-day="tomorrow">Tomorrow</button></div><div class="rc-next-wrap"><div class="rc-next-head"><h2 style="margin:0">🏇 Next Races</h2><span class="hint">Swipe through race times →</span></div><div class="rc-next-track" id="rc-next-track"></div></div><div class="panel rhp-meeting-panel"><div class="rhp-section-heading"><div><h2 id="rc-meetings-heading">Today’s Meetings &amp; Races</h2><p class="hint">Choose a meeting, then tap a race to see its runners.</p></div><button type="button" class="action small outline" id="rc-all-races" aria-label="Show all races">All races</button></div><div class="rc-schedule" id="rc-schedule"></div><div class="rhp-legacy-control" aria-hidden="true"><select id="rc-meeting" tabindex="-1"></select><select id="rc-time" tabindex="-1"></select><select id="rc-odds" tabindex="-1"><option value="Paddy Power">Paddy Power</option></select></div><details class="form-dropdown rhp-race-options" id="rhp-race-options"><summary>Racecard display &amp; horse filters <span class="rhp-detail-label">Optional</span></summary><div class="form-dropdown-inner"><div class="field" style="margin:12px 0"><label for="rc-type">Race type</label><select id="rc-type"><option value="all">All types</option><option value="aw">All-Weather</option><option value="turf">Flat Turf</option><option value="jumps">Jumps</option></select></div><details class="form-dropdown" style="margin-top:12px"><summary>Display options</summary><div class="form-dropdown-inner"><div class="checks" style="padding-top:10px"><label><input type="checkbox" data-rc-display="form" checked> Recent form (up to 7)</label><label><input type="checkbox" data-rc-display="rating" checked> Ratings</label><label><input type="checkbox" data-rc-display="gear" checked> Headgear</label><label><input type="checkbox" data-rc-display="people" checked> Trainer and jockey</label><label><input type="checkbox" data-rc-display="odds" checked> Odds and movement</label></div></div></details><details class="form-dropdown" style="margin-top:10px"><summary>Filter horses</summary><div class="form-dropdown-inner panelflex" style="padding-top:12px"><div class="field"><label for="rc-result">Last finish</label><select id="rc-result"><option value="all">All runners</option><option value="won">Won last time</option><option value="placed">Top 3 last time</option></select></div><div class="field"><label for="rc-gear">Headgear</label><select id="rc-gear"><option value="all">All runners</option><option value="wearing">Wearing headgear</option><option value="first">First-time headgear</option></select></div><div class="field"><label for="rc-market">Market</label><select id="rc-market"><option value="all">All runners</option><option value="short">Shortening only</option><option value="drift">Drifting only</option><option value="priced">Priced only</option></select></div><div class="field"><label for="rc-sort">Sort runners</label><select id="rc-sort"><option value="odds" selected>Shortest odds first</option><option value="card">Racecard order</option><option value="name">Horse A–Z</option></select></div></div></details></div></details><p class="hint" id="rc-summary" style="margin-top:12px"></p></div><div class="panel rhp-model-picker"><div class="hint" style="margin-bottom:8px"><strong>Model analysis</strong> · Compare A, B and C</div><div class="rhp-ab-switch" role="group" aria-label="Choose racecard analysis model" style="margin:0"><button type="button" data-rc-model="A" class="active">Model A</button><button type="button" data-rc-model="B">Model B</button><button type="button" data-rc-model="C">Model C</button></div><p class="hint" style="margin:8px 0 0">Model rankings and race commentary. No model data changed.</p></div><div id="rc-list" class="list" style="grid-template-columns:1fr"></div></section><section id="watchlistview" class="hidden"><div class="panel"><h2>⭐ My Watchlist</h2><p class="hint">Horses you are considering, not bets or Strategy A/B selections. Saved privately on this device. Latest odds update when this horse and race are available in the feed.</p><div class="actions"><button type="button" class="action small outline" id="watch-export">Export Watchlist (JSON)</button><label class="action small outline" for="watch-import" style="margin:0">Import Watchlist</label><input id="watch-import" type="file" accept="application/json,.json" class="hidden"><button type="button" class="action small danger" id="watch-clear" aria-label="Clear all horses from Watchlist">🗑 Clear Watchlist</button></div><div class="field" style="margin-top:14px"><label for="watch-sort">Sort Watchlist by</label><select id="watch-sort"><option value="upcoming">Next race first (upcoming, then completed)</option><option value="earliest">Earliest post time first</option><option value="latest">Latest post time first</option><option value="added">Most recently added</option></select></div><div class="hint" id="watch-count" style="margin-top:12px"></div></div><div class="list" id="watch-list"></div></section><section id="marketview"><div class="rc-day-toggle market-day-toggle" role="group" aria-label="Markets race date"><button type="button" data-market-day="today" class="active">Today</button><button type="button" data-market-day="tomorrow">Tomorrow</button></div><div class="metrics"><div class="metric"><small>Races returned</small><b id="races">—</b></div><div class="metric"><small>Shortened quotes</small><b id="steamers">—</b></div><div class="metric"><small>Drifted quotes</small><b id="drifters">—</b></div></div>
 <div class="panel"><div class="panelflex"><div class="field hidden"><label for="race-date">Race date (Irish time)</label><select id="race-date"><option value="all">All saved dates</option></select></div><div class="field"><label for="meeting">Meeting</label><select id="meeting"><option value="all">All meetings</option></select></div><div class="field"><label for="race-time">Race time</label><select id="race-time"><option value="all">All times</option></select></div><div class="field rhp-legacy-control" aria-hidden="true"><label for="bookie">Bookmaker</label><select id="bookie" tabindex="-1"><option value="all">All bookmakers</option></select></div><div class="field full"><label for="sort-by">Sort horses by</label><select id="sort-by"><option value="shortest">Shortest odds first</option><option value="longest">Longest odds first</option><option value="earliest">Earliest race first</option><option value="latest">Latest race first</option><option value="drop">Biggest price drop first</option><option value="drift">Biggest drift first</option></select></div></div></div>
@@ -850,42 +850,37 @@ let hotSelectedDay='today',hotDays=14;
 let hotSelected=new Set(),hotSearch='',hotExpanded=false,hotMinRuns=1,hotTodayOnly=true,selectedTrainer=new Set(),selectedJockey=new Set(),trainerDays=14,jockeyDays=14,formData=null,formIndex={trainer:{},jockey:{}};
 const formName=s=>String(s||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
 function formStats(row,type){
- const person=row[type],selectedDays=type==='trainer'?trainerDays:jockeyDays;
- if(!person||!formData||!formData.periods)return null;
- // Use only results strictly before the race, never future results.
- const asOf=formData.as_of,raceDay=row.day;
- if(!/^\d{4}-\d{2}-\d{2}$/.test(asOf||'')||!/^\d{4}-\d{2}-\d{2}$/.test(raceDay||''))return null;
- const prior=new Date(raceDay+'T12:00:00Z');prior.setUTCDate(prior.getUTCDate()-1);
- if(asOf>prior.toISOString().slice(0,10))return null; // Latest verified historical results are valid for future racecards too.
- // A selected 14-day window starts with 1 verified day, then grows to 2,
- // 3 ... up to 14. Never count an uncollected day as a zero-run day.
- let availableDays=0,period=null;
- for(let n=selectedDays;n>=1;n--){
-  const candidate=formData.periods[String(n)];
-  if(!candidate||!Array.isArray(candidate.dates_available))continue;
-  const dates=new Set(candidate.dates_available);
-  let complete=true;
-  for(let i=0;i<n;i++){
-   const d=new Date(asOf+'T12:00:00Z');d.setUTCDate(d.getUTCDate()-i);
-   if(!dates.has(d.toISOString().slice(0,10))){complete=false;break;}
+  const person=row[type],selectedDays=type==='trainer'?trainerDays:jockeyDays;
+  if(!person||!formData||!formData.periods)return null;
+  const asOf=formData.as_of,raceDay=row.day;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(asOf||'')||!/^\d{4}-\d{2}-\d{2}$/.test(raceDay||''))return null;
+  const prior=new Date(raceDay+'T12:00:00Z');prior.setUTCDate(prior.getUTCDate()-1);
+  if(asOf>prior.toISOString().slice(0,10))return null;
+  // Archived days without published results do not erase verified runs from other days.
+  // Use the longest published requested window; disclose how many calendar dates have
+  // verified race results rather than inventing a zero-run day for a gap.
+  let availableDays=0,period=null,calendarDays=0;
+  for(let n=Math.min(14,selectedDays);n>=1;n--){
+    const candidate=formData.periods[String(n)];
+    if(!candidate||!Array.isArray(candidate.dates_available))continue;
+    const minDate=new Date(asOf+'T12:00:00Z');minDate.setUTCDate(minDate.getUTCDate()-(n-1));
+    const lower=minDate.toISOString().slice(0,10);
+    const verified=new Set(candidate.dates_available.filter(d=>typeof d==='string'&&d>=lower&&d<=asOf));
+    if(!verified.size)continue;
+    period=candidate;availableDays=verified.size;calendarDays=n;break;
   }
-  if(complete){period=candidate;availableDays=n;break;}
- }
- if(!period)return null;
- const group=type==='trainer'?'trainers':'jockeys';
- const directId=row[type+'_id'];
- let stat=directId?period[group]?.[directId]:null;
- // The racecard and results endpoints sometimes have different IDs.
- // Only fall back when a normalised name uniquely identifies one person.
- if(!stat){
-  const matches=formIndex[type][formName(person)]||[];
-  if(matches.length!==1)return null;
-  stat=period[group]?.[matches[0]]||null;
- }
- if(!stat)return null;
- const runs=Number(stat.runs??stat.rides),wins=Number(stat.wins);
- if(!Number.isFinite(runs)||runs<=0||!Number.isFinite(wins)||wins<0||wins>runs)return null;
- return {wins,runs,pct:100*wins/runs,availableDays,selectedDays};
+  if(!period)return null;
+  const group=type==='trainer'?'trainers':'jockeys',directId=row[type+'_id'];
+  let stat=directId?period[group]?.[directId]:null;
+  if(!stat){
+    const matches=formIndex[type][formName(person)]||[];
+    if(matches.length!==1)return null;
+    stat=period[group]?.[matches[0]]||null;
+  }
+  if(!stat)return null;
+  const runs=Number(stat.runs??stat.rides),wins=Number(stat.wins);
+  if(!Number.isFinite(runs)||runs<=0||!Number.isFinite(wins)||wins<0||wins>runs)return null;
+  return {wins,runs,pct:100*wins/runs,availableDays,selectedDays,calendarDays,partialCoverage:availableDays<calendarDays||period.coverage_complete===false};
 }
 function indexFormNames(raw){
  formIndex={trainer:{},jockey:{}};
@@ -1159,7 +1154,7 @@ function rcPersonPreview(r,x,type,day){
   jockey_id:r.jockey_id||x?.jockey_id||null};
  const stat=formStats(row,type);
  const name=row[type]||'Unknown';
- const value=stat?`${stat.wins}/${stat.runs} · ${stat.pct.toFixed(1)}% (${stat.availableDays}d)`:'Form unknown';
+ const value=stat?`${stat.wins}/${stat.runs} · ${stat.pct.toFixed(1)}% (${stat.availableDays}/${stat.calendarDays}d recorded${stat.partialCoverage?' · partial coverage':''})`:'Form unavailable';
  return `<span class="rc-person-line"><strong>${type==='trainer'?'Trainer':'Jockey'}:</strong> ${safe(name)} · ${safe(value)}</span>`;
 }
 // Full race schedule and horizontally scrollable next-off navigation.
@@ -1369,9 +1364,21 @@ function rhpNonrunnerPending(model,r){
  const published=model==='C'?strategyCFeed?.generated_at:model==='B'?strategyBProbFeed?.generated_at:strategyProbabilityFeed?.generated_at;
  return !published||Date.parse(published)<when;
 }
+function rhpCFieldChanged(race,course,date,time){
+  if(!race||!Array.isArray(race.runners)||!race.runners.length)return false;
+  const current=racecardRunners.filter(r=>(r.date||dateKey(r.race_time))===date&&
+    courseMatchKey(r.course)===courseMatchKey(course)&&clock(r.race_time)===time);
+  if(!current.length)return false;
+  const active=current.filter(r=>r.non_runner!==true&&r.is_non_runner!==true&&
+    String(r.number||'').toUpperCase()!=='NR'&&
+    !['nr','nonrunner','withdrawn','scratched'].includes(String(r.runner_status||r.status||'').toLowerCase().replace(/[^a-z]/g,'')));
+  const before=new Set(race.runners.map(r=>horseMatchKey(r.horse)).filter(Boolean));
+  const now=new Set(active.map(r=>horseMatchKey(r.horse)).filter(Boolean));
+  return before.size!==now.size||[...now].some(x=>!before.has(x));
+}
 function rcModelRace(course,date,time){
  const target=commentaryKey(course,date,time);
- if(rcSelectedModel==='C')return strategyCFeed?.version===2&&strategyCFeed?.day===date?(strategyCFeed.races||[]).find(r=>commentaryKey(r.course,r.date,r.time)===target):null;
+ if(rcSelectedModel==='C')return strategyCFeed?.version===2&&strategyCFeed?.day===date?(strategyCFeed.races||[]).find(r=>commentaryKey(r.course,r.date,r.time||clock(r.race_time))===target):null;
  if(rcSelectedModel==='B'){
    const fromResearch=strategyBProbFeed?.day===date?(strategyBProbFeed.races||[]).find(r=>commentaryKey(r.course,r.date,r.time)===target):null;
    if(fromResearch)return fromResearch;
@@ -1407,9 +1414,17 @@ function rhpSelectedModelVerdict(sample,date,field){
    const a=entries[0],b=entries[1];
    return `<div class="rhp-verdict"><strong>Model B · trend and individual form ranking</strong><p>${safe(a.horse)} leads on research score ${Number(a.score).toFixed(1)}, followed by ${safe(b.horse)} at ${Number(b.score).toFixed(1)}. ${safe(race?.verdict||'')} These are research scores, NOT calibrated win probabilities or betting recommendations.</p></div>`;
  }
- if(!race)return '<div class="rhp-verdict"><strong>Model C · independent research</strong><p>New Model C v2 assessment not yet published for this field. It requires a completed Stage 22 full-history run and a complete current racecard.</p></div>';
- const sourceLinks=(race.decision?.external_sources||[]).slice(0,2).map(x=>`<a href="${safe(x.source_url)}" target="_blank" rel="noopener noreferrer">External source</a>`).join(' · ');
- return `<div class="rhp-verdict"><strong>Model C v2 · full-history and independent external research</strong><p>${safe(race.verdict||'Assessment not available')}</p>${sourceLinks?`<p class="hint">Sources: ${sourceLinks}</p>`:''}<p class="hint">This version has a new independent 2025 holdout test. Historical SP profit is not proof of live profit.</p></div>`;
+  if(!race)return '<div class="rhp-verdict"><strong>Model C · awaiting published race prediction</strong><p>No same-day Model C v2 assessment was found for this race. We do not fill it with Model A or market odds.</p></div>';
+  if(rhpCFieldChanged(race,sample.course,date,time)){
+    const prior=(race.runners||[]).filter(x=>x.win_probability!=null&&Number.isFinite(Number(x.win_probability))).sort((a,b)=>Number(b.win_probability)-Number(a.win_probability)).slice(0,3);
+    const old=prior.map((x,i)=>`${i+1}. ${safe(x.horse)} ${(100*Number(x.win_probability)).toFixed(1)}%`).join(' · ');
+    return `<div class="rhp-verdict"><strong>Model C · reassessment required</strong><p>The runner list has changed since this Model C calculation. An official selection cannot be inferred from the old field.</p><p class="hint"><strong>Earlier snapshot only (not current):</strong> ${old||'No recorded ranking'}. Re-run Stage 22 for updated chances.</p></div>`;
+  }
+  const ranked=(race.runners||[]).filter(x=>x.win_probability!=null&&Number.isFinite(Number(x.win_probability))).sort((a,b)=>Number(b.win_probability)-Number(a.win_probability));
+  const leaders=ranked.slice(0,3).map((x,i)=>`${i+1}. ${safe(x.horse)} ${(100*Number(x.win_probability)).toFixed(1)}%`).join(' · ');
+  const official=race.selection_status==='SELECTED'&&race.selection?`Official C selection: <strong>${safe(race.selection.horse)}</strong>.`:'No official Model C selection met the policy thresholds in this race.';
+  const sourceLinks=(race.decision?.external_sources||[]).slice(0,2).map(x=>`<a href="${safe(x.source_url)}" target="_blank" rel="noopener noreferrer">External source</a>`).join(' · ');
+  return `<div class="rhp-verdict"><strong>Model C v2 · independent win probabilities</strong>${leaders?`<p><strong>Highest rated:</strong> ${leaders}</p>`:''}<p>${safe(race.verdict||'Assessment not available')}</p><p class="hint">${official} These estimated chances are experimental and are not proof of betting value.</p>${sourceLinks?`<p class="hint">Sources: ${sourceLinks}</p>`:''}</div>`;
 }
 function rhpSelectedHorseComment(r,x,date){
  if(rhpNonrunnerPending(rcSelectedModel,{date,course:r.course,time:clock(r.race_time)}))return 'Non-runner declared: this model is re-assessing the remaining field. Previous ranking withheld.';
@@ -1422,8 +1437,10 @@ function rhpSelectedHorseComment(r,x,date){
  }
  const horse=rcModelHorse(r.horse,r.course,date,clock(r.race_time));
  if(!horse)return `Model ${safe(rcSelectedModel)} has no independently published assessment for this runner.`;
- if(rcSelectedModel==='C'){
-   const prob=Number(horse.win_probability);
+  if(rcSelectedModel==='C'){
+    const modelRace=rcModelRace(r.course,date,clock(r.race_time));
+    if(rhpCFieldChanged(modelRace,r.course,date,clock(r.race_time)))return 'Model C is re-assessing this race after the runner list changed. Prior probabilities are withheld.';
+    const prob=Number(horse.win_probability);
    const odds=horse.paddypower_decimal;
    return `Model C v2 estimates ${Number.isFinite(prob)?(prob*100).toFixed(1)+'%':'no'} win probability; ${safe(horse.form_runs??'—')} historic runs, ${safe(horse.positive_count??'—')} positive and ${safe(horse.negative_count??'—')} negative historical signals. Paddy Power ${odds>1?safe(Number(odds).toFixed(2)):'not available'}; ${safe(horse.external_source_count||0)} qualifying external references. Experimental estimate, not a guarantee.`;
  }
@@ -1436,12 +1453,14 @@ function rhpSelectedModelBadge(horse,course,date,time){
  const row=rcModelHorse(horse,course,date,time);
  if(rhpNonrunnerPending(rcSelectedModel,{date,course,time}))return '<span class="rhp-win-chance">Reassessment pending</span>';
  if(rcSelectedModel==='B')return `<span class="rhp-win-chance" title="Uncalibrated form research score, not win probability">Model B ${row?.score!=null&&Number.isFinite(Number(row.score))?'score '+Number(row.score).toFixed(1):row?.evidence_type==='VERIFIED_HORSE_FORM_ONLY'?'form '+safe(row.form_runs??'—')+' runs':'score —'}</span>`;
- const v=Number(row?.win_probability);
- return `<span class="rhp-win-chance" title="Experimental estimate. Model C has not demonstrated positive ROI.">Model C win ${row&&Number.isFinite(v)?(100*v).toFixed(1)+'%':'—'}</span>`;
+  const modelRace=rcModelRace(course,date,time);
+  if(rhpCFieldChanged(modelRace,course,date,time))return '<span class="rhp-win-chance" title="Racecard has changed since the Model C run">Model C reassessment pending</span>';
+  const v=Number(row?.win_probability);
+  return `<span class="rhp-win-chance" title="Experimental estimate; not a bookmaker-implied probability or betting recommendation.">Model C win ${row&&row.win_probability!=null&&Number.isFinite(v)?(100*v).toFixed(1)+'%':'—'}</span>`;
 }
 
 function renderRacecards(popupRace=null){const host=popupRace?$('race-runner-list'):$('rc-list');if(!host)return;if(!popupRace)document.querySelectorAll('[data-rc-day]').forEach(b=>{const chosen=b.dataset.rcDay===rcSelectedDay;b.classList.toggle('active',chosen);b.setAttribute('aria-pressed',String(chosen))});if(!popupRace)$('rc-meetings-heading').textContent=rcSelectedDay==='yesterday'?'Yesterday’s Meetings & Results':rcSelectedDay==='tomorrow'?'Tomorrow’s Meetings & Races':'Today’s Meetings & Races';const navTitle=document.querySelector('.rc-next-head h2');if(navTitle&&!popupRace)navTitle.textContent=rcSelectedDay==='yesterday'?'🏇 Yesterday’s Races':'🏇 Next Races';if(!popupRace){renderRaceNavigation();rhpSelectDefaultRace();rhpMarkRaceNav();}const today=popupRace?popupRace.day:rcDateKey();const m=$('rc-meeting').value,t=$('rc-time').value,kind=$('rc-type').value,last=$('rc-result').value,gear=$('rc-gear').value,market=$('rc-market').value,sort=$('rc-sort').value;
- let data=(popupRace?racecardRunners:rcViewingRunners()).filter(r=>!(r.non_runner===true||r.is_non_runner===true||['nr','nonrunner','withdrawn','scratched'].includes(String(r.runner_status||r.status||'').toLowerCase().replace(/[^a-z]/g,'')))).filter(r=>popupRace?((r.date||dateKey(r.race_time))===today&&courseMatchKey(r.course)===courseMatchKey(popupRace.course)&&clock(r.race_time)===popupRace.time):(r.date||dateKey(r.race_time))===today&&(m==='all'||r.course===m)&&(t==='all'||clock(r.race_time)===t)&&(kind==='all'||rcKind(r)===kind));
+ let data=(popupRace?racecardRunners:rcViewingRunners()).filter(r=>!(r.non_runner===true||r.is_non_runner===true||String(r.number||'').toUpperCase()==='NR'||['nr','nonrunner','withdrawn','scratched'].includes(String(r.runner_status||r.status||'').toLowerCase().replace(/[^a-z]/g,'')))).filter(r=>popupRace?((r.date||dateKey(r.race_time))===today&&courseMatchKey(r.course)===courseMatchKey(popupRace.course)&&clock(r.race_time)===popupRace.time):(r.date||dateKey(r.race_time))===today&&(m==='all'||r.course===m)&&(t==='all'||clock(r.race_time)===t)&&(kind==='all'||rcKind(r)===kind));
  if(!popupRace)data=data.filter(r=>{const f=rcForm(r),lastChar=f.replace(/[^0-9]/g,'').slice(-1);if(last==='won'&&lastChar!=='1')return false;if(last==='placed'&&!['1','2','3'].includes(lastChar))return false;if(gear==='wearing'&&!rcGear(r))return false;if(gear==='first'&&!rcFirstGear(r))return false;const x=rcRow(r);if(market==='priced'&&!x)return false;if(market==='short'&&!(x?.move>0))return false;if(market==='drift'&&!(x?.move<0))return false;return true});
  const buckets=new Map();for(const r of data){const k=[r.course,r.race_time].join('|');if(!buckets.has(k))buckets.set(k,[]);buckets.get(k).push(r)}
  if(!popupRace)$('rc-summary').textContent=`${data.length} runners · ${buckets.size} races · ${today}. ${rcSelectedDay==='tomorrow'&&!racecardRunners.some(r=>(r.date||dateKey(r.race_time))===today)?'Tomorrow’s cards are not published yet. ':''}Form and equipment filters exclude records where that information is missing.`;
@@ -1534,7 +1553,7 @@ async function loadForm(){
   if(!resp.ok)throw Error('Strike-rate data unavailable');
   const raw=await resp.json();
   if(!raw||typeof raw.as_of!=='string'||!raw.periods||typeof raw.periods!=='object')throw Error('Invalid strike-rate data');
-  formData=raw;indexFormNames(raw);autoWatchQualifiers();renderPower();renderMarkets();renderHot();
+  formData=raw;indexFormNames(raw);autoWatchQualifiers();renderPower();renderMarkets();renderHot();if(activeTab==='racecards')renderRacecards();
  }catch(e){formData=null;formIndex={trainer:{},jockey:{}};renderPower();renderMarkets();renderHot();const coverage=document.getElementById('hot-coverage');if(coverage)coverage.textContent='Trainer statistics failed to load: '+(e&&e.message||e)+' — check data/strike-rates.json';}
 }
 let powerResultsArchive=null;
@@ -1883,7 +1902,7 @@ function renderStrategyResultsLegacy(){
 // Stage17 A/B experiment. These are distinct models, not the legacy Power Fav A/B.
 // Model A powers the odds-adjacent percentages across the whole app.
 function abSelectionState(model){
- if(model==='C')return strategyCFeed?.version===2?strategyCFeed.races.map(r=>({...r,status:'UPCOMING',model:'C',model_validation:'HISTORICALLY_TRAINED_V2',historical_editions:r.historical_examples,
+ if(model==='C')return strategyCFeed?.version===2?strategyCFeed.races.map(r=>({...r,time:r.time||clock(r.race_time),status:'UPCOMING',model:'C',model_validation:'HISTORICALLY_TRAINED_V2',historical_editions:r.historical_examples,
    selection:r.selection?{...r.selection,score:100*Number(r.selection.win_probability||0),positive_count:r.selection.positive_count,negative_count:r.selection.negative_count,price_decimal:r.selection.paddypower_decimal,predicted_win_probability:r.selection.win_probability}:null})):null;
  const feed=strategyABSelectionsFeed;
  if(feed?.models?.[model]?.races)return feed.models[model].races;
@@ -1927,7 +1946,7 @@ function renderStrategySelections(){
  if(state.model==='C'&&(strategyCFeed?.version!==2||strategyCFeed?.day!==target)){host.innerHTML=`<div class="rhp-ab-empty">Model C has no published live forecast for ${safe(target)}. Latest: ${safe(strategyCFeed?.day||'none')}.</div>`;return;}
  const filtered=all.filter(r=>abTypeMatches(r,state.type));
  const pending=filtered.filter(r=>rhpNonrunnerPending(state.model,r));
- const selected=filtered.filter(r=>!rhpNonrunnerPending(state.model,r)&&r.selection&&r.selection_status==='SELECTED'&&r.status==='UPCOMING');
+ const selected=filtered.filter(r=>!rhpNonrunnerPending(state.model,r)&&!(state.model==='C'&&rhpCFieldChanged(r,r.course,r.date,r.time||clock(r.race_time)))&&r.selection&&r.selection_status==='SELECTED'&&r.status==='UPCOMING');
  const model=state.model;
  const text=model==='A'?'Model A uses its separately trained full-field probability model.':model==='B'?'Model B investigates previous named-race editions, comparable conditions and individual form.':'Model C v2 researches the full available historical period, evaluates multi-year trends against form and trainer/course strength, and can apply small identified external tip signals with timestamped evidence. Its latest independent 2025 results are shown below.';
  if(model==='C'){const msg=$('strategy-model-message');if(msg)msg.textContent=strategyCFeed?.version===2?('New Model C v2 · '+safe(strategyCFeed.state)+' · Full historical period, distinct 2023/2024/2025 validation, logged external evidence. Predictions are experimental, not guaranteed profits.'): 'Replacing old Model C: new Stage 22 model is not yet published. Run the new workflow; old C picks are hidden.';}
