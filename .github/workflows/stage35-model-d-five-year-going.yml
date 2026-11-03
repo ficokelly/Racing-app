@@ -1,0 +1,185 @@
+name: Stage 35 - Model D Five-Year Course, Distance and Going Research
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: stage35-model-d-five-year-going
+  cancel-in-progress: false
+
+jobs:
+  research-2021-2025-course-trip-going:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - name: Checkout independent Model D files
+        uses: actions/checkout@v4
+
+      - name: Configure Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install audited dependencies
+        run: |
+          python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1
+
+      - name: Verify five-year study and going/breeding self-tests
+        run: |
+          set -euo pipefail
+          test -s scripts/stage30_gap_aware_abcd.py
+          test -s scripts/stage35_model_d_going_5years.py
+          test -s scripts/stage34_model_d_course_research.py
+          test -s reports/stage30/stage30-summary.json
+          python -m py_compile scripts/stage30_gap_aware_abcd.py scripts/stage35_model_d_going_5years.py
+          python scripts/stage30_gap_aware_abcd.py --self-test
+          python scripts/stage34_model_d_course_research.py --self-test
+          python scripts/stage35_model_d_going_5years.py --self-test
+          python scripts/stage24_history_integrity.py self-test
+
+      - name: Download current historical racing database artifact (no Betfair)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os,subprocess
+          from pathlib import Path
+          repo=os.environ['GITHUB_REPOSITORY'];winner=None
+          for page in range(1,21):
+              raw=subprocess.check_output(['gh','api','-X','GET',f'repos/{repo}/actions/artifacts',
+                                           '-f','per_page=100','-f',f'page={page}'],text=True)
+              rows=json.loads(raw).get('artifacts',[])
+              for r in rows:
+                  if r.get('name')=='stage2-historical-staging-database' and not r.get('expired'):
+                      if not winner or r.get('created_at','')>winner.get('created_at',''):winner=r
+              if len(rows)<100:break
+          if not winner:raise SystemExit('Stage2 original historical SQLite artifact unavailable. Refresh Stage2 first.')
+          Path('stage35_db').mkdir(exist_ok=True)
+          rid=str(winner['workflow_run']['id'])
+          subprocess.run(['gh','run','download',rid,'--repo',repo,'--name',winner['name'],'--dir','stage35_db'],check=True)
+          matches=list(Path('stage35_db').rglob('*.sqlite'))
+          if not matches:raise SystemExit('Historical artifact did not include SQLite file')
+          db=max(matches,key=lambda p:p.stat().st_size).resolve()
+          with open(os.environ['GITHUB_ENV'],'a') as f:print('STAGE35_DB='+str(db),file=f)
+          print('Historical source:',rid,'size:',db.stat().st_size)
+          PY
+
+      - name: Restore verified historical integrity dependencies from existing workflows
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import base64,gzip,json,os,pathlib,re,urllib.request,py_compile
+          repo=os.environ['GITHUB_REPOSITORY']
+          def workflow(name):
+              req=urllib.request.Request('https://api.github.com/repos/'+repo+'/contents/.github/workflows/'+name,
+                headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+              with urllib.request.urlopen(req,timeout=45) as response:d=json.load(response)
+              return base64.b64decode(d['content']).decode('utf-8')
+          src=workflow('stage18-historical-ab.yml')
+          pairs=re.findall(r"pathlib\.Path\('([^']+\.py)'\)\.write_bytes\(gzip\.decompress\(base64\.b64decode\('''(.*?)'''\)\)\)",src,re.S)
+          done=set()
+          for file,b64 in pairs:
+              p=pathlib.Path(file);p.parent.mkdir(parents=True,exist_ok=True)
+              p.write_bytes(gzip.decompress(base64.b64decode(b64)));done.add(file)
+          needed={'scripts/stage16_history_model.py','scripts/stage18_historical_ab.py'}
+          if not needed.issubset(done):raise SystemExit('Required integrity dependency missing: '+str(needed-done))
+          src13=workflow('stage13-strategy-learning.yml')
+          encoded=re.findall(r"printf '%s' '([A-Za-z0-9+/=]+)' \| base64 --decode \| gzip --decompress > ([\w./-]+\.py)",src13)
+          wanted={'stage12_form_analysis.py','scripts/stage16_score.py','scripts/stage16_integrate.py'}
+          for b64,file in encoded:
+              if file in wanted:
+                  p=pathlib.Path(file);p.parent.mkdir(parents=True,exist_ok=True)
+                  p.write_bytes(gzip.decompress(base64.b64decode(b64)));done.add(file)
+          for file in done:py_compile.compile(file,doraise=True)
+          print('Integrity dependencies restored:',len(done))
+          PY
+
+      - name: Apply official historical archive integrity checks
+        run: |
+          set -euo pipefail
+          python scripts/stage24_history_integrity.py prepare --db "$STAGE35_DB" --repo . --strict --assert-form
+          python - <<'PY'
+          import datetime,json
+          from pathlib import Path
+          a=json.loads(Path('data/history-integrity-audit.json').read_text())
+          through=a.get('coverage_verified_through')
+          if not through:raise SystemExit('Missing date of verified source coverage')
+          print('Verified historical results through:',through)
+          PY
+
+      - name: Analyse five years, course-distance and going/breeding
+        run: |
+          set -euo pipefail
+          python -u scripts/stage35_model_d_going_5years.py \
+            --db "$STAGE35_DB" \
+            --stage30-report reports/stage30/stage30-summary.json \
+            --output stage35_report
+          python - <<'PYVALIDATE'
+          import json
+          from pathlib import Path
+          base=Path('stage35_report')
+          s=json.loads((base/'stage35-summary.json').read_text())
+          assert s['status']=='RESEARCH_ONLY_NOT_LIVE' and s['betfair_required'] is False
+          assert s['training_years']==[2021,2022,2023]
+          assert s['validation_year']==2024 and s['audit_year']==2025
+          assert s['courses']>=50, 'Course list unexpectedly sparse'
+          assert s['course_distance_profiles']>s['courses'], 'Missing course-trip studies'
+          assert s['weight_threshold_ground_combinations_attempted']>328, 'Too few model combinations'
+          assert all(s['races_per_year'][str(y)]>500 for y in (2021,2022,2023,2024,2025)), 'Missing year'
+          assert set(s['ground_methods_tested'])=={'original_ground','direct_or_pedigree','ground_emphasis'}
+          assert s['2025_results']['new_all']['races']==s['races_per_year']['2025']
+          assert s['2025_results']['original_all']['races']==s['races_per_year']['2025']
+          for filename in ('stage35-five-year-course-distance-weights.csv',
+                           'stage35-2025-forecasts.csv',
+                           'stage35-2025-original-d.csv',
+                           'stage35-2025-going-evidence.csv',
+                           'stage35-course-going-performance.csv',
+                           'stage35-frozen-profiles.json'):
+              assert (base/filename).stat().st_size>150,filename
+          print('Five-year research verified:',s['courses'],'courses,',
+                s['course_distance_profiles'],'course-trip profiles,',
+                s['weight_threshold_ground_combinations_attempted'],'combinations')
+          print('2025 frozen new:',s['2025_results']['new_selected'])
+          print('2025 frozen original:',s['2025_results']['original_selected'])
+          print('2025 going/breeding breakdown:',s['2025_by_ground_source'])
+          print('A/B/C/D models unchanged; no Betfair API needed')
+          PYVALIDATE
+
+      - name: Publish research reports only, no change to live models
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage35
+          cp stage35_report/stage35-* reports/stage35/
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add reports/stage35/
+          if git diff --cached --quiet; then
+            echo 'Stage 35 reports already published'
+            exit 0
+          fi
+          git commit -m 'Stage 35: five-year course/distance/going Model D research'
+          for attempt in 1 2 3 4 5; do
+            if git pull --rebase origin main && git push origin HEAD:main; then
+              echo 'Five-year going/breeding research published';exit 0
+            fi
+            git rebase --abort || true
+            sleep "$((attempt*3))"
+          done
+          echo 'Research completed, but commit push was unsuccessful; retrieve Actions artifact' >&2
+          exit 1
+
+      - name: Preserve separate reports and track weight profiles
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage35-model-d-five-year-going
+          path: stage35_report/
+          retention-days: 30
+          if-no-files-found: warn
