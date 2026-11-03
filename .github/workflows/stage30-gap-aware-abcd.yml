@@ -1,0 +1,181 @@
+name: Stage 30 - A B C D Gap-Aware Weighting and ROI Research (Research Only)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/stage30-gap-aware-abcd.yml"
+      - "scripts/stage30_gap_aware_abcd.py"
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: stage30-gap-aware-abcd-research
+  cancel-in-progress: false
+
+jobs:
+  four-model-weighting-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - name: Check out research repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install audited historical model dependencies
+        run: |
+          python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1
+
+      - name: Verify new gap-aware engine before downloading historical data
+        run: |
+          set -euo pipefail
+          test -s scripts/stage30_gap_aware_abcd.py
+          python -m py_compile scripts/stage30_gap_aware_abcd.py
+          python scripts/stage30_gap_aware_abcd.py --self-test
+          python scripts/stage24_history_integrity.py self-test
+
+      - name: Download original historical SQLite and named-event map
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os,subprocess
+          from pathlib import Path
+          repo=os.environ['GITHUB_REPOSITORY']
+          wanted={
+              'stage2-historical-staging-database':('stage30_history','*.sqlite','STAGE30_DB'),
+              'stage4-reference-named-events-and-winners':('stage30_mapping','all_races_with_reference_event_ids.csv','STAGE30_MAP'),
+          }
+          found={}
+          for page in range(1,21):
+              raw=subprocess.check_output(['gh','api','-X','GET',f'repos/{repo}/actions/artifacts','-f','per_page=100','-f',f'page={page}'],text=True)
+              batch=json.loads(raw).get('artifacts',[])
+              for artifact in batch:
+                  name=artifact.get('name')
+                  if name in wanted and not artifact.get('expired'):
+                      if name not in found or artifact.get('created_at','')>found[name].get('created_at',''):
+                          found[name]=artifact
+              if len(batch)<100:break
+          for name,(folder,pattern,key) in wanted.items():
+              if name not in found:
+                  raise SystemExit('Required historical source artifact has expired: '+name+'. Re-run the corresponding Stage 2/Stage 4 workflow.')
+              Path(folder).mkdir(exist_ok=True)
+              runid=str(found[name]['workflow_run']['id'])
+              subprocess.run(['gh','run','download',runid,'--repo',repo,'--name',name,'--dir',folder],check=True)
+              matches=list(Path(folder).rglob(pattern))
+              if not matches:raise SystemExit('Artifact '+name+' contains no '+pattern)
+              source=max(matches,key=lambda path:path.stat().st_size).resolve()
+              with open(os.environ['GITHUB_ENV'],'a') as stream:
+                  print(key+'='+str(source),file=stream)
+              print(name,'run',runid,'bytes',source.stat().st_size,flush=True)
+          PY
+
+      - name: Restore historical integrity dependencies (from existing audited workflows)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import base64,gzip,json,os,pathlib,re,urllib.request,py_compile
+          repo=os.environ['GITHUB_REPOSITORY']
+          def workflow(name):
+              path=f'.github/workflows/{name}'
+              req=urllib.request.Request('https://api.github.com/repos/'+repo+'/contents/'+path,
+                  headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],
+                           'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'})
+              with urllib.request.urlopen(req,timeout=45) as response:data=json.load(response)
+              return base64.b64decode(data['content']).decode('utf-8')
+          src=workflow('stage18-historical-ab.yml')
+          blobs=re.findall(r"pathlib\.Path\('([^']+\.py)'\)\.write_bytes\(gzip\.decompress\(base64\.b64decode\('''(.*?)'''\)\)\)",src,re.S)
+          restored=set()
+          for name,b64 in blobs:
+              path=pathlib.Path(name);path.parent.mkdir(parents=True,exist_ok=True)
+              path.write_bytes(gzip.decompress(base64.b64decode(b64)));restored.add(name)
+          essential={'scripts/stage16_history_model.py','scripts/stage18_historical_ab.py'}
+          if not essential.issubset(restored):raise SystemExit('Missing historical feature engine: '+str(essential-restored))
+          src13=workflow('stage13-strategy-learning.yml')
+          pairs=re.findall(r"printf '%s' '([A-Za-z0-9+/=]+)' \| base64 --decode \| gzip --decompress > ([\w./-]+\.py)",src13)
+          targets={'stage12_form_analysis.py','scripts/stage16_score.py','scripts/stage16_integrate.py'}
+          for b64,name in pairs:
+              if name in targets:
+                  path=pathlib.Path(name);path.parent.mkdir(parents=True,exist_ok=True)
+                  path.write_bytes(gzip.decompress(base64.b64decode(b64)));restored.add(name)
+          for name in restored:py_compile.compile(name,doraise=True)
+          print('Audited engines restored:',', '.join(sorted(restored)),flush=True)
+          PY
+
+      - name: Apply existing Stage 25 history-integrity repairs
+        run: |
+          set -euo pipefail
+          python scripts/stage24_history_integrity.py prepare --db "$STAGE30_DB" --repo . --strict --assert-form
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          obj=json.loads(Path('data/history-integrity-audit.json').read_text())
+          assert obj.get('coverage_verified_through','')>='2026-11-01',obj.get('coverage_verified_through')
+          print('History verified through',obj.get('coverage_verified_through'),flush=True)
+          PY
+
+      - name: Train 2023/2024 and validate 2025 for A B C D
+        run: |
+          set -euo pipefail
+          python -u scripts/stage30_gap_aware_abcd.py \
+            --db "$STAGE30_DB" --mapping "$STAGE30_MAP" \
+            --output stage30_report
+          python - <<'PY'
+          import csv,json
+          from pathlib import Path
+          root=Path('stage30_report')
+          report=json.loads((root/'stage30-summary.json').read_text())
+          assert report['status']=='RESEARCH_ONLY' and report['live_models_changed'] is False
+          assert set(report['model_results'])==set('ABCD')
+          assert len(report['model_d_exclusive_metrics'])==8
+          with (root/'stage30-all-weight-combinations.csv').open() as f:
+              rows=list(csv.DictReader(f))
+          assert len(rows)>=1000,('Insufficient combinations',len(rows))
+          for model in 'ABCD':
+              item=report['model_results'][model]
+              assert item['combinations_tested']>=200
+              assert item['all_races_2025']['2025_all_races']>=500
+              print(model,item['chosen_combination'],
+                    'all:',item['all_races_2025']['2025_all_strike_pct'],'%',item['all_races_2025']['2025_all_roi_pct'],'% ROI',
+                    'selected:',item['selected_races_2025']['2025_selected_strike_pct'],'%',item['selected_races_2025']['2025_selected_roi_pct'],'% ROI')
+          print('Research-only study verified: no existing live model updated')
+          PY
+
+      - name: Publish separate Stage 30 report files (no live model updates)
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage30
+          cp stage30_report/stage30-*.csv reports/stage30/
+          cp stage30_report/stage30-*.json reports/stage30/
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add reports/stage30/
+          if git diff --cached --quiet; then echo 'Stage30 reports already published'; exit 0; fi
+          git commit -m 'Publish Stage 30 gap-aware A B C D historical testing'
+          for attempt in 1 2 3 4 5; do
+              if git pull --rebase origin main && git push origin HEAD:main; then
+                  echo 'Published separate Stage 30 model comparison files';exit 0
+              fi
+              git rebase --abort || true
+              sleep $((attempt * 3))
+          done
+          echo 'Could not push reports after retries; Actions artifact remains available' >&2
+          exit 1
+
+      - name: Preserve individual reports as Actions artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage30-gap-aware-weights-and-roi-a-b-c-d
+          path: stage30_report/
+          retention-days: 30
+          if-no-files-found: warn
