@@ -1,0 +1,1417 @@
+{
+  "research": "Stage 28 race-specific positive-ROI discovery",
+  "live_models_changed": false,
+  "price_policy": "Final SP used ONLY for settlement; never to decide historical selections. No pre-off price archive for 2023/24.",
+  "confidence_note": "Discovery 2023; confirmation 2024; untouched 2025 and recent 2026. Hundreds of combinations create multiple-testing risk; forward validation required.",
+  "no_daily_bet_quota": true,
+  "weekly_research_target_per_model": 10,
+  "weekly_target_is_not_forced_betting": true,
+  "minimum_bets_each_year": 520,
+  "minimum_distinct_days_each_year": 120,
+  "max_winner_sp_for_robustness": 11.0,
+  "price_coverage_requirement_2023_2024": 0.9,
+  "roi_reliable_only_if_settlement_coverage_above_80pct": true,
+  "models": {
+    "A": {
+      "state": "RESEARCH_ONLY_NOT_VALIDATED",
+      "model": "A",
+      "variant": "A:history:0.0001:t0.7",
+      "weighted_features": {
+        "model": "A:history:0.0001",
+        "temperature": 0.7,
+        "features": [
+          "horse_win",
+          "horse_place",
+          "horse_last5_win",
+          "horse_last5_place",
+          "horse_starts",
+          "course_win",
+          "distance_win",
+          "recency",
+          "rating_relative",
+          "weight_relative",
+          "draw_relative",
+          "age_relative",
+          "field_size",
+          "missing_pedigree"
+        ]
+      },
+      "tested_variants": 24,
+      "expanded_variants": 6,
+      "candidate_rules": 9264,
+      "chosen_rule": {
+        "variant": "A:history:0.0001:t0.7",
+        "conditions": [
+          {
+            "group": "gap",
+            "name": "lead >= 0.080",
+            "value": 0.08
+          },
+          {
+            "group": "horse_starts",
+            "name": "horse starts >= 6",
+            "value": 1.9459101490553132
+          },
+          {
+            "group": "layoff",
+            "name": "0-30 days since",
+            "value": [
+              0.0,
+              30.0
+            ]
+          }
+        ],
+        "name": "lead >= 0.080 AND horse starts >= 6 AND 0-30 days since",
+        "validation_score": -5.0331,
+        "validate_profitability": false,
+        "results": {
+          "2023": {
+            "races": 1211,
+            "win_count_all": 364,
+            "strike_all": 30.058,
+            "nominated": 1211,
+            "bets": 1155,
+            "coverage": 0.9538,
+            "wins": 351,
+            "strike": 30.39,
+            "profit": -24.966,
+            "roi": -2.162,
+            "capped_roi": -4.499,
+            "largest_winner_excluded_roi": -5.023,
+            "days": 339,
+            "months": 12,
+            "max_losing_streak": 14,
+            "weeks_available": 53,
+            "weeks_with_at_least_10_bets": 52,
+            "weeks_below_10": 1,
+            "weekly_average_bets": 21.79,
+            "weekly_missing_to_target": 6
+          },
+          "2024": {
+            "races": 1291,
+            "win_count_all": 387,
+            "strike_all": 29.977,
+            "nominated": 1291,
+            "bets": 1247,
+            "coverage": 0.9659,
+            "wins": 377,
+            "strike": 30.233,
+            "profit": -4.217,
+            "roi": -0.338,
+            "capped_roi": -2.423,
+            "largest_winner_excluded_roi": -2.345,
+            "days": 349,
+            "months": 12,
+            "max_losing_streak": 17,
+            "weeks_available": 53,
+            "weeks_with_at_least_10_bets": 52,
+            "weeks_below_10": 1,
+            "weekly_average_bets": 23.53,
+            "weekly_missing_to_target": 4
+          },
+          "2025": {
+            "races": 1362,
+            "win_count_all": 374,
+            "strike_all": 27.46,
+            "nominated": 1362,
+            "bets": 1315,
+            "coverage": 0.9655,
+            "wins": 367,
+            "strike": 27.909,
+            "profit": -178.281,
+            "roi": -13.558,
+            "capped_roi": -14.394,
+            "largest_winner_excluded_roi": -14.786,
+            "days": 346,
+            "months": 12,
+            "max_losing_streak": 23,
+            "weeks_available": 53,
+            "weeks_with_at_least_10_bets": 53,
+            "weeks_below_10": 0,
+            "weekly_average_bets": 24.81,
+            "weekly_missing_to_target": 0
+          },
+          "recent": {
+            "races": 38,
+            "win_count_all": 7,
+            "strike_all": 18.421,
+            "nominated": 38,
+            "bets": 38,
+            "coverage": 1.0,
+            "wins": 7,
+            "strike": 18.421,
+            "profit": -16.75,
+            "roi": -44.079,
+            "capped_roi": -44.079,
+            "largest_winner_excluded_roi": -56.081,
+            "days": 15,
+            "months": 1,
+            "max_losing_streak": 9,
+            "weeks_available": 4,
+            "weeks_with_at_least_10_bets": 2,
+            "weeks_below_10": 2,
+            "weekly_average_bets": 9.5,
+            "weekly_missing_to_target": 15
+          }
+        }
+      },
+      "top_alternatives": [
+        {
+          "variant": "A:history:0.0001:t0.7",
+          "indices": [
+            20,
+            36,
+            45
+          ],
+          "name": "lead >= 0.080 AND horse starts >= 6 AND 0-30 days since",
+          "score": -5.0331,
+          "roi_2023": -2.162,
+          "roi_2024": -0.338,
+          "robust_2023": -4.499,
+          "robust_2024": -2.423,
+          "bets_2023": 1155,
+          "bets_2024": 1247
+        },
+        {
+          "variant": "A:history:0.0001:t0.7",
+          "indices": [
+            20,
+            36,
+            26
+          ],
+          "name": "lead >= 0.080 AND horse starts >= 6 AND comparable profile >= 30",
+          "score": -7.1115,
+          "roi_2023": -4.198,
+          "roi_2024": -2.695,
+          "robust_2023": -6.874,
+          "robust_2024": -4.727,
+          "bets_2023": 1420,
+          "bets_2024": 1476
+        },
+        {
+          "variant": "A:history:0.0001:t0.7",
+          "indices": [
+            20,
+            26,
+            36
+          ],
+          "name": "lead >= 0.080 AND comparable profile >= 30 AND horse starts >= 6",
+          "score": -7.1115,
+          "roi_2023": -4.198,
+          "roi_2024": -2.695,
+          "robust_2023": -6.874,
+          "robust_2024": -4.727,
+          "bets_2023": 1420,
+          "bets_2024": 1476
+        },
+        {
+          "variant": "A:history:0.0001:t0.7",
+          "indices": [
+            2,
+            37,
+            29
+          ],
+          "name": "3-7 runners AND horse starts >= 12 AND age trend >= 0.55",
+          "score": -7.6873,
+          "roi_2023": 7.175,
+          "roi_2024": 3.013,
+          "robust_2023": 2.88,
+          "robust_2024": 2.643,
+          "bets_2023": 582,
+          "bets_2024": 540
+        },
+        {
+          "variant": "A:history:0.0001:t0.7",
+          "indices": [
+            20,
+            36,
+            31
+          ],
+          "name": "lead >= 0.080 AND horse starts >= 6 AND trainer win >= 0.1",
+          "score": -7.8336,
+          "roi_2023": -6.486,
+          "roi_2024": -4.275,
+          "robust_2023": -6.486,
+          "robust_2024": -5.588,
+          "bets_2023": 1155,
+          "bets_2024": 1143
+        },
+        {
+          "variant": "A:history:0.0001:t0.7",
+          "indices": [
+            20,
+            31,
+            36
+          ],
+          "name": "lead >= 0.080 AND trainer win >= 0.1 AND horse starts >= 6",
+          "score": -7.8336,
+          "roi_2023": -6.486,
+          "roi_2024": -4.275,
+          "robust_2023": -6.486,
+          "robust_2024": -5.588,
+          "bets_2023": 1155,
+          "bets_2024": 1143
+        },
+        {
+          "variant": "A:history:0.0001:t0.7",
+          "indices": [
+            20,
+            36,
+            25
+          ],
+          "name": "lead >= 0.080 AND horse starts >= 6 AND comparable profile >= 18",
+          "score": -8.1406,
+          "roi_2023": -5.479,
+          "roi_2024": -4.039,
+          "robust_2023": -7.975,
+          "robust_2024": -5.943,
+          "bets_2023": 1522,
+          "bets_2024": 1575
+        },
+        {
+          "variant": "A:history:0.0001:t0.7",
+          "indices": [
+            20,
+            25,
+            36
+          ],
+          "name": "lead >= 0.080 AND comparable profile >= 18 AND horse starts >= 6",
+          "score": -8.1406,
+          "roi_2023": -5.479,
+          "roi_2024": -4.039,
+          "robust_2023": -7.975,
+          "robust_2024": -5.943,
+          "bets_2023": 1522,
+          "bets_2024": 1575
+        },
+        {
+          "variant": "A:history:0.0001:t0.7",
+          "indices": [
+            20,
+            36,
+            28
+          ],
+          "name": "lead >= 0.080 AND horse starts >= 6 AND age trend >= 0.35",
+          "score": -8.179,
+          "roi_2023": -5.992,
+          "roi_2024": -4.677,
+          "robust_2023": -7.832,
+          "robust_2024": -6.43,
+          "bets_2023": 1522,
+          "bets_2024": 1598
+        },
+        {
+          "variant": "A:history:0.0001:t0.7",
+          "indices": [
+            20,
+            28,
+            36
+          ],
+          "name": "lead >= 0.080 AND age trend >= 0.35 AND horse starts >= 6",
+          "score": -8.179,
+          "roi_2023": -5.992,
+          "roi_2024": -4.677,
+          "robust_2023": -7.832,
+          "robust_2024": -6.43,
+          "bets_2023": 1522,
+          "bets_2024": 1598
+        },
+        {
+          "variant": "A:history:0.0001:t0.7",
+          "indices": [
+            20,
+            36,
+            42
+          ],
+          "name": "lead >= 0.080 AND horse starts >= 6 AND last5 place >= 0.25",
+          "score": -8.2933,
+          "roi_2023": -5.966,
+          "roi_2024": -5.961,
+          "robust_2023": -8.416,
+          "robust_2024": -6.899,
+          "bets_2023": 1551,
+          "bets_2024": 1600
+        },
+        {
+          "variant": "A:history:0.0001:t0.7",
+          "indices": [
+            20,
+            42,
+            36
+          ],
+          "name": "lead >= 0.080 AND last5 place >= 0.25 AND horse starts >= 6",
+          "score": -8.2933,
+          "roi_2023": -5.966,
+          "roi_2024": -5.961,
+          "robust_2023": -8.416,
+          "robust_2024": -6.899,
+          "bets_2023": 1551,
+          "bets_2024": 1600
+        },
+        {
+          "variant": "A:history:0.0001:t0.7",
+          "indices": [
+            20,
+            36,
+            23
+          ],
+          "name": "lead >= 0.080 AND horse starts >= 6 AND comparable profile >= 4",
+          "score": -8.4579,
+          "roi_2023": -6.135,
+          "roi_2024": -4.723,
+          "robust_2023": -8.497,
+          "robust_2024": -6.529,
+          "bets_2023": 1609,
+          "bets_2024": 1661
+        },
+        {
+          "variant": "A:history:0.0001:t0.7",
+          "indices": [
+            20,
+            23,
+            36
+          ],
+          "name": "lead >= 0.080 AND comparable profile >= 4 AND horse starts >= 6",
+          "score": -8.4579,
+          "roi_2023": -6.135,
+          "roi_2024": -4.723,
+          "robust_2023": -8.497,
+          "robust_2024": -6.529,
+          "bets_2023": 1609,
+          "bets_2024": 1661
+        },
+        {
+          "variant": "A:history:0.0001:t0.7",
+          "indices": [
+            20,
+            26,
+            3
+          ],
+          "name": "lead >= 0.080 AND comparable profile >= 30 AND 8-11 runners",
+          "score": -8.5426,
+          "roi_2023": -5.424,
+          "roi_2024": -1.995,
+          "robust_2023": -7.446,
+          "robust_2024": -6.223,
+          "bets_2023": 890,
+          "bets_2024": 1003
+        },
+        {
+          "variant": "A:history:0.0001:t0.7",
+          "indices": [
+            3,
+            20,
+            26
+          ],
+          "name": "8-11 runners AND lead >= 0.080 AND comparable profile >= 30",
+          "score": -8.5426,
+          "roi_2023": -5.424,
+          "roi_2024": -1.995,
+          "robust_2023": -7.446,
+          "robust_2024": -6.223,
+          "bets_2023": 890,
+          "bets_2024": 1003
+        },
+        {
+          "variant": "A:history:0.0001:t0.7",
+          "indices": [
+            20,
+            36
+          ],
+          "name": "lead >= 0.080 AND horse starts >= 6",
+          "score": -8.6092,
+          "roi_2023": -6.373,
+          "roi_2024": -4.205,
+          "robust_2023": -8.699,
+          "robust_2024": -5.986,
+          "bets_2023": 1634,
+          "bets_2024": 1685
+        },
+        {
+          "variant": "A:history:0.0001:t0.7",
+          "indices": [
+            20,
+            36,
+            11
+          ],
+          "name": "lead >= 0.080 AND horse starts >= 6 AND top score >= 0.16",
+          "score": -8.6092,
+          "roi_2023": -6.373,
+          "roi_2024": -4.205,
+          "robust_2023": -8.699,
+          "robust_2024": -5.986,
+          "bets_2023": 1634,
+          "bets_2024": 1685
+        },
+        {
+          "variant": "A:history:0.0001:t0.7",
+          "indices": [
+            11,
+            20,
+            36
+          ],
+          "name": "top score >= 0.16 AND lead >= 0.080 AND horse starts >= 6",
+          "score": -8.6092,
+          "roi_2023": -6.373,
+          "roi_2024": -4.205,
+          "robust_2023": -8.699,
+          "robust_2024": -5.986,
+          "bets_2023": 1634,
+          "bets_2024": 1685
+        },
+        {
+          "variant": "A:history:0.0001:t0.7",
+          "indices": [
+            2,
+            37,
+            28
+          ],
+          "name": "3-7 runners AND horse starts >= 12 AND age trend >= 0.35",
+          "score": -8.6419,
+          "roi_2023": -4.987,
+          "roi_2024": -5.115,
+          "robust_2023": -7.537,
+          "robust_2024": -5.594,
+          "bets_2023": 1137,
+          "bets_2024": 1045
+        }
+      ],
+      "promotion_ready": false,
+      "held_out_2025_positive": false,
+      "recent_retrained_on_pre_period_results": true,
+      "warning": "No selection rule is automatically deployed; recent 2026 SP coverage must be audited."
+    },
+    "B": {
+      "state": "RESEARCH_ONLY_NOT_VALIDATED",
+      "model": "B",
+      "variant": "B:historical=0.5:recent=1.0:trainer=2.0",
+      "weighted_features": {
+        "historical_weight": 0.5,
+        "recent_form_weight": 1.0,
+        "trainer_weight": 2.0,
+        "minimum_comparable_winners": 5
+      },
+      "tested_variants": 36,
+      "expanded_variants": 6,
+      "candidate_rules": 10980,
+      "chosen_rule": {
+        "variant": "B:historical=0.5:recent=1.0:trainer=2.0",
+        "conditions": [
+          {
+            "group": "gap",
+            "name": "lead >= 0.080",
+            "value": 0.08
+          },
+          {
+            "group": "rating",
+            "name": "relative OR -5 to 5",
+            "value": [
+              -5.0,
+              5.0
+            ]
+          },
+          {
+            "group": "horse_starts",
+            "name": "horse starts >= 12",
+            "value": 2.5649493574615367
+          }
+        ],
+        "name": "lead >= 0.080 AND relative OR -5 to 5 AND horse starts >= 12",
+        "validation_score": -2.1648,
+        "validate_profitability": true,
+        "results": {
+          "2023": {
+            "races": 659,
+            "win_count_all": 175,
+            "strike_all": 26.555,
+            "nominated": 659,
+            "bets": 634,
+            "coverage": 0.9621,
+            "wins": 167,
+            "strike": 26.341,
+            "profit": 38.808,
+            "roi": 6.121,
+            "capped_roi": 0.601,
+            "largest_winner_excluded_roi": 2.181,
+            "days": 290,
+            "months": 12,
+            "max_losing_streak": 22,
+            "weeks_available": 53,
+            "weeks_with_at_least_10_bets": 36,
+            "weeks_below_10": 17,
+            "weekly_average_bets": 11.96,
+            "weekly_missing_to_target": 45
+          },
+          "2024": {
+            "races": 745,
+            "win_count_all": 202,
+            "strike_all": 27.114,
+            "nominated": 745,
+            "bets": 719,
+            "coverage": 0.9651,
+            "wins": 196,
+            "strike": 27.26,
+            "profit": 59.303,
+            "roi": 8.248,
+            "capped_roi": 1.016,
+            "largest_winner_excluded_roi": 2.688,
+            "days": 311,
+            "months": 12,
+            "max_losing_streak": 21,
+            "weeks_available": 53,
+            "weeks_with_at_least_10_bets": 44,
+            "weeks_below_10": 9,
+            "weekly_average_bets": 13.57,
+            "weekly_missing_to_target": 24
+          },
+          "2025": {
+            "races": 793,
+            "win_count_all": 209,
+            "strike_all": 26.356,
+            "nominated": 793,
+            "bets": 757,
+            "coverage": 0.9546,
+            "wins": 199,
+            "strike": 26.288,
+            "profit": -67.23,
+            "roi": -8.881,
+            "capped_roi": -12.448,
+            "largest_winner_excluded_roi": -13.258,
+            "days": 318,
+            "months": 12,
+            "max_losing_streak": 18,
+            "weeks_available": 53,
+            "weeks_with_at_least_10_bets": 44,
+            "weeks_below_10": 9,
+            "weekly_average_bets": 14.28,
+            "weekly_missing_to_target": 22
+          },
+          "recent": {
+            "races": 22,
+            "win_count_all": 2,
+            "strike_all": 9.091,
+            "nominated": 22,
+            "bets": 22,
+            "coverage": 1.0,
+            "wins": 2,
+            "strike": 9.091,
+            "profit": -16.25,
+            "roi": -73.864,
+            "capped_roi": -73.864,
+            "largest_winner_excluded_roi": -88.095,
+            "days": 16,
+            "months": 1,
+            "max_losing_streak": 13,
+            "weeks_available": 4,
+            "weeks_with_at_least_10_bets": 1,
+            "weeks_below_10": 3,
+            "weekly_average_bets": 5.5,
+            "weekly_missing_to_target": 18
+          }
+        }
+      },
+      "top_alternatives": [
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=2.0",
+          "indices": [
+            20,
+            51,
+            38
+          ],
+          "name": "lead >= 0.080 AND relative OR -5 to 5 AND horse starts >= 12",
+          "score": -2.1648,
+          "roi_2023": 6.121,
+          "roi_2024": 8.248,
+          "robust_2023": 0.601,
+          "robust_2024": 1.016,
+          "bets_2023": 634,
+          "bets_2024": 719
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=2.0",
+          "indices": [
+            20,
+            38,
+            51
+          ],
+          "name": "lead >= 0.080 AND horse starts >= 12 AND relative OR -5 to 5",
+          "score": -2.1648,
+          "roi_2023": 6.121,
+          "roi_2024": 8.248,
+          "robust_2023": 0.601,
+          "robust_2024": 1.016,
+          "bets_2023": 634,
+          "bets_2024": 719
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=2.0",
+          "indices": [
+            20,
+            34,
+            51
+          ],
+          "name": "lead >= 0.080 AND trainer course win >= 0.22 AND relative OR -5 to 5",
+          "score": -5.2767,
+          "roi_2023": -2.616,
+          "roi_2024": 1.835,
+          "robust_2023": -2.739,
+          "robust_2024": -0.424,
+          "bets_2023": 810,
+          "bets_2024": 841
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=2.0",
+          "indices": [
+            20,
+            51,
+            34
+          ],
+          "name": "lead >= 0.080 AND relative OR -5 to 5 AND trainer course win >= 0.22",
+          "score": -5.2767,
+          "roi_2023": -2.616,
+          "roi_2024": 1.835,
+          "robust_2023": -2.739,
+          "robust_2024": -0.424,
+          "bets_2023": 810,
+          "bets_2024": 841
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=2.0",
+          "indices": [
+            2,
+            29,
+            46
+          ],
+          "name": "3-7 runners AND age trend >= 0.55 AND 0-30 days since",
+          "score": -5.4178,
+          "roi_2023": -3.203,
+          "roi_2024": -3.688,
+          "robust_2023": -3.203,
+          "robust_2024": -3.767,
+          "bets_2023": 1369,
+          "bets_2024": 1263
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=2.0",
+          "indices": [
+            2,
+            46,
+            29
+          ],
+          "name": "3-7 runners AND 0-30 days since AND age trend >= 0.55",
+          "score": -5.4178,
+          "roi_2023": -3.203,
+          "roi_2024": -3.688,
+          "robust_2023": -3.203,
+          "robust_2024": -3.767,
+          "bets_2023": 1369,
+          "bets_2024": 1263
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=2.0",
+          "indices": [
+            19,
+            34,
+            51
+          ],
+          "name": "lead >= 0.050 AND trainer course win >= 0.22 AND relative OR -5 to 5",
+          "score": -6.0694,
+          "roi_2023": -4.518,
+          "roi_2024": -0.958,
+          "robust_2023": -4.701,
+          "robust_2024": -2.718,
+          "bets_2023": 1090,
+          "bets_2024": 1193
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=2.0",
+          "indices": [
+            20,
+            51,
+            9
+          ],
+          "name": "lead >= 0.080 AND relative OR -5 to 5 AND 14-21f",
+          "score": -6.6882,
+          "roi_2023": 1.078,
+          "roi_2024": -2.554,
+          "robust_2023": -1.742,
+          "robust_2024": -3.968,
+          "bets_2023": 922,
+          "bets_2024": 863
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=2.0",
+          "indices": [
+            20,
+            51,
+            1
+          ],
+          "name": "lead >= 0.080 AND relative OR -5 to 5 AND Jumps",
+          "score": -6.7923,
+          "roi_2023": -2.432,
+          "roi_2024": -3.08,
+          "robust_2023": -5.634,
+          "robust_2024": -4.334,
+          "bets_2023": 1115,
+          "bets_2024": 1052
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=2.0",
+          "indices": [
+            2,
+            29,
+            14
+          ],
+          "name": "3-7 runners AND age trend >= 0.55 AND top score >= 0.34",
+          "score": -6.8535,
+          "roi_2023": -4.578,
+          "roi_2024": -1.583,
+          "robust_2023": -5.519,
+          "robust_2024": -2.26,
+          "bets_2023": 1063,
+          "bets_2024": 961
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=2.0",
+          "indices": [
+            14,
+            29,
+            2
+          ],
+          "name": "top score >= 0.34 AND age trend >= 0.55 AND 3-7 runners",
+          "score": -6.8535,
+          "roi_2023": -4.578,
+          "roi_2024": -1.583,
+          "robust_2023": -5.519,
+          "robust_2024": -2.26,
+          "bets_2023": 1063,
+          "bets_2024": 961
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=2.0",
+          "indices": [
+            2,
+            29,
+            40
+          ],
+          "name": "3-7 runners AND age trend >= 0.55 AND horse place >= 0.28",
+          "score": -6.8741,
+          "roi_2023": -4.092,
+          "roi_2024": -5.088,
+          "robust_2023": -4.808,
+          "robust_2024": -6.468,
+          "bets_2023": 1956,
+          "bets_2024": 1884
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=2.0",
+          "indices": [
+            2,
+            40,
+            29
+          ],
+          "name": "3-7 runners AND horse place >= 0.28 AND age trend >= 0.55",
+          "score": -6.8741,
+          "roi_2023": -4.092,
+          "roi_2024": -5.088,
+          "robust_2023": -4.808,
+          "robust_2024": -6.468,
+          "bets_2023": 1956,
+          "bets_2024": 1884
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=2.0",
+          "indices": [
+            12,
+            34,
+            51
+          ],
+          "name": "top score >= 0.22 AND trainer course win >= 0.22 AND relative OR -5 to 5",
+          "score": -6.9022,
+          "roi_2023": -5.538,
+          "roi_2024": 2.523,
+          "robust_2023": -5.626,
+          "robust_2024": 0.27,
+          "bets_2023": 1142,
+          "bets_2024": 1198
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=2.0",
+          "indices": [
+            18,
+            34,
+            37
+          ],
+          "name": "lead >= 0.025 AND trainer course win >= 0.22 AND horse starts >= 6",
+          "score": -7.0535,
+          "roi_2023": -4.02,
+          "roi_2024": -3.04,
+          "robust_2023": -4.35,
+          "robust_2024": -5.748,
+          "bets_2023": 908,
+          "bets_2024": 960
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=2.0",
+          "indices": [
+            2,
+            29,
+            18
+          ],
+          "name": "3-7 runners AND age trend >= 0.55 AND lead >= 0.025",
+          "score": -7.1069,
+          "roi_2023": -5.897,
+          "roi_2024": -5.164,
+          "robust_2023": -6.628,
+          "robust_2024": -6.041,
+          "bets_2023": 2464,
+          "bets_2024": 2382
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=2.0",
+          "indices": [
+            2,
+            18,
+            29
+          ],
+          "name": "3-7 runners AND lead >= 0.025 AND age trend >= 0.55",
+          "score": -7.1069,
+          "roi_2023": -5.897,
+          "roi_2024": -5.164,
+          "robust_2023": -6.628,
+          "robust_2024": -6.041,
+          "bets_2023": 2464,
+          "bets_2024": 2382
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=2.0",
+          "indices": [
+            19,
+            34,
+            43
+          ],
+          "name": "lead >= 0.050 AND trainer course win >= 0.22 AND last5 place >= 0.25",
+          "score": -7.1212,
+          "roi_2023": -6.304,
+          "roi_2024": -2.602,
+          "robust_2023": -6.509,
+          "robust_2024": -4.312,
+          "bets_2023": 1468,
+          "bets_2024": 1521
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=2.0",
+          "indices": [
+            2,
+            29,
+            37
+          ],
+          "name": "3-7 runners AND age trend >= 0.55 AND horse starts >= 6",
+          "score": -7.2682,
+          "roi_2023": -5.896,
+          "roi_2024": -0.803,
+          "robust_2023": -6.485,
+          "robust_2024": -2.346,
+          "bets_2023": 1698,
+          "bets_2024": 1555
+        },
+        {
+          "variant": "B:historical=0.5:recent=1.0:trainer=2.0",
+          "indices": [
+            2,
+            37,
+            29
+          ],
+          "name": "3-7 runners AND horse starts >= 6 AND age trend >= 0.55",
+          "score": -7.2682,
+          "roi_2023": -5.896,
+          "roi_2024": -0.803,
+          "robust_2023": -6.485,
+          "robust_2024": -2.346,
+          "bets_2023": 1698,
+          "bets_2024": 1555
+        }
+      ],
+      "promotion_ready": false,
+      "held_out_2025_positive": false,
+      "recent_retrained_on_pre_period_results": true,
+      "warning": "No selection rule is automatically deployed; recent 2026 SP coverage must be audited."
+    },
+    "C": {
+      "state": "RESEARCH_ONLY_NOT_VALIDATED",
+      "model": "C",
+      "variant": "C:form:0.0001:t1.4",
+      "weighted_features": {
+        "model": "C:form:0.0001",
+        "temperature": 1.4,
+        "features": [
+          "horse_win",
+          "horse_place",
+          "horse_last5_win",
+          "horse_last5_place",
+          "horse_starts",
+          "trainer_win",
+          "trainer_course_win",
+          "jockey_win",
+          "jockey_course_win",
+          "trainer_jockey_win",
+          "course_win",
+          "distance_win",
+          "recency",
+          "rating_relative",
+          "weight_relative",
+          "draw_relative",
+          "age_relative",
+          "field_size",
+          "missing_pedigree",
+          "trainer_horse_synergy"
+        ]
+      },
+      "tested_variants": 24,
+      "expanded_variants": 6,
+      "candidate_rules": 9707,
+      "chosen_rule": {
+        "variant": "C:form:0.0001:t1.4",
+        "conditions": [
+          {
+            "group": "gap",
+            "name": "lead >= 0.025",
+            "value": 0.025
+          },
+          {
+            "group": "horse_starts",
+            "name": "horse starts >= 6",
+            "value": 1.9459101490553132
+          },
+          {
+            "group": "layoff",
+            "name": "0-30 days since",
+            "value": [
+              0.0,
+              30.0
+            ]
+          }
+        ],
+        "name": "lead >= 0.025 AND horse starts >= 6 AND 0-30 days since",
+        "validation_score": -6.7384,
+        "validate_profitability": false,
+        "results": {
+          "2023": {
+            "races": 1604,
+            "win_count_all": 463,
+            "strike_all": 28.865,
+            "nominated": 1604,
+            "bets": 1534,
+            "coverage": 0.9564,
+            "wins": 445,
+            "strike": 29.009,
+            "profit": -67.778,
+            "roi": -4.418,
+            "capped_roi": -6.048,
+            "largest_winner_excluded_roi": -6.574,
+            "days": 354,
+            "months": 12,
+            "max_losing_streak": 14,
+            "weeks_available": 53,
+            "weeks_with_at_least_10_bets": 52,
+            "weeks_below_10": 1,
+            "weekly_average_bets": 28.94,
+            "weekly_missing_to_target": 4
+          },
+          "2024": {
+            "races": 1700,
+            "win_count_all": 488,
+            "strike_all": 28.706,
+            "nominated": 1700,
+            "bets": 1638,
+            "coverage": 0.9635,
+            "wins": 475,
+            "strike": 28.999,
+            "profit": -75.198,
+            "roi": -4.591,
+            "capped_roi": -6.3,
+            "largest_winner_excluded_roi": -6.121,
+            "days": 357,
+            "months": 12,
+            "max_losing_streak": 19,
+            "weeks_available": 53,
+            "weeks_with_at_least_10_bets": 52,
+            "weeks_below_10": 1,
+            "weekly_average_bets": 30.91,
+            "weekly_missing_to_target": 3
+          },
+          "2025": {
+            "races": 1825,
+            "win_count_all": 498,
+            "strike_all": 27.288,
+            "nominated": 1825,
+            "bets": 1763,
+            "coverage": 0.966,
+            "wins": 487,
+            "strike": 27.623,
+            "profit": -204.584,
+            "roi": -11.604,
+            "capped_roi": -12.954,
+            "largest_winner_excluded_roi": -12.632,
+            "days": 354,
+            "months": 12,
+            "max_losing_streak": 27,
+            "weeks_available": 53,
+            "weeks_with_at_least_10_bets": 53,
+            "weeks_below_10": 0,
+            "weekly_average_bets": 33.26,
+            "weekly_missing_to_target": 0
+          },
+          "recent": {
+            "races": 50,
+            "win_count_all": 8,
+            "strike_all": 16.0,
+            "nominated": 50,
+            "bets": 50,
+            "coverage": 1.0,
+            "wins": 8,
+            "strike": 16.0,
+            "profit": -28.333,
+            "roi": -56.667,
+            "capped_roi": -56.667,
+            "largest_winner_excluded_roi": -65.986,
+            "days": 18,
+            "months": 1,
+            "max_losing_streak": 12,
+            "weeks_available": 4,
+            "weeks_with_at_least_10_bets": 2,
+            "weeks_below_10": 2,
+            "weekly_average_bets": 12.5,
+            "weekly_missing_to_target": 13
+          }
+        }
+      },
+      "top_alternatives": [
+        {
+          "variant": "C:form:0.0001:t1.4",
+          "indices": [
+            17,
+            36,
+            45
+          ],
+          "name": "lead >= 0.025 AND horse starts >= 6 AND 0-30 days since",
+          "score": -6.7384,
+          "roi_2023": -4.418,
+          "roi_2024": -4.591,
+          "robust_2023": -6.048,
+          "robust_2024": -6.3,
+          "bets_2023": 1534,
+          "bets_2024": 1638
+        },
+        {
+          "variant": "C:form:0.0001:t1.4",
+          "indices": [
+            17,
+            45,
+            36
+          ],
+          "name": "lead >= 0.025 AND 0-30 days since AND horse starts >= 6",
+          "score": -6.7384,
+          "roi_2023": -4.418,
+          "roi_2024": -4.591,
+          "robust_2023": -6.048,
+          "robust_2024": -6.3,
+          "bets_2023": 1534,
+          "bets_2024": 1638
+        },
+        {
+          "variant": "C:form:0.0001:t1.4",
+          "indices": [
+            11,
+            51,
+            45
+          ],
+          "name": "top score >= 0.16 AND relative OR 5 to 15 AND 0-30 days since",
+          "score": -7.8999,
+          "roi_2023": -5.642,
+          "roi_2024": -6.296,
+          "robust_2023": -7.109,
+          "robust_2024": -7.148,
+          "bets_2023": 1568,
+          "bets_2024": 1526
+        },
+        {
+          "variant": "C:form:0.0001:t1.4",
+          "indices": [
+            17,
+            51,
+            27
+          ],
+          "name": "lead >= 0.025 AND relative OR 5 to 15 AND age trend >= 0.35",
+          "score": -9.0315,
+          "roi_2023": -7.693,
+          "roi_2024": -6.115,
+          "robust_2023": -8.361,
+          "robust_2024": -7.653,
+          "bets_2023": 1647,
+          "bets_2024": 1691
+        },
+        {
+          "variant": "C:form:0.0001:t1.4",
+          "indices": [
+            17,
+            27,
+            51
+          ],
+          "name": "lead >= 0.025 AND age trend >= 0.35 AND relative OR 5 to 15",
+          "score": -9.0315,
+          "roi_2023": -7.693,
+          "roi_2024": -6.115,
+          "robust_2023": -8.361,
+          "robust_2024": -7.653,
+          "bets_2023": 1647,
+          "bets_2024": 1691
+        },
+        {
+          "variant": "C:form:0.0001:t1.4",
+          "indices": [
+            16,
+            123,
+            27
+          ],
+          "name": "lead >= 0.010 AND class Class 5 AND age trend >= 0.35",
+          "score": -9.1499,
+          "roi_2023": -6.872,
+          "roi_2024": -6.784,
+          "robust_2023": -8.227,
+          "robust_2024": -9.314,
+          "bets_2023": 1845,
+          "bets_2024": 1897
+        },
+        {
+          "variant": "C:form:0.0001:t1.4",
+          "indices": [
+            17,
+            51,
+            45
+          ],
+          "name": "lead >= 0.025 AND relative OR 5 to 15 AND 0-30 days since",
+          "score": -9.2086,
+          "roi_2023": -7.384,
+          "roi_2024": -1.8,
+          "robust_2023": -8.067,
+          "robust_2024": -3.728,
+          "bets_2023": 1171,
+          "bets_2024": 1245
+        },
+        {
+          "variant": "C:form:0.0001:t1.4",
+          "indices": [
+            17,
+            45,
+            51
+          ],
+          "name": "lead >= 0.025 AND 0-30 days since AND relative OR 5 to 15",
+          "score": -9.2086,
+          "roi_2023": -7.384,
+          "roi_2024": -1.8,
+          "robust_2023": -8.067,
+          "robust_2024": -3.728,
+          "bets_2023": 1171,
+          "bets_2024": 1245
+        },
+        {
+          "variant": "C:form:0.0001:t1.4",
+          "indices": [
+            17,
+            36,
+            32
+          ],
+          "name": "lead >= 0.025 AND horse starts >= 6 AND trainer course win >= 0.12",
+          "score": -9.266,
+          "roi_2023": -7.798,
+          "roi_2024": -7.394,
+          "robust_2023": -8.594,
+          "robust_2024": -8.673,
+          "bets_2023": 1383,
+          "bets_2024": 1329
+        },
+        {
+          "variant": "C:form:0.0001:t1.4",
+          "indices": [
+            17,
+            51,
+            39
+          ],
+          "name": "lead >= 0.025 AND relative OR 5 to 15 AND horse place >= 0.28",
+          "score": -9.3962,
+          "roi_2023": -7.636,
+          "roi_2024": -6.192,
+          "robust_2023": -8.768,
+          "robust_2024": -6.593,
+          "bets_2023": 1236,
+          "bets_2024": 1247
+        },
+        {
+          "variant": "C:form:0.0001:t1.4",
+          "indices": [
+            17,
+            39,
+            51
+          ],
+          "name": "lead >= 0.025 AND horse place >= 0.28 AND relative OR 5 to 15",
+          "score": -9.3962,
+          "roi_2023": -7.636,
+          "roi_2024": -6.192,
+          "robust_2023": -8.768,
+          "robust_2024": -6.593,
+          "bets_2023": 1236,
+          "bets_2024": 1247
+        },
+        {
+          "variant": "C:form:0.0001:t1.4",
+          "indices": [
+            17,
+            36,
+            11
+          ],
+          "name": "lead >= 0.025 AND horse starts >= 6 AND top score >= 0.16",
+          "score": -9.5175,
+          "roi_2023": -7.784,
+          "roi_2024": -8.261,
+          "robust_2023": -9.165,
+          "robust_2024": -9.152,
+          "bets_2023": 1810,
+          "bets_2024": 1795
+        },
+        {
+          "variant": "C:form:0.0001:t1.4",
+          "indices": [
+            11,
+            36,
+            17
+          ],
+          "name": "top score >= 0.16 AND horse starts >= 6 AND lead >= 0.025",
+          "score": -9.5175,
+          "roi_2023": -7.784,
+          "roi_2024": -8.261,
+          "robust_2023": -9.165,
+          "robust_2024": -9.152,
+          "bets_2023": 1810,
+          "bets_2024": 1795
+        },
+        {
+          "variant": "C:form:0.0001:t1.4",
+          "indices": [
+            11,
+            17,
+            36
+          ],
+          "name": "top score >= 0.16 AND lead >= 0.025 AND horse starts >= 6",
+          "score": -9.5175,
+          "roi_2023": -7.784,
+          "roi_2024": -8.261,
+          "robust_2023": -9.165,
+          "robust_2024": -9.152,
+          "bets_2023": 1810,
+          "bets_2024": 1795
+        },
+        {
+          "variant": "C:form:0.0001:t1.4",
+          "indices": [
+            17,
+            36,
+            27
+          ],
+          "name": "lead >= 0.025 AND horse starts >= 6 AND age trend >= 0.35",
+          "score": -9.553,
+          "roi_2023": -7.827,
+          "roi_2024": -7.963,
+          "robust_2023": -9.068,
+          "robust_2024": -9.471,
+          "bets_2023": 2015,
+          "bets_2024": 2123
+        },
+        {
+          "variant": "C:form:0.0001:t1.4",
+          "indices": [
+            17,
+            27,
+            36
+          ],
+          "name": "lead >= 0.025 AND age trend >= 0.35 AND horse starts >= 6",
+          "score": -9.553,
+          "roi_2023": -7.827,
+          "roi_2024": -7.963,
+          "robust_2023": -9.068,
+          "robust_2024": -9.471,
+          "bets_2023": 2015,
+          "bets_2024": 2123
+        },
+        {
+          "variant": "C:form:0.0001:t1.4",
+          "indices": [
+            17,
+            51,
+            32
+          ],
+          "name": "lead >= 0.025 AND relative OR 5 to 15 AND trainer course win >= 0.12",
+          "score": -9.5936,
+          "roi_2023": -7.113,
+          "roi_2024": -6.08,
+          "robust_2023": -8.98,
+          "robust_2024": -6.563,
+          "bets_2023": 1125,
+          "bets_2024": 1036
+        },
+        {
+          "variant": "C:form:0.0001:t1.4",
+          "indices": [
+            17,
+            36
+          ],
+          "name": "lead >= 0.025 AND horse starts >= 6",
+          "score": -9.6071,
+          "roi_2023": -8.095,
+          "roi_2024": -8.011,
+          "robust_2023": -9.719,
+          "robust_2024": -9.526,
+          "bets_2023": 2154,
+          "bets_2024": 2244
+        },
+        {
+          "variant": "C:form:0.0001:t1.4",
+          "indices": [
+            17,
+            36,
+            22
+          ],
+          "name": "lead >= 0.025 AND horse starts >= 6 AND comparable profile >= 4",
+          "score": -9.7399,
+          "roi_2023": -8.09,
+          "roi_2024": -8.227,
+          "robust_2023": -9.738,
+          "robust_2024": -9.763,
+          "bets_2023": 2124,
+          "bets_2024": 2214
+        },
+        {
+          "variant": "C:form:0.0001:t1.4",
+          "indices": [
+            17,
+            22,
+            36
+          ],
+          "name": "lead >= 0.025 AND comparable profile >= 4 AND horse starts >= 6",
+          "score": -9.7399,
+          "roi_2023": -8.09,
+          "roi_2024": -8.227,
+          "robust_2023": -9.738,
+          "robust_2024": -9.763,
+          "bets_2023": 2124,
+          "bets_2024": 2214
+        }
+      ],
+      "promotion_ready": false,
+      "held_out_2025_positive": false,
+      "recent_retrained_on_pre_period_results": true,
+      "warning": "No selection rule is automatically deployed; recent 2026 SP coverage must be audited."
+    }
+  },
+  "promotion_ready": false
+}
