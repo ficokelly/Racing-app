@@ -1,6 +1,6 @@
 {
   "version": "model-z-paper-registry-v1",
-  "generated_at_utc": "2026-11-03T19:34:40+00:00",
+  "generated_at_utc": "2026-11-03T19:44:36+00:00",
   "mode": "RESEARCH_AND_PAPER_ONLY",
   "live_models_changed": false,
   "active_strategies": 0,
@@ -52,8 +52,255 @@
       },
       "notes": "2024 ROI was negative; Stage37 replay and genuinely forward shadow testing required. Stage35 did not reproduce the candidate.",
       "stage37": {
-        "status": "STAGE37_RUNNING_OR_NOT_PUBLISHED",
-        "forward_available": false
+        "status": "HISTORICAL_REPLAY_AVAILABLE",
+        "reproduction": {
+          "selected_races_actual": 51,
+          "selected_wins_actual": 12,
+          "selected_roi_actual": 33.469,
+          "published_stage34_selected": {
+            "profile_status": "VALIDATED_CHALLENGER",
+            "races_2025": 309,
+            "hierarchical_selected": {
+              "races": 51,
+              "wins": 12,
+              "strike_pct": 23.529,
+              "priced_bets": 49,
+              "price_coverage_pct": 96.08,
+              "profit_units": 16.4,
+              "roi_pct": 33.469
+            },
+            "frozen_stage30_selected": {
+              "races": 66,
+              "wins": 14,
+              "strike_pct": 21.212,
+              "priced_bets": 64,
+              "price_coverage_pct": 96.97,
+              "profit_units": -19.567,
+              "roi_pct": -30.573
+            }
+          },
+          "reproduces_published_stage34": true
+        },
+        "2018_2022_retrospective": {
+          "frozen_stage34": {
+            "all": {
+              "races": 1594,
+              "wins": 295,
+              "strike_pct": 18.507,
+              "priced_bets": 1538,
+              "sp_coverage_pct": 96.487,
+              "profit_units": -286.873,
+              "sp_roi_pct": -18.652,
+              "sp_roi_capped_20to1_pct": -18.652,
+              "sp_roi_without_top_winner_pct": -19.953,
+              "average_selections_per_week": 30.57
+            },
+            "selected": {
+              "races": 257,
+              "wins": 61,
+              "strike_pct": 23.735,
+              "priced_bets": 246,
+              "sp_coverage_pct": 95.72,
+              "profit_units": -77.364,
+              "sp_roi_pct": -31.449,
+              "sp_roi_capped_20to1_pct": -31.449,
+              "sp_roi_without_top_winner_pct": -37.953,
+              "average_selections_per_week": 4.93
+            }
+          },
+          "original_global_D": {
+            "all": {
+              "races": 1594,
+              "wins": 304,
+              "strike_pct": 19.072,
+              "priced_bets": 1534,
+              "sp_coverage_pct": 96.236,
+              "profit_units": -198.538,
+              "sp_roi_pct": -12.942,
+              "sp_roi_capped_20to1_pct": -14.898,
+              "sp_roi_without_top_winner_pct": -16.202,
+              "average_selections_per_week": 30.57
+            },
+            "selected": {
+              "races": 314,
+              "wins": 74,
+              "strike_pct": 23.567,
+              "priced_bets": 300,
+              "sp_coverage_pct": 95.541,
+              "profit_units": -74.33,
+              "sp_roi_pct": -24.777,
+              "sp_roi_capped_20to1_pct": -24.777,
+              "sp_roi_without_top_winner_pct": -30.11,
+              "average_selections_per_week": 6.02
+            }
+          }
+        },
+        "2023_2024_model_selection": {
+          "frozen_stage34": {
+            "all": {
+              "races": 669,
+              "wins": 116,
+              "strike_pct": 17.339,
+              "priced_bets": 650,
+              "sp_coverage_pct": 97.16,
+              "profit_units": -184.483,
+              "sp_roi_pct": -28.382,
+              "sp_roi_capped_20to1_pct": -29.459,
+              "sp_roi_without_top_winner_pct": -32.228,
+              "average_selections_per_week": 12.83
+            },
+            "selected": {
+              "races": 89,
+              "wins": 30,
+              "strike_pct": 33.708,
+              "priced_bets": 87,
+              "sp_coverage_pct": 97.753,
+              "profit_units": 8.105,
+              "sp_roi_pct": 9.316,
+              "sp_roi_capped_20to1_pct": 9.316,
+              "sp_roi_without_top_winner_pct": 1.27,
+              "average_selections_per_week": 1.71
+            }
+          },
+          "original_global_D": {
+            "all": {
+              "races": 669,
+              "wins": 113,
+              "strike_pct": 16.891,
+              "priced_bets": 654,
+              "sp_coverage_pct": 97.758,
+              "profit_units": -187.375,
+              "sp_roi_pct": -28.651,
+              "sp_roi_capped_20to1_pct": -29.721,
+              "sp_roi_without_top_winner_pct": -32.473,
+              "average_selections_per_week": 12.83
+            },
+            "selected": {
+              "races": 115,
+              "wins": 33,
+              "strike_pct": 28.696,
+              "priced_bets": 113,
+              "sp_coverage_pct": 98.261,
+              "profit_units": -16.821,
+              "sp_roi_pct": -14.886,
+              "sp_roi_capped_20to1_pct": -14.886,
+              "sp_roi_without_top_winner_pct": -21.081,
+              "average_selections_per_week": 2.21
+            }
+          }
+        },
+        "2025_already_viewed": {
+          "frozen_stage34": {
+            "all": {
+              "races": 309,
+              "wins": 58,
+              "strike_pct": 18.77,
+              "priced_bets": 301,
+              "sp_coverage_pct": 97.411,
+              "profit_units": -5.763,
+              "sp_roi_pct": -1.915,
+              "sp_roi_capped_20to1_pct": -6.234,
+              "sp_roi_without_top_winner_pct": -12.878,
+              "average_selections_per_week": 5.93
+            },
+            "selected": {
+              "races": 51,
+              "wins": 12,
+              "strike_pct": 23.529,
+              "priced_bets": 49,
+              "sp_coverage_pct": 96.078,
+              "profit_units": 16.4,
+              "sp_roi_pct": 33.469,
+              "sp_roi_capped_20to1_pct": 6.939,
+              "sp_roi_without_top_winner_pct": -33.878,
+              "average_selections_per_week": 0.98
+            }
+          },
+          "original_global_D": {
+            "all": {
+              "races": 309,
+              "wins": 52,
+              "strike_pct": 16.828,
+              "priced_bets": 300,
+              "sp_coverage_pct": 97.087,
+              "profit_units": -49.763,
+              "sp_roi_pct": -16.588,
+              "sp_roi_capped_20to1_pct": -20.921,
+              "sp_roi_without_top_winner_pct": -27.588,
+              "average_selections_per_week": 5.93
+            },
+            "selected": {
+              "races": 66,
+              "wins": 14,
+              "strike_pct": 21.212,
+              "priced_bets": 64,
+              "sp_coverage_pct": 96.97,
+              "profit_units": -19.567,
+              "sp_roi_pct": -30.573,
+              "sp_roi_capped_20to1_pct": -30.573,
+              "sp_roi_without_top_winner_pct": -41.51,
+              "average_selections_per_week": 1.27
+            }
+          }
+        },
+        "2026_archive_replay_if_any": {
+          "frozen_stage34": {
+            "all": {
+              "races": 204,
+              "wins": 33,
+              "strike_pct": 16.176,
+              "priced_bets": 176,
+              "sp_coverage_pct": 86.275,
+              "profit_units": -22.999,
+              "sp_roi_pct": -13.068,
+              "sp_roi_capped_20to1_pct": -20.454,
+              "sp_roi_without_top_winner_pct": -31.818,
+              "average_selections_per_week": 3.91
+            },
+            "selected": {
+              "races": 23,
+              "wins": 4,
+              "strike_pct": 17.391,
+              "priced_bets": 21,
+              "sp_coverage_pct": 91.304,
+              "profit_units": -9.341,
+              "sp_roi_pct": -44.481,
+              "sp_roi_capped_20to1_pct": -44.481,
+              "sp_roi_without_top_winner_pct": -63.528,
+              "average_selections_per_week": 0.44
+            }
+          },
+          "original_global_D": {
+            "all": {
+              "races": 204,
+              "wins": 31,
+              "strike_pct": 15.196,
+              "priced_bets": 174,
+              "sp_coverage_pct": 85.294,
+              "profit_units": -58.999,
+              "sp_roi_pct": -33.908,
+              "sp_roi_capped_20to1_pct": -33.908,
+              "sp_roi_without_top_winner_pct": -44.252,
+              "average_selections_per_week": 3.91
+            },
+            "selected": {
+              "races": 27,
+              "wins": 5,
+              "strike_pct": 18.519,
+              "priced_bets": 24,
+              "sp_coverage_pct": 88.889,
+              "profit_units": -12.616,
+              "sp_roi_pct": -52.566,
+              "sp_roi_capped_20to1_pct": -52.566,
+              "sp_roi_without_top_winner_pct": -69.233,
+              "average_selections_per_week": 0.52
+            }
+          }
+        },
+        "2026_archive_selected_count": 23,
+        "forward_available": false,
+        "forward_paper_count": 0,
+        "independent_forward_validation": "NOT_YET_ESTABLISHED"
       }
     },
     {
@@ -84,8 +331,255 @@
       },
       "notes": "Positive 2023-25 historical ROI but not a proven forward edge. Stage37 replay and forward shadow testing required.",
       "stage37": {
-        "status": "STAGE37_RUNNING_OR_NOT_PUBLISHED",
-        "forward_available": false
+        "status": "HISTORICAL_REPLAY_AVAILABLE",
+        "reproduction": {
+          "selected_races_actual": 41,
+          "selected_wins_actual": 15,
+          "selected_roi_actual": 29.829,
+          "published_stage34_selected": {
+            "profile_status": "VALIDATED_CHALLENGER",
+            "races_2025": 248,
+            "hierarchical_selected": {
+              "races": 41,
+              "wins": 15,
+              "strike_pct": 36.585,
+              "priced_bets": 40,
+              "price_coverage_pct": 97.56,
+              "profit_units": 11.931,
+              "roi_pct": 29.829
+            },
+            "frozen_stage30_selected": {
+              "races": 60,
+              "wins": 20,
+              "strike_pct": 33.333,
+              "priced_bets": 58,
+              "price_coverage_pct": 96.67,
+              "profit_units": -6.793,
+              "roi_pct": -11.713
+            }
+          },
+          "reproduces_published_stage34": true
+        },
+        "2018_2022_retrospective": {
+          "frozen_stage34": {
+            "all": {
+              "races": 1267,
+              "wins": 313,
+              "strike_pct": 24.704,
+              "priced_bets": 1217,
+              "sp_coverage_pct": 96.054,
+              "profit_units": -8.326,
+              "sp_roi_pct": -0.684,
+              "sp_roi_capped_20to1_pct": -0.848,
+              "sp_roi_without_top_winner_pct": -2.492,
+              "average_selections_per_week": 24.3
+            },
+            "selected": {
+              "races": 153,
+              "wins": 60,
+              "strike_pct": 39.216,
+              "priced_bets": 145,
+              "sp_coverage_pct": 94.771,
+              "profit_units": 21.062,
+              "sp_roi_pct": 14.525,
+              "sp_roi_capped_20to1_pct": 14.525,
+              "sp_roi_without_top_winner_pct": 9.008,
+              "average_selections_per_week": 2.93
+            }
+          },
+          "original_global_D": {
+            "all": {
+              "races": 1267,
+              "wins": 297,
+              "strike_pct": 23.441,
+              "priced_bets": 1212,
+              "sp_coverage_pct": 95.659,
+              "profit_units": -166.35,
+              "sp_roi_pct": -13.725,
+              "sp_roi_capped_20to1_pct": -13.89,
+              "sp_roi_without_top_winner_pct": -15.54,
+              "average_selections_per_week": 24.3
+            },
+            "selected": {
+              "races": 291,
+              "wins": 95,
+              "strike_pct": 32.646,
+              "priced_bets": 275,
+              "sp_coverage_pct": 94.502,
+              "profit_units": -14.662,
+              "sp_roi_pct": -5.332,
+              "sp_roi_capped_20to1_pct": -5.332,
+              "sp_roi_without_top_winner_pct": -8.241,
+              "average_selections_per_week": 5.58
+            }
+          }
+        },
+        "2023_2024_model_selection": {
+          "frozen_stage34": {
+            "all": {
+              "races": 525,
+              "wins": 99,
+              "strike_pct": 18.857,
+              "priced_bets": 509,
+              "sp_coverage_pct": 96.952,
+              "profit_units": -153.885,
+              "sp_roi_pct": -30.233,
+              "sp_roi_capped_20to1_pct": -30.233,
+              "sp_roi_without_top_winner_pct": -33.376,
+              "average_selections_per_week": 10.07
+            },
+            "selected": {
+              "races": 96,
+              "wins": 39,
+              "strike_pct": 40.625,
+              "priced_bets": 94,
+              "sp_coverage_pct": 97.917,
+              "profit_units": 53.9,
+              "sp_roi_pct": 57.341,
+              "sp_roi_capped_20to1_pct": 57.341,
+              "sp_roi_without_top_winner_pct": 40.32,
+              "average_selections_per_week": 1.84
+            }
+          },
+          "original_global_D": {
+            "all": {
+              "races": 525,
+              "wins": 108,
+              "strike_pct": 20.571,
+              "priced_bets": 510,
+              "sp_coverage_pct": 97.143,
+              "profit_units": -114.902,
+              "sp_roi_pct": -22.53,
+              "sp_roi_capped_20to1_pct": -22.53,
+              "sp_roi_without_top_winner_pct": -25.667,
+              "average_selections_per_week": 10.07
+            },
+            "selected": {
+              "races": 138,
+              "wins": 43,
+              "strike_pct": 31.159,
+              "priced_bets": 133,
+              "sp_coverage_pct": 96.377,
+              "profit_units": 19.95,
+              "sp_roi_pct": 15.0,
+              "sp_roi_capped_20to1_pct": 15.0,
+              "sp_roi_without_top_winner_pct": 2.97,
+              "average_selections_per_week": 2.65
+            }
+          }
+        },
+        "2025_already_viewed": {
+          "frozen_stage34": {
+            "all": {
+              "races": 248,
+              "wins": 62,
+              "strike_pct": 25.0,
+              "priced_bets": 241,
+              "sp_coverage_pct": 97.177,
+              "profit_units": 3.535,
+              "sp_roi_pct": 1.467,
+              "sp_roi_capped_20to1_pct": 1.467,
+              "sp_roi_without_top_winner_pct": -5.172,
+              "average_selections_per_week": 4.76
+            },
+            "selected": {
+              "races": 41,
+              "wins": 15,
+              "strike_pct": 36.585,
+              "priced_bets": 40,
+              "sp_coverage_pct": 97.561,
+              "profit_units": 11.932,
+              "sp_roi_pct": 29.829,
+              "sp_roi_capped_20to1_pct": 29.829,
+              "sp_roi_without_top_winner_pct": -10.171,
+              "average_selections_per_week": 0.79
+            }
+          },
+          "original_global_D": {
+            "all": {
+              "races": 248,
+              "wins": 59,
+              "strike_pct": 23.79,
+              "priced_bets": 241,
+              "sp_coverage_pct": 97.177,
+              "profit_units": -14.424,
+              "sp_roi_pct": -5.985,
+              "sp_roi_capped_20to1_pct": -5.985,
+              "sp_roi_without_top_winner_pct": -12.624,
+              "average_selections_per_week": 4.76
+            },
+            "selected": {
+              "races": 60,
+              "wins": 20,
+              "strike_pct": 33.333,
+              "priced_bets": 58,
+              "sp_coverage_pct": 96.667,
+              "profit_units": -6.793,
+              "sp_roi_pct": -11.713,
+              "sp_roi_capped_20to1_pct": -11.713,
+              "sp_roi_without_top_winner_pct": -22.058,
+              "average_selections_per_week": 1.15
+            }
+          }
+        },
+        "2026_archive_replay_if_any": {
+          "frozen_stage34": {
+            "all": {
+              "races": 277,
+              "wins": 64,
+              "strike_pct": 23.105,
+              "priced_bets": 233,
+              "sp_coverage_pct": 84.116,
+              "profit_units": 0.986,
+              "sp_roi_pct": 0.423,
+              "sp_roi_capped_20to1_pct": -0.435,
+              "sp_roi_without_top_winner_pct": -9.019,
+              "average_selections_per_week": 5.31
+            },
+            "selected": {
+              "races": 29,
+              "wins": 9,
+              "strike_pct": 31.034,
+              "priced_bets": 22,
+              "sp_coverage_pct": 75.862,
+              "profit_units": -3.006,
+              "sp_roi_pct": -13.666,
+              "sp_roi_capped_20to1_pct": -13.666,
+              "sp_roi_without_top_winner_pct": -25.029,
+              "average_selections_per_week": 0.56
+            }
+          },
+          "original_global_D": {
+            "all": {
+              "races": 277,
+              "wins": 67,
+              "strike_pct": 24.188,
+              "priced_bets": 233,
+              "sp_coverage_pct": 84.116,
+              "profit_units": 15.711,
+              "sp_roi_pct": 6.743,
+              "sp_roi_capped_20to1_pct": 6.743,
+              "sp_roi_without_top_winner_pct": -1.841,
+              "average_selections_per_week": 5.31
+            },
+            "selected": {
+              "races": 53,
+              "wins": 14,
+              "strike_pct": 26.415,
+              "priced_bets": 45,
+              "sp_coverage_pct": 84.906,
+              "profit_units": -18.313,
+              "sp_roi_pct": -40.696,
+              "sp_roi_capped_20to1_pct": -40.696,
+              "sp_roi_without_top_winner_pct": -46.252,
+              "average_selections_per_week": 1.02
+            }
+          }
+        },
+        "2026_archive_selected_count": 29,
+        "forward_available": false,
+        "forward_paper_count": 0,
+        "independent_forward_validation": "NOT_YET_ESTABLISHED"
       }
     }
   ]
