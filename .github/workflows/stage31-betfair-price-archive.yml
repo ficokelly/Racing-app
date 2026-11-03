@@ -1,0 +1,162 @@
+name: Stage 31 - Betfair Historical Prices GB/IRE (Research Only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      year:
+        description: 'Historical year to import (2008–2026). Start with 2025 to verify matches.'
+        required: true
+        type: string
+        default: '2025'
+      days_to_check:
+        description: 'Trial: 7 days; full year: 0. Year-end dates after yesterday are excluded.'
+        required: true
+        type: string
+        default: '7'
+      data_rights_confirmed:
+        description: 'I have confirmed my permitted use/licence for this Betfair pricing data.'
+        required: true
+        type: choice
+        options:
+          - 'no'
+          - 'yes'
+        default: 'no'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage31-betfair-historical-prices
+  cancel-in-progress: false
+
+jobs:
+  collect-and-audit-private-odds:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      GH_TOKEN: ${{ github.token }}
+      INPUT_YEAR: ${{ inputs.year }}
+      INPUT_DAYS: ${{ inputs.days_to_check }}
+      RIGHTS_CONFIRMED: ${{ inputs.data_rights_confirmed }}
+      STAGE31_ARCHIVE_KEY: ${{ secrets.STAGE31_ARCHIVE_KEY }}
+    steps:
+      - name: Checkout research scripts without modifying live models
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Test importer, verify archive scope and authorization
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/stage31_betfair_sp_import.py
+          python scripts/stage31_betfair_sp_import.py --self-test
+          python - <<'PY'
+          import datetime, os
+          year=int(os.environ['INPUT_YEAR'])
+          days=int(os.environ['INPUT_DAYS'])
+          assert 2008<=year<=datetime.date.today().year,'Year outside 2008–current range'
+          assert 0<=days<=366,'Trial days must be 0–366'
+          if os.environ['RIGHTS_CONFIRMED']!='yes':
+              raise SystemExit('STOP: Verify Betfair pricing-data use/licence terms, then explicitly set data_rights_confirmed=yes. No downloads were performed.')
+          print(f'Authorized trial: {year}, limit {days or "entire year"} days; GB and IRE WIN only')
+          PY
+
+      - name: Find existing Stage 2 historical SQLite (temporary Actions artifact)
+        id: history
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+          repo=os.environ['GITHUB_REPOSITORY']
+          latest=None
+          for page in range(1,21):
+              raw=subprocess.check_output(['gh','api','-X','GET',f'repos/{repo}/actions/artifacts',
+                                           '-f','per_page=100','-f',f'page={page}'],text=True)
+              batch=json.loads(raw).get('artifacts',[])
+              for item in batch:
+                  if item.get('name')=='stage2-historical-staging-database' and not item.get('expired'):
+                      if not latest or item.get('created_at','')>latest.get('created_at',''):
+                          latest=item
+              if len(batch)<100:break
+          if latest is None:
+              raise SystemExit('Stage 2 historical SQLite artifact expired. Rerun Stage 2 in import mode before Stage 31.')
+          run_id=latest['workflow_run']['id']
+          Path('stage31_history').mkdir(exist_ok=True)
+          subprocess.run(['gh','run','download',str(run_id),'--repo',repo,
+                          '--name','stage2-historical-staging-database',
+                          '--dir','stage31_history'],check=True)
+          sources=sorted(Path('stage31_history').rglob('*.sqlite'),key=lambda p:p.stat().st_size,reverse=True)
+          if not sources:
+              raise SystemExit('Stage 2 artifact missing SQLite file')
+          db=sources[0].resolve()
+          with open(os.environ['GITHUB_ENV'],'a') as f:
+              f.write('STAGE31_DB='+str(db)+'\n')
+          print('Historical racing database found; bytes:',db.stat().st_size)
+          PY
+
+      - name: Fetch and match GB and Irish win-market CSV files
+        run: |
+          set -euo pipefail
+          python -u scripts/stage31_betfair_sp_import.py \
+            --history "$STAGE31_DB" \
+            --start "${INPUT_YEAR}-01-01" \
+            --end "${INPUT_YEAR}-12-31" \
+            --download \
+            --rights-confirmed \
+            --max-days "$INPUT_DAYS" \
+            --output stage31_output
+
+      - name: Validate research-only results and prevent raw publication
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,pathlib,sqlite3
+          root=pathlib.Path('stage31_output')
+          summary=json.loads((root/'stage31-summary.json').read_text())
+          assert summary['status']=='RESEARCH_ONLY'
+          assert summary['models_changed'] is False
+          assert summary['data_published_to_public_repo'] is False
+          db=sqlite3.connect(root/'stage31-betfair-prices.sqlite')
+          assert db.execute('select count(*) from source_files').fetchone()[0]>=1
+          assert db.execute('select count(*) from sqlite_master where name="betfair_prices"').fetchone()[0]==1
+          db.close()
+          print(json.dumps(summary['counts'],indent=2))
+          PY
+
+      - name: Optionally encrypt the raw prices using your GitHub repository secret
+        run: |
+          set -euo pipefail
+          if [ -n "${STAGE31_ARCHIVE_KEY}" ]; then
+            python -m pip install --disable-pip-version-check 'cryptography==46.0.4'
+            python scripts/stage31_betfair_sp_import.py \
+              --encrypt-private stage31_output/stage31-betfair-prices.sqlite \
+              "stage31_output/stage31-betfair-prices-${INPUT_YEAR}.aesgcm"
+            echo 'Encrypted price database created. Only encrypted copy may be uploaded.'
+          else
+            echo 'STAGE31_ARCHIVE_KEY not set: preserving only non-price audit reports. Plain SQLite will NOT be uploaded.'
+          fi
+
+      - name: Upload only aggregate audit and coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage31-betfair-gb-ire-coverage-${{ inputs.year }}
+          path: |
+            stage31_output/stage31-summary.json
+            stage31_output/stage31-coverage.csv
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Upload encrypted private research database if protected
+        if: ${{ hashFiles('stage31_output/*.aesgcm') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage31-encrypted-private-prices-${{ inputs.year }}
+          path: stage31_output/*.aesgcm
+          retention-days: 30
+          if-no-files-found: error
