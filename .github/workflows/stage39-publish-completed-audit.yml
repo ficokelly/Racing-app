@@ -1,0 +1,100 @@
+name: Stage 39 - Publish Completed 4 November Research
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: stage39-publish-completed-nov4
+  cancel-in-progress: false
+
+jobs:
+  publish-completed-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout clean repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Retrieve successful analysis from Stage 39 FIX
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/stage39-completed"
+          gh run download 41797222227 \
+            --repo "$GITHUB_REPOSITORY" \
+            --name stage39-six-course-nov4-research-fixed \
+            --dir "$RUNNER_TEMP/stage39-completed"
+          find "$RUNNER_TEMP/stage39-completed" -maxdepth 3 -type f -printf '%P\n'
+
+      - name: Validate all 47 races and stage publication files only
+        env:
+          COMPLETED_AUDIT: ${{ runner.temp }}/stage39-completed
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, shutil
+          from pathlib import Path
+          root=Path(os.environ['COMPLETED_AUDIT'])
+          matches=list(root.rglob('stage39-summary.json'))
+          if len(matches)!=1:
+              raise SystemExit(f'Expected one completed Stage39 summary, found {len(matches)}')
+          src=matches[0].parent
+          report=json.loads(matches[0].read_text(encoding='utf-8'))
+          assert report['target_day']=='2026-11-04', 'Wrong analysis day'
+          assert len(report['courses'])==6, 'Six meetings not analysed'
+          assert report['tomorrow_coverage']['races_scored']==47, 'Not all 47 scheduled races assessed'
+          assert report['tomorrow_coverage']['races_unscored']==0, 'Unscored races'
+          assert report['historical_audit']['runner_rows']>3000000, 'Historical coverage too small'
+          assert report['no_model_a_b_c_d_z_changes'] is True, 'Unexpected model modification'
+          expected=['stage39-course-model-yearly-roi.csv',
+                    'stage39-course-condition-splits.csv',
+                    'stage39-historical-model-picks.csv',
+                    'stage39-tomorrow-full-assessments.json',
+                    'stage39-tomorrow-all-races.csv',
+                    'stage39-mobile-report.html',
+                    'stage39-summary.json']
+          dst=Path('reports/stage39')
+          dst.mkdir(parents=True,exist_ok=True)
+          for filename in expected:
+              p=src/filename
+              if not p.is_file() or p.stat().st_size<50:
+                  raise SystemExit(f'Completed audit file missing: {filename}')
+              shutil.copyfile(p,dst/filename)
+          # Use the verified, self-contained report as the public page.
+          shutil.copyfile(src/'stage39-mobile-report.html',Path('tomorrow-research.html'))
+          print('VERIFIED: 47/47 races, 6 courses, full historical data.')
+          print('Research shortlist only:', report['tomorrow_coverage'].get('research_shortlist_count'))
+          print('Historically robust candidate strategies:',len(report.get('retrospective_candidates',[])))
+          print('Only research documents and mobile HTML changed; no live models.')
+          PY
+
+      - name: Commit clean publication without redoing historical research
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add reports/stage39 tomorrow-research.html
+          if git diff --cached --quiet; then
+            echo 'Already published; nothing to change.'
+            exit 0
+          fi
+          # A clean checkout prevents unrelated generated files blocking a rebase.
+          git diff --quiet || { echo 'Unexpected unstaged tracked changes'; exit 1; }
+          git commit -m 'Stage39: publish verified six-course 4 November audit'
+          for attempt in 1 2 3; do
+            if git pull --rebase origin main && git push origin HEAD:main; then
+              echo 'Published: https://ficokelly.github.io/Racing-app/tomorrow-research.html'
+              exit 0
+            fi
+            git rebase --abort || true
+            sleep $((attempt*2))
+          done
+          echo 'Publishing failed; audit remains in original run artifact.'
+          exit 1
