@@ -1,0 +1,429 @@
+name: Stage 39 FIX - Wednesday Six Course ROI Research v2
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: stage39-2026-11-04-six-course-roi-fix
+  cancel-in-progress: false
+
+jobs:
+  six-course-roi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - name: Checkout the historical models and the original source
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install historical research dependencies
+        run: |
+          python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1 kagglehub
+
+      - name: Restore the versioned Stage 39 research engine
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p scripts
+          python - <<'PY_STAGE39_ENGINE'
+          import base64,gzip,pathlib
+          encoded='''
+          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
+          '''
+          path=pathlib.Path('scripts/stage39_six_course_audit.py')
+          code=gzip.decompress(base64.b64decode(encoded))
+          expected='8f063483f1f3f5c661f84c306c551a28e45af2b7332c618d44c10846f8a72338'
+          if __import__('hashlib').sha256(code).hexdigest()!=expected:raise SystemExit('Versioned Stage39 source failed SHA256 verification')
+          if path.exists() and path.read_bytes()!=code:raise SystemExit('Stage39 source was changed after installation; refusing silent overwrite')
+          if not path.exists():path.write_bytes(code)
+          print('Verified/restored the six-course research engine:',len(code),'bytes')
+          PY_STAGE39_ENGINE
+          python -m py_compile scripts/stage39_six_course_audit.py
+          python scripts/stage39_six_course_audit.py --self-test
+          python scripts/stage30_gap_aware_abcd.py --self-test
+          python scripts/stage34_model_d_course_research.py --self-test
+          python scripts/stage35_model_d_going_5years.py --self-test
+          # Standalone Stage39 uses frozen Stage30/34/35 and does not depend on Stage38 run status.
+
+      - name: Refresh Wednesday 4 November declared racecards without publishing live data
+        env:
+          RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
+          RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -n "${RACING_API_USERNAME:-}" ] && [ -n "${RACING_API_PASSWORD:-}" ]; then
+            if python scripts/stage26_feed_capture.py racecards; then
+              echo 'Collected today's and tomorrow's racecards in this isolated runner.'
+            else
+              echo 'WARNING: refresh failed; using previously checked-in racecards, explicitly marked as stale where applicable.'
+            fi
+          else
+            echo 'WARNING: Racing API credentials missing. Running historical audit; unavailable future racecards will be clearly reported.'
+          fi
+          python - <<'PY_CHECK_CARDS'
+          import json
+          from pathlib import Path
+          x=json.loads(Path('data/racecards.json').read_text())
+          wanted={'kempton','dundalk','nottingham','musselburgh','chepstow','wexford'}
+          rows=[r for r in x.get('runners',[]) if r.get('date')=='2026-11-04'
+                and any(t in str(r.get('course','')).lower() for t in wanted)]
+          race_keys={(r.get('course'),r.get('race_time'),r.get('race_id')) for r in rows}
+          print('4 November target-course races collected:',len(race_keys),'runners:',len(rows))
+          if len(race_keys)<6:print('WARNING: missing future cards. Audit still runs, no fabricated race predictions.')
+          PY_CHECK_CARDS
+
+      - name: Restore original Stage 2 UK and Irish historical SQLite database
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+        run: |
+          set -euo pipefail
+          python - <<'PY_STAGE39_DB'
+          import json,os,subprocess,sys,sqlite3
+          from pathlib import Path
+          repo=os.environ['GITHUB_REPOSITORY']
+          target=Path('stage39_historical_db');target.mkdir(exist_ok=True)
+          winner=None
+          for page in range(1,21):
+              raw=subprocess.check_output(['gh','api','-X','GET',f'repos/{repo}/actions/artifacts',
+                                           '-f','per_page=100','-f',f'page={page}'],text=True)
+              results=json.loads(raw).get('artifacts',[])
+              for a in results:
+                  if a.get('name')=='stage2-historical-staging-database' and not a.get('expired'):
+                      if winner is None or a.get('created_at','')>winner.get('created_at',''):winner=a
+              if len(results)<100:break
+          dbfiles=[]
+          if winner:
+              try:
+                  rid=str(winner['workflow_run']['id'])
+                  subprocess.run(['gh','run','download',rid,'--repo',repo,'--name',winner['name'],'--dir',str(target)],check=True)
+                  dbfiles=list(target.rglob('*.sqlite'))
+                  print('Downloaded original Stage2 archive from run',rid,flush=True)
+              except subprocess.CalledProcessError:
+                  print('Stage2 artifact unavailable; rebuilding the identical historical source',flush=True)
+          if dbfiles:
+              db=max(dbfiles,key=lambda p:p.stat().st_size).resolve();source='Stage2 verified artifact'
+          else:
+              import kagglehub
+              print('Rebuilding historical source from original Kaggle archive',flush=True)
+              archive=kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025')
+              db=(target/'historical_ukie_staging.sqlite').resolve()
+              subprocess.run([sys.executable,'import_historical_ukie.py','--mode','import',
+                              '--input',str(archive),'--min-date','1988-01-01',
+                              '--max-date','2026-10-07','--database',str(db),
+                              '--report',str(target/'import-report.json')],check=True)
+              subprocess.run([sys.executable,'audit_history_coverage.py','--database',str(db),
+                              '--expect-first-year','1988',
+                              '--output',str(target/'annual_coverage.csv'),
+                              '--summary',str(target/'coverage.json')],check=True)
+              source='original Kaggle archive reconstructed'
+          if not db.exists() or db.stat().st_size<10000000:
+              raise SystemExit('Historical database not found or suspiciously small')
+          cx=sqlite3.connect('file:'+str(db)+'?mode=ro',uri=True)
+          count=cx.execute('SELECT COUNT(*) FROM historical_runs').fetchone()[0]
+          min_year=cx.execute('SELECT MIN(race_date) FROM historical_races').fetchone()[0]
+          cx.close()
+          if count<3000000 or not min_year or min_year[:4]>'1988':
+              raise SystemExit(f'Historical source integrity guard failed: rows={count}, first={min_year}')
+          print('Integrity checked historical runs:',count,'earliest race:',min_year,'source:',source,flush=True)
+          with open(os.environ['GITHUB_ENV'],'a') as f:print('STAGE39_DB='+str(db),file=f)
+          PY_STAGE39_DB
+
+      - name: Restore verified historical integrity dependencies
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import base64,gzip,json,os,pathlib,re,urllib.request,py_compile
+          repo=os.environ['GITHUB_REPOSITORY']
+          def workflow(name):
+              req=urllib.request.Request('https://api.github.com/repos/'+repo+'/contents/.github/workflows/'+name,
+                headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],
+                         'Accept':'application/vnd.github+json'})
+              with urllib.request.urlopen(req,timeout=45) as response: data=json.load(response)
+              return base64.b64decode(data['content']).decode('utf-8')
+          src=workflow('stage18-historical-ab.yml')
+          pairs=re.findall(r"pathlib\.Path\('([^']+\.py)'\)\.write_bytes\(gzip\.decompress\(base64\.b64decode\('''(.*?)'''\)\)\)",src,re.S)
+          restored=set()
+          for file,b64 in pairs:
+              p=pathlib.Path(file)
+              p.parent.mkdir(parents=True,exist_ok=True)
+              p.write_bytes(gzip.decompress(base64.b64decode(b64)))
+              restored.add(file)
+          required={'scripts/stage16_history_model.py','scripts/stage18_historical_ab.py'}
+          if not required.issubset(restored):
+              raise SystemExit('Missing historical integrity dependencies: '+str(required-restored))
+          src13=workflow('stage13-strategy-learning.yml')
+          encoded=re.findall(r"printf '%s' '([A-Za-z0-9+/=]+)' \| base64 --decode \| gzip --decompress > ([\w./-]+\.py)",src13)
+          wanted={'stage12_form_analysis.py','scripts/stage16_score.py','scripts/stage16_integrate.py'}
+          for b64,file in encoded:
+              if file in wanted:
+                  p=pathlib.Path(file)
+                  p.parent.mkdir(parents=True,exist_ok=True)
+                  p.write_bytes(gzip.decompress(base64.b64decode(b64)))
+                  restored.add(file)
+          for file in restored:
+              py_compile.compile(file,doraise=True)
+          print('Restored verified integrity dependencies:',len(restored))
+          PY
+
+      - name: Verify historical database integrity
+        run: |
+          set -euo pipefail
+          python scripts/stage24_history_integrity.py prepare --db "$STAGE39_DB" --repo . --strict --assert-form
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          audit=json.loads(Path('data/history-integrity-audit.json').read_text())
+          if not audit.get('coverage_verified_through'):
+              raise SystemExit('Historical integrity report lacks source coverage date')
+          print('Verified source coverage through:',audit['coverage_verified_through'])
+          PY
+      - name: Run the six-course history and publish frozen pre-off research
+        run: |
+          set -euo pipefail
+          python -u scripts/stage39_six_course_audit.py \
+            --db "$STAGE39_DB" --root . --day 2026-11-04 --output stage39_report
+          python - <<'PY_CHECK_REPORT'
+          import json
+          from pathlib import Path
+          r=Path('stage39_report')
+          v=json.loads((r/'stage39-summary.json').read_text())
+          assert len(v['courses'])==6
+          assert v['target_day']=='2026-11-04'
+          assert v['no_model_a_b_c_d_z_changes'] is True
+          assert v['historical_audit']['runner_rows']>3000000
+          assert len(v['per_course_report_rows'])>=6*4*2
+          for name in ('stage39-course-model-yearly-roi.csv',
+                       'stage39-course-condition-splits.csv',
+                       'stage39-historical-model-picks.csv',
+                       'stage39-tomorrow-full-assessments.json',
+                       'stage39-mobile-report.html'):
+              if not (r/name).exists() or (r/name).stat().st_size<50:
+                  raise SystemExit('Stage39 expected research output missing: '+name)
+          print('Research completed. Tomorrow racecards scored:',v['tomorrow_coverage']['races_scored'])
+          print('Course model/condition candidates:',len(v['retrospective_candidates']))
+          print('No betting recommendations or model promotions were made')
+          PY_CHECK_REPORT
+
+      - name: Publish the research report and mobile-readable Pages page
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage39
+          cp -f stage39_report/stage39-* reports/stage39/
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add scripts/stage39_six_course_audit.py reports/stage39/ tomorrow-research.html
+          if git diff --cached --quiet; then
+            echo 'No modified Stage39 research report'
+            exit 0
+          fi
+          git commit -m 'Stage39: six-course long-history audit for 4 November racecards'
+          for attempt in 1 2 3 4 5; do
+            if git pull --rebase origin main && git push origin HEAD:main; then
+              echo 'Stage39 published without modifying A/B/C/D/Z models';exit 0
+            fi
+            git rebase --abort || true
+            sleep "$((attempt*4))"
+          done
+          echo 'GitHub push unsuccessful, use research report in Actions artifact' >&2
+          exit 1
+
+      - name: Preserve Stage39 outputs even if publication fails
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage39-six-course-nov4-research-fixed
+          path: |
+            stage39_report/
+            tomorrow-research.html
+          retention-days: 21
+          if-no-files-found: warn
