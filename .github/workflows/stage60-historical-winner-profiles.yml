@@ -1,0 +1,54 @@
+name: Stage60 - Historical Winner Profiles vs Frozen D
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  stage60:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check required mapping and script
+        run: |
+          test -s research/stage59_continuity_mapping.csv || { echo 'Upload Stage59 mapping CSV to research/ first'; exit 1; }
+          python -m py_compile scripts/stage60_historical_winner_profiles.py
+      - name: Retrieve historical DB and Stage49 frozen D baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import json,subprocess,os
+          from pathlib import Path
+          repo=os.environ['GITHUB_REPOSITORY'];arts=[]
+          for page in range(1,21):
+              data=json.loads(subprocess.check_output(['gh','api',f'repos/{repo}/actions/artifacts','-f','per_page=100','-f',f'page={page}','-X','GET'],text=True))
+              batch=data.get('artifacts',[]);arts+=batch
+              if len(batch)<100:break
+          for name,target in [('stage2-historical-staging-database','stage60_input/db'),('stage49-model-d-top-two-2025-2026','stage60_input/baseline')]:
+              candidates=[a for a in arts if a['name']==name and not a['expired']]
+              if not candidates:raise SystemExit(f'Missing unexpired Actions artifact: {name}. Re-run its producing workflow.')
+              a=max(candidates,key=lambda x:x['created_at']);Path(target).mkdir(parents=True,exist_ok=True)
+              subprocess.run(['gh','run','download',str(a['workflow_run']['id']),'--repo',repo,'--name',name,'--dir',target],check=True)
+              print('Restored',name)
+          PY
+          find stage60_input -type f | head -30
+      - name: Run historical winner-profile comparison
+        run: |
+          set -euo pipefail
+          DB=$(find stage60_input/db -type f -name '*.sqlite' | head -1)
+          BASE=$(find stage60_input/baseline -type f -name 'model_d_top_two_2025_2026_per_race.csv' | head -1)
+          test -n "$DB" && test -n "$BASE"
+          python -u scripts/stage60_historical_winner_profiles.py --db "$DB" --mapping research/stage59_continuity_mapping.csv --baseline "$BASE" --out reports/stage60
+          cat reports/stage60/stage60_summary.json >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload research results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage60-historical-winner-profiles
+          path: reports/stage60/
+          retention-days: 90
