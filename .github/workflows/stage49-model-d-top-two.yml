@@ -1,0 +1,131 @@
+name: Stage49 - Frozen Model D Top Two 2025 and 2026
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/stage49-model-d-top-two.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: stage49-frozen-model-d-top-two
+  cancel-in-progress: false
+
+jobs:
+  frozen-top-two-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install frozen D research dependencies
+        run: |
+          python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1 kagglehub
+          python -m py_compile scripts/stage49_model_d_top_two.py scripts/stage38_model_dz_live.py scripts/stage30_gap_aware_abcd.py
+          python scripts/stage49_model_d_top_two.py --self-test
+          python scripts/stage30_gap_aware_abcd.py --self-test
+
+      - name: Restore original historic SQLite (rebuild only if expired)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os,subprocess,sys
+          from pathlib import Path
+          repo=os.environ['GITHUB_REPOSITORY']
+          target=Path('stage49_source')
+          target.mkdir(exist_ok=True)
+          latest=None
+          for page in range(1,21):
+              out=subprocess.check_output(['gh','api','-X','GET',f'repos/{repo}/actions/artifacts',
+                  '-f','per_page=100','-f',f'page={page}'],text=True)
+              artifacts=json.loads(out).get('artifacts',[])
+              for item in artifacts:
+                  if item.get('name')=='stage2-historical-staging-database' and not item.get('expired'):
+                      if latest is None or item.get('created_at','')>latest.get('created_at',''):
+                          latest=item
+              if len(artifacts)<100:break
+          matches=[]
+          if latest:
+              try:
+                  runid=str(latest['workflow_run']['id'])
+                  subprocess.run(['gh','run','download',runid,'--repo',repo,'--name',
+                                  latest['name'],'--dir',str(target)],check=True)
+                  matches=list(target.rglob('*.sqlite'))
+              except subprocess.CalledProcessError:
+                  print('Artifact unavailable: rebuild from original Stage2 source',flush=True)
+          if matches:
+              db=max(matches,key=lambda p:p.stat().st_size).resolve()
+              origin='original_stage2_artifact'
+          else:
+              import kagglehub
+              print('Historical artifact expired; rebuilding original source',flush=True)
+              archive=kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025')
+              db=(target/'historical_ukie_staging.sqlite').resolve()
+              subprocess.run([sys.executable,'import_historical_ukie.py',
+                  '--mode','import','--input',str(archive),
+                  '--min-date','1988-01-01','--max-date','2026-10-07',
+                  '--database',str(db),
+                  '--report',str(target/'import-report.json')],check=True)
+              origin='reconstructed_original_source'
+          if not db.exists() or db.stat().st_size<10_000_000:
+              raise SystemExit('Original historical SQLite missing or unexpectedly small')
+          with open(os.environ['GITHUB_ENV'],'a') as f:
+              print('STAGE49_DB='+str(db),file=f)
+              print('STAGE49_SOURCE='+origin,file=f)
+          print('Historical source',origin,'bytes',db.stat().st_size,flush=True)
+          PY
+
+      - name: Run frozen D top-two historical assessment
+        run: |
+          set -euo pipefail
+          python -u scripts/stage49_model_d_top_two.py --db "$STAGE49_DB" --output reports/stage49
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          d=json.loads(Path('reports/stage49/model_d_top_two_2025_2026_summary.json').read_text())
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
+              print('# Model D: Frozen Top Two Historical Backtest',file=f)
+              print('Source ends: '+str(d['actual_historical_source_last_date']),file=f)
+              print('| Year | Races | Rank 1 wins | Rank 2 wins | Top 2 win % | Top 2 SP ROI |',file=f)
+              print('|---|---:|---:|---:|---:|---:|',file=f)
+              for y,z in sorted(d['by_year'].items()):
+                  print(f"| {y} | {z['races']} | {z['rank1_winners']} | {z['rank2_winners']} | {z['top2_win_coverage_pct']}% | {z['both_ranked_sp']['roi_pct']}% |",file=f)
+              print('\nResearch only. Backtest at SP, not live bookmaker returns.',file=f)
+          PY
+
+      - name: Publish standalone Stage49 reports without changing live models
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add reports/stage49/model_d_top_two_2025_2026_summary.json \
+                  reports/stage49/model_d_top_two_2025_2026_per_race.csv
+          if ! git diff --cached --quiet; then
+            git commit -m 'Stage49: frozen D top-two 2025 and 2026 historical audit'
+            for attempt in 1 2 3; do
+              if git pull --rebase origin main && git push origin HEAD:main; then
+                echo 'Published Stage49 reports to main'
+                exit 0
+              fi
+              sleep 3
+            done
+            echo 'Report commit not pushed; use Actions artifact for reports' >&2
+          fi
+
+      - name: Retain individual audit files as Actions artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage49-model-d-top-two-2025-2026
+          path: reports/stage49/
+          retention-days: 90
+          if-no-files-found: warn
