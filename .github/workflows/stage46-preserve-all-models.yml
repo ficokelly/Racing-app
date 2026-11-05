@@ -1,0 +1,35 @@
+name: Stage46 - Preserve all original model learning (read-only)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  frozen-checkpoint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout current original model state
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Freeze model A B C D Z weights calibration histories predictions and source
+        run: |
+          set -euo pipefail
+          python scripts/stage46_preserve_learning.py snapshot \
+            --repo-root . --output "$RUNNER_TEMP/stage46_original_learning"
+          python scripts/stage46_preserve_learning.py verify \
+            --checkpoint "$RUNNER_TEMP/stage46_original_learning"
+      - name: Keep an immutable recovery checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage46-all-models-original-learning-${{ github.run_id }}
+          path: ${{ runner.temp }}/stage46_original_learning/
+          retention-days: 90
+          if-no-files-found: error
