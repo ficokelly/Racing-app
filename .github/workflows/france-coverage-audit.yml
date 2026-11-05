@@ -1,0 +1,285 @@
+name: France - Racing API Coverage Audit
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  france-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit French racecards, 30 days of results and horse histories
+        env:
+          RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
+          RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
+        run: |
+          python - <<'PY_FRANCE_AUDIT'
+          #!/usr/bin/env python3
+          """Read-only France access and historical-run completeness probe for The Racing API.
+          No source files or production data are modified; all output goes into france-audit/.
+          """
+          from __future__ import annotations
+          import base64
+          import collections
+          import datetime as dt
+          import json
+          import os
+          import time
+          from pathlib import Path
+          from urllib.error import HTTPError, URLError
+          from urllib.parse import urlencode
+          from urllib.request import Request, urlopen
+          from zoneinfo import ZoneInfo
+          
+          BASE = 'https://api.theracingapi.com'
+          OUT = Path('france-audit')
+          OUT.mkdir(parents=True, exist_ok=True)
+          USER = os.environ.get('RACING_API_USERNAME', '')
+          PASS = os.environ.get('RACING_API_PASSWORD', '')
+          if not USER or not PASS:
+              raise SystemExit('Missing existing GitHub Actions RACING_API_USERNAME or RACING_API_PASSWORD secret.')
+          AUTH = base64.b64encode((USER + ':' + PASS).encode()).decode()
+          TODAY = dt.datetime.now(ZoneInfo('Europe/Paris')).date()
+          CURRENT = dt.datetime.now(dt.timezone.utc).isoformat()
+          report = {'tested_at_utc': CURRENT, 'source': 'The Racing API', 'country': 'FR',
+                    'lookback_days': 30, 'racecards': {}, 'daily_results': [],
+                    'sample_horses': [], 'field_completeness': {}, 'full_horse_results_entitlement':None, 'errors': [],
+                    'caveats': [
+                        'A result-count audit measures only records available to this API account, not the proportion of all races run in France.',
+                        'Returned history is not evidence of an entire racing career. External official-form reconciliation is necessary.',
+                        'The racecard-horse-results endpoint is documented for horses on upcoming racecards. A 404 on older runners is inconclusive.',
+                        'This audit does not retrain, backtest or change Model D.'
+                    ]}
+          
+          def fetch(path, params=None):
+              query = '?' + urlencode(params or {}, doseq=True) if params else ''
+              url = BASE + path + query
+              req = Request(url, headers={'Authorization': 'Basic ' + AUTH, 'Accept': 'application/json',
+                                          'User-Agent': 'RacingHotPots-France-Coverage-Audit/1.0'})
+              for attempt in range(3):
+                  try:
+                      with urlopen(req, timeout=25) as rsp:
+                          payload = json.load(rsp)
+                      time.sleep(.25)
+                      return payload, None
+                  except HTTPError as e:
+                      if e.code == 429 and attempt < 2:
+                          try: delay = max(2, min(20, int(e.headers.get('Retry-After', '3'))))
+                          except ValueError: delay = 3
+                          time.sleep(delay)
+                          continue
+                      return None, f'HTTP {e.code} ({e.reason})'
+                  except (URLError, TimeoutError, ValueError) as e:
+                      if attempt < 2:
+                          time.sleep(1.5 * (attempt + 1))
+                          continue
+                      return None, f'{type(e).__name__}: {str(e)[:120]}'
+              return None, 'Retries exhausted'
+          
+          def items(payload, preferred):
+              if isinstance(payload, list): return payload
+              if isinstance(payload, dict):
+                  for name in (preferred, 'results', 'racecards', 'data', 'items', 'races'):
+                      v = payload.get(name)
+                      if isinstance(v, list): return v
+                      if isinstance(v, dict):
+                          for nested in (preferred, 'results', 'racecards', 'items', 'races'):
+                              if isinstance(v.get(nested), list): return v[nested]
+              return []
+          
+          def fr(x):
+              return str(x.get('region') or x.get('region_code') or x.get('country') or '').strip().upper() in ('FR','FRA','FRANCE')
+          
+          def race_id(x):
+              return str(x.get('race_id') or x.get('id') or str(x.get('course') or '')+'|'+str(x.get('off_dt') or x.get('time') or ''))
+          
+          def val(d, *keys):
+              if not isinstance(d, dict): return None
+              for key in keys:
+                  x=d.get(key)
+                  if x is not None and x != '' and x != '-':return x
+              return None
+          
+          print('Step 1/3: French racecards today and tomorrow')
+          racecard_races=[]
+          for day in ('today', 'tomorrow'):
+              # Compare server-side FR filtering with unfiltered list to detect code mismatches.
+              payload, error = fetch('/v1/racecards/standard', {'day':day, 'region_codes':['fr'], 'limit':500})
+              endpoint = '/v1/racecards/standard'
+              if error:
+                  report['errors'].append(f'{endpoint} {day}: {error}')
+                  payload, error = fetch('/v1/racecards/free', {'day':day, 'region_codes':['fr'], 'limit':500})
+                  endpoint = '/v1/racecards/free'
+              found = items(payload, 'racecards') if payload else []
+              races = [r for r in found if isinstance(r, dict) and fr(r)]
+              report['racecards'][day] = {'endpoint':endpoint, 'status':'ok' if not error else error,
+                  'returned_total':len(found), 'france_races':len(races),
+                  'runner_count':sum(len(r.get('runners') or []) for r in races),
+                  'courses':sorted(set(str(r.get('course') or '') for r in races)),
+                  'races':[{'course':r.get('course'), 'off_dt':r.get('off_dt'),
+                            'race_name':r.get('race_name'), 'runners':len(r.get('runners') or [])} for r in races[:30]]}
+              for r in races:
+                  racecard_races.append((day,r))
+              if error: report['errors'].append(f'{endpoint} {day}: {error}')
+              print(day, len(races), 'French races,', sum(len(r.get('runners') or []) for r in races), 'runners')
+          
+          print('Step 2/3: The number of recorded French results per day in the last 30 days')
+          recent_result_races=[]
+          for delta in range(1,31):
+              day=(TODAY-dt.timedelta(days=delta)).isoformat()
+              got=[]
+              error=None
+              for skip in (0,100,200,300,400):
+                  payload, error=fetch('/v1/results', {'start_date':day,'end_date':day,
+                                                      'region':['fr'], 'limit':100, 'skip':skip})
+                  if error:break
+                  batch=items(payload,'results')
+                  got.extend(x for x in batch if isinstance(x,dict) and fr(x))
+                  if len(batch)<100:break
+              report['daily_results'].append({'date':day,'races':len({race_id(r) for r in got}),
+                                              'runner_count':sum(len(r.get('runners') or []) for r in got),
+                                              'status':'ok' if not error else error})
+              if error:report['errors'].append(f'/v1/results {day}: {error}')
+              recent_result_races.extend(got)
+          
+          print('Step 3/3: Horse histories from distinct current French races, or fallback runners')
+          sample=[]
+          seen_ids=set()
+          # One to three runners in each of up to eight races, maximising breadth.
+          for day,r in racecard_races:
+              for h in (r.get('runners') or [])[:3]:
+                  hid=str(h.get('horse_id') or '').strip()
+                  if hid and hid not in seen_ids:
+                      seen_ids.add(hid)
+                      sample.append({'horse_id':hid,'horse':h.get('horse'), 'race':r.get('race_name'),
+                                     'course':r.get('course'),'day':day,'source':'upcoming_racecard',
+                                     'racecard_fields':{key:val(h,key) for key in ('trainer','jockey','age','draw','form','ofr','sire','dam')}})
+                  if len(sample)>=24:break
+              if len(sample)>=24:break
+          # If no future French racecards, test results horse IDs, but mark the restriction.
+          if not sample:
+              for r in recent_result_races:
+                  for h in (r.get('runners') or [])[:3]:
+                      hid=str(h.get('horse_id') or '').strip()
+                      if hid and hid not in seen_ids:
+                          seen_ids.add(hid)
+                          sample.append({'horse_id':hid,'horse':h.get('horse'), 'race':r.get('race_name'),
+                                         'course':r.get('course'),'day':r.get('date'),
+                                         'source':'past_result_not_upcoming',
+                                         'racecard_fields':{key:None for key in ('trainer','jockey','age','draw','form','ofr','sire','dam')}})
+                      if len(sample)>=18:break
+                  if len(sample)>=18:break
+          if sample:
+              # A single access check distinguishes Standard racecard form from Pro-only full history.
+              _,pro_error=fetch('/v1/horses/'+sample[0]['horse_id']+'/results',{'limit':1})
+              report['full_horse_results_entitlement']='available' if not pro_error else pro_error
+          fields={'date':('date','race_date','off_dt'), 'course':('course','racecourse'),
+                  'distance':('distance','distance_f','distance_y'), 'going':('going','ground'),
+                  'race_type':('type','race_type'), 'finish':('pos','position','finish_pos'),
+                  'trainer':('trainer','trainer_name'), 'jockey':('jockey','jockey_name'),
+                  'official_rating':('ofr','or','official_rating'), 'draw':('draw','stall'),
+                  'sp':('sp','sp_dec','sp_decimal'), 'comment':('comment','race_comment')}
+          coverage=collections.Counter()
+          records_total=0
+          for h in sample:
+              hid=h['horse_id']
+              # Ask explicitly for all history from 2005: omitting dates might silently
+              # select a short default range on certain endpoints or subscriptions.
+              history=[];error=None
+              params={'start_date':'2005-01-01','end_date':TODAY.isoformat()}
+              h['history_query']='explicit 2005-to-today'
+              for skip in (0,50,100,150,200,250):
+                  payload,error=fetch('/v1/racecards/'+hid+'/results', {**params,'limit':50,'skip':skip})
+                  if error and skip==0 and ('HTTP 422' in error or 'HTTP 400' in error):
+                      h['history_query']='default range: explicit historical range rejected'
+                      params={}
+                      payload,error=fetch('/v1/racecards/'+hid+'/results',{'limit':50,'skip':skip})
+                  if error:break
+                  batch=items(payload,'results')
+                  if not batch:break
+                  history.extend(batch)
+                  if len(batch)<50:break
+              h['history_status']='ok' if not error else error
+              h['history_rows_returned']=len(history)
+              h['history_cap_reached']=len(history)>=300
+              h['history_earliest']=None
+              h['history_latest']=None
+              h['history_region_counts']={}
+              h['historical_field_pct']={}
+              counts=collections.Counter()
+              regions=collections.Counter()
+              dated=[]
+              for entry in history:
+                  if not isinstance(entry,dict):continue
+                  combined=dict(entry)
+                  for sub in ('race','runner','performance','details'):
+                      if isinstance(entry.get(sub),dict):combined.update(entry[sub])
+                  for key,options in fields.items():
+                      if val(combined,*options) is not None:
+                          counts[key]+=1
+                          coverage[key]+=1
+                  region=val(combined,'region','country','country_code')
+                  if region:regions[str(region)]+=1
+                  date=val(combined,'date','race_date')
+                  if date:dated.append(str(date)[:10])
+              records_total+=len(history)
+              if dated:
+                  h['history_earliest']=min(dated)
+                  h['history_latest']=max(dated)
+              h['history_region_counts']=dict(regions)
+              h['historical_field_pct']={k:round(100*counts[k]/len(history),1) if history else None for k in fields}
+              report['sample_horses'].append(h)
+              if error:report['errors'].append(f'horse {hid}: {error}')
+              print(h['horse'], 'history=',len(history),'error=',error)
+          
+          report['field_completeness']={'historical_rows':records_total,
+                                       'sampled_horses':len(sample),
+                                       'horses_with_any_history':sum(h['history_rows_returned']>0 for h in sample),
+                                       'pct_of_returned_history_rows':{k:round(100*coverage[k]/records_total,1) if records_total else None for k in fields}}
+          report['daily_summary']={'days_checked':30,
+              'days_with_results':sum(r['races']>0 for r in report['daily_results']),
+              'total_races_recorded':sum(r['races'] for r in report['daily_results']),
+              'days_with_api_errors':sum(r['status']!='ok' for r in report['daily_results'])}
+          (OUT/'france-audit-results.json').write_text(json.dumps(report,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
+          
+          lines=['# France coverage audit — The Racing API', '',
+              f"Run: {CURRENT} · France (FR) · last {report['daily_summary']['days_checked']} completed calendar days",'',
+              '## Racecards', '', '| Day | Endpoint | FR races | Runners | Status |', '|---|---|---:|---:|---|']
+          for day,x in report['racecards'].items():
+              lines.append(f"| {day} | `{x['endpoint']}` | {x['france_races']} | {x['runner_count']} | {x['status']} |")
+          lines.extend(['','## Recent French results in your API account', '',
+              f"* Dates with at least one recorded result: **{report['daily_summary']['days_with_results']}/30**.",
+              f"* French results recorded: **{report['daily_summary']['total_races_recorded']}**.",
+              f"* Days with API errors: **{report['daily_summary']['days_with_api_errors']}**.",
+              '* This is **not** the percentage of all French racing covered; that requires an independent denominator.', '',
+              '| Date | Recorded races | Runners | Status |','|---|---:|---:|---|'])
+          for d in report['daily_results']:
+              lines.append(f"| {d['date']} | {d['races']} | {d['runner_count']} | {d['status']} |")
+          lines.extend(['','## Historical results for sampled French horses','',
+              f"* Horses sampled: **{len(sample)}**.",
+              f"* Horses returning at least one historical run: **{report['field_completeness']['horses_with_any_history']}**.",
+              f"* Historical rows returned: **{records_total}**.",
+              f"* Dedicated full-horse-results endpoint: **{report['full_horse_results_entitlement'] or 'not tested'}**.", '',
+              '| Horse | Racecard source | History rows | Earliest | Latest | Query range | Status |', '|---|---|---:|---|---|---|---|'])
+          for h in sample:
+              lines.append(f"| {h.get('horse') or 'Unknown'} | {h['source']} | {h['history_rows_returned']} | {h['history_earliest'] or '—'} | {h['history_latest'] or '—'} | {h['history_query']} | {h['history_status']} |")
+          lines.extend(['','## Historical field coverage','',
+              '| Field | Present in returned history |', '|---|---:|'])
+          for k,pct in report['field_completeness']['pct_of_returned_history_rows'].items():
+              lines.append(f"| {k} | {str(pct)+'%' if pct is not None else 'Not measured'} |")
+          lines.extend(['','## Interpretation','',
+              '* French racecards on a particular day may legitimately contain zero eligible races.',
+              '* A horse history list cannot prove completeness without comparison against an external official racing record.',
+              '* The Basic/Standard racecard-horse endpoint is limited to horses on upcoming cards. When sampling past runners, an error is inconclusive.',
+              '* Model D has not been modified, run on French races, or backtested by this audit.', ''])
+          (OUT/'france-audit-report.md').write_text('\n'.join(lines)+'\n',encoding='utf-8')
+          print('Report saved:',OUT/'france-audit-report.md')
+          PY_FRANCE_AUDIT
+      - name: Upload France audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: france-api-coverage-audit
+          path: france-audit/
+          if-no-files-found: warn
