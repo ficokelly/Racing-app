@@ -1,0 +1,526 @@
+name: Hot Pots UI and Model Performance Archive
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '7,17,27,37,47,57 7-22 * * *'
+permissions:
+  contents: write
+concurrency:
+  group: hot-pots-models-archive
+  cancel-in-progress: false
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply Hot Pots racecard and Models tab updates
+        shell: bash
+        run: |
+          python - <<'PY_RHP_UI'
+          from pathlib import Path
+          import re
+
+          P=Path('index.html')
+          s=P.read_text(encoding='utf-8')
+          if '<!-- HOT_POTS_MODELS_V1 -->' in s:
+              print('Hot Pots redesign already installed; leaving UI unchanged')
+              raise SystemExit(0)
+
+          def once(old,new):
+              global s
+              n=s.count(old)
+              if n!=1: raise RuntimeError(f'Expected 1 copy of anchor {old[:85]!r}, found {n}; source changed, no write')
+              s=s.replace(old,new,1)
+
+          # Keep the old model training/predictions untouched. Only relocate model presentation.
+          once('<button type="button" data-section="power">🎯 Strategy Selections</button>', '<button type="button" data-section="power">🎯 Hot Pots</button>')
+          once('<button type="button" data-section="powerresults">📊 Strategy Results</button>', '<button type="button" data-section="powerresults">📊 Hot Pots Results</button><button type="button" data-section="models">📊 Models</button>')
+          once('<small>Selections</small>', '<small>Hot Pots</small>')
+          once('<h2>🎯 Strategy Selections</h2>', '<h2>🎯 Hot Pots</h2>')
+          once('<h2>📊 Strategy Results</h2>', '<h2>📊 Hot Pots Results</h2>')
+          # Hidden technical/paper model links move into the model workbench rather than main navigation.
+          s=re.sub(r'\s*<a class="model-z-nav" href="\./model-z\.html"[^>]*>.*?</a>', '', s, count=1)
+          # Remove model-choice controls only, leave model source data and events intact.
+          for start,end in [
+           ('<div class="panel rhp-model-picker">','<div id="rc-list"'),
+           ('<div class="rhp-ab-switch" role="group" aria-label="Choose prediction model for Strategy Selections">','<div class="rhp-ab-type"'),
+           ('<div class="rhp-ab-switch" role="group" aria-label="Choose model for Strategy Results">','<div class="rhp-ab-type"')
+          ]:
+              a=s.find(start);b=s.find(end,a+len(start))
+              if a<0 or b<0: raise RuntimeError('Could not safely locate model-picker boundaries')
+              s=s[:a]+s[b:]
+          # Keep horizontal race navigator in the DOM even when selecting just one race.
+          once('<div class="rc-next-track" id="rc-next-track"></div></div><div class="panel rhp-meeting-panel">',
+               '<div class="rc-next-track" id="rc-next-track"></div></div><div id="rhp-race-back" class="hidden"><button class="action small outline" type="button" id="rhp-back-meetings">← All meetings</button></div><div class="panel rhp-meeting-panel">')
+          # The old navigator hid every race after the final off. Keep its full swipeable set.
+          once("const upcoming=rcNavRaces.map((r,i)=>({...r,i})).filter(r=>rcSelectedDay==='yesterday'||Date.parse(r.off)>=now-4*60*1000).slice(0,18);",
+               'const upcoming=rcNavRaces.map((r,i)=>({...r,i}));')
+          # Odds stack gets a single compact #1/#2/etc badge directly below a matching-size odds box.
+          once('${raceFinished?`<span class="rc-sp">', '<span class="rhp-odds-rank-stack">${raceFinished?`<span class="rc-sp">')
+          once('${rhpSelectedModelBadge(r.horse,r.course,today,clock(r.race_time))}</summary>',
+               '${rhpSelectedModelBadge(r.horse,r.course,today,clock(r.race_time))}</span></summary>')
+
+          models_ui='''<!-- HOT_POTS_MODELS_V1 -->
+          <section id="modelsview" class="hidden">
+            <div class="panel rhp-models-panel">
+              <h2>📊 Models · Performance</h2>
+              <p class="hint">All research models continue running independently. Top-ranked runners and official selections are tracked separately. ROI is hypothetical win-only return at verified starting price, not actual betting profit.</p>
+              <div class="field" style="margin:14px 0"><label for="rhp-model-date">Racing date (Irish time)</label><input type="date" id="rhp-model-date" aria-label="Choose model performance date"></div>
+              <p id="rhp-model-data-status" class="hint" aria-live="polite">Loading model archive…</p>
+            </div>
+            <div id="rhp-model-report" aria-live="polite"></div>
+          </section>
+          '''
+          once('<section id="racecardsview" class="hidden">',models_ui+'<section id="racecardsview" class="hidden">')
+
+          css='''
+          /* HOT POTS UI: no other model name outside the Models workbench. */
+          #racecardsview .rc-next-wrap{position:sticky;top:0;z-index:50;background:var(--rhp-card,var(--theme-panel,#182b37));padding:7px 0 5px;border-radius:10px}
+          #rc-list{scroll-margin-top:140px}
+          #rhp-race-back{margin:6px 0 12px}#rhp-race-back.hidden{display:none!important}
+          #racecardsview .rhp-meeting-panel.hidden{display:none!important}
+          .rhp-odds-rank-stack{display:flex;flex-direction:column;gap:6px;align-items:stretch;flex:0 0 96px;width:96px;min-width:0}
+          .rhp-odds-rank-stack .rc-odds-button{width:100%!important;min-width:0!important;max-width:none!important;margin:0!important}
+          .rhp-rank-chip{display:flex;align-items:center;justify-content:center;min-height:48px;width:100%;border:1px solid var(--rhp-edge,#6a6284);border-radius:9px;background:var(--rhp-tint,#332943);color:var(--rhp-ink,#eee9fb);font-size:22px;line-height:1.1;font-weight:850;letter-spacing:.2px;margin:0}
+          @media(max-width:380px){.rhp-odds-rank-stack{flex-basis:89px;width:89px}}
+          #racecardsview .rc-next-wrap .rc-next-track{scroll-padding-inline:12px}
+          #powerresultsview #strategy-historical-roi-panel,#powerview .stage41-link,#powerresultsview .stage41-link,#powerview [data-stage40-paper],#powerresultsview [data-stage40-paper]{display:none!important}
+          .rhp-models-panel input[type=date]{width:100%;max-width:220px;min-height:44px}
+          .rhp-model-summary{border:1px solid var(--rhp-edge);border-radius:13px;background:var(--rhp-card);padding:14px;margin:11px 0}
+          .rhp-model-summary>summary{cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:17px;font-weight:750}
+          .rhp-model-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:14px 0}
+          .rhp-model-stat{padding:10px;border:1px solid var(--rhp-edge);border-radius:10px;background:var(--rhp-tint)}
+          .rhp-model-stat small{display:block;color:var(--rhp-muted);font-size:11px}.rhp-model-stat b{display:block;font-size:19px;margin-top:5px}
+          .rhp-model-race{border-top:1px solid var(--rhp-edge);padding:12px 0;margin-top:8px}
+          .rhp-model-race>summary{cursor:pointer;font-weight:700;line-height:1.6}
+          .rhp-model-runner{display:grid;grid-template-columns:42px minmax(0,1fr) auto;align-items:center;gap:8px;padding:7px 2px;border-bottom:1px solid var(--rhp-edge);font-size:13px}
+          .rhp-model-runner .hint{font-size:11px}.rhp-model-pick{font-weight:750;color:var(--rhp-focus)}
+          '''
+          once('</head><body>', '<style>'+css+'</style></head><body>')
+
+          js=r'''
+          // Hot Pots public views: D drives the racecards and Hot Pots, but A/B/C/D/Z stay in research feeds.
+          let rhpRaceDetailActive=false;
+          let rhpModelDate=dateKey(new Date().toISOString());
+          let rhpModelRequest=0;
+          rcSelectedModel='D';
+          abViewState.selections.model='D';
+          abViewState.results.model='D';
+          function rhpHotName(value){return String(value||'').replace(/Model D/g,'Hot Pots').replace(/model D/g,'Hot Pots');}
+          const rhpOldSetRcDay=setRcDay;
+          setRcDay=function(day){rhpRaceDetailActive=false;rhpOldSetRcDay(day)};
+          const rhpOldJumpToRace=rcJumpToRace;
+          rcJumpToRace=function(index){rhpRaceDetailActive=true;rhpOldJumpToRace(index)};
+          rhpShowAllRaces=function(){
+           rhpRaceDetailActive=false;rhpRaceAllMode=false;
+           $('rc-meeting').value='all';rcSetupFilters();$('rc-time').value='all';renderRacecards();
+           $('rc-meetings-heading')?.scrollIntoView({behavior:'smooth',block:'start'});
+          };
+          const rhpOldRenderRacecards=renderRacecards;
+          renderRacecards=function(popupRace=null){
+           rcSelectedModel='D';
+           if(popupRace)return rhpOldRenderRacecards(popupRace);
+           const panel=document.querySelector('#racecardsview .rhp-meeting-panel'),list=$('rc-list');
+           if(panel)panel.classList.toggle('hidden',rhpRaceDetailActive);
+           $('rhp-race-back')?.classList.toggle('hidden',!rhpRaceDetailActive);
+           if(rhpRaceDetailActive){
+            list?.classList.remove('hidden');rhpOldRenderRacecards(null);
+            const track=$('rc-next-track'),selected=track?.querySelector('.rhp-selected-race');
+            if(track&&selected)track.scrollLeft=selected.offsetLeft-track.offsetLeft-track.clientWidth/3;
+            return;
+           }
+           document.querySelectorAll('[data-rc-day]').forEach(b=>{b.classList.toggle('active',b.dataset.rcDay===rcSelectedDay);b.setAttribute('aria-pressed',String(b.dataset.rcDay===rcSelectedDay))});
+           $('rc-meetings-heading').textContent=rcSelectedDay==='yesterday'?'Yesterday’s Meetings & Results':rcSelectedDay==='tomorrow'?'Tomorrow’s Meetings & Races':'Today’s Meetings & Races';
+           document.querySelector('.rc-next-head h2').textContent=rcSelectedDay==='yesterday'?'🏇 Yesterday’s Races':'🏇 Next Races';
+           renderRaceNavigation();rhpMarkRaceNav();
+           if(list){list.innerHTML='';list.classList.add('hidden')}
+           $('rc-summary').textContent='';
+          };
+          const rhpOldVerdict=rhpSelectedModelVerdict;
+          rhpSelectedModelVerdict=function(sample,date,field){rcSelectedModel='D';return rhpHotName(rhpOldVerdict(sample,date,field))};
+          const rhpOldHorseComment=rhpSelectedHorseComment;
+          rhpSelectedHorseComment=function(r,x,date){rcSelectedModel='D';return rhpHotName(rhpOldHorseComment(r,x,date))};
+          rhpSelectedModelBadge=function(horse,course,date,time){
+           const race=s38find(stage38D,course,date,time);
+           const fieldOK=race&&!rhpCFieldChanged(race,course,date,time)&&!rhpNonrunnerPending('D',{date,course,time});
+           const row=fieldOK?(race.runners||[]).find(x=>horseMatchKey(x.horse)===horseMatchKey(horse)):null;
+           const rank=Number(row?.rank);
+           return `<span class="rhp-rank-chip" title="Hot Pots ranking">${row&&Number.isInteger(rank)&&rank>0?'#'+rank:'—'}</span>`;
+          };
+          const rhpOldSelections=renderStrategySelections;
+          renderStrategySelections=function(){
+           abViewState.selections.model='D';rhpOldSelections();
+           const host=$('strategy-selection-list');if(host)host.innerHTML=rhpHotName(host.innerHTML);
+           const msg=$('strategy-model-message');if(msg)msg.textContent='Hot Pots · independent historical research and current race assessment. A ranking is not a guaranteed winner or a betting edge.';
+          };
+          renderPower=renderStrategySelections;
+          const rhpOldResults=renderStrategyResults;
+          renderStrategyResults=function(){
+           abViewState.results.model='D';rhpOldResults();
+           for(const id of ['strategy-results-list','strategy-results-summary','strategy-historical-roi']){const el=$(id);if(el)el.innerHTML=rhpHotName(el.innerHTML)}
+          };
+          renderPowerResults=renderStrategyResults;
+          // Preserve live feed handling for other models and their historical files; only view selection changes.
+          const rhpOldShowTab=showTab;
+          showTab=function(tab,keepScroll=false){
+           $('modelsview').classList.toggle('hidden',tab!=='models');
+           if(tab!=='models'){
+            if(tab==='power'){abViewState.selections.model='D';}
+            if(tab==='powerresults'){abViewState.results.model='D';}
+            rhpOldShowTab(tab,keepScroll);
+            if(tab==='power')$('pageTitle').textContent='🎯 Hot Pots';
+            if(tab==='powerresults')$('pageTitle').textContent='📊 Hot Pots Results';
+            return;
+           }
+           rhpShowMenu(false);closeBetPopup();activeTab='models';
+           try{sessionStorage.setItem('rhp-selected-section','models')}catch(e){}
+           for(const id of ['marketview','racecardsview','watchlistview','powerview','strategyaview','strategybview','hotview','powerresultsview','betsview','pnlview'])$(id)?.classList.add('hidden');
+           document.querySelectorAll('#section-buttons [data-section]').forEach(b=>{b.classList.toggle('selected',b.dataset.section==='models');b.setAttribute('aria-current',b.dataset.section==='models'?'page':'false')});
+           $('pageTitle').textContent='📊 Models';rhpUpdateDock();
+           if(!keepScroll)window.scrollTo(0,0);
+           rhpRenderModels();
+          };
+          function rhpModelRacesFromFeed(model,feed,date){
+           if(!feed||feed.day!==date)return [];
+           return (feed.races||[]).map(r=>{
+            const field=[...(r.runners||[])];
+            const metric=model==='A'?'probability':model==='C'?'win_probability':model==='B'?'research_score':'research_score';
+            field.sort((a,b)=>model==='A'||model==='C'?Number(b[metric]??-1)-Number(a[metric]??-1):Number(a.rank??9999)-Number(b.rank??9999));
+            const ranked=field.map((x,i)=>({horse:x.horse,rank:x.rank??(model==='A'||model==='C'?i+1:null),score:x[metric],status:'Pending',sp_decimal:null}));
+            const selection=r.selection?.horse?{horse:r.selection.horse,kind:r.selection_status||'RESEARCH_ONLY',published_at:r.published_at||feed.generated_at}:null;
+            return {date,course:r.course,time:r.time||clock(r.race_time),race_time:r.race_time,race_type:r.race_type||'unknown',model_version:r.model_version||feed.model_version||'',snapshot_at:feed.generated_at||'',pre_off_valid:!!r.race_time&&!!feed.generated_at&&Date.parse(feed.generated_at)<Date.parse(r.race_time),runners:ranked,selection};
+           });
+          }
+          function rhpModelFallback(date){return {day:date,models:{
+           A:rhpModelRacesFromFeed('A',strategyProbabilityFeed,date),
+           B:rhpModelRacesFromFeed('B',stage38B||strategyBProbFeed,date),
+           C:rhpModelRacesFromFeed('C',strategyCFeed,date),
+           D:rhpModelRacesFromFeed('D',stage38D,date),
+           Z:rhpModelRacesFromFeed('Z',stage38Z,date)
+           }};}
+          function rhpModelMetrics(races,pickOnly){
+           let racesWithPick=0,settled=0,wins=0,priced=0,profit=0;
+           for(const race of races){
+            const ordered=(race.runners||[]).slice().filter(x=>Number(x.rank)>0).sort((a,b)=>Number(a.rank)-Number(b.rank));
+            const selected=pickOnly?(race.selection?.horse?(race.runners||[]).find(x=>horseMatchKey(x.horse)===horseMatchKey(race.selection.horse)):null):ordered[0];
+            if(!selected)continue;
+            const off=Date.parse(race.race_time||''),published=Date.parse(race.selection?.published_at||'');
+            const eligible=pickOnly?(race.selection&&Number.isFinite(off)&&Number.isFinite(published)&&published<off):race.pre_off_valid===true;
+            if(!eligible)continue;
+            racesWithPick++;
+            if(!['Won','Lost'].includes(selected.status))continue;
+            settled++;if(selected.status==='Won')wins++;
+            const sp=Number(selected.sp_decimal);
+            if(Number.isFinite(sp)&&sp>1){priced++;profit+=selected.status==='Won'?sp-1:-1;}
+           }
+           return {races:racesWithPick,settled,wins,priced,profit,rate:settled?100*wins/settled:null,roi:priced?100*profit/priced:null};
+          }
+          function rhpModelStat(label,s){
+           const pct=n=>n===null?'—':n.toFixed(1)+'%';
+           return `<div class="rhp-model-stat"><small>${safe(label)}</small><b>${pct(s.rate)} strike · ${pct(s.roi)} ROI</b><small>${s.wins}/${s.settled} settled wins · ${s.priced} with SP · ${s.races} logged</small></div>`;
+          }
+          function rhpModelCard(model,races){
+           const top=rhpModelMetrics(races,false),pick=rhpModelMetrics(races,true);
+           const count=races.reduce((n,r)=>n+(r.runners||[]).length,0),notPreoff=races.filter(r=>r.pre_off_valid!==true).length;
+           const formatSP=s=>Number(s)>1?fmt(s):'—';
+           const cards=races.map(r=>{
+            const selection=r.selection?.horse||'No official selection';
+            const runners=[...(r.runners||[])].sort((a,b)=>(Number(a.rank)||9999)-(Number(b.rank)||9999));
+            return `<details class="rhp-model-race"><summary>${safe(r.time||'—')} ${safe(r.course||'—')} · ${safe(selection)} <span class="hint">${r.pre_off_valid?'':' · timestamp not pre-off'}</span></summary><p class="hint">${safe(r.race_type||'Race')} · ${r.runners?.length||0} runners · ${r.selection?('Selection status: '+safe(r.selection.kind||'recorded')):'No qualifying pick'} · ${safe(r.model_version||'Version not recorded')}</p>`+
+             (runners.map(h=>`<div class="rhp-model-runner"><b>${h.rank!=null?'#'+safe(h.rank):'—'}</b><div>${safe(h.horse||'Unknown')}${r.selection?.horse&&horseMatchKey(h.horse)===horseMatchKey(r.selection.horse)?'<span class="rhp-model-pick"> · Pick</span>':''}</div><span>${safe(h.status||'Pending')} · SP ${formatSP(h.sp_decimal)}</span></div>`).join('')||'<p class="hint">This date has a recorded selection but no archived complete ranking.</p>')+'</details>';
+           }).join('');
+           return `<details class="rhp-model-summary" ${model==='D'?'open':''}><summary><span>Model ${model}</span><small>${races.length} races · ${count} runners</small></summary><div class="rhp-model-stats">${rhpModelStat('Top-ranked runner · all eligible races',top)}${rhpModelStat('Recorded model selections',pick)}</div>${notPreoff?`<p class="hint">${notPreoff} race snapshots were not proven to be published before the off. They are visible for audit but excluded from ROI.</p>`:''}${cards||'<p class="hint">No full-field research was published for this date.</p>'}</details>`;
+          }
+          async function rhpRenderModels(){
+           const dateInput=$('rhp-model-date');if(!dateInput)return;
+           if(!dateInput.value)dateInput.value=rhpModelDate;
+           const date=dateInput.value||rhpModelDate;rhpModelDate=date;
+           const serial=++rhpModelRequest;
+           $('rhp-model-data-status').textContent='Loading archived results for '+date+'…';
+           let report=null;
+           try{
+            const res=await fetch('./data/model-performance/'+encodeURIComponent(date)+'.json?v='+Date.now(),{cache:'no-store'});
+            if(res.ok)report=await res.json();
+           }catch(e){}
+           if(serial!==rhpModelRequest)return;
+           if(!report||report.day!==date){report=rhpModelFallback(date);$('rhp-model-data-status').textContent='No saved archive for '+date+' yet. Displaying currently published model feeds only; ROI is unavailable until verified results are archived.';}
+           else $('rhp-model-data-status').textContent='Saved model records · '+safe(report.updated_at||'timestamp unavailable')+' · Date '+date+'. Results settle only from verified finishers; SP ROI excludes unpriced runners.';
+           $('rhp-model-report').innerHTML=['A','B','C','D','Z'].map(m=>rhpModelCard(m,(report.models||{})[m]||[])).join('');
+          }
+          $('rhp-model-date').value=rhpModelDate;
+          $('rhp-model-date').addEventListener('change',rhpRenderModels);
+          $('rhp-back-meetings').addEventListener('click',rhpShowAllRaces);
+          // Preserve the focused race across feed refresh; fresh app launches show the meetings list.
+          const rhpOldSnapshotRefreshView=snapshotRefreshView;
+          snapshotRefreshView=function(){return {...rhpOldSnapshotRefreshView(),rhpRaceDetailActive,rhpModelDate}};
+          const rhpOldRestoreRefreshFilters=restoreRefreshFiltersAfterFeed;
+          restoreRefreshFiltersAfterFeed=function(){
+           const v=pendingRefreshState;
+           rhpOldRestoreRefreshFilters();
+           if(v){rhpRaceDetailActive=!!v.rhpRaceDetailActive;rhpModelDate=v.rhpModelDate||rhpModelDate;$('rhp-model-date').value=rhpModelDate;}
+           if(activeTab==='racecards')renderRacecards();
+          };
+          '''
+          once('\nsetup();\n// Manual refresh', js+'\nsetup();\n// Manual refresh')
+
+          # Everything is in memory until all checks pass.
+          if s.count('<!-- HOT_POTS_MODELS_V1 -->')!=1: raise RuntimeError('Duplicate archive tab marker')
+          if s.count('id="rhp-model-date"')!=1: raise RuntimeError('Duplicate date input')
+          if s.count('function rhpRenderModels')!=1: raise RuntimeError('Missing model view function')
+          P.write_text(s,encoding='utf-8')
+          print(f'Patched {P}: {len(s):,} bytes')
+          PY_RHP_UI
+      - name: Record model rankings and settle verified results
+        shell: bash
+        run: |
+          python - <<'PY_RHP_TRACK'
+          """Append-only pre-race model rankings and verified SP settlement.
+
+          Runs within the Racing Hot Pots checkout. Does not change a model, its criteria,
+          its source output, or My Bets. Never re-labels a post-off computation as pre-off.
+          """
+          from __future__ import annotations
+          import json
+          import re
+          from collections import defaultdict
+          from datetime import datetime, timezone
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+
+          ROOT = Path('data')
+          ARCHIVE = ROOT / 'model-performance'
+          MODELS = {'A':'strategy-probabilities.json', 'B':'strategy-b-all-races.json',
+                    'C':'strategy-c-probabilities.json', 'D':'strategy-d-probabilities.json',
+                    'Z':'strategy-z-probabilities.json'}
+          RESULT_LOGS = {'A':'strategy-ab-results.json', 'B':'strategy-ab-results.json',
+                         'C':'strategy-c-results.json', 'D':'strategy-d-results.json',
+                         'Z':'strategy-z-results.json'}
+          DUBLIN = ZoneInfo('Europe/Dublin')
+
+          def read(path):
+              try: return json.loads(Path(path).read_text(encoding='utf-8'))
+              except (FileNotFoundError, ValueError): return {}
+
+          def dt(raw):
+              try:
+                  x=datetime.fromisoformat(str(raw).replace('Z','+00:00'))
+                  return (x if x.tzinfo else x.replace(tzinfo=timezone.utc)).astimezone(timezone.utc)
+              except (ValueError, TypeError): return None
+
+          def day(raw):
+              d=dt(raw)
+              return d.astimezone(DUBLIN).strftime('%Y-%m-%d') if d else ''
+
+          def clock(raw):
+              d=dt(raw)
+              return d.astimezone(DUBLIN).strftime('%H:%M') if d else ''
+
+          def norm(s):
+              s=str(s or '').lower().replace('chelmsford city','chelmsford')
+              s=re.sub(r'\((?:aw|all[ -]?weather)\)','',s)
+              return re.sub(r'[^a-z0-9]','',s)
+
+          def key(course,date,time):return (norm(course),date,str(time or '')[:5])
+
+          def decimal_sp(s):
+              if s is None:return None
+              v=str(s).strip().lower()
+              if v in ('evens','even','evs','1/1'):return 2.0
+              m=re.fullmatch(r'\s*(\d+(?:\.\d+)?)\s*/\s*(\d+(?:\.\d+)?)\s*',v)
+              if m and float(m.group(2))>0:return round(1+float(m.group(1))/float(m.group(2)),8)
+              try:
+                  x=float(v)
+                  return x if x>1 else None
+              except ValueError:return None
+
+          def original_ranks(model, rows):
+              good=[]
+              for row in rows:
+                  name=row.get('horse')
+                  if not name:continue
+                  metric='probability' if model=='A' else 'win_probability' if model=='C' else 'research_score' if model=='D' else 'score'
+                  score=row.get(metric)
+                  if score is None and model=='B':score=row.get('research_score')
+                  try: value=float(score) if score is not None else None
+                  except (TypeError, ValueError): value=None
+                  rank=row.get('rank')
+                  try:rank=int(rank) if rank is not None else None
+                  except (TypeError, ValueError):rank=None
+                  good.append({'horse':name,'rank':rank if rank and rank>0 else None,'score':value,
+                               'status':'Pending','position':None,'sp_decimal':None})
+              # Only A/C calibrated probabilities allow an inferred ranking. The B/D/Z
+              # models must supply ranks or at least actual scores (no odds fallback).
+              if model in ('A','C') and good and all(h['score'] is not None for h in good):
+                  for i,record in enumerate(sorted(good,key=lambda h:-h['score']),1):record['rank']=i
+              elif model in ('B','D','Z') and good and all(h['rank'] is None for h in good):
+                  evidence=[h for h in good if h['score'] is not None]
+                  for i,record in enumerate(sorted(evidence,key=lambda h:-h['score']),1):record['rank']=i
+              return sorted(good,key=lambda h:(h['rank'] is None,h['rank'] or 999999,h['horse']))
+
+          def selected_from(r):
+              selection=r.get('selection')
+              status=str(r.get('selection_status') or '')
+              if not isinstance(selection,dict) or not selection.get('horse'):
+                  return None
+              if status not in ('SELECTED','RESEARCH_ONLY','PAPER_ONLY'):return None
+              return {'horse':selection['horse'],'kind':status,
+                      'published_at':r.get('published_at')}
+
+          def selection_map():
+              raw=read(ROOT/'strategy-ab-selections.json')
+              result={'A':{},'B':{}}
+              for model in ('A','B'):
+                  for r in raw.get('models',{}).get(model,{}).get('races',[]):
+                      d=r.get('date') or raw.get('day')
+                      result[model][key(r.get('course'),d,r.get('time') or clock(r.get('race_time')))]=selected_from(r)
+              return result
+
+          def results_index():
+              raw=read(ROOT/'race-results.json')
+              out={}
+              for race in raw.get('races',[]):
+                  if str(race.get('status','')).lower() not in ('final','finished','complete','official','result'):
+                      continue
+                  time=race.get('off_dt') or race.get('race_time') or race.get('off')
+                  date=race.get('date') or day(time)
+                  if not date or not time:continue
+                  out[key(race.get('course'),date,clock(time))]={norm(x.get('horse')):x for x in race.get('runners',[]) if x.get('horse')}
+              return out
+
+          def settle(race,verified):
+              if not verified:return False
+              any_update=False
+              for horse in race.get('runners',[]):
+                  result=verified.get(norm(horse.get('horse')))
+                  if not result:continue
+                  pos=result.get('position')
+                  try: pos=int(pos) if pos is not None else None
+                  except (ValueError, TypeError):pos=None
+                  status=norm(result.get('status'))
+                  nonrunner=status in ('nr','nonrunner','withdrawn','scratched','void')
+                  newstatus='Non-runner' if nonrunner else ('Won' if pos==1 else 'Lost' if pos and pos>1 or status in ('ran','finished','unplaced','pulled','pulledsup','fell','refused','unseated') else 'Pending')
+                  if horse.get('status')!=newstatus:horse['status']=newstatus;any_update=True
+                  if pos and horse.get('position')!=pos:horse['position']=pos;any_update=True
+                  price=decimal_sp(result.get('sp'))
+                  if price and horse.get('sp_decimal')!=price:horse['sp_decimal']=price;any_update=True
+              return any_update
+
+          def logs(model):
+              x=read(ROOT/RESULT_LOGS[model])
+              if model in ('A','B'):return x.get('models',{}).get(model,{}).get('selections',[])
+              return x.get('selections',[])
+
+          def archived_days():
+              for p in ARCHIVE.glob('????-??-??.json'):
+                  raw=read(p)
+                  if isinstance(raw,dict) and raw.get('models') is not None:yield p,raw
+
+          def main():
+              ARCHIVE.mkdir(parents=True,exist_ok=True)
+              history={raw['day']:raw for _,raw in archived_days() if raw.get('day')}
+              selected=selection_map()
+              changed=set()
+              now=datetime.now(timezone.utc).isoformat()
+              # All complete-field feed rows, not only short-listed horses.
+              for model,path in MODELS.items():
+                  source=read(ROOT/path)
+                  snapshot_at=source.get('generated_at')
+                  for race in source.get('races',[]):
+                      date=race.get('date') or source.get('day')
+                      off=race.get('race_time')
+                      if not date or not off or date!=day(off):continue
+                      time=race.get('time') or clock(off)
+                      snap=race.get('published_at') or snapshot_at
+                      is_preoff=bool(dt(snap) and dt(off) and dt(snap)<dt(off))
+                      entries=history.setdefault(date,{'version':1,'day':date,'models':{x:[] for x in MODELS}})['models'].setdefault(model,[])
+                      racekey=key(race.get('course'),date,time)
+                      old=next((x for x in entries if key(x.get('course'),date,x.get('time'))==racekey),None)
+                      if old and (old.get('pre_off_valid') or not is_preoff):continue
+                      selection=selected_from(race)
+                      if model in selected:selection=selected[model].get(racekey) or selection
+                      if selection and not selection.get('published_at'):selection['published_at']=snap
+                      if selection:selection['pre_off_valid']=bool(dt(selection.get('published_at')) and dt(off) and dt(selection['published_at'])<dt(off))
+                      incoming={'date':date,'course':race.get('course'),'time':time,'race_time':off,
+                                'race_type':race.get('race_type') or 'unknown',
+                                'model_version':race.get('model_version') or source.get('model_version') or '',
+                                'snapshot_at':snap,'pre_off_valid':is_preoff,
+                                'runners':original_ranks(model,race.get('runners') or []),'selection':selection}
+                      if old:entries[entries.index(old)]=incoming
+                      else:entries.append(incoming)
+                      changed.add(date)
+              # Import prior independently timestamped selected picks, even when their
+              # historical full-field rankings were not preserved. Never fake other ranks.
+              for model in MODELS:
+                  for row in logs(model):
+                      date=row.get('date') or day(row.get('race_time'))
+                      if not date or not row.get('horse'):continue
+                      time=row.get('time') or clock(row.get('race_time'))
+                      off=row.get('race_time')
+                      published=row.get('published_at')
+                      if not (dt(off) and dt(published) and dt(published)<dt(off)):continue
+                      entries=history.setdefault(date,{'version':1,'day':date,'models':{x:[] for x in MODELS}})['models'].setdefault(model,[])
+                      racekey=key(row.get('course'),date,time)
+                      race=next((x for x in entries if key(x.get('course'),date,x.get('time'))==racekey),None)
+                      if not race:
+                          race={'date':date,'course':row.get('course'),'time':time,'race_time':off,
+                                'race_type':row.get('race_type') or 'unknown',
+                                'model_version':row.get('model_version') or '',
+                                'snapshot_at':published,'pre_off_valid':True,'runners':[],'selection':None}
+                          entries.append(race);changed.add(date)
+                      if not race.get('selection'):
+                          race['selection']={'horse':row.get('horse'),'kind':'RECORDED_PRE_OFF', 'published_at':published,'pre_off_valid':True}
+                          changed.add(date)
+                      h=next((x for x in race['runners'] if norm(x.get('horse'))==norm(row.get('horse'))),None)
+                      if not h:
+                          h={'horse':row.get('horse'),'rank':None,'score':row.get('research_score') or row.get('score'),
+                             'status':'Pending','position':None,'sp_decimal':None}
+                          race['runners'].append(h);changed.add(date)
+                      stat=row.get('status')
+                      if stat in ('Won','Lost','Non-runner') and h.get('status')!=stat:
+                          h['status']=stat;changed.add(date)
+                      if row.get('position') is not None and h.get('position')!=row['position']:
+                          h['position']=row['position'];changed.add(date)
+                      sp=None
+                      if model=='D' and 'SP' in str(row.get('settlement_source','')).upper():sp=decimal_sp(row.get('odds'))
+                      elif row.get('official_sp'):sp=decimal_sp(row['official_sp'])
+                      if sp and h.get('sp_decimal')!=sp:h['sp_decimal']=sp;changed.add(date)
+              # Settle every recorded model and race using only verified finished races.
+              finished=results_index()
+              for date,doc in history.items():
+                  for entries in doc['models'].values():
+                      for race in entries:
+                          if settle(race,finished.get(key(race.get('course'),date,race.get('time')))):
+                              changed.add(date)
+              for date in sorted(changed):
+                  document=history[date];document['updated_at']=now
+                  for model in MODELS:document['models'].setdefault(model,[])
+                  for entries in document['models'].values():entries.sort(key=lambda r:(r.get('time') or '',r.get('course') or ''))
+                  (ARCHIVE/(date+'.json')).write_text(json.dumps(document,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+              print('Model performance archive updated:', ', '.join(sorted(changed)) or 'no changes')
+
+          if __name__=='__main__':main()
+          PY_RHP_TRACK
+      - name: Commit durable archives and UI update
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html data/model-performance/
+          if git diff --cached --quiet; then
+            echo 'No changes to publish.'
+            exit 0
+          fi
+          git commit -m 'Track model performance by day and show Hot Pots only on racecards'
+          for attempt in 1 2 3; do
+            if git pull --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}"; then
+              echo 'Published Hot Pots update and saved model history.'
+              exit 0
+            fi
+            git rebase --abort || true
+            sleep 5
+          done
+          echo 'Could not push after retries; no previous model history was removed.' >&2
+          exit 1
