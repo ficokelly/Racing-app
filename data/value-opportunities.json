@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "day": "2026-11-04",
-  "generated_at": "2026-11-04T22:27:05.694907+00:00",
+  "day": "2026-11-05",
+  "generated_at": "2026-11-05T10:06:53.135685+00:00",
   "policy": "stage40-paper-only-edge20pct-and-4pp-v1",
   "state": "RESEARCH_ONLY_CALIBRATION_UNVALIDATED",
   "calibration": {
@@ -14,25 +14,34 @@
   "readme": "Forecasts independent of odds; bookmaker break-even and vig-free market are separate. Uncalibrated model EV is not a proven betting edge.",
   "price_feed_status": "FRESH",
   "price_feed_audit": {
-    "age_minutes": 33.9,
-    "collected_at": "2026-11-04T21:53:12.325935+00:00",
-    "ignored_rows": {},
-    "indexed_races": 0
+    "age_minutes": 16.9,
+    "collected_at": "2026-11-05T09:50:00.002197+00:00",
+    "ignored_rows": {
+      "source_marked_stale": 19
+    },
+    "indexed_races": 45
   },
   "races": [
     {
-      "date": "2026-11-04",
-      "course": "Musselburgh",
-      "time": "12:05",
-      "race_time": "2026-11-04T12:05:00+00:00",
-      "race_id": "rac_32303425908",
-      "race_name": "Veronika Walker: Moments That Matter Handicap Stakes",
-      "race_type": "Flat",
-      "field_size": 11,
-      "non_runners_excluded": 1,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
+      "date": "2026-11-05",
+      "course": "Plumpton",
+      "time": "12:33",
+      "race_time": "2026-11-05T12:33:00+00:00",
+      "race_id": "rac_32303575057",
+      "race_name": "Download The Star Sports App Novices' Handicap Steeple Chase (GBB Race)",
+      "race_type": "Chase",
+      "field_size": 3,
+      "non_runners_excluded": 0,
+      "priced_runners": 3,
+      "full_bookmakers": [
+        "Paddy Power",
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk",
+        "tabtouch"
+      ],
+      "preoff_at_generation": true,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -50,8 +59,44 @@
           "model_probability_available": false
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Soomaroy",
+          "model_probability_available": false,
+          "leader_price": {
+            "horse": "Soomaroy",
+            "bookmaker": "Paddy Power",
+            "decimal": 3.5,
+            "price_updated_at": "2026-11-05T09:48:51+00:00",
+            "quote_observed_at": "2026-11-05T09:48:51+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": null,
+            "race_id": "7abe7ac0-cdfa-44ac-a813-026739274dcc",
+            "break_even_pct": 28.571,
+            "market_fair_pct": 26.121,
+            "bookmaker_overround_pct": 9.38,
+            "full_bookmaker_field": true,
+            "movement_pct": null
+          },
+          "top_three": [
+            {
+              "horse": "Soomaroy",
+              "rank": 1,
+              "score": -0.45801
+            },
+            {
+              "horse": "Bond Broker",
+              "rank": 2,
+              "score": -0.53448
+            },
+            {
+              "horse": "Crest of Stars",
+              "rank": 3,
+              "score": -0.57582
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -59,34 +104,275 @@
         }
       },
       "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -54.752,
-          "races": 12,
-          "priced_bets": 11
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": 22.222,
-          "races": 9,
-          "priced_bets": 9
-        }
-      ]
+      "stage39_context": []
     },
     {
-      "date": "2026-11-04",
-      "course": "Nottingham",
-      "time": "12:15",
-      "race_time": "2026-11-04T12:15:00+00:00",
-      "race_id": "rac_32303454963",
-      "race_name": "EBF Desert Crown Novice Stakes (GBB Race)",
-      "race_type": "Flat",
+      "date": "2026-11-05",
+      "course": "Newbury",
+      "time": "12:42",
+      "race_time": "2026-11-05T12:42:00+00:00",
+      "race_id": "rac_32303551813",
+      "race_name": "OLBG Conditional Jockeys' Handicap Hurdle Race",
+      "race_type": "Hurdle",
+      "field_size": 16,
+      "non_runners_excluded": 0,
+      "priced_runners": 15,
+      "full_bookmakers": [],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Colegram",
+          "model_probability_available": false,
+          "leader_price": {
+            "horse": "Colegram",
+            "bookmaker": "Paddy Power",
+            "decimal": 41.0,
+            "price_updated_at": "2026-11-05T09:48:51+00:00",
+            "quote_observed_at": "2026-11-05T09:48:51+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": null,
+            "race_id": "c52baf1d-5daf-4b76-bbcb-cef0f43f4be4",
+            "break_even_pct": 2.439,
+            "market_fair_pct": null,
+            "bookmaker_overround_pct": null,
+            "full_bookmaker_field": false,
+            "movement_pct": null
+          },
+          "top_three": [
+            {
+              "horse": "Colegram",
+              "rank": 1,
+              "score": 0.68924
+            },
+            {
+              "horse": "Faivoir",
+              "rank": 2,
+              "score": 0.67934
+            },
+            {
+              "horse": "Beorma",
+              "rank": 3,
+              "score": 0.65949
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-05",
+      "course": "Clonmel",
+      "time": "12:50",
+      "race_time": "2026-11-05T12:50:00+00:00",
+      "race_id": "rac_32303482081",
+      "race_name": "Irish Stallion Farms EBF Maiden Hurdle",
+      "race_type": "Hurdle",
+      "field_size": 14,
+      "non_runners_excluded": 1,
+      "priced_runners": 14,
+      "full_bookmakers": [
+        "Paddy Power",
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk",
+        "pointsbetau"
+      ],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Unflinching",
+          "model_probability_available": false,
+          "leader_price": {
+            "horse": "Unflinching",
+            "bookmaker": "Paddy Power",
+            "decimal": 1.91,
+            "price_updated_at": "2026-11-05T09:48:51+00:00",
+            "quote_observed_at": "2026-11-05T09:48:51+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": null,
+            "race_id": "1d3efc9d-9a7e-459c-a4e1-4668961ca04e",
+            "break_even_pct": 52.356,
+            "market_fair_pct": 40.68,
+            "bookmaker_overround_pct": 28.7,
+            "full_bookmaker_field": true,
+            "movement_pct": null
+          },
+          "top_three": [
+            {
+              "horse": "Unflinching",
+              "rank": 1,
+              "score": 0.45818
+            },
+            {
+              "horse": "Midtown Manhattan",
+              "rank": 2,
+              "score": 0.24398
+            },
+            {
+              "horse": "Nothingtodowithyou",
+              "rank": 3,
+              "score": 0.20222
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-05",
+      "course": "Newcastle",
+      "time": "12:59",
+      "race_time": "2026-11-05T12:59:00+00:00",
+      "race_id": "rac_32303563435",
+      "race_name": "Sky Sports Racing Sky 415 Maiden Hurdle Race (GBB Race)",
+      "race_type": "Hurdle",
+      "field_size": 8,
+      "non_runners_excluded": 0,
+      "priced_runners": 8,
+      "full_bookmakers": [
+        "Paddy Power",
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk",
+        "pointsbetau",
+        "tabtouch"
+      ],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Brace For Landing",
+          "model_probability_available": false,
+          "leader_price": {
+            "horse": "Brace For Landing",
+            "bookmaker": "Paddy Power",
+            "decimal": 2.62,
+            "price_updated_at": "2026-11-05T09:48:51+00:00",
+            "quote_observed_at": "2026-11-05T09:48:51+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": null,
+            "race_id": "952064ab-330d-4c67-8a7d-6379ab541c2a",
+            "break_even_pct": 38.168,
+            "market_fair_pct": 30.71,
+            "bookmaker_overround_pct": 24.29,
+            "full_bookmaker_field": true,
+            "movement_pct": null
+          },
+          "top_three": [
+            {
+              "horse": "Brace For Landing",
+              "rank": 1,
+              "score": 0.21188
+            },
+            {
+              "horse": "Spreadsheet Guru",
+              "rank": 2,
+              "score": 0.14296
+            },
+            {
+              "horse": "Regal Thunder",
+              "rank": 3,
+              "score": -0.09682
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-05",
+      "course": "Plumpton",
+      "time": "13:08",
+      "race_time": "2026-11-05T13:08:00+00:00",
+      "race_id": "rac_32303576994",
+      "race_name": "Bet On-Course With Star Sports Novices' Handicap Steeple Chase (GBB Race)",
+      "race_type": "Chase",
       "field_size": 4,
       "non_runners_excluded": 0,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
+      "priced_runners": 4,
+      "full_bookmakers": [
+        "Paddy Power",
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk",
+        "pointsbetau",
+        "tabtouch"
+      ],
+      "preoff_at_generation": true,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -104,7 +390,175 @@
           "model_probability_available": false
         },
         "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Marlacoo",
+          "model_probability_available": false,
+          "leader_price": {
+            "horse": "Marlacoo",
+            "bookmaker": "Paddy Power",
+            "decimal": 2.5,
+            "price_updated_at": "2026-11-05T09:48:51+00:00",
+            "quote_observed_at": "2026-11-05T09:48:51+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": null,
+            "race_id": "e7d73407-1d15-4422-aca2-4af3d1bb722f",
+            "break_even_pct": 40.0,
+            "market_fair_pct": 36.002,
+            "bookmaker_overround_pct": 11.11,
+            "full_bookmaker_field": true,
+            "movement_pct": null
+          },
+          "top_three": [
+            {
+              "horse": "Marlacoo",
+              "rank": 1,
+              "score": -0.33777
+            },
+            {
+              "horse": "Klic Boum",
+              "rank": 2,
+              "score": -0.48242
+            },
+            {
+              "horse": "Sweet Caryline",
+              "rank": 3,
+              "score": -0.50258
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
           "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-05",
+      "course": "Newbury",
+      "time": "13:17",
+      "race_time": "2026-11-05T13:17:00+00:00",
+      "race_id": "rac_32303553750",
+      "race_name": "CSP Maiden Hurdle Race (GBB Race)",
+      "race_type": "Hurdle",
+      "field_size": 9,
+      "non_runners_excluded": 0,
+      "priced_runners": 9,
+      "full_bookmakers": [
+        "Paddy Power",
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk",
+        "pointsbetau",
+        "tabtouch"
+      ],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Octo Gane",
+          "model_probability_available": false,
+          "leader_price": {
+            "horse": "Octo Gane",
+            "bookmaker": "Paddy Power",
+            "decimal": 17.0,
+            "price_updated_at": "2026-11-05T09:48:51+00:00",
+            "quote_observed_at": "2026-11-05T09:48:51+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": null,
+            "race_id": "725d0a3c-a024-4c90-827a-6705de2daf24",
+            "break_even_pct": 5.882,
+            "market_fair_pct": 4.856,
+            "bookmaker_overround_pct": 21.15,
+            "full_bookmaker_field": true,
+            "movement_pct": null
+          },
+          "top_three": [
+            {
+              "horse": "Octo Gane",
+              "rank": 1,
+              "score": 0.22252
+            },
+            {
+              "horse": "Presley",
+              "rank": 2,
+              "score": 0.18054
+            },
+            {
+              "horse": "Youcancountonme",
+              "rank": 3,
+              "score": 0.15958
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-05",
+      "course": "Clonmel",
+      "time": "13:25",
+      "race_time": "2026-11-05T13:25:00+00:00",
+      "race_id": "rac_32303484018",
+      "race_name": "Connolly's RED MILLS Irish EBF Auction & Median Maiden Hurdle",
+      "race_type": "Hurdle",
+      "field_size": 11,
+      "non_runners_excluded": 1,
+      "priced_runners": 11,
+      "full_bookmakers": [
+        "Paddy Power",
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk",
+        "pointsbetau"
+      ],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "STALE_OR_INCOMPLETE_RANKING",
+          "model_probability_available": false
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "STALE_OR_INCOMPLETE_RANKING",
           "model_probability_available": false
         },
         "Z": {
@@ -113,34 +567,871 @@
         }
       },
       "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -29.63,
-          "races": 27,
-          "priced_bets": 27
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -71.591,
-          "races": 14,
-          "priced_bets": 12
-        }
-      ]
+      "stage39_context": []
     },
     {
-      "date": "2026-11-04",
-      "course": "Chepstow",
-      "time": "12:20",
-      "race_time": "2026-11-04T12:20:00+00:00",
-      "race_id": "rac_32303468522",
-      "race_name": "Lords Taverners Conditional Jockeys' Handicap Steeple Chase (GBB Race)",
+      "date": "2026-11-05",
+      "course": "Newcastle",
+      "time": "13:34",
+      "race_time": "2026-11-05T13:34:00+00:00",
+      "race_id": "rac_32303565372",
+      "race_name": "Racing At The Heart Of Our Community Handicap Hurdle Race (Go North Brindisi Breeze Series Qualifier)",
+      "race_type": "Hurdle",
+      "field_size": 9,
+      "non_runners_excluded": 0,
+      "priced_runners": 9,
+      "full_bookmakers": [
+        "Paddy Power",
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk",
+        "pointsbetau",
+        "tabtouch"
+      ],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Freshers Week",
+          "model_probability_available": false,
+          "leader_price": {
+            "horse": "Freshers Week",
+            "bookmaker": "Paddy Power",
+            "decimal": 8.0,
+            "price_updated_at": "2026-11-05T09:48:51+00:00",
+            "quote_observed_at": "2026-11-05T09:48:51+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": null,
+            "race_id": "3dcd3ce0-e244-41e0-aa90-f570f1fe5319",
+            "break_even_pct": 12.5,
+            "market_fair_pct": 10.545,
+            "bookmaker_overround_pct": 18.54,
+            "full_bookmaker_field": true,
+            "movement_pct": null
+          },
+          "top_three": [
+            {
+              "horse": "Freshers Week",
+              "rank": 1,
+              "score": 0.26245
+            },
+            {
+              "horse": "Letterston Lady",
+              "rank": 2,
+              "score": 0.22717
+            },
+            {
+              "horse": "Seeyainthesuninn",
+              "rank": 3,
+              "score": 0.11631
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-05",
+      "course": "Plumpton",
+      "time": "13:43",
+      "race_time": "2026-11-05T13:43:00+00:00",
+      "race_id": "rac_32303578931",
+      "race_name": "Star Sports We Believe In Bookmaking EBF Mares' 'National Hunt' Maiden Hurdle Race (EBF Mares' NH Novices' Hurdle Series Qualifier) (GBB Race)",
+      "race_type": "Hurdle",
+      "field_size": 4,
+      "non_runners_excluded": 0,
+      "priced_runners": 4,
+      "full_bookmakers": [
+        "Paddy Power",
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk",
+        "pointsbetau",
+        "tabtouch"
+      ],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Posh Chick",
+          "model_probability_available": false,
+          "leader_price": {
+            "horse": "Posh Chick",
+            "bookmaker": "Paddy Power",
+            "decimal": 5.5,
+            "price_updated_at": "2026-11-05T09:48:51+00:00",
+            "quote_observed_at": "2026-11-05T09:48:51+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": null,
+            "race_id": "06315086-2dc6-4f30-bbd4-284f48a25d0a",
+            "break_even_pct": 18.182,
+            "market_fair_pct": 16.147,
+            "bookmaker_overround_pct": 12.6,
+            "full_bookmaker_field": true,
+            "movement_pct": null
+          },
+          "top_three": [
+            {
+              "horse": "Posh Chick",
+              "rank": 1,
+              "score": -0.31459
+            },
+            {
+              "horse": "Lady Litigator",
+              "rank": 2,
+              "score": -0.34613
+            },
+            {
+              "horse": "Jenny France",
+              "rank": 3,
+              "score": -0.4381
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-05",
+      "course": "Newbury",
+      "time": "13:52",
+      "race_time": "2026-11-05T13:52:00+00:00",
+      "race_id": "rac_32303555687",
+      "race_name": "Grahame Church Memorial Mares' Novices' Hurdle Race (GBB Race)",
+      "race_type": "Hurdle",
+      "field_size": 10,
+      "non_runners_excluded": 0,
+      "priced_runners": 10,
+      "full_bookmakers": [
+        "Paddy Power",
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk",
+        "pointsbetau",
+        "tabtouch"
+      ],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Royal Response",
+          "model_probability_available": false,
+          "leader_price": {
+            "horse": "Royal Response",
+            "bookmaker": "Paddy Power",
+            "decimal": 5.0,
+            "price_updated_at": "2026-11-05T09:48:51+00:00",
+            "quote_observed_at": "2026-11-05T09:48:51+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": null,
+            "race_id": "aa48fd30-63d0-43d7-a795-cdcb2320012b",
+            "break_even_pct": 20.0,
+            "market_fair_pct": 16.322,
+            "bookmaker_overround_pct": 22.53,
+            "full_bookmaker_field": true,
+            "movement_pct": null
+          },
+          "top_three": [
+            {
+              "horse": "Royal Response",
+              "rank": 1,
+              "score": 0.30567
+            },
+            {
+              "horse": "Rosie's Honour",
+              "rank": 2,
+              "score": 0.26779
+            },
+            {
+              "horse": "Connells Cross",
+              "rank": 3,
+              "score": 0.26665
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-05",
+      "course": "Chelmsford (AW)",
+      "time": "13:57",
+      "race_time": "2026-11-05T13:57:00+00:00",
+      "race_id": "rac_32303923717",
+      "race_name": "Midnite Built Different Handicap Stakes (Div I)",
+      "race_type": "Flat",
+      "field_size": 14,
+      "non_runners_excluded": 0,
+      "priced_runners": 14,
+      "full_bookmakers": [
+        "Paddy Power",
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "pointsbetau",
+        "tabtouch"
+      ],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Gifts Differing",
+          "model_probability_available": false,
+          "leader_price": {
+            "horse": "Gifts Differing",
+            "bookmaker": "Paddy Power",
+            "decimal": 11.0,
+            "price_updated_at": "2026-11-05T09:48:51+00:00",
+            "quote_observed_at": "2026-11-05T09:48:51+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": null,
+            "race_id": "2d425205-6b94-49bc-a829-df2235f6b1e7",
+            "break_even_pct": 9.091,
+            "market_fair_pct": 6.806,
+            "bookmaker_overround_pct": 33.58,
+            "full_bookmaker_field": true,
+            "movement_pct": null
+          },
+          "top_three": [
+            {
+              "horse": "Gifts Differing",
+              "rank": 1,
+              "score": 0.52074
+            },
+            {
+              "horse": "Muy Muy Loco",
+              "rank": 2,
+              "score": 0.41103
+            },
+            {
+              "horse": "Far Far Out",
+              "rank": 3,
+              "score": 0.39672
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-05",
+      "course": "Clonmel",
+      "time": "14:00",
+      "race_time": "2026-11-05T14:00:00+00:00",
+      "race_id": "rac_32303485955",
+      "race_name": "Clonmel Oil Service Station Handicap Hurdle",
+      "race_type": "Hurdle",
+      "field_size": 7,
+      "non_runners_excluded": 0,
+      "priced_runners": 7,
+      "full_bookmakers": [
+        "Paddy Power",
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk",
+        "pointsbetau"
+      ],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "J'Arrive de L'Est",
+          "model_probability_available": false,
+          "leader_price": {
+            "horse": "J'arrive De L'est",
+            "bookmaker": "Paddy Power",
+            "decimal": 12.0,
+            "price_updated_at": "2026-11-05T09:48:51+00:00",
+            "quote_observed_at": "2026-11-05T09:48:51+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": null,
+            "race_id": "00373552-caf0-4c61-a29f-d43e3a49fc31",
+            "break_even_pct": 8.333,
+            "market_fair_pct": 7.183,
+            "bookmaker_overround_pct": 16.02,
+            "full_bookmaker_field": true,
+            "movement_pct": null
+          },
+          "top_three": [
+            {
+              "horse": "J'Arrive de L'Est",
+              "rank": 1,
+              "score": 0.11734
+            },
+            {
+              "horse": "Boo Radley",
+              "rank": 2,
+              "score": 0.06731
+            },
+            {
+              "horse": "Zoffman",
+              "rank": 3,
+              "score": -0.3022
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-05",
+      "course": "Newcastle",
+      "time": "14:07",
+      "race_time": "2026-11-05T14:07:00+00:00",
+      "race_id": "rac_32303567309",
+      "race_name": "Free Digital Racecard At raceday-ready.com Handicap Hurdle Race (Go North Cab On Target Series Qualifier)",
+      "race_type": "Hurdle",
+      "field_size": 8,
+      "non_runners_excluded": 1,
+      "priced_runners": 8,
+      "full_bookmakers": [
+        "Paddy Power",
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk",
+        "pointsbetau",
+        "tabtouch"
+      ],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Thorneylands",
+          "model_probability_available": false,
+          "leader_price": {
+            "horse": "Thorneylands (Ire)",
+            "bookmaker": "Paddy Power",
+            "decimal": 2.62,
+            "price_updated_at": "2026-11-05T09:48:51+00:00",
+            "quote_observed_at": "2026-11-05T09:48:51+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": null,
+            "race_id": "b70e45e1-8e02-4262-901d-bd4a85c3df76",
+            "break_even_pct": 38.168,
+            "market_fair_pct": 32.208,
+            "bookmaker_overround_pct": 18.51,
+            "full_bookmaker_field": true,
+            "movement_pct": null
+          },
+          "top_three": [
+            {
+              "horse": "Thorneylands",
+              "rank": 1,
+              "score": 0.14554
+            },
+            {
+              "horse": "Final Straw",
+              "rank": 2,
+              "score": -0.14287
+            },
+            {
+              "horse": "Maghlaak",
+              "rank": 3,
+              "score": -0.1579
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-05",
+      "course": "Plumpton",
+      "time": "14:15",
+      "race_time": "2026-11-05T14:15:00+00:00",
+      "race_id": "rac_32303580868",
+      "race_name": "Call Star Sports On 08000 521 321 Handicap Steeple Chase (GBB Race)",
+      "race_type": "Chase",
+      "field_size": 4,
+      "non_runners_excluded": 0,
+      "priced_runners": 4,
+      "full_bookmakers": [
+        "Paddy Power",
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk",
+        "pointsbetau",
+        "tabtouch"
+      ],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Ferret Jeeter",
+          "model_probability_available": false,
+          "leader_price": {
+            "horse": "Ferret Jeeter",
+            "bookmaker": "Paddy Power",
+            "decimal": 2.1,
+            "price_updated_at": "2026-11-05T09:48:51+00:00",
+            "quote_observed_at": "2026-11-05T09:48:51+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": null,
+            "race_id": "d9cddfb8-d767-4b4e-b252-473ee108e561",
+            "break_even_pct": 47.619,
+            "market_fair_pct": 42.263,
+            "bookmaker_overround_pct": 12.67,
+            "full_bookmaker_field": true,
+            "movement_pct": null
+          },
+          "top_three": [
+            {
+              "horse": "Ferret Jeeter",
+              "rank": 1,
+              "score": -0.18069
+            },
+            {
+              "horse": "Diplomatic Ash",
+              "rank": 2,
+              "score": -0.47267
+            },
+            {
+              "horse": "Enjoy d'Allen",
+              "rank": 3,
+              "score": -0.52936
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-05",
+      "course": "Southwell (AW)",
+      "time": "14:20",
+      "race_time": "2026-11-05T14:20:00+00:00",
+      "race_id": "rac_32303588616",
+      "race_name": "All-Weather Championship Is Back Handicap Stakes",
+      "race_type": "Flat",
+      "field_size": 13,
+      "non_runners_excluded": 0,
+      "priced_runners": 13,
+      "full_bookmakers": [
+        "Paddy Power",
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk",
+        "pointsbetau",
+        "tabtouch"
+      ],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Macanudo",
+          "model_probability_available": false,
+          "leader_price": {
+            "horse": "Macanudo",
+            "bookmaker": "Paddy Power",
+            "decimal": 4.33,
+            "price_updated_at": "2026-11-05T09:48:51+00:00",
+            "quote_observed_at": "2026-11-05T09:48:51+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": null,
+            "race_id": "d7f4dd2e-c308-4c74-8620-efab602eb22a",
+            "break_even_pct": 23.095,
+            "market_fair_pct": 17.519,
+            "bookmaker_overround_pct": 31.83,
+            "full_bookmaker_field": true,
+            "movement_pct": null
+          },
+          "top_three": [
+            {
+              "horse": "Macanudo",
+              "rank": 1,
+              "score": 0.32152
+            },
+            {
+              "horse": "Fletcher's Flight",
+              "rank": 2,
+              "score": 0.26017
+            },
+            {
+              "horse": "Little Jaybee",
+              "rank": 3,
+              "score": 0.25554
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-05",
+      "course": "Newbury",
+      "time": "14:25",
+      "race_time": "2026-11-05T14:25:00+00:00",
+      "race_id": "rac_32303557624",
+      "race_name": "Pertemps Network Handicap Hurdle Race (Pertemps Hurdle Series Qualifier) (GBB Race)",
+      "race_type": "Hurdle",
+      "field_size": 17,
+      "non_runners_excluded": 0,
+      "priced_runners": 17,
+      "full_bookmakers": [
+        "Paddy Power",
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk",
+        "pointsbetau",
+        "tabtouch"
+      ],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "One Big Bang",
+          "model_probability_available": false,
+          "leader_price": {
+            "horse": "One Big Bang",
+            "bookmaker": "Paddy Power",
+            "decimal": 15.0,
+            "price_updated_at": "2026-11-05T09:48:51+00:00",
+            "quote_observed_at": "2026-11-05T09:48:51+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": null,
+            "race_id": "2632102c-c798-44e2-a084-4436bbd1f8fc",
+            "break_even_pct": 6.667,
+            "market_fair_pct": 4.718,
+            "bookmaker_overround_pct": 41.3,
+            "full_bookmaker_field": true,
+            "movement_pct": null
+          },
+          "top_three": [
+            {
+              "horse": "One Big Bang",
+              "rank": 1,
+              "score": 0.80339
+            },
+            {
+              "horse": "Masaccio",
+              "rank": 2,
+              "score": 0.76628
+            },
+            {
+              "horse": "Moon Chime",
+              "rank": 3,
+              "score": 0.7193
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-05",
+      "course": "Chelmsford (AW)",
+      "time": "14:30",
+      "race_time": "2026-11-05T14:30:00+00:00",
+      "race_id": "rac_32303536317",
+      "race_name": "Midnite Built Different Handicap Stakes (Div II)",
+      "race_type": "Flat",
+      "field_size": 13,
+      "non_runners_excluded": 1,
+      "priced_runners": 12,
+      "full_bookmakers": [],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "STALE_OR_INCOMPLETE_RANKING",
+          "model_probability_available": false
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "STALE_OR_INCOMPLETE_RANKING",
+          "model_probability_available": false
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-05",
+      "course": "Clonmel",
+      "time": "14:35",
+      "race_time": "2026-11-05T14:35:00+00:00",
+      "race_id": "rac_32303487892",
+      "race_name": "T.A. Morris Memorial Irish EBF Mares Steeplechase (Listed)",
+      "race_type": "Chase",
+      "field_size": 4,
+      "non_runners_excluded": 1,
+      "priced_runners": 4,
+      "full_bookmakers": [
+        "Paddy Power",
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk",
+        "pointsbetau"
+      ],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "STALE_OR_INCOMPLETE_RANKING",
+          "model_probability_available": false
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "STALE_OR_INCOMPLETE_RANKING",
+          "model_probability_available": false
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-05",
+      "course": "Newcastle",
+      "time": "14:40",
+      "race_time": "2026-11-05T14:40:00+00:00",
+      "race_id": "rac_32303569246",
+      "race_name": "Get Raceday Ready Novices' Handicap Steeple Chase (Go North Forgive 'N Forget Series Qualifier) (GBB Race)",
       "race_type": "Chase",
       "field_size": 5,
       "non_runners_excluded": 0,
-      "priced_runners": 0,
+      "priced_runners": 4,
       "full_bookmakers": [],
-      "preoff_at_generation": false,
+      "preoff_at_generation": true,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -158,116 +1449,44 @@
           "model_probability_available": false
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -56.382,
-          "races": 21,
-          "priced_bets": 21
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -100.0,
-          "races": 12,
-          "priced_bets": 11
-        }
-      ]
-    },
-    {
-      "date": "2026-11-04",
-      "course": "Musselburgh",
-      "time": "12:35",
-      "race_time": "2026-11-04T12:35:00+00:00",
-      "race_id": "rac_32303427845",
-      "race_name": "British Stallion Studs EBF Restricted Maiden Stakes (For Horses In Bands C And D) (GBB Race)",
-      "race_type": "Flat",
-      "field_size": 8,
-      "non_runners_excluded": 0,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Nice One Eric",
           "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -54.752,
-          "races": 12,
-          "priced_bets": 11
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": 22.222,
-          "races": 9,
-          "priced_bets": 9
-        }
-      ]
-    },
-    {
-      "date": "2026-11-04",
-      "course": "Nottingham",
-      "time": "12:45",
-      "race_time": "2026-11-04T12:45:00+00:00",
-      "race_id": "rac_32303456900",
-      "race_name": "Ladies Day 8th May On Sale Now Handicap Stakes",
-      "race_type": "Flat",
-      "field_size": 10,
-      "non_runners_excluded": 0,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "leader_price": {
+            "horse": "Nice One Eric",
+            "bookmaker": "Paddy Power",
+            "decimal": 3.25,
+            "price_updated_at": "2026-11-05T09:48:51+00:00",
+            "quote_observed_at": "2026-11-05T09:48:51+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": null,
+            "race_id": "709fb922-ebd1-4289-a78b-23d10da73ec3",
+            "break_even_pct": 30.769,
+            "market_fair_pct": null,
+            "bookmaker_overround_pct": null,
+            "full_bookmaker_field": false,
+            "movement_pct": null
+          },
+          "top_three": [
+            {
+              "horse": "Nice One Eric",
+              "rank": 1,
+              "score": -0.25147
+            },
+            {
+              "horse": "Looking Splendid",
+              "rank": 2,
+              "score": -0.36384
+            },
+            {
+              "horse": "Halpha Soleil",
+              "rank": 3,
+              "score": -0.45412
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -275,736 +1494,28 @@
         }
       },
       "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -29.63,
-          "races": 27,
-          "priced_bets": 27
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -71.591,
-          "races": 14,
-          "priced_bets": 12
-        }
-      ]
+      "stage39_context": []
     },
     {
-      "date": "2026-11-04",
-      "course": "Chepstow",
-      "time": "12:51",
-      "race_time": "2026-11-04T12:51:00+00:00",
-      "race_id": "rac_32303867544",
-      "race_name": "Free Tips On attheraces.com Maiden Hurdle Race (GBB Race)",
+      "date": "2026-11-05",
+      "course": "Plumpton",
+      "time": "14:47",
+      "race_time": "2026-11-05T14:47:00+00:00",
+      "race_id": "rac_32303582805",
+      "race_name": "starsports.bet Juvenile Hurdle Race (GBB Race)",
       "race_type": "Hurdle",
-      "field_size": 14,
-      "non_runners_excluded": 1,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -56.382,
-          "races": 21,
-          "priced_bets": 21
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -100.0,
-          "races": 12,
-          "priced_bets": 11
-        }
-      ]
-    },
-    {
-      "date": "2026-11-04",
-      "course": "Wexford",
-      "time": "13:00",
-      "race_time": "2026-11-04T13:00:00+00:00",
-      "race_id": "rac_32303412349",
-      "race_name": "Racing Tv Free Trial For A Month Maiden Hurdle",
-      "race_type": "Hurdle",
-      "field_size": 14,
-      "non_runners_excluded": 3,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -72.222,
-          "races": 19,
-          "priced_bets": 18
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -44.167,
-          "races": 26,
-          "priced_bets": 25
-        }
-      ]
-    },
-    {
-      "date": "2026-11-04",
-      "course": "Musselburgh",
-      "time": "13:10",
-      "race_time": "2026-11-04T13:10:00+00:00",
-      "race_id": "rac_32303869481",
-      "race_name": "Burton Roofing Merchants Handicap Stakes (Div I)",
-      "race_type": "Flat",
-      "field_size": 11,
-      "non_runners_excluded": 0,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -54.752,
-          "races": 12,
-          "priced_bets": 11
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": 22.222,
-          "races": 9,
-          "priced_bets": 9
-        }
-      ]
-    },
-    {
-      "date": "2026-11-04",
-      "course": "Nottingham",
-      "time": "13:20",
-      "race_time": "2026-11-04T13:20:00+00:00",
-      "race_id": "rac_32303458837",
-      "race_name": "Racedays For £9 At Nottingham Racecourse Handicap Stakes (GBBPlus Race)",
-      "race_type": "Flat",
-      "field_size": 13,
-      "non_runners_excluded": 0,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -29.63,
-          "races": 27,
-          "priced_bets": 27
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -71.591,
-          "races": 14,
-          "priced_bets": 12
-        }
-      ]
-    },
-    {
-      "date": "2026-11-04",
-      "course": "Chepstow",
-      "time": "13:25",
-      "race_time": "2026-11-04T13:25:00+00:00",
-      "race_id": "rac_32303470459",
-      "race_name": "LSL Racing 'National Hunt' Maiden Hurdle Race (Div I) (GBB Race)",
-      "race_type": "Hurdle",
-      "field_size": 13,
-      "non_runners_excluded": 0,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -56.382,
-          "races": 21,
-          "priced_bets": 21
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -100.0,
-          "races": 12,
-          "priced_bets": 11
-        }
-      ]
-    },
-    {
-      "date": "2026-11-04",
-      "course": "Wexford",
-      "time": "13:33",
-      "race_time": "2026-11-04T13:33:00+00:00",
-      "race_id": "rac_32303414286",
-      "race_name": "Botanica International Rated Novice Hurdle",
-      "race_type": "Hurdle",
-      "field_size": 8,
-      "non_runners_excluded": 1,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -72.222,
-          "races": 19,
-          "priced_bets": 18
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -44.167,
-          "races": 26,
-          "priced_bets": 25
-        }
-      ]
-    },
-    {
-      "date": "2026-11-04",
-      "course": "Musselburgh",
-      "time": "13:42",
-      "race_time": "2026-11-04T13:42:00+00:00",
-      "race_id": "rac_32303429782",
-      "race_name": "Burton Roofing Merchants Handicap Stakes (Div II)",
-      "race_type": "Flat",
-      "field_size": 10,
-      "non_runners_excluded": 0,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -54.752,
-          "races": 12,
-          "priced_bets": 11
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": 22.222,
-          "races": 9,
-          "priced_bets": 9
-        }
-      ]
-    },
-    {
-      "date": "2026-11-04",
-      "course": "Nottingham",
-      "time": "13:50",
-      "race_time": "2026-11-04T13:50:00+00:00",
-      "race_id": "rac_32303460774",
-      "race_name": "Experience Hospitality At Nottingham Racecourse Novice Stakes (GBB/GBBPlus Race)",
-      "race_type": "Flat",
-      "field_size": 10,
-      "non_runners_excluded": 0,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -29.63,
-          "races": 27,
-          "priced_bets": 27
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -71.591,
-          "races": 14,
-          "priced_bets": 12
-        }
-      ]
-    },
-    {
-      "date": "2026-11-04",
-      "course": "Chepstow",
-      "time": "13:58",
-      "race_time": "2026-11-04T13:58:00+00:00",
-      "race_id": "rac_32303472396",
-      "race_name": "LSL Racing 'National Hunt' Maiden Hurdle Race (Div II) (GBB Race)",
-      "race_type": "Hurdle",
-      "field_size": 12,
-      "non_runners_excluded": 0,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -56.382,
-          "races": 21,
-          "priced_bets": 21
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -100.0,
-          "races": 12,
-          "priced_bets": 11
-        }
-      ]
-    },
-    {
-      "date": "2026-11-04",
-      "course": "Wexford",
-      "time": "14:05",
-      "race_time": "2026-11-04T14:05:00+00:00",
-      "race_id": "rac_32303416223",
-      "race_name": "Start Your Free Trial On Racing Tv Now Maiden Hurdle",
-      "race_type": "Hurdle",
-      "field_size": 14,
-      "non_runners_excluded": 3,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -72.222,
-          "races": 19,
-          "priced_bets": 18
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -44.167,
-          "races": 26,
-          "priced_bets": 25
-        }
-      ]
-    },
-    {
-      "date": "2026-11-04",
-      "course": "Musselburgh",
-      "time": "14:15",
-      "race_time": "2026-11-04T14:15:00+00:00",
-      "race_id": "rac_32303431719",
-      "race_name": "Joe Fanning Fond Farewell Handicap Stakes",
-      "race_type": "Flat",
-      "field_size": 11,
-      "non_runners_excluded": 1,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -54.752,
-          "races": 12,
-          "priced_bets": 11
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": 22.222,
-          "races": 9,
-          "priced_bets": 9
-        }
-      ]
-    },
-    {
-      "date": "2026-11-04",
-      "course": "Nottingham",
-      "time": "14:20",
-      "race_time": "2026-11-04T14:20:00+00:00",
-      "race_id": "rac_32303755198",
-      "race_name": "Conference And Events At Nottingham Racecourse Handicap Stakes (Div I) (GBBPlus Race)",
-      "race_type": "Flat",
-      "field_size": 9,
-      "non_runners_excluded": 0,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -29.63,
-          "races": 27,
-          "priced_bets": 27
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -71.591,
-          "races": 14,
-          "priced_bets": 12
-        }
-      ]
-    },
-    {
-      "date": "2026-11-04",
-      "course": "Kempton (AW)",
-      "time": "14:25",
-      "race_time": "2026-11-04T14:25:00+00:00",
-      "race_id": "rac_32303439467",
-      "race_name": "Unibet Supports Safer Gambling Apprentice Handicap Stakes",
-      "race_type": "Flat",
-      "field_size": 11,
-      "non_runners_excluded": 1,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -16.548,
-          "races": 83,
-          "priced_bets": 79
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -12.36,
-          "races": 48,
-          "priced_bets": 46
-        }
-      ]
-    },
-    {
-      "date": "2026-11-04",
-      "course": "Chepstow",
-      "time": "14:30",
-      "race_time": "2026-11-04T14:30:00+00:00",
-      "race_id": "rac_32303474333",
-      "race_name": "Lysaght Cup Novices' Limited Handicap Steeple Chase (GBB Race)",
-      "race_type": "Chase",
       "field_size": 4,
       "non_runners_excluded": 1,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
+      "priced_runners": 4,
+      "full_bookmakers": [
+        "Paddy Power",
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk",
+        "tabtouch"
+      ],
+      "preoff_at_generation": true,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -1022,116 +1533,44 @@
           "model_probability_available": false
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -56.382,
-          "races": 21,
-          "priced_bets": 21
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -100.0,
-          "races": 12,
-          "priced_bets": 11
-        }
-      ]
-    },
-    {
-      "date": "2026-11-04",
-      "course": "Wexford",
-      "time": "14:37",
-      "race_time": "2026-11-04T14:37:00+00:00",
-      "race_id": "rac_32303418160",
-      "race_name": "Jim Ryan Racecourse Services Handicap Hurdle (0-100)",
-      "race_type": "Hurdle",
-      "field_size": 13,
-      "non_runners_excluded": 4,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Pantile's Gift",
           "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -72.222,
-          "races": 19,
-          "priced_bets": 18
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -44.167,
-          "races": 26,
-          "priced_bets": 25
-        }
-      ]
-    },
-    {
-      "date": "2026-11-04",
-      "course": "Musselburgh",
-      "time": "14:45",
-      "race_time": "2026-11-04T14:45:00+00:00",
-      "race_id": "rac_32303433656",
-      "race_name": "Hibernian FC Emerald Club Handicap Stakes",
-      "race_type": "Flat",
-      "field_size": 10,
-      "non_runners_excluded": 0,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "leader_price": {
+            "horse": "Pantile's Gift",
+            "bookmaker": "Paddy Power",
+            "decimal": 4.5,
+            "price_updated_at": "2026-11-05T09:48:51+00:00",
+            "quote_observed_at": "2026-11-05T09:48:51+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": null,
+            "race_id": "5ed62f7b-dd45-439d-9734-ee4d9c0b050c",
+            "break_even_pct": 22.222,
+            "market_fair_pct": 19.9,
+            "bookmaker_overround_pct": 11.67,
+            "full_bookmaker_field": true,
+            "movement_pct": null
+          },
+          "top_three": [
+            {
+              "horse": "Pantile's Gift",
+              "rank": 1,
+              "score": -0.41622
+            },
+            {
+              "horse": "Central Command",
+              "rank": 2,
+              "score": -0.43884
+            },
+            {
+              "horse": "Barbury Boy",
+              "rank": 3,
+              "score": -0.52304
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -1139,34 +1578,28 @@
         }
       },
       "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -54.752,
-          "races": 12,
-          "priced_bets": 11
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": 22.222,
-          "races": 9,
-          "priced_bets": 9
-        }
-      ]
+      "stage39_context": []
     },
     {
-      "date": "2026-11-04",
-      "course": "Nottingham",
+      "date": "2026-11-05",
+      "course": "Southwell (AW)",
       "time": "14:53",
-      "race_time": "2026-11-04T14:53:00+00:00",
-      "race_id": "rac_32303462711",
-      "race_name": "Conference And Events At Nottingham Racecourse Handicap Stakes (Div II) (GBBPlus Race)",
+      "race_time": "2026-11-05T14:53:00+00:00",
+      "race_id": "rac_32303590553",
+      "race_name": "Midnite A Next Generation Betting App Handicap Stakes (GBBPlus Race)",
       "race_type": "Flat",
       "field_size": 9,
       "non_runners_excluded": 0,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
+      "priced_runners": 9,
+      "full_bookmakers": [
+        "Paddy Power",
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk",
+        "tabtouch"
+      ],
+      "preoff_at_generation": true,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -1184,8 +1617,44 @@
           "model_probability_available": false
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Lady Magu",
+          "model_probability_available": false,
+          "leader_price": {
+            "horse": "Lady Magu",
+            "bookmaker": "Paddy Power",
+            "decimal": 6.0,
+            "price_updated_at": "2026-11-05T09:48:51+00:00",
+            "quote_observed_at": "2026-11-05T09:48:51+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": null,
+            "race_id": "47766674-04f3-4c2f-9319-39102c1eff86",
+            "break_even_pct": 16.667,
+            "market_fair_pct": 13.932,
+            "bookmaker_overround_pct": 19.63,
+            "full_bookmaker_field": true,
+            "movement_pct": null
+          },
+          "top_three": [
+            {
+              "horse": "Lady Magu",
+              "rank": 1,
+              "score": 0.26805
+            },
+            {
+              "horse": "Prince of Calypso",
+              "rank": 2,
+              "score": 0.16051
+            },
+            {
+              "horse": "Nolton Cross",
+              "rank": 3,
+              "score": 0.08116
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -1193,34 +1662,28 @@
         }
       },
       "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -29.63,
-          "races": 27,
-          "priced_bets": 27
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -71.591,
-          "races": 14,
-          "priced_bets": 12
-        }
-      ]
+      "stage39_context": []
     },
     {
-      "date": "2026-11-04",
-      "course": "Kempton (AW)",
-      "time": "15:00",
-      "race_time": "2026-11-04T15:00:00+00:00",
-      "race_id": "rac_32303441404",
-      "race_name": "Unibet's New VAR Goal Guarantee Handicap Stakes",
-      "race_type": "Flat",
-      "field_size": 13,
-      "non_runners_excluded": 1,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
+      "date": "2026-11-05",
+      "course": "Newbury",
+      "time": "14:58",
+      "race_time": "2026-11-05T14:58:00+00:00",
+      "race_id": "rac_32303559561",
+      "race_name": "Check Out The BetVictor Betbuilder Novices' Hurdle Race (GBB Race)",
+      "race_type": "Hurdle",
+      "field_size": 10,
+      "non_runners_excluded": 0,
+      "priced_runners": 10,
+      "full_bookmakers": [
+        "Paddy Power",
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk",
+        "tabtouch"
+      ],
+      "preoff_at_generation": true,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -1238,8 +1701,44 @@
           "model_probability_available": false
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Grand Teton",
+          "model_probability_available": false,
+          "leader_price": {
+            "horse": "Grand Teton",
+            "bookmaker": "Paddy Power",
+            "decimal": 5.5,
+            "price_updated_at": "2026-11-05T09:48:51+00:00",
+            "quote_observed_at": "2026-11-05T09:48:51+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": null,
+            "race_id": "9cf3c766-875e-4c58-bcf5-363fe9535136",
+            "break_even_pct": 18.182,
+            "market_fair_pct": 14.956,
+            "bookmaker_overround_pct": 21.57,
+            "full_bookmaker_field": true,
+            "movement_pct": null
+          },
+          "top_three": [
+            {
+              "horse": "Grand Teton",
+              "rank": 1,
+              "score": 0.4159
+            },
+            {
+              "horse": "Sappingirl",
+              "rank": 2,
+              "score": 0.3616
+            },
+            {
+              "horse": "Jetaway Holiday",
+              "rank": 3,
+              "score": 0.23299
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -1247,34 +1746,27 @@
         }
       },
       "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -16.548,
-          "races": 83,
-          "priced_bets": 79
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -12.36,
-          "races": 48,
-          "priced_bets": 46
-        }
-      ]
+      "stage39_context": []
     },
     {
-      "date": "2026-11-04",
-      "course": "Chepstow",
+      "date": "2026-11-05",
+      "course": "Chelmsford (AW)",
       "time": "15:05",
-      "race_time": "2026-11-04T15:05:00+00:00",
-      "race_id": "rac_32303476270",
-      "race_name": "DragonBet Handicap Steeple Chase (GBB Race)",
-      "race_type": "Chase",
-      "field_size": 8,
-      "non_runners_excluded": 3,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
+      "race_time": "2026-11-05T15:05:00+00:00",
+      "race_id": "rac_32303538254",
+      "race_name": "All-Weather Championship Is Back Nursery Handicap Stakes",
+      "race_type": "Flat",
+      "field_size": 9,
+      "non_runners_excluded": 0,
+      "priced_runners": 9,
+      "full_bookmakers": [
+        "Paddy Power",
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "tabtouch"
+      ],
+      "preoff_at_generation": true,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -1292,8 +1784,44 @@
           "model_probability_available": false
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Queens Bandit",
+          "model_probability_available": false,
+          "leader_price": {
+            "horse": "Queens Bandit",
+            "bookmaker": "Paddy Power",
+            "decimal": 6.5,
+            "price_updated_at": "2026-11-05T09:48:51+00:00",
+            "quote_observed_at": "2026-11-05T09:48:51+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": null,
+            "race_id": "cd5c3090-d39a-45ba-860e-138d3cdbf171",
+            "break_even_pct": 15.385,
+            "market_fair_pct": 12.854,
+            "bookmaker_overround_pct": 19.69,
+            "full_bookmaker_field": true,
+            "movement_pct": null
+          },
+          "top_three": [
+            {
+              "horse": "Queens Bandit",
+              "rank": 1,
+              "score": 0.22253
+            },
+            {
+              "horse": "Best Yet",
+              "rank": 2,
+              "score": 0.11043
+            },
+            {
+              "horse": "Whiskey Galore",
+              "rank": 3,
+              "score": 0.04843
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -1301,88 +1829,27 @@
         }
       },
       "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -56.382,
-          "races": 21,
-          "priced_bets": 21
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -100.0,
-          "races": 12,
-          "priced_bets": 11
-        }
-      ]
+      "stage39_context": []
     },
     {
-      "date": "2026-11-04",
-      "course": "Wexford",
+      "date": "2026-11-05",
+      "course": "Clonmel",
       "time": "15:10",
-      "race_time": "2026-11-04T15:10:00+00:00",
-      "race_id": "rac_32303420097",
-      "race_name": "Michael Hickey Memorial Chase (listed)",
+      "race_time": "2026-11-05T15:10:00+00:00",
+      "race_id": "rac_32303489829",
+      "race_name": "Clonmel Oil Steeplechase (Grade 2)",
       "race_type": "Chase",
       "field_size": 4,
-      "non_runners_excluded": 2,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -72.222,
-          "races": 19,
-          "priced_bets": 18
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -44.167,
-          "races": 26,
-          "priced_bets": 25
-        }
-      ]
-    },
-    {
-      "date": "2026-11-04",
-      "course": "Musselburgh",
-      "time": "15:17",
-      "race_time": "2026-11-04T15:17:00+00:00",
-      "race_id": "rac_32303435593",
-      "race_name": "Nairns Oatcakes Handicap Stakes",
-      "race_type": "Flat",
-      "field_size": 12,
       "non_runners_excluded": 0,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
+      "priced_runners": 4,
+      "full_bookmakers": [
+        "Paddy Power",
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk"
+      ],
+      "preoff_at_generation": true,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -1400,116 +1867,44 @@
           "model_probability_available": false
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -54.752,
-          "races": 12,
-          "priced_bets": 11
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": 22.222,
-          "races": 9,
-          "priced_bets": 9
-        }
-      ]
-    },
-    {
-      "date": "2026-11-04",
-      "course": "Nottingham",
-      "time": "15:23",
-      "race_time": "2026-11-04T15:23:00+00:00",
-      "race_id": "rac_32303464648",
-      "race_name": "Watch Racing TV Now Handicap Stakes",
-      "race_type": "Flat",
-      "field_size": 14,
-      "non_runners_excluded": 1,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Kappa Jy Pyke",
           "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -29.63,
-          "races": 27,
-          "priced_bets": 27
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -71.591,
-          "races": 14,
-          "priced_bets": 12
-        }
-      ]
-    },
-    {
-      "date": "2026-11-04",
-      "course": "Kempton (AW)",
-      "time": "15:30",
-      "race_time": "2026-11-04T15:30:00+00:00",
-      "race_id": "rac_32303871418",
-      "race_name": "Unibet/British EBF Fillies' Novice Stakes (Div I) (GBB/GBBPlus Race)",
-      "race_type": "Flat",
-      "field_size": 13,
-      "non_runners_excluded": 1,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "leader_price": {
+            "horse": "Kappa Jy Pyke",
+            "bookmaker": "Paddy Power",
+            "decimal": 6.0,
+            "price_updated_at": "2026-11-05T09:48:51+00:00",
+            "quote_observed_at": "2026-11-05T09:48:51+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": null,
+            "race_id": "a2235dfa-d410-43d2-b8ad-5f898b3419bf",
+            "break_even_pct": 16.667,
+            "market_fair_pct": 15.306,
+            "bookmaker_overround_pct": 8.89,
+            "full_bookmaker_field": true,
+            "movement_pct": null
+          },
+          "top_three": [
+            {
+              "horse": "Kappa Jy Pyke",
+              "rank": 1,
+              "score": -0.20033
+            },
+            {
+              "horse": "Il Etait Temps",
+              "rank": 2,
+              "score": -0.33802
+            },
+            {
+              "horse": "Blaze The Way",
+              "rank": 3,
+              "score": -0.78276
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -1517,88 +1912,28 @@
         }
       },
       "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -16.548,
-          "races": 83,
-          "priced_bets": 79
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -12.36,
-          "races": 48,
-          "priced_bets": 46
-        }
-      ]
+      "stage39_context": []
     },
     {
-      "date": "2026-11-04",
-      "course": "Chepstow",
-      "time": "15:40",
-      "race_time": "2026-11-04T15:40:00+00:00",
-      "race_id": "rac_32303478207",
-      "race_name": "Floyds Turfcare & Weed Solutions Handicap Hurdle Race",
-      "race_type": "Hurdle",
-      "field_size": 16,
-      "non_runners_excluded": 2,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -56.382,
-          "races": 21,
-          "priced_bets": 21
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -100.0,
-          "races": 12,
-          "priced_bets": 11
-        }
-      ]
-    },
-    {
-      "date": "2026-11-04",
-      "course": "Wexford",
-      "time": "15:45",
-      "race_time": "2026-11-04T15:45:00+00:00",
-      "race_id": "rac_32303422034",
-      "race_name": "racingtv.com/freetrial Beginners Chase",
+      "date": "2026-11-05",
+      "course": "Newcastle",
+      "time": "15:15",
+      "race_time": "2026-11-05T15:15:00+00:00",
+      "race_id": "rac_32303571183",
+      "race_name": "Equine Products National Hunt Trainers League Handicap Steeple Chase (Go North Monet's Garden Series Qualifier)",
       "race_type": "Chase",
       "field_size": 9,
-      "non_runners_excluded": 2,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
+      "non_runners_excluded": 0,
+      "priced_runners": 9,
+      "full_bookmakers": [
+        "Paddy Power",
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk",
+        "tabtouch"
+      ],
+      "preoff_at_generation": true,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -1616,8 +1951,44 @@
           "model_probability_available": false
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Party In The Park",
+          "model_probability_available": false,
+          "leader_price": {
+            "horse": "Party In The Park",
+            "bookmaker": "Paddy Power",
+            "decimal": 5.5,
+            "price_updated_at": "2026-11-05T09:48:51+00:00",
+            "quote_observed_at": "2026-11-05T09:48:51+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": null,
+            "race_id": "65a2440b-cc33-4f13-97ba-f9a5090ae266",
+            "break_even_pct": 18.182,
+            "market_fair_pct": 15.382,
+            "bookmaker_overround_pct": 18.2,
+            "full_bookmaker_field": true,
+            "movement_pct": null
+          },
+          "top_three": [
+            {
+              "horse": "Party In The Park",
+              "rank": 1,
+              "score": 0.24698
+            },
+            {
+              "horse": "The Paddy Pie",
+              "rank": 2,
+              "score": 0.24666
+            },
+            {
+              "horse": "Tom Creen",
+              "rank": 3,
+              "score": 0.06594
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -1625,34 +1996,110 @@
         }
       },
       "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -72.222,
-          "races": 19,
-          "priced_bets": 18
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -44.167,
-          "races": 26,
-          "priced_bets": 25
-        }
-      ]
+      "stage39_context": []
     },
     {
-      "date": "2026-11-04",
-      "course": "Musselburgh",
-      "time": "15:50",
-      "race_time": "2026-11-04T15:50:00+00:00",
-      "race_id": "rac_32303437530",
-      "race_name": "Thank You For The Fun Gweedore Handicap Stakes",
+      "date": "2026-11-05",
+      "course": "Plumpton",
+      "time": "15:22",
+      "race_time": "2026-11-05T15:22:00+00:00",
+      "race_id": "rac_32303584742",
+      "race_name": "Star Sports Handicap Steeple Chase (GBB Race)",
+      "race_type": "Chase",
+      "field_size": 4,
+      "non_runners_excluded": 1,
+      "priced_runners": 4,
+      "full_bookmakers": [
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk",
+        "tabtouch"
+      ],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Kdeux Saint Fray",
+          "model_probability_available": false,
+          "leader_price": {
+            "horse": "Kdeux Saint Fray",
+            "bookmaker": "William Hill",
+            "decimal": 2.88,
+            "price_updated_at": "2026-11-05T09:42:52.770209+00:00",
+            "quote_observed_at": "2026-11-05T09:42:52.770209+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": 2.75,
+            "race_id": "1c0c4305-55a3-4809-811e-a327e9d8cbc3",
+            "break_even_pct": 34.722,
+            "market_fair_pct": 32.134,
+            "bookmaker_overround_pct": 8.06,
+            "full_bookmaker_field": true,
+            "movement_pct": -4.51
+          },
+          "top_three": [
+            {
+              "horse": "Kdeux Saint Fray",
+              "rank": 1,
+              "score": -0.24782
+            },
+            {
+              "horse": "Jaipaletemps",
+              "rank": 2,
+              "score": -0.30135
+            },
+            {
+              "horse": "Rip Wheeler",
+              "rank": 3,
+              "score": -0.55457
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-05",
+      "course": "Southwell (AW)",
+      "time": "15:28",
+      "race_time": "2026-11-05T15:28:00+00:00",
+      "race_id": "rac_32303592490",
+      "race_name": "AWC Finals Day At Newcastle 26th March Handicap Stakes",
       "race_type": "Flat",
       "field_size": 12,
-      "non_runners_excluded": 0,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
+      "non_runners_excluded": 1,
+      "priced_runners": 12,
+      "full_bookmakers": [
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk",
+        "tabtouch"
+      ],
+      "preoff_at_generation": true,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -1670,8 +2117,44 @@
           "model_probability_available": false
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Midsummer Storm",
+          "model_probability_available": false,
+          "leader_price": {
+            "horse": "Midsummer Storm",
+            "bookmaker": "William Hill",
+            "decimal": 21.0,
+            "price_updated_at": "2026-11-05T09:48:22.685934+00:00",
+            "quote_observed_at": "2026-11-05T09:48:22.685934+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": 19.0,
+            "race_id": "23f404a0-082d-470c-a1f7-7b6add4ddb3d",
+            "break_even_pct": 4.762,
+            "market_fair_pct": 3.794,
+            "bookmaker_overround_pct": 25.51,
+            "full_bookmaker_field": true,
+            "movement_pct": -9.52
+          },
+          "top_three": [
+            {
+              "horse": "Midsummer Storm",
+              "rank": 1,
+              "score": 0.41339
+            },
+            {
+              "horse": "Signcastle City",
+              "rank": 2,
+              "score": 0.32919
+            },
+            {
+              "horse": "Rusheen Boy",
+              "rank": 3,
+              "score": 0.23655
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -1679,34 +2162,231 @@
         }
       },
       "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -54.752,
-          "races": 12,
-          "priced_bets": 11
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": 22.222,
-          "races": 9,
-          "priced_bets": 9
-        }
-      ]
+      "stage39_context": []
     },
     {
-      "date": "2026-11-04",
-      "course": "Nottingham",
-      "time": "15:55",
-      "race_time": "2026-11-04T15:55:00+00:00",
-      "race_id": "rac_32303466585",
-      "race_name": "racingtv.com Handicap Stakes",
+      "date": "2026-11-05",
+      "course": "Newbury",
+      "time": "15:33",
+      "race_time": "2026-11-05T15:33:00+00:00",
+      "race_id": "rac_32303561498",
+      "race_name": "British Horse Society Open National Hunt Flat Race (Category 1 Elimination) (Div I) (GBB Race)",
+      "race_type": "NH Flat",
+      "field_size": 11,
+      "non_runners_excluded": 0,
+      "priced_runners": 11,
+      "full_bookmakers": [
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk",
+        "tabtouch"
+      ],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Block Flight",
+          "model_probability_available": false,
+          "leader_price": {
+            "horse": "Block Flight",
+            "bookmaker": "William Hill",
+            "decimal": 5.5,
+            "price_updated_at": "2026-11-05T09:38:16.370559+00:00",
+            "quote_observed_at": "2026-11-05T09:38:16.370559+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": 6.0,
+            "race_id": "97a85dde-5046-49c2-a06c-4970ba5c279d",
+            "break_even_pct": 18.182,
+            "market_fair_pct": 15.113,
+            "bookmaker_overround_pct": 20.31,
+            "full_bookmaker_field": true,
+            "movement_pct": 9.09
+          },
+          "top_three": [
+            {
+              "horse": "Block Flight",
+              "rank": 1,
+              "score": 0.49193
+            },
+            {
+              "horse": "Itsallfrenchtome",
+              "rank": 2,
+              "score": 0.38337
+            },
+            {
+              "horse": "Manu du Noyer",
+              "rank": 3,
+              "score": 0.34284
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-05",
+      "course": "Chelmsford (AW)",
+      "time": "15:40",
+      "race_time": "2026-11-05T15:40:00+00:00",
+      "race_id": "rac_32303540191",
+      "race_name": "Midnite Ain't Your Grandad's Bookie Handicap Stakes (GBBPlus Race)",
       "race_type": "Flat",
+      "field_size": 6,
+      "non_runners_excluded": 0,
+      "priced_runners": 6,
+      "full_bookmakers": [
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "tabtouch"
+      ],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Charging Thunder",
+          "model_probability_available": false,
+          "leader_price": {
+            "horse": "Charging Thunder",
+            "bookmaker": "William Hill",
+            "decimal": 3.25,
+            "price_updated_at": "2026-11-05T09:45:11.950178+00:00",
+            "quote_observed_at": "2026-11-05T09:45:11.950178+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": 3.5,
+            "race_id": "5aa3fc84-3bae-41e6-b863-9c451bfdb011",
+            "break_even_pct": 30.769,
+            "market_fair_pct": 27.978,
+            "bookmaker_overround_pct": 9.98,
+            "full_bookmaker_field": true,
+            "movement_pct": 7.69
+          },
+          "top_three": [
+            {
+              "horse": "Charging Thunder",
+              "rank": 1,
+              "score": -0.10351
+            },
+            {
+              "horse": "Must Believe",
+              "rank": 2,
+              "score": -0.13369
+            },
+            {
+              "horse": "Pyleates",
+              "rank": 3,
+              "score": -0.21681
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-05",
+      "course": "Clonmel",
+      "time": "15:45",
+      "race_time": "2026-11-05T15:45:00+00:00",
+      "race_id": "rac_32303491766",
+      "race_name": "Prior Park Service Station Clonmel Handicap Steeplechase",
+      "race_type": "Chase",
       "field_size": 15,
+      "non_runners_excluded": 1,
+      "priced_runners": 15,
+      "full_bookmakers": [
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk"
+      ],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "STALE_OR_INCOMPLETE_RANKING",
+          "model_probability_available": false
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "STALE_OR_INCOMPLETE_RANKING",
+          "model_probability_available": false
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-05",
+      "course": "Newcastle",
+      "time": "15:50",
+      "race_time": "2026-11-05T15:50:00+00:00",
+      "race_id": "rac_32303573120",
+      "race_name": "attheraces.com/marketmovers \"Junior\" National Hunt Flat Race (GBB Race)",
+      "race_type": "NH Flat",
+      "field_size": 9,
       "non_runners_excluded": 0,
-      "priced_runners": 0,
+      "priced_runners": 8,
       "full_bookmakers": [],
-      "preoff_at_generation": false,
+      "preoff_at_generation": true,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -1724,8 +2404,29 @@
           "model_probability_available": false
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "That Guy",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "That Guy",
+              "rank": 1,
+              "score": 0.40449
+            },
+            {
+              "horse": "Hubris",
+              "rank": 2,
+              "score": 0.06186
+            },
+            {
+              "horse": "Bran Galad",
+              "rank": 3,
+              "score": -0.04278
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -1733,88 +2434,517 @@
         }
       },
       "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -29.63,
-          "races": 27,
-          "priced_bets": 27
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -71.591,
-          "races": 14,
-          "priced_bets": 12
-        }
-      ]
+      "stage39_context": []
     },
     {
-      "date": "2026-11-04",
-      "course": "Kempton (AW)",
+      "date": "2026-11-05",
+      "course": "Plumpton",
+      "time": "15:55",
+      "race_time": "2026-11-05T15:55:00+00:00",
+      "race_id": "rac_32303586679",
+      "race_name": "starsportsbet.co.uk Handicap Hurdle Race",
+      "race_type": "Hurdle",
+      "field_size": 4,
+      "non_runners_excluded": 1,
+      "priced_runners": 4,
+      "full_bookmakers": [
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk",
+        "tabtouch"
+      ],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Crest of Arms",
+          "model_probability_available": false,
+          "leader_price": {
+            "horse": "Crest Of Arms",
+            "bookmaker": "William Hill",
+            "decimal": 3.25,
+            "price_updated_at": "2026-11-05T09:44:25.572220+00:00",
+            "quote_observed_at": "2026-11-05T09:44:25.572220+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": 3.5,
+            "race_id": "76b12d0a-b7ef-4a7b-adcf-e4e4fd57065b",
+            "break_even_pct": 30.769,
+            "market_fair_pct": 27.848,
+            "bookmaker_overround_pct": 10.49,
+            "full_bookmaker_field": true,
+            "movement_pct": 7.69
+          },
+          "top_three": [
+            {
+              "horse": "Crest of Arms",
+              "rank": 1,
+              "score": -0.33923
+            },
+            {
+              "horse": "Basilette",
+              "rank": 2,
+              "score": -0.51345
+            },
+            {
+              "horse": "Stroll On By",
+              "rank": 3,
+              "score": -0.5651
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-05",
+      "course": "Southwell (AW)",
       "time": "16:00",
-      "race_time": "2026-11-04T16:00:00+00:00",
-      "race_id": "rac_32303443341",
-      "race_name": "Unibet/British EBF Fillies' Novice Stakes (Div II) (GBB/GBBPlus Race)",
+      "race_time": "2026-11-05T16:00:00+00:00",
+      "race_id": "rac_32303594427",
+      "race_name": "AWC Season 14 Has Begun EBF Novice Stakes (GBB Race)",
+      "race_type": "Flat",
+      "field_size": 9,
+      "non_runners_excluded": 0,
+      "priced_runners": 9,
+      "full_bookmakers": [
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk"
+      ],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Fenaroli",
+          "model_probability_available": false,
+          "leader_price": {
+            "horse": "Fenaroli",
+            "bookmaker": "William Hill",
+            "decimal": 1.3,
+            "price_updated_at": "2026-11-05T09:49:55.023235+00:00",
+            "quote_observed_at": "2026-11-05T09:49:55.023235+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": 1.29,
+            "race_id": "159acf1c-7f75-4169-b669-f5b53fe3c887",
+            "break_even_pct": 76.923,
+            "market_fair_pct": 60.352,
+            "bookmaker_overround_pct": 27.46,
+            "full_bookmaker_field": true,
+            "movement_pct": -0.77
+          },
+          "top_three": [
+            {
+              "horse": "Fenaroli",
+              "rank": 1,
+              "score": 0.2409
+            },
+            {
+              "horse": "Kesari",
+              "rank": 2,
+              "score": 0.16051
+            },
+            {
+              "horse": "Rogue Inferno",
+              "rank": 3,
+              "score": 0.14802
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-05",
+      "course": "Newbury",
+      "time": "16:05",
+      "race_time": "2026-11-05T16:05:00+00:00",
+      "race_id": "rac_32303919843",
+      "race_name": "BetVictor Open National Hunt Flat Race (Category 1 Elimination) (Div II) (GBB Race)",
+      "race_type": "NH Flat",
+      "field_size": 11,
+      "non_runners_excluded": 0,
+      "priced_runners": 11,
+      "full_bookmakers": [
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk"
+      ],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Treble Three",
+          "model_probability_available": false,
+          "leader_price": {
+            "horse": "Treble Three",
+            "bookmaker": "William Hill",
+            "decimal": 5.5,
+            "price_updated_at": "2026-11-05T09:39:02.810605+00:00",
+            "quote_observed_at": "2026-11-05T09:39:02.810605+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": 6.0,
+            "race_id": "23578527-f6d7-4dc2-b364-0448c2b2c9e5",
+            "break_even_pct": 18.182,
+            "market_fair_pct": 14.789,
+            "bookmaker_overround_pct": 22.94,
+            "full_bookmaker_field": true,
+            "movement_pct": 9.09
+          },
+          "top_three": [
+            {
+              "horse": "Treble Three",
+              "rank": 1,
+              "score": 0.42971
+            },
+            {
+              "horse": "Geissler",
+              "rank": 2,
+              "score": 0.31745
+            },
+            {
+              "horse": "Radiant Walk",
+              "rank": 3,
+              "score": 0.3117
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-05",
+      "course": "Chelmsford (AW)",
+      "time": "16:15",
+      "race_time": "2026-11-05T16:15:00+00:00",
+      "race_id": "rac_32303542128",
+      "race_name": "AWC Season 14 Has Begun Handicap Stakes",
+      "race_type": "Flat",
+      "field_size": 11,
+      "non_runners_excluded": 0,
+      "priced_runners": 11,
+      "full_bookmakers": [
+        "Sky Bet",
+        "William Hill",
+        "betway_uk"
+      ],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Sea Founder",
+          "model_probability_available": false,
+          "leader_price": {
+            "horse": "Sea Founder",
+            "bookmaker": "William Hill",
+            "decimal": 11.0,
+            "price_updated_at": "2026-11-05T09:49:08.862748+00:00",
+            "quote_observed_at": "2026-11-05T09:49:08.862748+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": 10.0,
+            "race_id": "10a41d55-ef67-41b4-96f5-88e90d158de5",
+            "break_even_pct": 9.091,
+            "market_fair_pct": 7.504,
+            "bookmaker_overround_pct": 21.14,
+            "full_bookmaker_field": true,
+            "movement_pct": -9.09
+          },
+          "top_three": [
+            {
+              "horse": "Sea Founder",
+              "rank": 1,
+              "score": 0.31707
+            },
+            {
+              "horse": "Hitched",
+              "rank": 2,
+              "score": 0.27329
+            },
+            {
+              "horse": "The Hare Rail",
+              "rank": 3,
+              "score": 0.26173
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-05",
+      "course": "Clonmel",
+      "time": "16:20",
+      "race_time": "2026-11-05T16:20:00+00:00",
+      "race_id": "rac_32303493703",
+      "race_name": "racingtv.com/freetrial Flat Race",
+      "race_type": "NH Flat",
+      "field_size": 12,
+      "non_runners_excluded": 0,
+      "priced_runners": 12,
+      "full_bookmakers": [
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk"
+      ],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Greenbrier",
+          "model_probability_available": false,
+          "leader_price": {
+            "horse": "Greenbrier",
+            "bookmaker": "William Hill",
+            "decimal": 3.25,
+            "price_updated_at": "2026-11-05T09:39:02.782280+00:00",
+            "quote_observed_at": "2026-11-05T09:39:02.782280+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": 3.0,
+            "race_id": "02137b3e-4019-47fe-a24c-b4b44ad786c5",
+            "break_even_pct": 30.769,
+            "market_fair_pct": 24.725,
+            "bookmaker_overround_pct": 24.44,
+            "full_bookmaker_field": true,
+            "movement_pct": -7.69
+          },
+          "top_three": [
+            {
+              "horse": "Greenbrier",
+              "rank": 1,
+              "score": 0.29895
+            },
+            {
+              "horse": "Deadly Diva",
+              "rank": 2,
+              "score": 0.10909
+            },
+            {
+              "horse": "Mhi Milani",
+              "rank": 3,
+              "score": 0.02465
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-05",
+      "course": "Southwell (AW)",
+      "time": "16:30",
+      "race_time": "2026-11-05T16:30:00+00:00",
+      "race_id": "rac_32303596364",
+      "race_name": "AW Trials Day - Lingfield 2nd Jan 2027 Fillies' Handicap Stakes",
+      "race_type": "Flat",
+      "field_size": 10,
+      "non_runners_excluded": 0,
+      "priced_runners": 10,
+      "full_bookmakers": [
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk"
+      ],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Mountain of Light",
+          "model_probability_available": false,
+          "leader_price": {
+            "horse": "Mountain Of Light",
+            "bookmaker": "William Hill",
+            "decimal": 8.0,
+            "price_updated_at": "2026-11-05T09:49:08.887419+00:00",
+            "quote_observed_at": "2026-11-05T09:49:08.887419+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": 7.5,
+            "race_id": "6469fe21-6f13-48bd-bc44-e91a2a719254",
+            "break_even_pct": 12.5,
+            "market_fair_pct": 10.4,
+            "bookmaker_overround_pct": 20.19,
+            "full_bookmaker_field": true,
+            "movement_pct": -6.25
+          },
+          "top_three": [
+            {
+              "horse": "Mountain of Light",
+              "rank": 1,
+              "score": 0.21459
+            },
+            {
+              "horse": "Lope El Fuego",
+              "rank": 2,
+              "score": 0.20919
+            },
+            {
+              "horse": "Forbidden Colours",
+              "rank": 3,
+              "score": 0.1552
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-05",
+      "course": "Chelmsford (AW)",
+      "time": "16:45",
+      "race_time": "2026-11-05T16:45:00+00:00",
+      "race_id": "rac_32303544065",
+      "race_name": "Juddmonte EBF Restricted Novice Stakes (For Horses In Bands C And D) (GBB Race)",
       "race_type": "Flat",
       "field_size": 12,
-      "non_runners_excluded": 1,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -16.548,
-          "races": 83,
-          "priced_bets": 79
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -12.36,
-          "races": 48,
-          "priced_bets": 46
-        }
-      ]
-    },
-    {
-      "date": "2026-11-04",
-      "course": "Dundalk (AW)",
-      "time": "16:05",
-      "race_time": "2026-11-04T16:05:00+00:00",
-      "race_id": "rac_32303398790",
-      "race_name": "Christmas Party Nights At Dundalk Stadium Claiming Race",
-      "race_type": "Flat",
-      "field_size": 8,
       "non_runners_excluded": 0,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
+      "priced_runners": 12,
+      "full_bookmakers": [
+        "Sky Bet",
+        "William Hill",
+        "betway_uk"
+      ],
+      "preoff_at_generation": true,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -1832,62 +2962,44 @@
           "model_probability_available": false
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -30.573,
-          "races": 66,
-          "priced_bets": 64
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -52.566,
-          "races": 27,
-          "priced_bets": 24
-        }
-      ]
-    },
-    {
-      "date": "2026-11-04",
-      "course": "Chepstow",
-      "time": "16:10",
-      "race_time": "2026-11-04T16:10:00+00:00",
-      "race_id": "rac_32303480144",
-      "race_name": "Dunraven Open National Hunt Flat Race (Category 1 Elimination) (GBB Race)",
-      "race_type": "NH Flat",
-      "field_size": 13,
-      "non_runners_excluded": 2,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Sheephavenbay",
           "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "leader_price": {
+            "horse": "Sheephavenbay",
+            "bookmaker": "William Hill",
+            "decimal": 29.0,
+            "price_updated_at": "2026-11-05T09:48:22.676099+00:00",
+            "quote_observed_at": "2026-11-05T09:48:22.676099+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": 26.0,
+            "race_id": "04cd0235-2dcd-4269-b872-d0e25c1de46d",
+            "break_even_pct": 3.448,
+            "market_fair_pct": 2.766,
+            "bookmaker_overround_pct": 24.65,
+            "full_bookmaker_field": true,
+            "movement_pct": -10.34
+          },
+          "top_three": [
+            {
+              "horse": "Sheephavenbay",
+              "rank": 1,
+              "score": 0.27258
+            },
+            {
+              "horse": "Tough Decision",
+              "rank": 2,
+              "score": 0.26629
+            },
+            {
+              "horse": "Jeffs On A Mission",
+              "rank": 3,
+              "score": 0.22889
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -1898,167 +3010,23 @@
       "stage39_context": []
     },
     {
-      "date": "2026-11-04",
-      "course": "Wexford",
-      "time": "16:20",
-      "race_time": "2026-11-04T16:20:00+00:00",
-      "race_id": "rac_32303423971",
-      "race_name": "Thank You To All Our Sponsors & Supporters In 2026 (c & G) (pro/am) Flat Race",
-      "race_type": "NH Flat",
-      "field_size": 7,
-      "non_runners_excluded": 0,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": []
-    },
-    {
-      "date": "2026-11-04",
-      "course": "Kempton (AW)",
-      "time": "16:30",
-      "race_time": "2026-11-04T16:30:00+00:00",
-      "race_id": "rac_32303445278",
-      "race_name": "British EBF Future Stayers Maiden Stakes (Sire And Dam Restricted Race) (GBB/GBBPlus Race)",
-      "race_type": "Flat",
-      "field_size": 13,
-      "non_runners_excluded": 1,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -16.548,
-          "races": 83,
-          "priced_bets": 79
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -12.36,
-          "races": 48,
-          "priced_bets": 46
-        }
-      ]
-    },
-    {
-      "date": "2026-11-04",
-      "course": "Dundalk (AW)",
-      "time": "16:40",
-      "race_time": "2026-11-04T16:40:00+00:00",
-      "race_id": "rac_32303400727",
-      "race_name": "Celebrate Your Special Occasion At Dundalk Stadium Median Auction Maiden",
-      "race_type": "Flat",
-      "field_size": 11,
-      "non_runners_excluded": 0,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -30.573,
-          "races": 66,
-          "priced_bets": 64
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -52.566,
-          "races": 27,
-          "priced_bets": 24
-        }
-      ]
-    },
-    {
-      "date": "2026-11-04",
-      "course": "Kempton (AW)",
+      "date": "2026-11-05",
+      "course": "Southwell (AW)",
       "time": "17:00",
-      "race_time": "2026-11-04T17:00:00+00:00",
-      "race_id": "rac_32303447215",
-      "race_name": "Bet £20 Get £20 With Unibet Handicap Stakes",
+      "race_time": "2026-11-05T17:00:00+00:00",
+      "race_id": "rac_32303598301",
+      "race_name": "Midnite It's Actually Pretty Good Nursery Handicap Stakes",
       "race_type": "Flat",
-      "field_size": 9,
+      "field_size": 13,
       "non_runners_excluded": 1,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
+      "priced_runners": 13,
+      "full_bookmakers": [
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk"
+      ],
+      "preoff_at_generation": true,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -2076,8 +3044,44 @@
           "model_probability_available": false
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Thai Baht",
+          "model_probability_available": false,
+          "leader_price": {
+            "horse": "Thai Baht",
+            "bookmaker": "William Hill",
+            "decimal": 7.5,
+            "price_updated_at": "2026-11-05T09:47:36.145840+00:00",
+            "quote_observed_at": "2026-11-05T09:47:36.145840+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": 8.0,
+            "race_id": "e68ad799-1279-43b4-918f-77b14b7ae29f",
+            "break_even_pct": 13.333,
+            "market_fair_pct": 10.52,
+            "bookmaker_overround_pct": 26.74,
+            "full_bookmaker_field": true,
+            "movement_pct": 6.67
+          },
+          "top_three": [
+            {
+              "horse": "Thai Baht",
+              "rank": 1,
+              "score": 0.37998
+            },
+            {
+              "horse": "Angelic Melody",
+              "rank": 2,
+              "score": 0.27252
+            },
+            {
+              "horse": "Rum Point",
+              "rank": 3,
+              "score": 0.26424
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -2085,34 +3089,233 @@
         }
       },
       "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -16.548,
-          "races": 83,
-          "priced_bets": 79
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -12.36,
-          "races": 48,
-          "priced_bets": 46
-        }
-      ]
+      "stage39_context": []
     },
     {
-      "date": "2026-11-04",
-      "course": "Dundalk (AW)",
+      "date": "2026-11-05",
+      "course": "Chelmsford (AW)",
       "time": "17:15",
-      "race_time": "2026-11-04T17:15:00+00:00",
-      "race_id": "rac_32303402664",
-      "race_name": "Irishinjuredjockeys.com Handicap",
+      "race_time": "2026-11-05T17:15:00+00:00",
+      "race_id": "rac_32303546002",
+      "race_name": "AWC Finals Day At Newcastle 26th March Nursery Handicap Stakes",
+      "race_type": "Flat",
+      "field_size": 11,
+      "non_runners_excluded": 1,
+      "priced_runners": 11,
+      "full_bookmakers": [
+        "Sky Bet",
+        "William Hill",
+        "betway_uk"
+      ],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "STALE_OR_INCOMPLETE_RANKING",
+          "model_probability_available": false
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "STALE_OR_INCOMPLETE_RANKING",
+          "model_probability_available": false
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-05",
+      "course": "Southwell (AW)",
+      "time": "17:30",
+      "race_time": "2026-11-05T17:30:00+00:00",
+      "race_id": "rac_32303600238",
+      "race_name": "Make The Move To Midnite Restricted Maiden Fillies' Stakes (For Horses In Bands B, C And D) (GBB Race)",
+      "race_type": "Flat",
+      "field_size": 12,
+      "non_runners_excluded": 0,
+      "priced_runners": 12,
+      "full_bookmakers": [
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk"
+      ],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Wadima",
+          "model_probability_available": false,
+          "leader_price": {
+            "horse": "Wadima",
+            "bookmaker": "William Hill",
+            "decimal": 9.0,
+            "price_updated_at": "2026-11-05T09:46:48.827679+00:00",
+            "quote_observed_at": "2026-11-05T09:46:48.827679+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": 8.5,
+            "race_id": "363012dc-86d3-4e1f-a5c1-50f15f12d558",
+            "break_even_pct": 11.111,
+            "market_fair_pct": 9.025,
+            "bookmaker_overround_pct": 23.12,
+            "full_bookmaker_field": true,
+            "movement_pct": -5.56
+          },
+          "top_three": [
+            {
+              "horse": "Wadima",
+              "rank": 1,
+              "score": 0.38669
+            },
+            {
+              "horse": "Celestial Fire",
+              "rank": 2,
+              "score": 0.34015
+            },
+            {
+              "horse": "Setubal",
+              "rank": 3,
+              "score": 0.31017
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-05",
+      "course": "Chelmsford (AW)",
+      "time": "17:45",
+      "race_time": "2026-11-05T17:45:00+00:00",
+      "race_id": "rac_32303547939",
+      "race_name": "AW Trials Day - Lingfield 2nd Jan 2027 Novice Stakes (GBB Race)",
+      "race_type": "Flat",
+      "field_size": 5,
+      "non_runners_excluded": 0,
+      "priced_runners": 5,
+      "full_bookmakers": [
+        "Sky Bet",
+        "William Hill",
+        "betway_uk"
+      ],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Intsaar",
+          "model_probability_available": false,
+          "leader_price": {
+            "horse": "Intsaar",
+            "bookmaker": "William Hill",
+            "decimal": 17.0,
+            "price_updated_at": "2026-11-05T09:45:59.036712+00:00",
+            "quote_observed_at": "2026-11-05T09:45:59.036712+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": 15.0,
+            "race_id": "754884d3-cacf-4694-b6e2-d2cabba6a2f7",
+            "break_even_pct": 5.882,
+            "market_fair_pct": 5.42,
+            "bookmaker_overround_pct": 8.54,
+            "full_bookmaker_field": true,
+            "movement_pct": -11.76
+          },
+          "top_three": [
+            {
+              "horse": "Intsaar",
+              "rank": 1,
+              "score": -0.3976
+            },
+            {
+              "horse": "Two Steps Twice",
+              "rank": 2,
+              "score": -0.40623
+            },
+            {
+              "horse": "Baandee",
+              "rank": 3,
+              "score": -0.4964
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-05",
+      "course": "Southwell (AW)",
+      "time": "18:00",
+      "race_time": "2026-11-05T18:00:00+00:00",
+      "race_id": "rac_32303921780",
+      "race_name": "Midnite: Built For 2026 Not 2006 Handicap Stakes (Div I)",
       "race_type": "Flat",
       "field_size": 9,
       "non_runners_excluded": 0,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
+      "priced_runners": 9,
+      "full_bookmakers": [
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk"
+      ],
+      "preoff_at_generation": true,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -2130,116 +3333,44 @@
           "model_probability_available": false
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -30.573,
-          "races": 66,
-          "priced_bets": 64
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -52.566,
-          "races": 27,
-          "priced_bets": 24
-        }
-      ]
-    },
-    {
-      "date": "2026-11-04",
-      "course": "Kempton (AW)",
-      "time": "17:30",
-      "race_time": "2026-11-04T17:30:00+00:00",
-      "race_id": "rac_32303449152",
-      "race_name": "Try Unibet's New Racing Bet Builder Fillies' Handicap Stakes",
-      "race_type": "Flat",
-      "field_size": 7,
-      "non_runners_excluded": 0,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Modern Times",
           "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -16.548,
-          "races": 83,
-          "priced_bets": 79
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -12.36,
-          "races": 48,
-          "priced_bets": 46
-        }
-      ]
-    },
-    {
-      "date": "2026-11-04",
-      "course": "Dundalk (AW)",
-      "time": "17:45",
-      "race_time": "2026-11-04T17:45:00+00:00",
-      "race_id": "rac_32303404601",
-      "race_name": "Book Online At DundalkStadium.com Maiden",
-      "race_type": "Flat",
-      "field_size": 8,
-      "non_runners_excluded": 1,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "leader_price": {
+            "horse": "Modern Times",
+            "bookmaker": "William Hill",
+            "decimal": 3.5,
+            "price_updated_at": "2026-11-05T09:45:59.056685+00:00",
+            "quote_observed_at": "2026-11-05T09:45:59.056685+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": 3.75,
+            "race_id": "aeb64cf0-f1a0-46b7-bbef-2965be5053fe",
+            "break_even_pct": 28.571,
+            "market_fair_pct": 23.436,
+            "bookmaker_overround_pct": 21.91,
+            "full_bookmaker_field": true,
+            "movement_pct": 7.14
+          },
+          "top_three": [
+            {
+              "horse": "Modern Times",
+              "rank": 1,
+              "score": 0.26013
+            },
+            {
+              "horse": "That's Random",
+              "rank": 2,
+              "score": 0.15731
+            },
+            {
+              "horse": "Project Wallace",
+              "rank": 3,
+              "score": 0.03773
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -2247,34 +3378,25 @@
         }
       },
       "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -30.573,
-          "races": 66,
-          "priced_bets": 64
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -52.566,
-          "races": 27,
-          "priced_bets": 24
-        }
-      ]
+      "stage39_context": []
     },
     {
-      "date": "2026-11-04",
-      "course": "Kempton (AW)",
-      "time": "18:00",
-      "race_time": "2026-11-04T18:00:00+00:00",
-      "race_id": "rac_32303451089",
-      "race_name": "Unibet 3 Uniboosts A Day Handicap Stakes (London Sprint Series Qualifier)",
+      "date": "2026-11-05",
+      "course": "Chelmsford (AW)",
+      "time": "18:15",
+      "race_time": "2026-11-05T18:15:00+00:00",
+      "race_id": "rac_32303549876",
+      "race_name": "Midnite It's Actually Pretty Good Handicap Stakes",
       "race_type": "Flat",
       "field_size": 11,
       "non_runners_excluded": 0,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
+      "priced_runners": 11,
+      "full_bookmakers": [
+        "Sky Bet",
+        "William Hill",
+        "betway_uk"
+      ],
+      "preoff_at_generation": true,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -2292,62 +3414,44 @@
           "model_probability_available": false
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -16.548,
-          "races": 83,
-          "priced_bets": 79
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -12.36,
-          "races": 48,
-          "priced_bets": 46
-        }
-      ]
-    },
-    {
-      "date": "2026-11-04",
-      "course": "Dundalk (AW)",
-      "time": "18:15",
-      "race_time": "2026-11-04T18:15:00+00:00",
-      "race_id": "rac_32303406538",
-      "race_name": "Bet On The Best Night Out At Dundalk Stadium Nursery Handicap",
-      "race_type": "Flat",
-      "field_size": 7,
-      "non_runners_excluded": 0,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Travel Agent",
           "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "leader_price": {
+            "horse": "Travel Agent",
+            "bookmaker": "William Hill",
+            "decimal": 12.0,
+            "price_updated_at": "2026-11-05T09:45:11.916765+00:00",
+            "quote_observed_at": "2026-11-05T09:45:11.916765+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": 10.0,
+            "race_id": "2490f223-aff5-4457-a632-96d880b2afaa",
+            "break_even_pct": 8.333,
+            "market_fair_pct": 6.943,
+            "bookmaker_overround_pct": 20.03,
+            "full_bookmaker_field": true,
+            "movement_pct": -16.67
+          },
+          "top_three": [
+            {
+              "horse": "Travel Agent",
+              "rank": 1,
+              "score": 0.28414
+            },
+            {
+              "horse": "Dark Side Thunder",
+              "rank": 2,
+              "score": 0.24852
+            },
+            {
+              "horse": "Preferred",
+              "rank": 3,
+              "score": 0.24088
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -2355,34 +3459,26 @@
         }
       },
       "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -30.573,
-          "races": 66,
-          "priced_bets": 64
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -52.566,
-          "races": 27,
-          "priced_bets": 24
-        }
-      ]
+      "stage39_context": []
     },
     {
-      "date": "2026-11-04",
-      "course": "Kempton (AW)",
+      "date": "2026-11-05",
+      "course": "Southwell (AW)",
       "time": "18:30",
-      "race_time": "2026-11-04T18:30:00+00:00",
-      "race_id": "rac_32303453026",
-      "race_name": "Try Unibet's Smartview Racecards Handicap Stakes",
+      "race_time": "2026-11-05T18:30:00+00:00",
+      "race_id": "rac_32303602175",
+      "race_name": "Midnite: Built For 2026 Not 2006 Handicap Stakes (Div II)",
       "race_type": "Flat",
-      "field_size": 14,
+      "field_size": 9,
       "non_runners_excluded": 0,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
+      "priced_runners": 9,
+      "full_bookmakers": [
+        "Sky Bet",
+        "William Hill",
+        "betway_uk",
+        "ladbrokes_uk"
+      ],
+      "preoff_at_generation": true,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -2400,116 +3496,44 @@
           "model_probability_available": false
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -16.548,
-          "races": 83,
-          "priced_bets": 79
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -12.36,
-          "races": 48,
-          "priced_bets": 46
-        }
-      ]
-    },
-    {
-      "date": "2026-11-04",
-      "course": "Dundalk (AW)",
-      "time": "18:45",
-      "race_time": "2026-11-04T18:45:00+00:00",
-      "race_id": "rac_32303408475",
-      "race_name": "Book Your Christmas Party At Dundalk Stadium Handicap",
-      "race_type": "Flat",
-      "field_size": 13,
-      "non_runners_excluded": 3,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Infinity Blue",
           "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -30.573,
-          "races": 66,
-          "priced_bets": 64
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -52.566,
-          "races": 27,
-          "priced_bets": 24
-        }
-      ]
-    },
-    {
-      "date": "2026-11-04",
-      "course": "Dundalk (AW)",
-      "time": "19:15",
-      "race_time": "2026-11-04T19:15:00+00:00",
-      "race_id": "rac_32303410412",
-      "race_name": "Now Racing Every Wednesday At Dundalk Handicap",
-      "race_type": "Flat",
-      "field_size": 14,
-      "non_runners_excluded": 3,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "leader_price": {
+            "horse": "Infinity Blue",
+            "bookmaker": "William Hill",
+            "decimal": 9.5,
+            "price_updated_at": "2026-11-05T09:44:25.588215+00:00",
+            "quote_observed_at": "2026-11-05T09:44:25.588215+00:00",
+            "collector_observed_at": "2026-11-05T09:50:00.002197+00:00",
+            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
+            "opening_decimal": 10.0,
+            "race_id": "7689ead5-f7ad-4003-a2b3-23d3036efa88",
+            "break_even_pct": 10.526,
+            "market_fair_pct": 8.892,
+            "bookmaker_overround_pct": 18.38,
+            "full_bookmaker_field": true,
+            "movement_pct": 5.26
+          },
+          "top_three": [
+            {
+              "horse": "Infinity Blue",
+              "rank": 1,
+              "score": 0.06126
+            },
+            {
+              "horse": "Stanley Spencer",
+              "rank": 2,
+              "score": 0.06101
+            },
+            {
+              "horse": "Ormolulu",
+              "rank": 3,
+              "score": -0.03298
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -2517,29 +3541,20 @@
         }
       },
       "paper_candidates": [],
-      "stage39_context": [
-        {
-          "period": "2025_ALREADY_REVIEWED",
-          "roi_pct": -30.573,
-          "races": 66,
-          "priced_bets": 64
-        },
-        {
-          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
-          "roi_pct": -52.566,
-          "races": 27,
-          "priced_bets": 24
-        }
-      ]
+      "stage39_context": []
     }
   ],
   "coverage": {
-    "A_pending_or_stale": 47,
-    "C_pending_or_stale": 47,
-    "races_assessed": 47
+    "different_provider_race_ids_matched_by_time_and_horse": 2136,
+    "races_with_any_prices": 45,
+    "races_with_complete_bookmaker_book": 41,
+    "A_pending_or_stale": 45,
+    "C_pending_or_stale": 45,
+    "D_current_rankings": 40,
+    "races_assessed": 45
   },
   "new_paper_candidates": 0,
-  "new_forward_forecasts": 0,
+  "new_forward_forecasts": 40,
   "settlements_updated": 0,
   "forecast_settlements_updated": 0,
   "paper_performance": {
