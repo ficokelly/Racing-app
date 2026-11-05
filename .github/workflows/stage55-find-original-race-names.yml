@@ -1,0 +1,50 @@
+name: Stage55 - Find Original Race Names
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Download source archive and inventory historical artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m pip install kagglehub
+          python - <<'PY'
+          import json,os,subprocess
+          from pathlib import Path
+          import kagglehub
+          src=kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025')
+          with open(os.environ['GITHUB_ENV'],'a') as f:print('SOURCE_DIR='+src,file=f)
+          out=Path('reports/stage55');out.mkdir(parents=True,exist_ok=True)
+          repo=os.environ['GITHUB_REPOSITORY'];records=[]
+          for page in range(1,21):
+           try:
+            data=json.loads(subprocess.check_output(['gh','api','-X','GET',f'repos/{repo}/actions/artifacts','-f','per_page=100','-f',f'page={page}'],text=True))
+           except Exception as e:
+            records.append({'error':str(e)});break
+           batch=data.get('artifacts',[]);records.extend([{'id':a['id'],'name':a['name'],'size_in_bytes':a.get('size_in_bytes'),'expired':a.get('expired'),'created_at':a.get('created_at'),'workflow_run':a.get('workflow_run',{}).get('id')} for a in batch])
+           if len(batch)<100:break
+          (out/'stage55_actions_artifact_catalog.json').write_text(json.dumps(records,indent=2)+'\n')
+          print('Artifacts catalogued:',len(records))
+          for a in records:
+           if any(s in a.get('name','').lower() for s in ('name','recover','identity','source','historical','stage2')):print('POTENTIAL SOURCE',a)
+          PY
+      - name: Inspect source file headers and staged DB availability
+        run: |
+          python scripts/stage55_find_original_race_names.py --source "$SOURCE_DIR" --output reports/stage55
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage55-original-race-name-discovery
+          path: reports/stage55/
+          retention-days: 90
