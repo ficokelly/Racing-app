@@ -1,0 +1,74 @@
+name: Stage50 - Experimental Model D2 Weight Optimisation
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: stage50-d2-research
+  cancel-in-progress: false
+jobs:
+  optimise-d2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies and verify scripts
+        run: |
+          python -m pip install numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1 kagglehub
+          python -m py_compile scripts/stage50_model_d2_optimise.py scripts/stage38_model_dz_live.py scripts/stage30_gap_aware_abcd.py
+      - name: Restore historical database
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os,subprocess,sys
+          from pathlib import Path
+          repo=os.environ['GITHUB_REPOSITORY']
+          target=Path('stage50_source');target.mkdir(exist_ok=True)
+          latest=None
+          for page in range(1,21):
+              out=subprocess.check_output(['gh','api','-X','GET',f'repos/{repo}/actions/artifacts','-f','per_page=100','-f',f'page={page}'],text=True)
+              arts=json.loads(out).get('artifacts',[])
+              for item in arts:
+                  if item.get('name')=='stage2-historical-staging-database' and not item.get('expired'):
+                      if latest is None or item.get('created_at','')>latest.get('created_at',''):latest=item
+              if len(arts)<100:break
+          matches=[]
+          if latest:
+              try:
+                  subprocess.run(['gh','run','download',str(latest['workflow_run']['id']),'--repo',repo,'--name',latest['name'],'--dir',str(target)],check=True)
+                  matches=list(target.rglob('*.sqlite'))
+              except subprocess.CalledProcessError:pass
+          if matches:
+              db=max(matches,key=lambda p:p.stat().st_size).resolve()
+          else:
+              import kagglehub
+              archive=kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025')
+              db=(target/'historical_ukie_staging.sqlite').resolve()
+              subprocess.run([sys.executable,'import_historical_ukie.py','--mode','import','--input',str(archive),'--min-date','1988-01-01','--max-date','2026-10-07','--database',str(db),'--report',str(target/'import-report.json')],check=True)
+          if not db.exists() or db.stat().st_size<10000000:raise SystemExit('Historical database missing or too small')
+          with open(os.environ['GITHUB_ENV'],'a') as f:print('STAGE50_DB='+str(db),file=f)
+          print('Database',db,'bytes',db.stat().st_size)
+          PY
+      - name: Run 2025 training and 2026 validation
+        run: |
+          python -u scripts/stage50_model_d2_optimise.py --db "$STAGE50_DB" --output reports/stage50 --candidates 300
+      - name: Add readable summary
+        if: success()
+        run: |
+          cat reports/stage50/stage50_d2_2025_train_2026_test.csv >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload research results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage50-model-d2-optimisation
+          path: reports/stage50/
+          retention-days: 90
+          if-no-files-found: warn
