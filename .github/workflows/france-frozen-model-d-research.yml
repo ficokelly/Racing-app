@@ -1,0 +1,365 @@
+name: Stage 50 - France Free History and Frozen D Research
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  france-read-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install free-data research dependencies
+        run: python -m pip install --disable-pip-version-check numpy duckdb huggingface_hub hf_xet
+      - name: Audit open French runner history and test frozen model (read only)
+        run: |
+          python - <<'PY_FRANCE_RESEARCH'
+          #!/usr/bin/env python3
+          """France PMU public-data, read-only provenance/coverage and frozen D transfer test.
+          No credentials; no production writes; avoids falsely treating tote dividends as SP.
+          """
+          from __future__ import annotations
+          import collections as C
+          import datetime as dt
+          import hashlib
+          import json
+          import math
+          import os
+          from pathlib import Path
+          import re
+          import sys
+          import traceback
+          import unicodedata
+          
+          OUT = Path('france_research_report')
+          OUT.mkdir(parents=True, exist_ok=True)
+          DATASET = 'annaelmoussa/horse-racing-france'
+          BASE = Path('france_research_download')
+          REPORT = {'source':DATASET,'source_url':'https://huggingface.co/datasets/'+DATASET,
+                    'tested_at_utc':dt.datetime.now(dt.timezone.utc).isoformat(),
+                    'source_license':'other — confirm reuse and redistribution permissions',
+                    'live_app_changed':False,'existing_models_changed':False,'training_source_2014_onward':True,
+                    'result_source':'French PMU dataset, not The Racing API',
+                    'roi_policy':'Never equate tote dividends with UK/IE bookmaker SP. Only compute true SP ROI if verified SP exists.',
+                    'status':'started','github_commit':os.environ.get('GITHUB_SHA'), 'warnings':[],'errors':[],'files':{},'schemas':{},'mapped_fields':{},'completeness':{},
+                    'backtest':{},'race_counts':{},'sampling':{}}
+          
+          def save():
+              (OUT/'france-research.json').write_text(json.dumps(REPORT,ensure_ascii=False,indent=2,default=str)+'\n',encoding='utf-8')
+              lines=['# French historical racing and frozen Model D transfer audit','',
+                     '**Status:** '+REPORT.get('status','unknown'),'',
+                     'Data: '+REPORT['source_url'],
+                     'Licence: **other**. Data redistribution and use in a published app have not been authorised.','',
+                     '## Files and source schema','']
+              for k,meta in REPORT.get('files',{}).items():
+                  lines.append(f'- {k}: {meta.get("shards",0)} Parquet files, '+str(meta.get('total_bytes',0))+' bytes downloaded')
+              for k,cols in REPORT.get('schemas',{}).items():
+                  lines.extend(['',f'**{k} columns:** '+', '.join(cols)])
+              lines.extend(['','## Coverage', ''])
+              for k,v in REPORT.get('race_counts',{}).items():lines.append(f'- {k}: {v}')
+              for k,v in REPORT.get('completeness',{}).items():lines.append(f'- {k}: {v}')
+              lines.extend(['','## Frozen Model D backtest',''])
+              for k,v in REPORT.get('backtest',{}).items():lines.append(f'- {k}: {v}')
+              if REPORT.get('warnings'):
+                  lines.extend(['','## Caveats'])
+                  lines.extend('- '+str(w) for w in REPORT['warnings'])
+              if REPORT.get('errors'):
+                  lines.extend(['','## Errors'])
+                  lines.extend('- '+str(w) for w in REPORT['errors'])
+              (OUT/'france-research.md').write_text('\n'.join(lines)+'\n',encoding='utf-8')
+              print('Report saved',OUT,flush=True)
+          
+          def norm(x):
+              t=unicodedata.normalize('NFKD',str(x or ''))
+              return re.sub('[^a-z0-9]','',t.encode('ascii','ignore').decode().lower())
+          
+          def field(names,*choices):
+              lookup={norm(x):x for x in names}
+              for name in choices:
+                  if norm(name) in lookup:return lookup[norm(name)]
+              return None
+          
+          def keychoice(names,choices):return field(names,*choices)
+          
+          def sqlcol(alias,name):
+              return f'{alias}."{name.replace(chr(34),chr(34)*2)}"' if name else 'NULL'
+          
+          def check_file_list(files,group):
+              def matches(f):
+                  if not f.lower().endswith('.parquet'):return False
+                  p=f.lower().split('/')
+                  return group in p or re.search(r'(^|[/-])'+group+r'[-_]',f.lower()) is not None
+              out=[x for x in files if matches(x) and ('data/parquet/' in x.lower() or x.lower().startswith(group+'/'))]
+              if not out:out=[x for x in files if matches(x)]
+              return sorted(set(out))
+          
+          def outer():
+              from huggingface_hub import HfApi, hf_hub_download
+              import duckdb
+              import numpy as np
+              api=HfApi(); info=api.repo_info(DATASET,repo_type='dataset')
+              rev=info.sha
+              REPORT['revision_sha']=rev
+              names=api.list_repo_files(DATASET,repo_type='dataset',revision=rev)
+              lists={group:check_file_list(names,group) for group in ('courses','participants','rapports','reunions')}
+              REPORT['file_manifest']={k:v for k,v in lists.items()}
+              if not lists['courses'] or not lists['participants']:
+                  raise RuntimeError('Could not locate courses and participants Parquet; see file_manifest for source paths')
+              # Download only the two essential tables for a full runner history. Download
+              # reunions too if available for venue-level going; payouts are audited but
+              # not mistaken for decimal starting prices.
+              paths={}
+              for group in ('courses','participants','reunions','rapports'):
+                  src=lists[group]
+                  if not src:continue
+                  paths[group]=[]
+                  for i,name in enumerate(src):
+                      print(f'Downloading {group} {i+1}/{len(src)}: {name}',flush=True)
+                      path=hf_hub_download(DATASET,filename=name,revision=rev,repo_type='dataset',local_dir=str(BASE))
+                      paths[group].append(path)
+                  REPORT['files'][group]={'shards':len(src),'total_bytes':sum(Path(p).stat().st_size for p in paths[group]),'names':src}
+                  save()
+              con=duckdb.connect(database=':memory:')
+              con.execute("SET memory_limit='4GB'")
+              con.execute('SET threads=2')
+              for group,files in paths.items():
+                  file_literals=','.join("'"+x.replace("'","''")+"'" for x in files)
+                  con.execute(f'CREATE VIEW {group} AS SELECT * FROM read_parquet([{file_literals}], union_by_name=true)')
+                  cols=[x[0] for x in con.execute(f'DESCRIBE {group}').fetchall()]
+                  REPORT['schemas'][group]=cols
+                  print(f'{group} schema:',cols,flush=True)
+              save()
+              ccols=REPORT['schemas']['courses'];pcols=REPORT['schemas']['participants'];rcols=REPORT['schemas'].get('reunions',[])
+              c={'race_key':keychoice(ccols,['raceKey','race_key']),
+                 'date':keychoice(ccols,['date','raceDate']),
+                 'course':keychoice(ccols,['hippodrome','course','lieu']),
+                 'discipline':keychoice(ccols,['discipline']),
+                 'specialite':keychoice(ccols,['specialite']),
+                 'distance':keychoice(ccols,['distance']),
+                 'arrival':keychoice(ccols,['ordreArrivee','ordre_arrivee']),
+                 'final':keychoice(ccols,['arriveeDefinitive','arrivee_definitive']),
+                 'reunion_key':keychoice(ccols,['reunionKey','reunion_key']),
+                 'class':keychoice(ccols,['categorieParticularite','categorie']),
+                 'surface':keychoice(ccols,['surface','piste','typePiste','naturePiste']),
+                 'going':keychoice(ccols,['etatTerrain','terrain','going','etatPiste'])}
+              p={'race_key':keychoice(pcols,['raceKey','race_key']),
+                 'horse':keychoice(pcols,['nomCheval','cheval','horse','horseName','nom']),
+                 'horse_id':keychoice(pcols,['idCheval','id_cheval','horseId','identifiantCheval','horse_id']),
+                 'number':keychoice(pcols,['numPmu','numPmuPartant','numeroPmu','numero','numCheval','numPartant','numeroPartant','numProgramme']),
+                 'finish':keychoice(pcols,['position','place','classement','rang','ordreArrivee','rangArrivee']),
+                 'status':keychoice(pcols,['statut','statutPartant','nonPartant','estNonPartant']),
+                 'trainer':keychoice(pcols,['entraineur','nomEntraineur','trainer','entraineurNom']),
+                 'jockey':keychoice(pcols,['jockey','nomJockey','driver','driverName','nomDriver']),
+                 'age':keychoice(pcols,['age','ageCheval']),
+                 'draw':keychoice(pcols,['numCorde','corde','draw','stall','numeroCorde','numeroStalle']),
+                 'rating':keychoice(pcols,['valeurHandicap','valeur','rating','officialRating','ofr','handicap']),
+                 'sire':keychoice(pcols,['pere','sire','nomPere']),
+                 'dam':keychoice(pcols,['mere','dam','nomMere']),
+                 'comment':keychoice(pcols,['commentaire','commentaireCourse','comment','raceComment']),
+                 'odds':keychoice(pcols,['cote','coteDirect','coteProbable','odds','cotePMU'])}
+              rr={'key':keychoice(rcols,['reunionKey','reunion_key']),
+                  'going':keychoice(rcols,['etatTerrain','terrain','going','etatPiste','penetrometre']),
+                  'surface':keychoice(rcols,['typePiste','naturePiste','surface'])}
+              REPORT['mapped_fields']={'courses':c,'participants':p,'reunions':rr}
+              if not all((c['race_key'],c['date'],c['discipline'],c['arrival'],p['race_key'],p['horse'],p['number'])):
+                  REPORT['status']='SCHEMA_INCOMPLETE: safe audit only'
+                  REPORT['warnings'].append('Cannot reliably map joined race keys, runner numbers, and winners; backtest not run.')
+                  save();return
+              # Count outcomes and field coverage in Flat / jumps; trotting excluded by explicit discipline guard.
+              filterkind=f"UPPER(CAST({sqlcol('c',c['discipline'])} AS VARCHAR)) IN ('PLAT','HAIE','STEEPLECHASE','CROSS','CROSS_COUNTRY')"
+              totals=con.execute(f'''SELECT UPPER(CAST({sqlcol('c',c['discipline'])} AS VARCHAR)) AS typ, COUNT(*) as rows,
+                      COUNT(DISTINCT {sqlcol('c',c['race_key'])}) as races,
+                      MIN({sqlcol('c',c['date'])}),MAX({sqlcol('c',c['date'])})
+                      FROM courses c JOIN participants p ON {sqlcol('c',c['race_key'])}={sqlcol('p',p['race_key'])}
+                      GROUP BY 1 ORDER BY 1''').fetchall()
+              REPORT['race_counts']['by_discipline']=[{'discipline':a,'runner_rows':b,'races':d,'start':str(e),'end':str(f)} for a,b,d,e,f in totals]
+              join_reunions=bool(rr['key'] and c['reunion_key'])
+              selected_cols=[('raceid',sqlcol('c',c['race_key'])),('date',sqlcol('c',c['date'])),
+                      ('course',sqlcol('c',c['course'])),('discipline',sqlcol('c',c['discipline'])),
+                      ('specialite',sqlcol('c',c['specialite'])),('distance',sqlcol('c',c['distance'])),
+                      ('arrival',sqlcol('c',c['arrival'])),('is_final',sqlcol('c',c['final'])),
+                      ('race_class',sqlcol('c',c['class'])),('surface',sqlcol('c',c['surface']) if c['surface'] else (sqlcol('r',rr['surface']) if join_reunions else 'NULL')),
+                      ('going',sqlcol('c',c['going']) if c['going'] else (sqlcol('r',rr['going']) if join_reunions else 'NULL'))]
+              selected_cols += [(k,sqlcol('p',v)) for k,v in p.items() if k!='race_key']
+              selected_sql=', '.join(f'{val} AS "{k}"' for k,val in selected_cols)
+              join=f'LEFT JOIN reunions r ON {sqlcol("c",c["reunion_key"])}={sqlcol("r",rr["key"])}' if join_reunions else ''
+              sql=f'''SELECT {selected_sql} FROM courses c JOIN participants p ON {sqlcol('c',c['race_key'])}={sqlcol('p',p['race_key'])}
+                      {join} WHERE {filterkind} AND CAST({sqlcol('c',c['date'])} AS VARCHAR) < '2026-01-01'
+                      ORDER BY {sqlcol('c',c['date'])}, {sqlcol('c',c['race_key'])}, {sqlcol('p',p['number'])}'''
+              # Validate join cardinality and representative result data before evaluation.
+              curs=con.execute(sql)
+              columns=[x[0] for x in curs.description]
+              REPORT['sampling']['selected_fields']=columns
+              from scripts.stage30_gap_aware_abcd import Past, METRICS, number, normal
+              frozen=json.loads(Path('reports/stage30/stage30-summary.json').read_text())
+              dmeta=frozen.get('model_results',{}).get('D',{})
+              if (frozen.get('test_year')!=2025 or dmeta.get('chosen_combination')!='D-064-gap14'
+                  or abs(float(dmeta.get('selection_margin',0))-0.14)>1e-6):
+                  REPORT['status']='FROZEN_MODEL_UNVERIFIED'
+                  REPORT['warnings'].append('Exact frozen UK/IE combination D-064-gap14 not verified; no backtest.')
+                  save();return
+              weights=np.asarray([float(dmeta['weights_pct'][k]) for k in METRICS],dtype=float)
+              weights/=weights.sum()
+              gate=float(dmeta['selection_margin'])
+              REPORT['backtest']['weights_pct']={k:float(dmeta['weights_pct'][k]) for k in METRICS}
+              REPORT['backtest']['selection_margin']=gate
+              REPORT['backtest']['source']='Unmodified scripts/stage30_gap_aware_abcd.py Past.score/Past.update'
+              REPORT['backtest']['no_2025_training']=True
+              stats=C.Counter();samples=C.defaultdict(lambda:{'races':0,'rank1_wins':0,'top2_wins':0,'selected_races':0,'selection_wins':0,'priced':0})
+              coverage=C.Counter();sample_rows=[];prior_date=None;current_id=None;group=[];pending=[]
+              evaluator=Past({})
+              def parse_arrival(value):
+                  if value is None:return {}
+                  try:
+                      v=json.loads(value) if isinstance(value,str) else value
+                  except (ValueError,TypeError):return {}
+                  if not isinstance(v,list):return {}
+                  m={}
+                  for pos,finishers in enumerate(v,1):
+                      if not isinstance(finishers,list):finishers=[finishers]
+                      for n in finishers:
+                          try:m[int(n)]=pos
+                          except (ValueError,TypeError):continue
+                  return m
+              def create_rows(rows):
+                  arrival=parse_arrival(rows[0]['arrival']);members=[];rawseen=set()
+                  for r in rows:
+                      try:num=int(r['number'])
+                      except (TypeError,ValueError):num=None
+                      if num is None or num in rawseen:continue
+                      rawseen.add(num)
+                      if not r['horse']:continue
+                      pos=arrival.get(num)
+                      status=str(r.get('status') or '').lower()
+                      if 'nonpart' in norm(status) or norm(status) in ('np','nonrunner','scratched','withdrawn','true'):continue
+                      discipline=norm(r.get('discipline'))
+                      spec=norm(r.get('specialite'))
+                      kind='hurdle' if discipline=='haie' else 'chase' if discipline in ('steeplechase','cross','crosscountry') else 'flat'
+                      surf=str(r.get('surface') or '')
+                      if 'psf' in surf.lower() or 'sable' in surf.lower():surf='synthetic'
+                      distance=number(r.get('distance'))
+                      # Meter-to-furlong conversion is only a unit conversion, not inferred history.
+                      furlongs=distance/201.168 if distance is not None else None
+                      horse=str(r['horse'])
+                      key=str(r.get('horse_id') or '').strip()
+                      # Identity uses stable horse ID where provided, else normalized name; report it.
+                      canonical=key if key else normal(horse)
+                      race=(str(r['raceid']),str(r['date'])[:10],str(r.get('course') or ''),kind,
+                            surf,furlongs,str(r.get('going') or ''),str(r.get('race_class') or ''),
+                            canonical,horse,'FR',key or None,pos,'finished' if pos is not None else 'unplaced',
+                            str(r.get('trainer') or ''),str(r.get('jockey') or ''),
+                            number(r.get('rating')),number(r.get('age')),r.get('sire'),r.get('dam'),
+                            None, number(r.get('draw')),str(r.get('comment') or ''))
+                      members.append(race)
+                      for col in ('course','distance','going','horse','horse_id','trainer','jockey','rating','age','draw','sire','dam','comment','odds'):
+                          if r.get(col) is not None and str(r[col]).strip()!='':coverage[col]+=1
+                      coverage['total_runner_rows']+=1
+                      if pos is not None:coverage['finish_positions_linked']+=1
+                  return members
+              def flush(group):
+                  if not group:return
+                  stats['races_examined']+=1
+                  rows=create_rows(group)
+                  if len(rows)<2:
+                      stats['races_without_two_valid_runners']+=1;return
+                  if sum(r[12]==1 for r in rows)!=1:
+                      stats['races_without_one_verifiable_winner']+=1;return
+                  stats['races_with_one_verified_winner']+=1
+                  day=rows[0][1]
+                  year=int(day[:4]);kind='jumps' if rows[0][3] in ('hurdle','chase') else 'flat'
+                  if year in (2024,2025):
+                      result=evaluator.score(rows)
+                      if result:
+                          active=weights.copy()
+                          if result['kind']=='jumps':active[4]=0.
+                          else:active[7]=0.
+                          active/=active.sum()
+                          vals=np.asarray(result['x'][:,:8],dtype=float)@active
+                          prior_counts=[evaluator.s.get(('horse',evaluator.identity(q)),(0,0,0))[0] for q in rows]
+                          order=np.argsort(-vals,kind='stable')
+                          top=order[0];second=order[1]
+                          gap=float(vals[top]-vals[second])
+                          wins=int(result['winning_index'])
+                          for key in (f'{year}-overall',f'{year}-{kind}'):
+                              x=samples[key];x['races']+=1
+                              x['runner_count']=x.get('runner_count',0)+len(rows)
+                              x['runners_with_previous_start']=x.get('runners_with_previous_start',0)+sum(n>=1 for n in prior_counts)
+                              x['runners_with_3plus_prior_starts']=x.get('runners_with_3plus_prior_starts',0)+sum(n>=3 for n in prior_counts)
+                              x['runners_with_5plus_prior_starts']=x.get('runners_with_5plus_prior_starts',0)+sum(n>=5 for n in prior_counts)
+                              x['random_expected_top1_wins']=x.get('random_expected_top1_wins',0)+1/len(rows)
+                              x['random_expected_top2_wins']=x.get('random_expected_top2_wins',0)+2/len(rows)
+                              x['rank1_wins']+=int(top==wins)
+                              x['top2_wins']+=int(top==wins or second==wins)
+                              if gap>=gate:
+                                  x['selected_races']+=1;x['selection_wins']+=int(top==wins)
+                          if len(sample_rows)<20 and year==2025:
+                              sample_rows.append({'date':day,'race':rows[0][2],'discipline':kind,
+                                  'top1':result['horse'][top],'top2':result['horse'][second],
+                                  'winner':result['horse'][wins],'score_margin':round(gap,5),
+                                  'qualifying_selection':gap>=gate})
+                  # Update ONLY after all races on the same racing day have been scored.
+                  pending.append(rows)
+              prev_year=None
+              while True:
+                  chunk=curs.fetchmany(3000)
+                  if not chunk:break
+                  for vals in chunk:
+                      row=dict(zip(columns,vals));day=str(row['date'])[:10];rid=str(row['raceid'])
+                      if not day or day=='None':continue
+                      if prior_date is not None and day!=prior_date:
+                          flush(group);group=[]
+                          for prior in pending:evaluator.update(prior)
+                          pending=[]
+                      elif current_id is not None and rid!=current_id:
+                          flush(group);group=[]
+                      group.append(row);prior_date=day;current_id=rid
+                  # Deliberately do NOT publish progress containing results to live app.
+              flush(group)
+              for prior in pending:evaluator.update(prior)
+              REPORT['race_counts']['race_validation']=dict(stats)
+              REPORT['completeness']={name:round(100*cnt/max(1,coverage['total_runner_rows']),2) for name,cnt in coverage.items() if name!='total_runner_rows'}
+              REPORT['completeness']['mapped_runner_rows']=coverage['total_runner_rows']
+              REPORT['backtest']['segments']={}
+              if not any(k.startswith('2025') for k in samples):
+                  REPORT['warnings'].append('No eligible 2025 races could be evaluated. This is not a valid 2025 performance test.')
+              for key,s in samples.items():
+                  v=dict(s)
+                  v['rank1_strike_pct']=round(100*v['rank1_wins']/max(1,v['races']),3)
+                  v['top2_combined_win_pct']=round(100*v['top2_wins']/max(1,v['races']),3)
+                  v['selected_strike_pct']=round(100*v['selection_wins']/v['selected_races'],3) if v['selected_races'] else None
+                  v['runner_3plus_prior_pct']=round(100*v['runners_with_3plus_prior_starts']/max(1,v['runner_count']),2)
+                  v['random_baseline_top1_pct']=round(100*v['random_expected_top1_wins']/max(1,v['races']),3)
+                  v['random_baseline_top2_pct']=round(100*v['random_expected_top2_wins']/max(1,v['races']),3)
+                  v['roi_pct']=None
+                  v['roi_reason']='No verified comparable horse-specific SP in evaluation input; winner dividends are not SP.'
+                  REPORT['backtest']['segments'][key]=v
+              REPORT['backtest']['example_2025_predictions']=sample_rows
+              REPORT['backtest']['roi_pct']=None
+              REPORT['warnings'].append('France racing uses PMU pool dividends, not UK/Ireland bookmaker SP. No comparable ROI has been claimed.')
+              if not c.get('going') and not rr.get('going'):
+                  REPORT['warnings'].append('Ground absent in both normalized race and meeting tables; Model D Ground factor has no evidence and transfer is not full-factor equivalent.')
+              if not p.get('draw'):
+                  REPORT['warnings'].append('Draw unavailable; Flat ranking has a neutral Draw factor.')
+              if not p.get('horse_id'):
+                  REPORT['warnings'].append('Stable horse IDs unavailable; name-only identities risk collisions.')
+              REPORT['warnings'].append('French backtest is read-only transfer research on the same frozen scoring logic and original frozen weights, not newly trained French Model D.')
+              REPORT['status']='COMPLETE'
+              save()
+          
+          if __name__=='__main__':
+              try:outer()
+              except Exception as e:
+                  REPORT['status']='FAILED'
+                  REPORT['errors'].append(type(e).__name__+': '+str(e))
+                  REPORT['errors'].append(traceback.format_exc(limit=5))
+                  save()
+                  raise
+          PY_FRANCE_RESEARCH
+      - name: Publish report and diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: france-frozen-model-d-research
+          path: france_research_report/
+          if-no-files-found: error
+          retention-days: 30
