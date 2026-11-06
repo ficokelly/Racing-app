@@ -1,0 +1,52 @@
+name: Stage65H - Model D Data Safety Audit
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  audit-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate and self-test read-only script
+        run: |
+          python -m py_compile scripts/stage65h_model_d_data_safety_audit.py
+          python scripts/stage65h_model_d_data_safety_audit.py --self-test
+      - name: Retrieve existing Stage65E archive (no rebuilding or model changes)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage65e
+          python - <<'PY'
+          import json,os,subprocess
+          repo=os.environ['GITHUB_REPOSITORY']
+          data=json.loads(subprocess.check_output(['gh','api','-X','GET',f'repos/{repo}/actions/artifacts','-f','name=stage65e-detailed-history-database','-f','per_page=100'],text=True))
+          arts=[a for a in data.get('artifacts',[]) if a.get('name')=='stage65e-detailed-history-database' and not a.get('expired')]
+          if not arts:raise SystemExit('Stage65E historical artifact unavailable; run Stage65E/Stage65F first')
+          art=max(arts,key=lambda a:a['created_at'])
+          print('Restoring existing archive from run',art['workflow_run']['id'])
+          subprocess.run(['gh','run','download',str(art['workflow_run']['id']),'--repo',repo,'--name','stage65e-detailed-history-database','--dir','reports/stage65e'],check=True)
+          PY
+      - name: Audit history and fingerprint frozen Model D only
+        run: |
+          python -u scripts/stage65h_model_d_data_safety_audit.py \
+            --db reports/stage65e/detailed_history.sqlite \
+            --repo . \
+            --out reports/stage65h
+      - name: Upload small safety report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage65h-model-d-data-safety-audit
+          path: reports/stage65h/
+          retention-days: 90
+          if-no-files-found: warn
