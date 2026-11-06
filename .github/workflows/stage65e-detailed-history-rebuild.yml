@@ -1,0 +1,39 @@
+name: Stage65E - Rebuild Full Detailed UK IE History
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  rebuild:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install 'kagglehub>=0.3,<1'
+      - name: Validate script
+        run: python -m py_compile scripts/stage65e_rebuild_detailed_history.py
+      - name: Download exact Stage2 source and rebuild detailed form
+        run: python -u scripts/stage65e_rebuild_detailed_history.py --out reports/stage65e
+      - name: Upload completeness report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage65e-detailed-form-report
+          path: |
+            reports/stage65e/stage65e_report.json
+            reports/stage65e/stage65e_year_coverage.csv
+          retention-days: 90
+          if-no-files-found: warn
+      - name: Upload rebuilt detailed database
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage65e-detailed-history-database
+          path: reports/stage65e/detailed_history.sqlite
+          compression-level: 6
+          retention-days: 90
+          if-no-files-found: error
