@@ -1,7 +1,7 @@
 {
   "version": 1,
   "day": "2026-11-06",
-  "generated_at": "2026-11-06T18:26:32.659935+00:00",
+  "generated_at": "2026-11-06T19:24:18.141362+00:00",
   "policy": "stage40-paper-only-edge20pct-and-4pp-v1",
   "state": "RESEARCH_ONLY_CALIBRATION_UNVALIDATED",
   "calibration": {
@@ -14,12 +14,12 @@
   "readme": "Forecasts independent of odds; bookmaker break-even and vig-free market are separate. Uncalibrated model EV is not a proven betting edge.",
   "price_feed_status": "FRESH",
   "price_feed_audit": {
-    "age_minutes": 17.7,
-    "collected_at": "2026-11-06T18:08:48.730112+00:00",
+    "age_minutes": 30.5,
+    "collected_at": "2026-11-06T18:53:47.228399+00:00",
     "ignored_rows": {
-      "source_marked_stale": 152
+      "source_marked_stale": 44
     },
-    "indexed_races": 7
+    "indexed_races": 4
   },
   "races": [
     {
@@ -1417,15 +1417,8 @@
       "race_type": "Flat",
       "field_size": 10,
       "non_runners_excluded": 1,
-      "priced_runners": 10,
-      "full_bookmakers": [
-        "Bet365",
-        "Sky Bet",
-        "William Hill",
-        "betway_uk",
-        "ladbrokes_uk",
-        "pointsbetau"
-      ],
+      "priced_runners": 0,
+      "full_bookmakers": [],
       "preoff_at_generation": false,
       "models": {
         "A": {
@@ -1448,22 +1441,7 @@
           "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
           "leader": "Baila Conmigo",
           "model_probability_available": false,
-          "leader_price": {
-            "horse": "Baila Conmigo",
-            "bookmaker": "William Hill",
-            "decimal": 5.0,
-            "price_updated_at": "2026-11-06T18:08:47.424207+00:00",
-            "quote_observed_at": "2026-11-06T18:08:47.424207+00:00",
-            "collector_observed_at": "2026-11-06T18:08:48.730112+00:00",
-            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
-            "opening_decimal": 5.5,
-            "race_id": "94b762e3-b406-4eff-886e-d174a1e100b7",
-            "break_even_pct": 20.0,
-            "market_fair_pct": 16.377,
-            "bookmaker_overround_pct": 22.13,
-            "full_bookmaker_field": true,
-            "movement_pct": 10.0
-          },
+          "leader_price": null,
           "top_three": [
             {
               "horse": "Baila Conmigo",
@@ -1488,22 +1466,7 @@
           "model_version": "model-z-stage38-frozen-stage34-candidate-paper-v1",
           "leader": "Baila Conmigo",
           "model_probability_available": false,
-          "leader_price": {
-            "horse": "Baila Conmigo",
-            "bookmaker": "William Hill",
-            "decimal": 5.0,
-            "price_updated_at": "2026-11-06T18:08:47.424207+00:00",
-            "quote_observed_at": "2026-11-06T18:08:47.424207+00:00",
-            "collector_observed_at": "2026-11-06T18:08:48.730112+00:00",
-            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
-            "opening_decimal": 5.5,
-            "race_id": "94b762e3-b406-4eff-886e-d174a1e100b7",
-            "break_even_pct": 20.0,
-            "market_fair_pct": 16.377,
-            "bookmaker_overround_pct": 22.13,
-            "full_bookmaker_field": true,
-            "movement_pct": 10.0
-          },
+          "leader_price": null,
           "top_three": [
             {
               "horse": "Baila Conmigo",
@@ -1551,15 +1514,9 @@
       "race_type": "Flat",
       "field_size": 14,
       "non_runners_excluded": 0,
-      "priced_runners": 14,
-      "full_bookmakers": [
-        "Sky Bet",
-        "William Hill",
-        "betway_uk",
-        "ladbrokes_uk",
-        "pointsbetau"
-      ],
-      "preoff_at_generation": true,
+      "priced_runners": 0,
+      "full_bookmakers": [],
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -1581,22 +1538,7 @@
           "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
           "leader": "Wise Crack",
           "model_probability_available": false,
-          "leader_price": {
-            "horse": "Wise Crack",
-            "bookmaker": "William Hill",
-            "decimal": 7.5,
-            "price_updated_at": "2026-11-06T18:08:47.443103+00:00",
-            "quote_observed_at": "2026-11-06T18:08:47.443103+00:00",
-            "collector_observed_at": "2026-11-06T18:08:48.730112+00:00",
-            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
-            "opening_decimal": 7.0,
-            "race_id": "38ba170c-7a6e-4901-9ae4-5e4e1f067083",
-            "break_even_pct": 13.333,
-            "market_fair_pct": 9.93,
-            "bookmaker_overround_pct": 34.28,
-            "full_bookmaker_field": true,
-            "movement_pct": -6.67
-          },
+          "leader_price": null,
           "top_three": [
             {
               "horse": "Wise Crack",
@@ -1634,15 +1576,9 @@
       "race_type": "Flat",
       "field_size": 14,
       "non_runners_excluded": 3,
-      "priced_runners": 14,
-      "full_bookmakers": [
-        "Bet365",
-        "Sky Bet",
-        "William Hill",
-        "betway_uk",
-        "ladbrokes_uk"
-      ],
-      "preoff_at_generation": true,
+      "priced_runners": 0,
+      "full_bookmakers": [],
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -1664,22 +1600,7 @@
           "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
           "leader": "Prevalence",
           "model_probability_available": false,
-          "leader_price": {
-            "horse": "Prevalence",
-            "bookmaker": "William Hill",
-            "decimal": 9.5,
-            "price_updated_at": "2026-11-06T18:08:47.471256+00:00",
-            "quote_observed_at": "2026-11-06T18:08:47.471256+00:00",
-            "collector_observed_at": "2026-11-06T18:08:48.730112+00:00",
-            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
-            "opening_decimal": 9.0,
-            "race_id": "d936959f-a929-4c15-a73f-37aa74233ea6",
-            "break_even_pct": 10.526,
-            "market_fair_pct": 7.986,
-            "bookmaker_overround_pct": 31.82,
-            "full_bookmaker_field": true,
-            "movement_pct": -5.26
-          },
+          "leader_price": null,
           "top_three": [
             {
               "horse": "Prevalence",
@@ -1704,22 +1625,7 @@
           "model_version": "model-z-stage38-frozen-stage34-candidate-paper-v1",
           "leader": "Prevalence",
           "model_probability_available": false,
-          "leader_price": {
-            "horse": "Prevalence",
-            "bookmaker": "William Hill",
-            "decimal": 9.5,
-            "price_updated_at": "2026-11-06T18:08:47.471256+00:00",
-            "quote_observed_at": "2026-11-06T18:08:47.471256+00:00",
-            "collector_observed_at": "2026-11-06T18:08:48.730112+00:00",
-            "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
-            "opening_decimal": 9.0,
-            "race_id": "d936959f-a929-4c15-a73f-37aa74233ea6",
-            "break_even_pct": 10.526,
-            "market_fair_pct": 7.986,
-            "bookmaker_overround_pct": 31.82,
-            "full_bookmaker_field": true,
-            "movement_pct": -5.26
-          },
+          "leader_price": null,
           "top_three": [
             {
               "horse": "Prevalence",
@@ -1769,12 +1675,14 @@
       "non_runners_excluded": 0,
       "priced_runners": 14,
       "full_bookmakers": [
+        "Paddy Power",
         "Sky Bet",
         "William Hill",
         "betway_uk",
-        "ladbrokes_uk"
+        "ladbrokes_uk",
+        "pointsbetau"
       ],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -1798,19 +1706,19 @@
           "model_probability_available": false,
           "leader_price": {
             "horse": "Battenburg Belle",
-            "bookmaker": "William Hill",
-            "decimal": 17.0,
-            "price_updated_at": "2026-11-06T18:08:47.477004+00:00",
-            "quote_observed_at": "2026-11-06T18:08:47.477004+00:00",
-            "collector_observed_at": "2026-11-06T18:08:48.730112+00:00",
+            "bookmaker": "Paddy Power",
+            "decimal": 15.0,
+            "price_updated_at": "2026-11-06T18:52:24+00:00",
+            "quote_observed_at": "2026-11-06T18:52:24+00:00",
+            "collector_observed_at": "2026-11-06T18:53:47.228399+00:00",
             "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
-            "opening_decimal": 19.0,
+            "opening_decimal": null,
             "race_id": "0e980219-ea3f-49ef-9aaf-9bbccfd03ef6",
-            "break_even_pct": 5.882,
-            "market_fair_pct": 4.46,
-            "bookmaker_overround_pct": 31.9,
+            "break_even_pct": 6.667,
+            "market_fair_pct": 4.901,
+            "bookmaker_overround_pct": 36.03,
             "full_bookmaker_field": true,
-            "movement_pct": 11.76
+            "movement_pct": null
           },
           "top_three": [
             {
@@ -1851,12 +1759,15 @@
       "non_runners_excluded": 4,
       "priced_runners": 10,
       "full_bookmakers": [
+        "Bet365",
+        "Paddy Power",
         "Sky Bet",
         "William Hill",
         "betway_uk",
-        "ladbrokes_uk"
+        "ladbrokes_uk",
+        "pointsbetau"
       ],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -1880,19 +1791,19 @@
           "model_probability_available": false,
           "leader_price": {
             "horse": "Drive On There",
-            "bookmaker": "William Hill",
-            "decimal": 2.75,
-            "price_updated_at": "2026-11-06T18:08:47.482434+00:00",
-            "quote_observed_at": "2026-11-06T18:08:47.482434+00:00",
-            "collector_observed_at": "2026-11-06T18:08:48.730112+00:00",
+            "bookmaker": "Paddy Power",
+            "decimal": 2.38,
+            "price_updated_at": "2026-11-06T18:52:24+00:00",
+            "quote_observed_at": "2026-11-06T18:52:24+00:00",
+            "collector_observed_at": "2026-11-06T18:53:47.228399+00:00",
             "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
-            "opening_decimal": 2.62,
+            "opening_decimal": null,
             "race_id": "2fc10119-b6e3-4b47-a744-91f2c105d425",
-            "break_even_pct": 36.364,
-            "market_fair_pct": 29.317,
-            "bookmaker_overround_pct": 24.03,
+            "break_even_pct": 42.017,
+            "market_fair_pct": 33.22,
+            "bookmaker_overround_pct": 26.48,
             "full_bookmaker_field": true,
-            "movement_pct": -4.73
+            "movement_pct": null
           },
           "top_three": [
             {
@@ -1920,19 +1831,19 @@
           "model_probability_available": false,
           "leader_price": {
             "horse": "Drive On There",
-            "bookmaker": "William Hill",
-            "decimal": 2.75,
-            "price_updated_at": "2026-11-06T18:08:47.482434+00:00",
-            "quote_observed_at": "2026-11-06T18:08:47.482434+00:00",
-            "collector_observed_at": "2026-11-06T18:08:48.730112+00:00",
+            "bookmaker": "Paddy Power",
+            "decimal": 2.38,
+            "price_updated_at": "2026-11-06T18:52:24+00:00",
+            "quote_observed_at": "2026-11-06T18:52:24+00:00",
+            "collector_observed_at": "2026-11-06T18:53:47.228399+00:00",
             "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
-            "opening_decimal": 2.62,
+            "opening_decimal": null,
             "race_id": "2fc10119-b6e3-4b47-a744-91f2c105d425",
-            "break_even_pct": 36.364,
-            "market_fair_pct": 29.317,
-            "bookmaker_overround_pct": 24.03,
+            "break_even_pct": 42.017,
+            "market_fair_pct": 33.22,
+            "bookmaker_overround_pct": 26.48,
             "full_bookmaker_field": true,
-            "movement_pct": -4.73
+            "movement_pct": null
           },
           "top_three": [
             {
@@ -1983,6 +1894,7 @@
       "non_runners_excluded": 0,
       "priced_runners": 8,
       "full_bookmakers": [
+        "Paddy Power",
         "Sky Bet",
         "William Hill",
         "betway_uk",
@@ -2012,19 +1924,19 @@
           "model_probability_available": false,
           "leader_price": {
             "horse": "Jolly Roger",
-            "bookmaker": "William Hill",
-            "decimal": 6.0,
-            "price_updated_at": "2026-11-06T17:55:05.282141+00:00",
-            "quote_observed_at": "2026-11-06T17:55:05.282141+00:00",
-            "collector_observed_at": "2026-11-06T18:08:48.730112+00:00",
+            "bookmaker": "Paddy Power",
+            "decimal": 5.5,
+            "price_updated_at": "2026-11-06T18:52:24+00:00",
+            "quote_observed_at": "2026-11-06T18:52:24+00:00",
+            "collector_observed_at": "2026-11-06T18:53:47.228399+00:00",
             "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
-            "opening_decimal": 5.5,
+            "opening_decimal": null,
             "race_id": "cc68dcad-6928-47bd-a478-4be30cd9c5b3",
-            "break_even_pct": 16.667,
-            "market_fair_pct": 14.13,
-            "bookmaker_overround_pct": 17.95,
+            "break_even_pct": 18.182,
+            "market_fair_pct": 14.8,
+            "bookmaker_overround_pct": 22.85,
             "full_bookmaker_field": true,
-            "movement_pct": -8.33
+            "movement_pct": null
           },
           "top_three": [
             {
@@ -2052,19 +1964,19 @@
           "model_probability_available": false,
           "leader_price": {
             "horse": "Jolly Roger",
-            "bookmaker": "William Hill",
-            "decimal": 6.0,
-            "price_updated_at": "2026-11-06T17:55:05.282141+00:00",
-            "quote_observed_at": "2026-11-06T17:55:05.282141+00:00",
-            "collector_observed_at": "2026-11-06T18:08:48.730112+00:00",
+            "bookmaker": "Paddy Power",
+            "decimal": 5.5,
+            "price_updated_at": "2026-11-06T18:52:24+00:00",
+            "quote_observed_at": "2026-11-06T18:52:24+00:00",
+            "collector_observed_at": "2026-11-06T18:53:47.228399+00:00",
             "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
-            "opening_decimal": 5.5,
+            "opening_decimal": null,
             "race_id": "cc68dcad-6928-47bd-a478-4be30cd9c5b3",
-            "break_even_pct": 16.667,
-            "market_fair_pct": 14.13,
-            "bookmaker_overround_pct": 17.95,
+            "break_even_pct": 18.182,
+            "market_fair_pct": 14.8,
+            "bookmaker_overround_pct": 22.85,
             "full_bookmaker_field": true,
-            "movement_pct": -8.33
+            "movement_pct": null
           },
           "top_three": [
             {
@@ -2115,6 +2027,7 @@
       "non_runners_excluded": 3,
       "priced_runners": 14,
       "full_bookmakers": [
+        "Paddy Power",
         "Sky Bet",
         "William Hill",
         "betway_uk",
@@ -2144,19 +2057,19 @@
           "model_probability_available": false,
           "leader_price": {
             "horse": "Rosanella",
-            "bookmaker": "William Hill",
+            "bookmaker": "Paddy Power",
             "decimal": 34.0,
-            "price_updated_at": "2026-11-06T17:55:05.261791+00:00",
-            "quote_observed_at": "2026-11-06T17:55:05.261791+00:00",
-            "collector_observed_at": "2026-11-06T18:08:48.730112+00:00",
+            "price_updated_at": "2026-11-06T18:52:24+00:00",
+            "quote_observed_at": "2026-11-06T18:52:24+00:00",
+            "collector_observed_at": "2026-11-06T18:53:47.228399+00:00",
             "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
-            "opening_decimal": 29.0,
+            "opening_decimal": null,
             "race_id": "5698adbe-cd5f-4a4b-8e01-578d7e1a077c",
             "break_even_pct": 2.941,
-            "market_fair_pct": 2.179,
-            "bookmaker_overround_pct": 34.97,
+            "market_fair_pct": 2.076,
+            "bookmaker_overround_pct": 41.68,
             "full_bookmaker_field": true,
-            "movement_pct": -14.71
+            "movement_pct": null
           },
           "top_three": [
             {
@@ -2184,19 +2097,19 @@
           "model_probability_available": false,
           "leader_price": {
             "horse": "Rosanella",
-            "bookmaker": "William Hill",
+            "bookmaker": "Paddy Power",
             "decimal": 34.0,
-            "price_updated_at": "2026-11-06T17:55:05.261791+00:00",
-            "quote_observed_at": "2026-11-06T17:55:05.261791+00:00",
-            "collector_observed_at": "2026-11-06T18:08:48.730112+00:00",
+            "price_updated_at": "2026-11-06T18:52:24+00:00",
+            "quote_observed_at": "2026-11-06T18:52:24+00:00",
+            "collector_observed_at": "2026-11-06T18:53:47.228399+00:00",
             "quote_timestamp_quality": "BOOKMAKER_UPDATED_AT",
-            "opening_decimal": 29.0,
+            "opening_decimal": null,
             "race_id": "5698adbe-cd5f-4a4b-8e01-578d7e1a077c",
             "break_even_pct": 2.941,
-            "market_fair_pct": 2.179,
-            "bookmaker_overround_pct": 34.97,
+            "market_fair_pct": 2.076,
+            "bookmaker_overround_pct": 41.68,
             "full_bookmaker_field": true,
-            "movement_pct": -14.71
+            "movement_pct": null
           },
           "top_three": [
             {
@@ -2242,14 +2155,14 @@
     "races_assessed": 36,
     "D_current_rankings": 13,
     "Z_current_rankings": 7,
-    "different_provider_race_ids_matched_by_time_and_horse": 384,
-    "races_with_any_prices": 7,
-    "races_with_complete_bookmaker_book": 7
+    "different_provider_race_ids_matched_by_time_and_horse": 264,
+    "races_with_any_prices": 4,
+    "races_with_complete_bookmaker_book": 4
   },
   "new_paper_candidates": 0,
   "new_forward_forecasts": 0,
   "settlements_updated": 0,
-  "forecast_settlements_updated": 4,
+  "forecast_settlements_updated": 5,
   "paper_performance": {
     "A": {
       "settled_priced": 0,
