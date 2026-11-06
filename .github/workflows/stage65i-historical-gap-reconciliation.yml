@@ -1,0 +1,49 @@
+name: Stage65I - Historical Gap Reconciliation
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  reconcile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify script
+        run: python -m py_compile scripts/stage65i_historical_gap_reconciliation.py
+      - name: Restore Stage65E archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage65e
+          python - <<'PY'
+          import json,os,subprocess
+          repo=os.environ['GITHUB_REPOSITORY']
+          data=json.loads(subprocess.check_output(['gh','api','-X','GET',f'repos/{repo}/actions/artifacts','-f','name=stage65e-detailed-history-database','-f','per_page=100'],text=True))
+          arts=[a for a in data.get('artifacts',[]) if a.get('name')=='stage65e-detailed-history-database' and not a.get('expired')]
+          if not arts:raise SystemExit('Stage65E database artifact missing. Re-run Stage65E first.')
+          a=max(arts,key=lambda a:a['created_at'])
+          subprocess.run(['gh','run','download',str(a['workflow_run']['id']),'--repo',repo,'--name','stage65e-detailed-history-database','--dir','reports/stage65e'],check=True)
+          PY
+      - name: Reconcile historical archive with repository results, read-only
+        run: |
+          python -u scripts/stage65i_historical_gap_reconciliation.py \
+            --db reports/stage65e/detailed_history.sqlite \
+            --results data/race-results.json \
+            --out reports/stage65i
+      - name: Upload small research reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage65i-historical-gap-reconciliation
+          path: reports/stage65i/
+          retention-days: 90
+          if-no-files-found: warn
