@@ -1,0 +1,51 @@
+name: Stage65D - Unified Historical Form Audit
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate audit script
+        run: python -m py_compile scripts/stage65d_unified_form_audit.py
+      - name: Retrieve latest Stage65C archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage65c
+          python - <<'PY'
+          import json,os,subprocess
+          repo=os.environ['GITHUB_REPOSITORY']
+          data=json.loads(subprocess.check_output(['gh','api',f'repos/{repo}/actions/artifacts','-f','name=stage65c-ukie-form-archive','-f','per_page=100'],text=True))
+          artifacts=[x for x in data.get('artifacts',[]) if not x.get('expired')]
+          if not artifacts:raise SystemExit('Stage65C archive not found. STOP: no historical source to audit.')
+          a=max(artifacts,key=lambda x:x['created_at'])
+          run=a['workflow_run']['id']
+          print('Retrieving Stage65C archive from run',run)
+          subprocess.run(['gh','run','download',str(run),'--repo',repo,'--name','stage65c-ukie-form-archive','--dir','reports/stage65c'],check=True)
+          PY
+          test -s reports/stage65c/form_archive.sqlite
+      - name: Audit recent form overlay and available historical source
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--archive reports/stage65c/form_archive.sqlite --out reports/stage65d)
+          if [ -s data/historical_ukie.sqlite ]; then args+=(--historical-db data/historical_ukie.sqlite); fi
+          python -u scripts/stage65d_unified_form_audit.py "${args[@]}"
+      - name: Upload Stage65D audit and overlay
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage65d-unified-form-audit
+          path: reports/stage65d/
+          retention-days: 90
+          if-no-files-found: warn
