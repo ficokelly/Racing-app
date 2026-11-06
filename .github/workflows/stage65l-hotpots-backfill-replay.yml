@@ -1,0 +1,43 @@
+name: Stage65L - Hot Pots Missing Dates Backfill Replay
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install frozen scoring dependencies
+        run: |
+          python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1 kagglehub
+          python -m py_compile scripts/stage65l_hotpots_backfill_replay.py scripts/stage65k_two_day_replay.py
+      - name: Reconstruct original historical baseline only
+        run: |
+          python - <<'PY'
+          import kagglehub,subprocess,sys
+          from pathlib import Path
+          source=kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025/versions/129')
+          Path('reports/stage65l').mkdir(parents=True,exist_ok=True)
+          subprocess.run([sys.executable,'import_historical_ukie.py','--mode','import','--input',str(source),'--min-date','1988-01-01','--max-date','2026-10-07','--database','reports/stage65l/baseline.sqlite','--report','reports/stage65l/baseline_import.json'],check=True)
+          PY
+      - name: Backfill only verified Hot Pots records and replay frozen D
+        run: |
+          python -u scripts/stage65l_hotpots_backfill_replay.py --baseline reports/stage65l/baseline.sqlite --out reports/stage65l/results
+      - name: Upload small research reports only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage65l-hotpots-backfill-replay
+          path: |
+            reports/stage65l/results/**/*.csv
+            reports/stage65l/results/**/*.json
+          retention-days: 90
+          if-no-files-found: warn
