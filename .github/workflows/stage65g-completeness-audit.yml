@@ -1,0 +1,41 @@
+name: Stage65G - Historical Completeness Audit
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Restore Stage65E database
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage65e
+          python - <<'PY'
+          import json,os,subprocess
+          repo=os.environ['GITHUB_REPOSITORY']
+          data=json.loads(subprocess.check_output(['gh','api','-X','GET',f'repos/{repo}/actions/artifacts','-f','name=stage65e-detailed-history-database','-f','per_page=100'],text=True))
+          arts=[a for a in data.get('artifacts',[]) if not a.get('expired')]
+          if not arts: raise SystemExit('Stage65E database artifact missing; rerun Stage65F')
+          a=max(arts,key=lambda x:x['created_at'])
+          subprocess.run(['gh','run','download',str(a['workflow_run']['id']),'--repo',repo,'--name','stage65e-detailed-history-database','--dir','reports/stage65e'],check=True)
+          PY
+      - name: Audit history without changing live model
+        run: python -u scripts/stage65g_completeness_audit.py --db reports/stage65e/detailed_history.sqlite --out reports/stage65g
+      - name: Upload small report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage65g-completeness-audit
+          path: reports/stage65g/
+          retention-days: 90
+          if-no-files-found: warn
