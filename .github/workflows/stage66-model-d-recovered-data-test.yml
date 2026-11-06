@@ -1,0 +1,233 @@
+name: Stage66 - Model D Recovered Data ROI Test
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cc15b56a184c2c799767e93b013b9e20fef01727
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install research dependencies
+        run: pip install numpy==2.2.6 'kagglehub>=0.3,<1'
+      - name: Restore recovered database and reconstruct pinned baseline
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p research/recovered reports/stage66
+          python - <<'PY'
+          import json,os,pathlib,subprocess,sys,zipfile
+          import kagglehub
+          repo=os.environ['GITHUB_REPOSITORY']
+          # Pin the recovered archive already verified on 6 November; do not silently use a newer one.
+          artifact=13502741941
+          meta=json.loads(subprocess.check_output(['gh','api',f'repos/{repo}/actions/artifacts/{artifact}'],text=True))
+          if meta['expired']:raise SystemExit('Recovered database artifact expired; rerun recovery and explicitly update this test')
+          subprocess.run(['gh','run','download',str(meta['workflow_run']['id']),'--repo',repo,'--name',meta['name'],'--dir','research/recovered'],check=True)
+          matches=list(pathlib.Path('research/recovered').rglob('detailed_history.sqlite'))
+          if len(matches)!=1:raise SystemExit('Recovered database missing or ambiguous')
+          source=kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025/versions/129')
+          subprocess.run([sys.executable,'import_historical_ukie.py','--mode','import','--input',source,'--min-date','1988-01-01','--max-date','2026-10-07','--database','research/baseline.sqlite','--report','reports/stage66/baseline_import.json'],check=True)
+          with open(os.environ['GITHUB_ENV'],'a') as f:f.write('RECOVERED_DB='+str(matches[0].resolve())+'\n')
+          pathlib.Path('reports/stage66/source_artifact.json').write_text(json.dumps(meta,indent=2))
+          PY
+      - name: Verify reconstructed baseline against pinned live predictions
+        run: |
+          set -euo pipefail
+          cat > /tmp/preflight.py <<'PY_SCRIPT'
+          import datetime as dt,json,pathlib,sqlite3,sys
+          sys.path.insert(0,'scripts')
+          import stage38_model_dz_live as L
+          db=sys.argv[1]
+          feed=json.loads(pathlib.Path('data/strategy-d-probabilities.json').read_text())
+          cards=json.loads(pathlib.Path('data/racecards.json').read_text())
+          history=L.LivePast({});info=history.scan_until(db,feed['day'])
+          if info['historical_uk_ie_races']!=feed['historical_races_scanned']:raise SystemExit('Baseline history count differs from live feed; stop before ROI comparison')
+          country={}
+          for n,c in history.last:
+              if n not in country:country[n]=c
+              elif country[n]!=c:country[n]=None
+          weights=[feed['weights_pct'][k]/100 for k in L.METRICS]
+          checked=0
+          for race in feed['races']:
+              rows=[r for r in cards['runners'] if r.get('course')==race['course'] and L.clock(r.get('race_time'))==race['time'] and L.date_key(r.get('date') or r.get('race_time'))==feed['day'] and not L.nonrunner(r)]
+              expected={r['horse']:r for r in race['runners']}
+              if {r['horse'] for r in rows}!=set(expected):raise SystemExit('Pinned racecards differ from snapshot field; baseline not verifiable')
+              scored=history.score([L.live_row(r,feed['day'],'BASELINE-CHECK',country) for r in rows],live=True)
+              if scored is None:raise SystemExit('Cannot reproduce baseline race')
+              scores,order,gap=L.prediction_rows(scored,weights)
+              for i,r in enumerate(rows):
+                  if abs(float(scores[i])-expected[r['horse']]['research_score'])>0.000011:raise SystemExit('Baseline score mismatch: '+r['horse']+'; stop before ROI comparison')
+              checked+=1
+          if not checked:raise SystemExit('No baseline predictions reproduced')
+          pathlib.Path('reports/stage66').mkdir(parents=True,exist_ok=True)
+          pathlib.Path('reports/stage66/baseline_validation.json').write_text(json.dumps({'reconstructed_baseline':True,'checked_live_races':checked,'historical_races':info['historical_uk_ie_races'],'snapshot_at':feed['generated_at'],'limitation':'Reconstructed baseline matches the pinned live scores; original database byte identity is unavailable.'},indent=2))
+          print('Reproduced',checked,'pinned live race scores')
+          PY_SCRIPT
+          python -u /tmp/preflight.py research/baseline.sqlite
+          python -m py_compile /tmp/preflight.py
+      - name: Run paired historical ROI test
+        run: |
+          set -euo pipefail
+          cat > /tmp/stage66_compare.py <<'PY_SCRIPT'
+          #!/usr/bin/env python3
+          """Paired, frozen Model D missing-field restoration experiment. No live writes."""
+          import argparse, collections, csv, gc, hashlib, json, math, pathlib, re, sqlite3, sys
+          import numpy as np
+          sys.path.insert(0, str(pathlib.Path('scripts').resolve()))
+          sys.path.insert(0, str(pathlib.Path('.').resolve()))
+          import stage30_gap_aware_abcd as D
+          import import_historical_ukie as I
+          
+          QUERY = '''SELECT r.id,r.race_date,r.course,r.race_type,r.surface,r.distance_f,r.going,r.race_class,
+          u.horse_name_norm,u.horse_name,u.horse_country,u.horse_source_id,u.finish_pos,u.outcome,
+          u.trainer,u.jockey,u.official_rating,u.age,u.sire,u.dam,u.sp_decimal,u.draw,u.race_comment
+          FROM historical_races r JOIN historical_runs u ON u.race_id=r.id
+          WHERE r.race_date < '2026-01-01' ORDER BY r.race_date,r.id,u.runner_key'''
+          
+          def dump(path, obj):
+              pathlib.Path(path).write_text(json.dumps(obj, indent=2, allow_nan=False)+'\n')
+          
+          def fingerprint(path):
+              h=hashlib.sha256()
+              with open(path,'rb') as f:
+                  for b in iter(lambda:f.read(1048576),b''): h.update(b)
+              return h.hexdigest()
+          
+          def missing(v):
+              return v is None or str(v).strip().lower() in ('','-','na','n/a','none','null')
+          
+          def recover(baseline, detailed, candidate, out):
+              """Exact source race key + full horse string; never match across races by name."""
+              b=sqlite3.connect(baseline); c=sqlite3.connect(candidate); b.backup(c); b.close()
+              d=sqlite3.connect('file:'+str(pathlib.Path(detailed).resolve())+'?mode=ro',uri=True)
+              counts=collections.Counter(); conflicts=[]
+              # Ambiguous source keys are excluded entirely, including repeated header lines.
+              d.execute('CREATE TEMP TABLE ambiguous AS SELECT race_date,course,race_id,horse FROM historical_runs GROUP BY race_date,course,race_id,horse HAVING count(*)>1')
+              d.execute('CREATE INDEX temp.ambiguous_key ON ambiguous(race_date,course,race_id,horse)')
+              q='''SELECT h.raw_json FROM historical_runs h WHERE NOT EXISTS
+              (SELECT 1 FROM ambiguous a WHERE a.race_date=h.race_date AND a.course=h.course AND a.race_id=h.race_id AND a.horse=h.horse)'''
+              counts['ambiguous_source_groups']=d.execute('SELECT count(*) FROM ambiguous').fetchone()[0]
+              for (raw,) in d.execute(q):
+                  row=json.loads(raw); date=I.dateparse(row.get('date')); horse=row.get('horse',''); course=row.get('course',''); rid=row.get('race_id','')
+                  if not date or not horse or not course or not rid:
+                      counts['invalid_identity_rows']+=1; continue
+                  raceid=I.SOURCE+':'+date+':'+I.normhead(course)+':'+re.sub('[^a-zA-Z0-9_-]','',rid)[:90]
+                  hits=c.execute('SELECT runner_key,horse_name,trainer,jockey,official_rating,age,sire,dam,draw,race_comment,rpr,topspeed,weight_lbs,beaten FROM historical_runs WHERE race_id=? AND horse_name_norm=?',(raceid,I.normname(horse))).fetchall()
+                  if len(hits)!=1 or hits[0][1].strip()!=horse.strip():
+                      counts['unmatched_or_ambiguous_rows']+=1; continue
+                  hit=hits[0]; counts['matched_rows']+=1
+                  fields=['trainer','jockey','official_rating','age','sire','dam','draw','race_comment','rpr','topspeed','weight_lbs','beaten']
+                  vals=[row.get('trainer'),row.get('jockey'),I.number(row.get('or')),I.number(row.get('age')),row.get('sire'),row.get('dam'),I.number(row.get('draw')),row.get('comment'),I.number(row.get('rpr')),I.number(row.get('ts')),I.weight_lbs(row.get('wgt')),row.get('btn')]
+                  for key,old,new in zip(fields,hit[2:],vals):
+                      if missing(new): continue
+                      if missing(old):
+                          c.execute('UPDATE historical_runs SET '+key+'=? WHERE race_id=? AND runner_key=?',(new,raceid,hit[0]));counts['filled_'+key]+=1
+                      elif str(old)!=str(new) and not (isinstance(old,(int,float)) and isinstance(new,(int,float)) and old==new):
+                          counts['conflicting_'+key]+=1
+                          if len(conflicts)<100:conflicts.append({'race':raceid,'horse':horse,'field':key,'old':old,'recovered':new})
+                  if counts['matched_rows']%100000==0:c.commit();print('Matched recovered rows:',counts['matched_rows'],flush=True)
+              # Race metadata is intentionally unchanged: same race/field/going/trip context.
+              c.commit(); assert c.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+              c.close();d.close()
+              dump(out/'recovery_audit.json',{'counts':dict(counts),'conflict_sample':conflicts,'scope':'Exact matched runner fields only; no new runners, no changed results/SP/race metadata or horse identities; conflicting populated values retained.', 'unused_by_frozen_D':['rpr','topspeed','weight_lbs','beaten']})
+              return counts
+          
+          def replay(db, weights, path):
+              past=D.Past({});cx=sqlite3.connect('file:'+str(pathlib.Path(db).resolve())+'?mode=ro',uri=True)
+              pending=[]; group=[]; prev_day=None; prev_race=None; nr=0
+              with open(path,'w') as f:
+                  def finish(rows):
+                      nonlocal nr
+                      if not rows or D.track(rows[0][2]) not in D.TRACKS:return
+                      if str(rows[0][1]).startswith('2025'):
+                          race=past.score(rows)
+                          if race:
+                              w=weights.copy();w[4 if race['kind']=='jumps' else 7]=0;w/=w.sum()
+                              scores=race['x'][:,:8]@w;order=np.argsort(-scores,kind='stable');pick=order[:2]
+                              record={'id':race['race_id'],'date':race['date'],'kind':race['kind'],'gap':float(scores[pick[0]]-scores[pick[1]]),'horses':[race['horse'][int(i)] for i in pick],'wins':[int(i==race['winning_index']) for i in pick],'sp':[float(race['sp'][int(i)]) if math.isfinite(race['sp'][int(i)]) else None for i in pick]}
+                              f.write(json.dumps(record,allow_nan=False)+'\n')
+                      pending.append(rows);nr+=1
+                      if nr%50000==0:print('Historical races replayed:',nr,flush=True)
+                  for row in cx.execute(QUERY):
+                      if prev_day is not None and row[1]!=prev_day:
+                          finish(group);group=[]
+                          for rs in pending:past.update(rs)
+                          pending=[]
+                      elif group and row[0]!=prev_race:finish(group);group=[]
+                      group.append(row);prev_day=row[1];prev_race=row[0]
+                  finish(group)
+              cx.close();del past;gc.collect()
+          
+          def metrics(rows, pick):
+              bets=[]
+              for r in rows:
+                  indices=[0,1] if pick=='combined' else [int(pick)-1] if pick in ('1','2') else [0] if r['gap']>=.14 else []
+                  for i in indices:bets.append((r['wins'][i],r['sp'][i]))
+              priced=[(win,sp) for win,sp in bets if sp is not None and 1.01<=sp<=5000]
+              profit=sum(win*sp-1 for win,sp in priced)
+              return {'bets':len(bets),'wins':sum(w for w,s in bets),'strike_rate_pct':100*sum(w for w,s in bets)/len(bets) if bets else None,'priced_bets':len(priced),'profit_units':profit,'roi_pct':100*profit/len(priced) if priced else None}
+          
+          def compare(a,b,out):
+              old={r['id']:r for r in map(json.loads,open(a))};new={r['id']:r for r in map(json.loads,open(b))}
+              if old.keys()!=new.keys():raise RuntimeError('Evaluation race cohorts differ; no valid paired comparison')
+              if len(old)<500:raise RuntimeError('Too few eligible 2025 races')
+              report=[]
+              for group in ('all','aw','jumps','flat'):
+                  ids=[i for i in old if group=='all' or old[i]['kind']==group]
+                  if any(old[i]['kind']!=new[i]['kind'] for i in ids):raise RuntimeError('Discipline changed')
+                  # Common complete SP coverage for either model prevents differing exclusions driving ROI.
+                  priced=[i for i in ids if all(v is not None and 1.01<=v<=5000 for r in (old[i],new[i]) for v in r['sp'])]
+                  for scope,keys in [('all_settled',ids),('common_fully_priced',priced)]:
+                      for pick in ('1','2','combined','gap14'):
+                          m=metrics([old[i] for i in keys],pick);n=metrics([new[i] for i in keys],pick)
+                          report.append({'group':group,'scope':scope,'selection':pick,'races':len(keys),'baseline':m,'recovered':n,'roi_change_percentage_points':n['roi_pct']-m['roi_pct'] if n['roi_pct'] is not None and m['roi_pct'] is not None else None})
+              dump(out/'comparison.json',report)
+              with (out/'comparison.csv').open('w',newline='') as f:
+                  w=csv.writer(f);w.writerow(['group','scope','selection','races','old_bets','new_bets','old_SR','new_SR','old_profit','new_profit','old_ROI','new_ROI','ROI_change_pp'])
+                  for r in report:
+                      m,n=r['baseline'],r['recovered'];w.writerow([r['group'],r['scope'],r['selection'],r['races'],m['bets'],n['bets'],m['strike_rate_pct'],n['strike_rate_pct'],m['profit_units'],n['profit_units'],m['roi_pct'],n['roi_pct'],r['roi_change_percentage_points']])
+              changed=[{'id':i,'baseline':old[i],'recovered':new[i]} for i in old if old[i]['horses']!=new[i]['horses']]
+              dump(out/'changed_rankings.json',changed)
+              print(json.dumps({'paired_races':len(old),'changed_top_two':len(changed),'live_changes':False}),flush=True)
+          
+          def main():
+              p=argparse.ArgumentParser();p.add_argument('--baseline',required=True);p.add_argument('--recovered',required=True);p.add_argument('--out',default='reports/stage66');a=p.parse_args();out=pathlib.Path(a.out);out.mkdir(parents=True,exist_ok=True)
+              b=pathlib.Path(a.baseline);d=pathlib.Path(a.recovered)
+              if not b.is_file() or not d.is_file():raise SystemExit('Both original baseline and recovered database are required')
+              frozen=json.loads(pathlib.Path('reports/stage30/stage30-summary.json').read_text())['model_results']['D']
+              assert frozen['chosen_combination']=='D-064-gap14' and abs(frozen['selection_margin']-.14)<1e-9
+              weights=np.array([frozen['weights_pct'][k]/100 for k in D.METRICS],dtype=np.float32)
+              dump(out/'provenance.json',{'baseline_sha256':fingerprint(b),'recovered_sha256':fingerprint(d),'scorer_sha256':fingerprint('scripts/stage30_gap_aware_abcd.py'),'frozen_weights':frozen['weights_pct'],'evaluation_year':2025,'training_history':'All available records before each evaluation date, from earliest available year; same-day results excluded','scope':'Missing fields only. Adding new features, correcting populated values and importing unmatched rows require separate experiments. No automatic promotion.'})
+              candidate=out/'candidate.sqlite';counts=recover(str(b),str(d),str(candidate),out)
+              replay(str(b),weights,out/'baseline.jsonl');replay(str(candidate),weights,out/'recovered.jsonl')
+              compare(out/'baseline.jsonl',out/'recovered.jsonl',out)
+              candidate.unlink()
+              print('Research comparison complete; no application data changed.',flush=True)
+          
+          if __name__=='__main__':main()
+          PY_SCRIPT
+          python -u /tmp/stage66_compare.py --baseline research/baseline.sqlite --recovered "$RECOVERED_DB" --out reports/stage66
+          python -m py_compile /tmp/stage66_compare.py
+      - name: Upload comparison reports only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage66-model-d-recovered-data-comparison
+          path: |
+            reports/stage66/*.json
+            reports/stage66/*.csv
+            reports/stage66/*.jsonl
+          retention-days: 90
+          if-no-files-found: warn
