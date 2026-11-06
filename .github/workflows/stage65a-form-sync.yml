@@ -1,0 +1,26 @@
+name: Stage65A - Form Results Coverage and Snapshot
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '45 23 * * *'
+permissions:
+  contents: read
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check and snapshot current result feed
+        run: |
+          python -m py_compile scripts/stage65a_form_sync.py
+          python scripts/stage65a_form_sync.py --results data/race-results.json --out reports/stage65a --since 2026-10-08
+      - name: Upload audit and dated result snapshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage65a-form-coverage
+          path: reports/stage65a/
+          retention-days: 90
