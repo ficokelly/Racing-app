@@ -1,0 +1,47 @@
+name: Stage65N - Model D Race Type C Only
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  c-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1 kagglehub
+          python -m py_compile scripts/stage65n_race_type_c_only.py
+      - name: Reconstruct same original history as Stage65M
+        run: |
+          python - <<'PY'
+          import kagglehub,subprocess,sys
+          from pathlib import Path
+          source=kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025/versions/129')
+          Path('reports/stage65n').mkdir(parents=True,exist_ok=True)
+          subprocess.run([sys.executable,'import_historical_ukie.py','--mode','import','--input',str(source),'--min-date','1988-01-01','--max-date','2026-10-07','--database','reports/stage65n/original.sqlite','--report','reports/stage65n/import.json'],check=True)
+          PY
+      - name: Rebuild same verified missing history as Stage65M (no A/B replay)
+        run: |
+          python -u scripts/stage65m_backfill.py --baseline reports/stage65n/original.sqlite --out reports/stage65n/backfill --keep-candidate --skip-replay
+      - name: Train and evaluate C only
+        run: |
+          python -u scripts/stage65n_race_type_c_only.py --updated reports/stage65n/backfill/backfilled_research_only.sqlite --out reports/stage65n/c_only
+      - name: Upload C-only research reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage65n-model-d-race-type-c-only
+          path: |
+            reports/stage65n/c_only/*.csv
+            reports/stage65n/c_only/*.json
+            reports/stage65n/backfill/*.json
+          retention-days: 90
+          if-no-files-found: warn
