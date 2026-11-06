@@ -1,0 +1,108 @@
+name: Stage62 - Frozen D Recovered Race Metadata
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  stage62:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check required mapping and script
+        run: |
+          test -s research/stage59_continuity_mapping.csv || { echo 'Upload Stage59 mapping CSV to research/ first'; exit 1; }
+          python -m py_compile scripts/stage62_frozen_d_metadata_replay.py
+      - name: Restore Stage49 historical source and baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check kagglehub
+          python - <<'PY'
+          import json,os,subprocess,sys,sqlite3,shutil
+          from pathlib import Path
+          repo=os.environ['GITHUB_REPOSITORY']
+          root=Path('stage62_input')
+          (root/'db').mkdir(parents=True,exist_ok=True)
+          (root/'baseline').mkdir(parents=True,exist_ok=True)
+          arts=[]
+          for page in range(1,21):
+              data=json.loads(subprocess.check_output(['gh','api','-X','GET',f'repos/{repo}/actions/artifacts',
+                  '-f','per_page=100','-f',f'page={page}'],text=True))
+              batch=data.get('artifacts',[])
+              arts.extend(x for x in batch if not x.get('expired'))
+              if len(batch)<100:break
+          def fetch(x,dest):
+              subprocess.run(['gh','run','download',str(x['workflow_run']['id']),
+                  '--repo',repo,'--name',x['name'],'--dir',str(dest)],check=True)
+          baseline=root/'baseline'/'model_d_top_two_2025_2026_per_race.csv'
+          committed=Path('reports/stage49')/baseline.name
+          if committed.is_file() and committed.stat().st_size>100:
+              shutil.copy2(committed,baseline)
+          else:
+              for x in sorted((x for x in arts if x['name']=='stage49-model-d-top-two-2025-2026'),
+                              key=lambda x:x['created_at'],reverse=True):
+                  try:fetch(x,baseline.parent)
+                  except subprocess.CalledProcessError:continue
+                  if baseline.is_file() and baseline.stat().st_size>100:break
+          if not baseline.is_file() or baseline.stat().st_size<=100:
+              raise SystemExit('Stage49 baseline missing: run Stage49 to restore it.')
+          def valid(path):
+              try:
+                  if path.stat().st_size<1000000:return False
+                  con=sqlite3.connect('file:'+str(path.resolve())+'?mode=ro',uri=True)
+                  names={r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+                  con.close()
+                  return {'historical_races','historical_runs'}<=names
+              except (OSError,sqlite3.Error):return False
+          db=None
+          options=sorted((x for x in arts if any(term in x['name'].lower()
+                           for term in ('historical','staging','database','sqlite'))),
+                         key=lambda x:x['created_at'],reverse=True)
+          for x in options[:20]:
+              dest=root/'db'/str(x['id'])
+              dest.mkdir(parents=True,exist_ok=True)
+              try:fetch(x,dest)
+              except subprocess.CalledProcessError:continue
+              for candidate in dest.rglob('*'):
+                  if candidate.is_file() and candidate.suffix.lower() in ('.sqlite','.sqlite3','.db') and valid(candidate):
+                      db=candidate.resolve()
+                      print('Restored validated SQLite from',x['name'],flush=True)
+                      break
+              if db:break
+          if db is None:
+              print('Historical SQLite artifact expired; rebuilding original Stage2 source',flush=True)
+              import kagglehub
+              archive=kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025')
+              db=(root/'db'/'historical_ukie_staging.sqlite').resolve()
+              subprocess.run([sys.executable,'import_historical_ukie.py','--mode','import',
+                  '--input',str(archive),'--min-date','1988-01-01','--max-date','2026-10-07',
+                  '--database',str(db),'--report',str(root/'db'/'import-report.json')],check=True)
+              if not valid(db):raise SystemExit('Rebuilt database failed schema validation')
+          with open(os.environ['GITHUB_ENV'],'a') as env:
+              print('STAGE62_DB='+str(db),file=env)
+              print('STAGE62_BASELINE='+str(baseline.resolve()),file=env)
+          print('Stage62 inputs ready',flush=True)
+          PY
+      - name: Install model dependencies
+        run: python -m pip install --disable-pip-version-check numpy
+      - name: Replay frozen D with restored metadata
+        run: |
+          set -euo pipefail
+          test -n "$STAGE62_DB"
+          python -u scripts/stage62_frozen_d_metadata_replay.py --db "$STAGE62_DB" --mapping research/stage59_continuity_mapping.csv --baseline "$STAGE62_BASELINE" --out reports/stage62
+          cat reports/stage62/stage62_summary.json
+      - name: Upload research results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage62-frozen-d-metadata-replay
+          path: reports/stage62/
+          retention-days: 90
