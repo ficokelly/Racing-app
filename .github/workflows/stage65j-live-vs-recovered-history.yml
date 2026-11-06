@@ -19,13 +19,13 @@ jobs:
           python-version: '3.11'
       - name: Validate audit script
         run: python -m py_compile scripts/stage65j_compare_live_history.py
-      - name: Restore original Stage2 and recovered Stage65E databases
+      - name: Restore Stage2 and Stage65E, or rebuild Stage2 research copy
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p reports/stage65j_sources/live reports/stage65j_sources/recovered
           python - <<'PY'
-          import json,os,subprocess
+          import json,os,subprocess,sys
           from pathlib import Path
           repo=os.environ['GITHUB_REPOSITORY']
           wanted={'stage2-historical-staging-database':'reports/stage65j_sources/live',
@@ -41,7 +41,21 @@ jobs:
                       if n not in found or a['created_at']>found[n]['created_at']:found[n]=a
               if len(arts)<100:break
           for name,dest in wanted.items():
-              if name not in found:raise SystemExit('Missing/expired artifact '+name+'; rerun its source workflow first')
+              if name not in found:
+                  if name!='stage2-historical-staging-database':
+                      raise SystemExit('Missing/expired Stage65E artifact; rerun Stage65E first')
+                  print('Stage2 artifact missing; rebuilding a RESEARCH-ONLY RECONSTRUCTION, not verified live DB',flush=True)
+                  subprocess.run([sys.executable,'-m','pip','install','--disable-pip-version-check','kagglehub>=0.3,<1'],check=True)
+                  import kagglehub
+                  archive=kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025/versions/129')
+                  db=Path(dest)/'historical_ukie_staging.sqlite'
+                  subprocess.run([sys.executable,'import_historical_ukie.py','--mode','import','--input',str(archive),
+                      '--min-date','1988-01-01','--max-date','2026-10-07','--database',str(db),
+                      '--report',str(Path(dest)/'stage2_rebuild_report.json')],check=True)
+                  with open(os.environ['GITHUB_ENV'],'a') as f:
+                      print('STAGE65J_LIVE_DB='+str(db.resolve()),file=f)
+                      print('STAGE65J_BASELINE_PROVENANCE=RECONSTRUCTED_NOT_LIVE',file=f)
+                  continue
               subprocess.run(['gh','run','download',str(found[name]['workflow_run']['id']),
                   '--repo',repo,'--name',name,'--dir',dest],check=True)
               matches=list(Path(dest).rglob('*.sqlite'))
