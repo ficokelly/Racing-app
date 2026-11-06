@@ -25,7 +25,7 @@ jobs:
           python - <<'PY'
           import json,os,subprocess
           repo=os.environ['GITHUB_REPOSITORY']
-          data=json.loads(subprocess.check_output(['gh','api',f'repos/{repo}/actions/artifacts','-f','name=stage65c-ukie-form-archive','-f','per_page=100'],text=True))
+          data=json.loads(subprocess.check_output(['gh','api','-X','GET',f'repos/{repo}/actions/artifacts','-f','name=stage65c-ukie-form-archive','-f','per_page=100'],text=True))
           artifacts=[x for x in data.get('artifacts',[]) if not x.get('expired')]
           if not artifacts:raise SystemExit('Stage65C archive not found. STOP: no historical source to audit.')
           a=max(artifacts,key=lambda x:x['created_at'])
