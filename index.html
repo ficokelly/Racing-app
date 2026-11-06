@@ -1233,19 +1233,40 @@ function rcAllScheduledRaces(){
  }
  return [...groups.values()].sort((a,b)=>Date.parse(a.off)-Date.parse(b.off)||a.course.localeCompare(b.course));
 }
+let rhpNextRacesLastVisibleKeys=null;
 function renderRaceNavigation(){
  const strip=$('rc-next-track'),schedule=$('rc-schedule');if(!strip||!schedule)return;
  const oldScroll=strip.scrollLeft;
  rcNavRaces=rcAllScheduledRaces();const now=Date.now();
- const upcoming=rcNavRaces.map((r,i)=>({...r,i}));
+ // Only the swipe carousel expires races; rcNavRaces and meeting dropdowns retain every race.
+ // A race remains visible through its scheduled off time and for ten minutes afterwards.
+ const upcoming=rcNavRaces.map((r,i)=>({...r,i})).filter(r=>rcSelectedDay!=='today'||(Number.isFinite(Date.parse(r.off))&&Date.parse(r.off)+10*60*1000>now));
  strip.innerHTML=upcoming.length?upcoming.map(r=>{const minutes=Math.round((Date.parse(r.off)-now)/60000);const label=rcSelectedDay==='yesterday'?'Result':rcSelectedDay==='tomorrow'?'Tomorrow':minutes<=0?'Off now':minutes<=2?'Next off':`In ${minutes} min`;
   return `<button type="button" class="rc-next-tile ${rcSelectedDay!=='yesterday'&&minutes<=2?'rc-next-now':''}" data-rc-jump="${r.i}"><span class="rc-next-state">${label}</span><b>${safe(clock(r.off))} · ${safe(r.course)}</b><small>${r.type==='aw'?'All-Weather':r.type==='turf'?'Flat Turf':r.type==='jumps'?'Jumps':'Race'} · ${r.runners} listed runners${r.distance?' · '+safe(rcDisplayDistance(r.distance)):''}</small></button>`}).join(''):(rcSelectedDay==='yesterday'?'<div class="rc-next-empty">No archived race results available for yesterday yet.</div>':rcSelectedDay==='tomorrow'?'<div class="rc-next-empty">Tomorrow’s racecards are not published yet. They will appear automatically when available.</div>':'<div class="rc-next-empty">No upcoming races left in today’s published feed.</div>');
+ if(rcSelectedDay==='today')rhpNextRacesLastVisibleKeys=upcoming.map(r=>r.i).join(',');
  strip.scrollLeft=oldScroll;
  const partialMarketOnly=rcViewingRunners().some(r=>r.marketListingOnly);
  const byMeeting=new Map();for(let i=0;i<rcNavRaces.length;i++){const r=rcNavRaces[i];if(!byMeeting.has(r.course))byMeeting.set(r.course,[]);byMeeting.get(r.course).push({...r,i})}
  const openMeetings=new Set([...schedule.querySelectorAll('details[open]')].map(el=>el.dataset.rcCourse));
  schedule.innerHTML=(partialMarketOnly?'<p class="hint">Partial bookmaker-market listing: some meetings and priced horses are shown from collected odds while official racecards are unavailable. Other runners and form may be missing.</p>':'')+[...byMeeting.entries()].sort((a,b)=>Date.parse(a[1][0].off)-Date.parse(b[1][0].off)).map(([course,races])=>`<details class="rc-schedule-meeting" data-rc-course="${safe(course)}" ${openMeetings.has(course)?'open':''}><summary><strong>${safe(course)}</strong><small>${races.length} races · ${safe(clock(races[0].off))}–${safe(clock(races[races.length-1].off))}</small></summary>${races.map(r=>`<button type="button" class="rc-schedule-race" data-rc-jump="${r.i}"><b>${safe(clock(r.off))}</b><span>${r.type==='aw'?'AW':r.type==='turf'?'Flat Turf':r.type==='jumps'?'Jumps':'Race'} · ${r.runners} runners${r.distance?' · '+safe(rcDisplayDistance(r.distance)):''}${r.raceName?' · '+safe(r.raceName):''}</span><em>View ›</em></button>`).join('')}</details>`).join('')||(rcSelectedDay==='yesterday'?'<p class="rc-next-empty">No archived results available for yesterday yet.</p>':rcSelectedDay==='tomorrow'?'<p class="rc-next-empty">No tomorrow racecards available yet.</p>':'<p class="rc-next-empty">No meetings in today’s racecards feed.</p>');
 }
+// Keep the Next Races strip current even if the odds feed is not refreshed.
+// Re-render only when a race crosses its ten-minute expiry, preserving meeting lists.
+function rhpRefreshNextRacesClock(){
+ if(rcSelectedDay!=='today'||activeTab!=='racecards'||!$('rc-next-track'))return;
+ const now=Date.now();
+ const visible=rcNavRaces.map((r,i)=>({r,i})).filter(x=>Number.isFinite(Date.parse(x.r.off))&&Date.parse(x.r.off)+600000>now);
+ const keys=visible.map(x=>x.i).join(',');
+ if(keys!==rhpNextRacesLastVisibleKeys){
+  const strip=$('rc-next-track');
+  const scroll=strip.scrollLeft;
+  // Refresh navigation only: scheduled meetings and their completed races are preserved.
+  renderRaceNavigation();rhpMarkRaceNav();strip.scrollLeft=scroll;
+ }
+ rhpNextRacesLastVisibleKeys=keys;
+}
+setInterval(rhpRefreshNextRacesClock,15000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)rhpRefreshNextRacesClock()});
 function rcJumpToRace(index){
  const r=rcNavRaces[Number(index)];if(!r)return;rhpRaceAllMode=false;
  // Clear narrowing filters so the entire selected race can be viewed.
