@@ -65,8 +65,8 @@ jobs:
                   '-f','per_page=10'],text=True))
               previous=[r for r in h.get('workflow_runs',[])
                   if str(r.get('id'))!=os.environ.get('GITHUB_RUN_ID')]
-              if previous:
-                  raise SystemExit('Previous Stage65C run exists but archive artifact is unavailable. '
+              if any(r.get('conclusion')=='success' for r in previous):
+                  raise SystemExit('A completed Stage65C run exists but archive artifact is unavailable. '
                       'STOP: restore prior backup rather than losing history.')
               print('First Stage65C run: creating a new research archive')
               sys.exit(0)
