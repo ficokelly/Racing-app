@@ -308,8 +308,8 @@ def summarize(c, since, until, errors, query_days, reqs):
         s['race_records'] += 1
         s['final'] += status == 'final'
         s['nonfinal'] += status != 'final'
-        s['full_fields'] += (field == 'complete' or full == 'available') and n is not None
-        s['missing_full_fields'] += n is None
+        s['full_fields'] += (field == 'complete' or full == 'available') and n is not None and n >= 2
+        s['missing_full_fields'] += not ((field == 'complete' or full == 'available') and n is not None and n >= 2)
         s['runner_rows'] += n or 0
         r = json.loads(raw)
         if not r.get('start_time'): s['no_start_time'] += 1
@@ -336,6 +336,8 @@ def summarize(c, since, until, errors, query_days, reqs):
         totals = dict(by_day[day]); totals['date'] = day
         totals['provider_presence'] = 'PRESENT_NEEDS_RECONCILIATION' if totals.get('race_records') else 'NO_PROVIDER_RESULT_RACES'
         days.append(totals)
+    unknown_local_dates=[{'race_id':rid,'api_day':a,'country':country,'venue':venue}
+         for rid,a,country,venue in c.execute("SELECT race_id,api_day,country,venue FROM races WHERE gbie_day IS NULL AND country IN ('GB','IE')")]
     result = {'status':'RECOVERY_AUDIT_NOT_FULL_VERIFICATION',
        'source':PROVIDER,'since':since,'until':until,
        'api_day_range':[str(min(query_days)),str(max(query_days))] if query_days else [],
@@ -344,7 +346,8 @@ def summarize(c, since, until, errors, query_days, reqs):
        'full_field_races':sum(x.get('full_fields',0) for x in days),
        'no_full_field_races':sum(x.get('missing_full_fields',0) for x in days),
        'dates_without_provider_results':[x['date'] for x in days if not x.get('race_records')],
-       'errors':errors,'days':days,
+       'errors':errors,'days':days,'unknown_local_date_races':unknown_local_dates,
+       'unknown_local_date_count':len(unknown_local_dates),
        'important_limitations':[
          'This reports provider coverage, NOT a guarantee of every GB/IE race.',
          'Australian-Eastern API day differs from local GB/IE race date. Local date derives from start_time.',
@@ -462,6 +465,17 @@ def main():
     cx=sqlite3.connect(db)
     init(cx);check_db(cx);cx.commit()
     state={'requests':0,'max_requests':args.max_requests}
+    # The coverage endpoint accepts ONLY ``days``. It is Sydney-day based and
+    # informational: one country-filtered aggregate cannot prove all UK/IE fields.
+    try:
+        now_sydney=dt.datetime.now(ZoneInfo('Australia/Sydney')).date()
+        window=max(7,min(45,(now_sydney-since).days+3))
+        coverage,_=json_get('/v1/racing/results/coverage',{'days':window},key,state)
+        (out/'stage65c_provider_coverage.json').write_text(
+            json.dumps(coverage,indent=2,ensure_ascii=False)+'\n')
+        print('Coverage endpoint accepted days='+str(window),flush=True)
+    except Exception as e:
+        print('Optional provider coverage summary unavailable: '+str(e)[:200],flush=True)
     # Source date uses Sydney timezone. Including both edge days is mandatory.
     query_start=since-dt.timedelta(days=1)
     query_end=until+dt.timedelta(days=2)
