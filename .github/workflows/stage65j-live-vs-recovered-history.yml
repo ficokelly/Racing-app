@@ -1,0 +1,66 @@
+name: Stage65J - Compare Frozen Model D and Recovered History
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  compare-read-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate audit script
+        run: python -m py_compile scripts/stage65j_compare_live_history.py
+      - name: Restore original Stage2 and recovered Stage65E databases
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage65j_sources/live reports/stage65j_sources/recovered
+          python - <<'PY'
+          import json,os,subprocess
+          from pathlib import Path
+          repo=os.environ['GITHUB_REPOSITORY']
+          wanted={'stage2-historical-staging-database':'reports/stage65j_sources/live',
+                  'stage65e-detailed-history-database':'reports/stage65j_sources/recovered'}
+          found={}
+          for page in range(1,21):
+              data=json.loads(subprocess.check_output(['gh','api','-X','GET',f'repos/{repo}/actions/artifacts',
+                 '-f','per_page=100','-f',f'page={page}'],text=True))
+              arts=data.get('artifacts',[])
+              for a in arts:
+                  if a.get('name') in wanted and not a.get('expired'):
+                      n=a['name']
+                      if n not in found or a['created_at']>found[n]['created_at']:found[n]=a
+              if len(arts)<100:break
+          for name,dest in wanted.items():
+              if name not in found:raise SystemExit('Missing/expired artifact '+name+'; rerun its source workflow first')
+              subprocess.run(['gh','run','download',str(found[name]['workflow_run']['id']),
+                  '--repo',repo,'--name',name,'--dir',dest],check=True)
+              matches=list(Path(dest).rglob('*.sqlite'))
+              if len(matches)!=1:raise SystemExit('Expected exactly one SQLite in '+dest+', found '+str(matches))
+              key='STAGE65J_LIVE_DB' if name.startswith('stage2') else 'STAGE65J_RECOVERED_DB'
+              with open(os.environ['GITHUB_ENV'],'a') as f:print(key+'='+str(matches[0].resolve()),file=f)
+              print(name,'source artifact run',found[name]['workflow_run']['id'],'bytes',matches[0].stat().st_size)
+          PY
+      - name: Run strictly read-only Model D source comparison
+        run: |
+          python -u scripts/stage65j_compare_live_history.py \
+            --live-db "$STAGE65J_LIVE_DB" \
+            --recovered-db "$STAGE65J_RECOVERED_DB" \
+            --out reports/stage65j
+      - name: Upload small reports only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage65j-live-vs-recovered-history
+          path: reports/stage65j/
+          retention-days: 90
+          if-no-files-found: warn
