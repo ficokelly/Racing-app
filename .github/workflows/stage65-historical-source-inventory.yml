@@ -1,0 +1,57 @@
+name: Stage 65 - Historical Source Inventory
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inventory historical source files and retained artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p reports/historical_inventory
+          python - <<'PY'
+          import datetime,json,os,pathlib,subprocess
+          root=pathlib.Path('.')
+          terms=('histor','stage2','stage65','form','archive','race','result','model_d')
+          files=[]
+          for p in root.rglob('*'):
+              if p.is_file() and '.git' not in p.parts and any(t in p.as_posix().lower() for t in terms):
+                  files.append({'path':p.as_posix(),'bytes':p.stat().st_size})
+          artifacts=[]; errors=[]
+          for page in range(1,11):
+              url=f'repos/{os.environ["GITHUB_REPOSITORY"]}/actions/artifacts?per_page=100&page={page}'
+              proc=subprocess.run(['gh','api',url],capture_output=True,text=True)
+              if proc.returncode:
+                  errors.append(proc.stderr[-1500:]); break
+              batch=json.loads(proc.stdout).get('artifacts',[])
+              artifacts.extend({'id':a['id'],'name':a['name'],'size_bytes':a['size_in_bytes'],
+                  'expired':a['expired'],'created_at':a['created_at'],
+                  'expires_at':a.get('expires_at'),
+                  'run_id':(a.get('workflow_run') or {}).get('id')} for a in batch)
+              if len(batch)<100: break
+          report={'created_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                  'scope':'Read-only source inventory; not a race-by-race completeness certification',
+                  'repository_files':files,'artifacts':artifacts,'errors':errors,
+                  'notes':['No existing databases or production Model D files were changed.',
+                           'Missing or expired artifacts cannot be assumed recoverable.',
+                           'Verify 1988-2014 availability and 2015-present coverage against underlying databases and an independent race calendar.']}
+          pathlib.Path('reports/historical_inventory/inventory.json').write_text(json.dumps(report,indent=2))
+          print('Repository candidate files:',len(files),'Artifacts:',len(artifacts),'Errors:',len(errors))
+          for a in artifacts:
+              if any(t in a['name'].lower() for t in ('stage2','stage65','histor','form')):
+                  print(a['name'], 'expired='+str(a['expired']), 'bytes='+str(a['size_bytes']), 'run='+str(a['run_id']))
+          if errors: raise SystemExit('Artifact inventory failed: '+errors[0])
+          PY
+      - name: Upload inventory report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage65-historical-source-inventory
+          path: reports/historical_inventory/
+          retention-days: 90
