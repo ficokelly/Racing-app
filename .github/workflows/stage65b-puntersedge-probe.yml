@@ -1,0 +1,26 @@
+name: Stage65B - PuntersEdge GB IE Coverage Probe
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PUNTERSEDGE_API_KEY: ${{ secrets.PUNTERSEDGE_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check script and API coverage
+        run: |
+          python -m py_compile scripts/stage65b_puntersedge_probe.py
+          python -u scripts/stage65b_puntersedge_probe.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage65b-puntersedge-coverage-probe
+          path: reports/stage65b/puntersedge_probe/
+          retention-days: 30
