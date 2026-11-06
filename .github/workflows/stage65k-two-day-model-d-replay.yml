@@ -1,0 +1,51 @@
+name: Stage65K - Frozen Model D Two-Day Data Replay
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install exact frozen scoring dependencies and archive downloader
+        run: |
+          python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1 kagglehub
+          python -m py_compile scripts/stage65k_two_day_replay.py scripts/stage38_model_dz_live.py
+      - name: Reconstruct two isolated historical snapshots from same original source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage65k_sources
+          python - <<'PY'
+          import kagglehub,subprocess,sys
+          from pathlib import Path
+          src=kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025/versions/129')
+          for label,cutoff in [('baseline','2026-10-07'),('corrected','2026-10-23')]:
+              db=Path('reports/stage65k_sources')/(label+'.sqlite')
+              subprocess.run([sys.executable,'import_historical_ukie.py','--mode','import','--input',str(src),
+                  '--min-date','1988-01-01','--max-date',cutoff,'--database',str(db),
+                  '--report',str(db.with_suffix('.json'))],check=True)
+          PY
+      - name: Replay 5 and 6 November with pre-off-only snapshots
+        run: |
+          python -u scripts/stage65k_two_day_replay.py \
+            --baseline reports/stage65k_sources/baseline.sqlite \
+            --corrected reports/stage65k_sources/corrected.sqlite \
+            --out reports/stage65k
+      - name: Upload research reports only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage65k-two-day-model-d-replay
+          path: reports/stage65k/
+          retention-days: 90
+          if-no-files-found: warn
