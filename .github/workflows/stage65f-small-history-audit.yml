@@ -1,0 +1,56 @@
+name: Stage65F - Small Detailed History Verification
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate scripts
+        run: |
+          python -m py_compile scripts/stage65e_rebuild_detailed_history.py
+          python -m py_compile scripts/stage65f_verify_history.py
+      - name: Retrieve existing Stage65E historical database
+        id: retrieve
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage65e
+          python - <<'PY'
+          import json,os,subprocess
+          repo=os.environ['GITHUB_REPOSITORY']
+          data=json.loads(subprocess.check_output(['gh','api','-X','GET',f'repos/{repo}/actions/artifacts','-f','name=stage65e-detailed-history-database','-f','per_page=100'],text=True))
+          arts=[a for a in data.get('artifacts',[]) if not a.get('expired')]
+          if not arts:
+              print('No existing artifact found; will rebuild from exact source')
+              open(os.environ['GITHUB_OUTPUT'],'a').write('found=false\n')
+          else:
+              a=max(arts,key=lambda a:a['created_at'])
+              print('Restoring database artifact',a['id'],'from run',a['workflow_run']['id'])
+              subprocess.run(['gh','run','download',str(a['workflow_run']['id']),'--repo',repo,'--name','stage65e-detailed-history-database','--dir','reports/stage65e'],check=True)
+              open(os.environ['GITHUB_OUTPUT'],'a').write('found=true\n')
+          PY
+      - name: Rebuild only if original artifact unavailable
+        if: steps.retrieve.outputs.found == 'false'
+        run: |
+          pip install 'kagglehub>=0.3,<1'
+          python -u scripts/stage65e_rebuild_detailed_history.py --out reports/stage65e
+      - name: Verify historical form and generate SMALL reports
+        run: python -u scripts/stage65f_verify_history.py --db reports/stage65e/detailed_history.sqlite --out reports/stage65f
+      - name: Upload small verification report only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage65f-small-history-verification
+          path: reports/stage65f/
+          retention-days: 90
+          if-no-files-found: warn
