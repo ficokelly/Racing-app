@@ -1,7 +1,7 @@
 {
   "version": 1,
   "day": "2026-11-07",
-  "generated_at": "2026-11-07T13:23:35.168962+00:00",
+  "generated_at": "2026-11-07T18:08:25.027587+00:00",
   "policy": "stage40-paper-only-edge20pct-and-4pp-v1",
   "state": "RESEARCH_ONLY_CALIBRATION_UNVALIDATED",
   "calibration": {
@@ -14,13 +14,12 @@
   "readme": "Forecasts independent of odds; bookmaker break-even and vig-free market are separate. Uncalibrated model EV is not a proven betting edge.",
   "price_feed_status": "NO_FRESH_PRICE_SNAPSHOT",
   "price_feed_audit": {
-    "age_minutes": 135.5,
-    "collected_at": "2026-11-07T11:08:05.613283+00:00",
+    "age_minutes": 78.3,
+    "collected_at": "2026-11-07T16:50:05.634835+00:00",
     "ignored_rows": {
-      "old_bookmaker_quote": 2583,
-      "source_marked_stale": 179
+      "source_marked_stale": 44
     },
-    "indexed_races": 0
+    "indexed_races": 4
   },
   "races": [
     {
@@ -112,7 +111,7 @@
       "race_time": "2026-11-07T12:15:00+00:00",
       "race_id": "rac_32303842363",
       "race_name": "Matchbook Signup Get 20% Back On Losses Novices' Hurdle Race (GBB Race)",
-      "race_type": "Chase",
+      "race_type": "Hurdle",
       "field_size": 13,
       "non_runners_excluded": 0,
       "priced_runners": 0,
@@ -175,8 +174,8 @@
       "race_id": "rac_32303855922",
       "race_name": "Jumps Look Better On Racing TV Novices' Hurdle Race (GBB Race)",
       "race_type": "Hurdle",
-      "field_size": 5,
-      "non_runners_excluded": 0,
+      "field_size": 4,
+      "non_runners_excluded": 1,
       "priced_runners": 0,
       "full_bookmakers": [],
       "preoff_at_generation": false,
@@ -187,9 +186,8 @@
           "model_probability_available": false
         },
         "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+          "status": "STALE_OR_INCOMPLETE_RANKING",
+          "model_probability_available": false
         },
         "C": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -197,29 +195,8 @@
           "model_probability_available": false
         },
         "D": {
-          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
-          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
-          "leader": "Gentle Ocean",
-          "model_probability_available": false,
-          "leader_price": null,
-          "top_three": [
-            {
-              "horse": "Gentle Ocean",
-              "rank": 1,
-              "score": -0.24008
-            },
-            {
-              "horse": "Whiskey On Ice",
-              "rank": 2,
-              "score": -0.29589
-            },
-            {
-              "horse": "They're Chancers",
-              "rank": 3,
-              "score": -0.36209
-            }
-          ],
-          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+          "status": "STALE_OR_INCOMPLETE_RANKING",
+          "model_probability_available": false
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -732,7 +709,7 @@
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -794,7 +771,7 @@
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -856,7 +833,7 @@
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -918,7 +895,7 @@
       "non_runners_excluded": 1,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -980,7 +957,7 @@
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -1042,7 +1019,7 @@
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -1100,11 +1077,11 @@
       "race_id": "rac_32303859796",
       "race_name": "Everything Kverneland Think Paxtons' David Edgar Handicap Steeple Chase (GBB Race)",
       "race_type": "Chase",
-      "field_size": 4,
-      "non_runners_excluded": 0,
+      "field_size": 3,
+      "non_runners_excluded": 1,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -1112,9 +1089,8 @@
           "model_probability_available": false
         },
         "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+          "status": "STALE_OR_INCOMPLETE_RANKING",
+          "model_probability_available": false
         },
         "C": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -1122,29 +1098,8 @@
           "model_probability_available": false
         },
         "D": {
-          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
-          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
-          "leader": "Jamesieconn",
-          "model_probability_available": false,
-          "leader_price": null,
-          "top_three": [
-            {
-              "horse": "Jamesieconn",
-              "rank": 1,
-              "score": -0.38086
-            },
-            {
-              "horse": "Wal Buck's",
-              "rank": 2,
-              "score": -0.41104
-            },
-            {
-              "horse": "Golden Point",
-              "rank": 3,
-              "score": -0.63333
-            }
-          ],
-          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+          "status": "STALE_OR_INCOMPLETE_RANKING",
+          "model_probability_available": false
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -1166,7 +1121,7 @@
       "non_runners_excluded": 2,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -1228,7 +1183,7 @@
       "non_runners_excluded": 1,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -1290,7 +1245,7 @@
       "non_runners_excluded": 1,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -1352,7 +1307,7 @@
       "non_runners_excluded": 2,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -1409,12 +1364,12 @@
       "race_time": "2026-11-07T14:30:00+00:00",
       "race_id": "rac_32303850111",
       "race_name": "Matchbook Loves Racing Handicap Steeple Chase (GBB Race)",
-      "race_type": "Hurdle",
+      "race_type": "Chase",
       "field_size": 5,
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -1476,7 +1431,7 @@
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -1538,7 +1493,7 @@
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -1600,7 +1555,7 @@
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -1662,7 +1617,7 @@
       "non_runners_excluded": 1,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -1724,7 +1679,7 @@
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -1786,7 +1741,7 @@
       "non_runners_excluded": 1,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -1848,7 +1803,7 @@
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -1910,7 +1865,7 @@
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -1972,7 +1927,7 @@
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -2030,11 +1985,11 @@
       "race_id": "rac_32303935339",
       "race_name": "Pat Carroll's Pub Kilkenny Mares Handicap Hurdle (Div I)",
       "race_type": "Hurdle",
-      "field_size": 15,
-      "non_runners_excluded": 0,
+      "field_size": 14,
+      "non_runners_excluded": 1,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -2042,9 +1997,8 @@
           "model_probability_available": false
         },
         "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+          "status": "STALE_OR_INCOMPLETE_RANKING",
+          "model_probability_available": false
         },
         "C": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -2052,29 +2006,8 @@
           "model_probability_available": false
         },
         "D": {
-          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
-          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
-          "leader": "A Snow White Park",
-          "model_probability_available": false,
-          "leader_price": null,
-          "top_three": [
-            {
-              "horse": "A Snow White Park",
-              "rank": 1,
-              "score": 0.5497
-            },
-            {
-              "horse": "Lady Fromentro",
-              "rank": 2,
-              "score": 0.36432
-            },
-            {
-              "horse": "Bearami Creek",
-              "rank": 3,
-              "score": 0.33117
-            }
-          ],
-          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+          "status": "STALE_OR_INCOMPLETE_RANKING",
+          "model_probability_available": false
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -2096,7 +2029,7 @@
       "non_runners_excluded": 1,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -2158,7 +2091,7 @@
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -2220,7 +2153,7 @@
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -2282,7 +2215,7 @@
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -2344,7 +2277,7 @@
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -2406,7 +2339,7 @@
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -2464,11 +2397,11 @@
       "race_id": "rac_32303937276",
       "race_name": "Pat Carroll's Pub Kilkenny Mares Handicap Hurdle (Div II)",
       "race_type": "Hurdle",
-      "field_size": 14,
-      "non_runners_excluded": 1,
+      "field_size": 13,
+      "non_runners_excluded": 2,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -2476,9 +2409,8 @@
           "model_probability_available": false
         },
         "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+          "status": "STALE_OR_INCOMPLETE_RANKING",
+          "model_probability_available": false
         },
         "C": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -2486,29 +2418,8 @@
           "model_probability_available": false
         },
         "D": {
-          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
-          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
-          "leader": "Poetic Focus",
-          "model_probability_available": false,
-          "leader_price": null,
-          "top_three": [
-            {
-              "horse": "Poetic Focus",
-              "rank": 1,
-              "score": 0.40942
-            },
-            {
-              "horse": "Tropical Twist",
-              "rank": 2,
-              "score": 0.28734
-            },
-            {
-              "horse": "Bethpage Theatre",
-              "rank": 3,
-              "score": 0.25701
-            }
-          ],
-          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+          "status": "STALE_OR_INCOMPLETE_RANKING",
+          "model_probability_available": false
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -2530,7 +2441,7 @@
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -2592,7 +2503,7 @@
       "non_runners_excluded": 1,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -2654,7 +2565,7 @@
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -2716,7 +2627,7 @@
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -2774,11 +2685,11 @@
       "race_id": "rac_32303838489",
       "race_name": "Midnite Built Different Handicap Stakes",
       "race_type": "Flat",
-      "field_size": 11,
-      "non_runners_excluded": 1,
+      "field_size": 10,
+      "non_runners_excluded": 2,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -2786,9 +2697,8 @@
           "model_probability_available": false
         },
         "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+          "status": "STALE_OR_INCOMPLETE_RANKING",
+          "model_probability_available": false
         },
         "C": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -2796,29 +2706,8 @@
           "model_probability_available": false
         },
         "D": {
-          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
-          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
-          "leader": "Make It Up",
-          "model_probability_available": false,
-          "leader_price": null,
-          "top_three": [
-            {
-              "horse": "Make It Up",
-              "rank": 1,
-              "score": 0.30757
-            },
-            {
-              "horse": "Clipsham Noble",
-              "rank": 2,
-              "score": 0.2322
-            },
-            {
-              "horse": "Emerald Reine",
-              "rank": 3,
-              "score": 0.18661
-            }
-          ],
-          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+          "status": "STALE_OR_INCOMPLETE_RANKING",
+          "model_probability_available": false
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -2895,12 +2784,12 @@
     "A_pending_or_stale": 47,
     "C_pending_or_stale": 47,
     "races_assessed": 47,
-    "D_current_rankings": 45
+    "D_current_rankings": 40
   },
   "new_paper_candidates": 0,
   "new_forward_forecasts": 0,
   "settlements_updated": 0,
-  "forecast_settlements_updated": 0,
+  "forecast_settlements_updated": 39,
   "paper_performance": {
     "A": {
       "settled_priced": 0,
