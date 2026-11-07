@@ -1,0 +1,37 @@
+name: Stage65O - Historical Race Type Inventory
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install import dependencies
+        run: python -m pip install --disable-pip-version-check kagglehub pandas pyarrow
+      - name: Rebuild original historical source and inspect classifications
+        run: |
+          python - <<'PY'
+          import kagglehub,subprocess,sys
+          from pathlib import Path
+          source=kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025/versions/129')
+          Path('reports/stage65o').mkdir(parents=True,exist_ok=True)
+          subprocess.run([sys.executable,'import_historical_ukie.py','--mode','import','--input',str(source),'--min-date','1988-01-01','--max-date','2026-10-07','--database','reports/stage65o/original.sqlite','--report','reports/stage65o/import.json'],check=True)
+          subprocess.run([sys.executable,'scripts/stage65o_race_type_inventory.py','--db','reports/stage65o/original.sqlite','--source',str(source),'--out','reports/stage65o/audit'],check=True)
+          PY
+      - name: Upload lightweight inspection only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage65o-historical-race-type-inventory
+          path: |
+            reports/stage65o/audit/*.json
+            reports/stage65o/audit/*.csv
+            reports/stage65o/import.json
+          retention-days: 90
+          if-no-files-found: warn
