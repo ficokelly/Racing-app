@@ -1,0 +1,45 @@
+name: Stage65P - Enriched Race Type C Only
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  c-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1 kagglehub
+      - name: Build historical research database and recover original race names
+        run: |
+          python - <<'PY'
+          import kagglehub,subprocess,sys
+          from pathlib import Path
+          src=kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025/versions/129')
+          Path('reports/stage65p').mkdir(parents=True,exist_ok=True)
+          subprocess.run([sys.executable,'import_historical_ukie.py','--mode','import','--input',str(src),'--min-date','1988-01-01','--max-date','2026-10-07','--database','reports/stage65p/original.sqlite','--report','reports/stage65p/import.json'],check=True)
+          subprocess.run([sys.executable,'scripts/stage65p_enrich_race_details.py','--db','reports/stage65p/original.sqlite','--source',str(src),'--out','reports/stage65p/audit'],check=True)
+          PY
+      - name: Backfill verified recent races (no A/B replay)
+        run: python -u scripts/stage65m_backfill.py --baseline reports/stage65p/original.sqlite --out reports/stage65p/backfill --keep-candidate --skip-replay
+      - name: Train and evaluate enriched C only
+        run: python -u scripts/stage65p_race_type_c_only.py --updated reports/stage65p/backfill/backfilled_research_only.sqlite --out reports/stage65p/c_only
+      - name: Upload lightweight C-only reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage65p-enriched-race-type-c-only
+          path: |
+            reports/stage65p/audit/*.json
+            reports/stage65p/c_only/*.csv
+            reports/stage65p/c_only/*.json
+            reports/stage65p/backfill/*.json
+          retention-days: 90
+          if-no-files-found: warn
