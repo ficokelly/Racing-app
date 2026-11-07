@@ -1,0 +1,49 @@
+name: Stage66 - Same-clock A B C paper snapshots (app unchanged)
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '25 7,11,15,18 * * *'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage66-paper-comparison
+  cancel-in-progress: false
+jobs:
+  research-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install research dependencies
+        run: python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1 kagglehub
+      - name: Build research history and recover original race names
+        run: |
+          python - <<'PY'
+          import kagglehub,subprocess,sys
+          from pathlib import Path
+          src=kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025/versions/129')
+          Path('reports/stage66').mkdir(parents=True,exist_ok=True)
+          subprocess.run([sys.executable,'import_historical_ukie.py','--mode','import','--input',str(src),'--min-date','1988-01-01','--max-date','2026-10-07','--database','reports/stage66/original.sqlite','--report','reports/stage66/import.json'],check=True)
+          subprocess.run([sys.executable,'scripts/stage65p_enrich_race_details.py','--db','reports/stage66/original.sqlite','--source',str(src),'--out','reports/stage66/audit'],check=True)
+          PY
+      - name: Add verified recent form to research history
+        run: python -u scripts/stage65m_backfill.py --baseline reports/stage66/original.sqlite --out reports/stage66/backfill --keep-candidate --skip-replay
+      - name: Score B and trained C against current racecards, preserve recorded A
+        run: python -u scripts/stage66_live_paper_comparison.py --db reports/stage66/backfill/backfilled_research_only.sqlite --out reports/stage66/snapshots
+      - name: Upload immutable run snapshot; never push to app
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage66-abc-paper-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            reports/stage66/snapshots/*.csv
+            reports/stage66/snapshots/*.json
+            reports/stage66/audit/enrichment_audit.json
+          retention-days: 90
+          if-no-files-found: warn
