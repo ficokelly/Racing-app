@@ -1,0 +1,118 @@
+name: Stage 38 - Model D Daily Scoring (UI Independent)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '25 7,11,15,18 * * *'
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: stage38-unified-all-models
+  cancel-in-progress: false
+
+jobs:
+  score-independent-dz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 170
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1 kagglehub
+      - name: Validate unchanged frozen Model D scoring engine
+        run: |
+          set -euo pipefail
+          for path in scripts/stage30_gap_aware_abcd.py scripts/stage38_model_dz_live.py scripts/stage38_fullfield_bridge.py reports/stage30/stage30-summary.json reports/stage34/stage34-frozen-track-profiles.json data/model-z-strategies.json; do test -s "$path"; done
+          python scripts/stage30_gap_aware_abcd.py --self-test
+          python scripts/stage38_model_dz_live.py self-test
+          python scripts/stage38_fullfield_bridge.py --self-test
+      - name: Retrieve or rebuild historical racing database
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os,subprocess,sys
+          from pathlib import Path
+          repo=os.environ['GITHUB_REPOSITORY'];winner=None
+          for page in range(1,21):
+              raw=subprocess.check_output(['gh','api','-X','GET',f'repos/{repo}/actions/artifacts','-f','per_page=100','-f',f'page={page}'],text=True)
+              rows=json.loads(raw).get('artifacts',[])
+              for r in rows:
+                  if r.get('name')=='stage2-historical-staging-database' and not r.get('expired'):
+                      if not winner or r.get('created_at','')>winner.get('created_at',''):winner=r
+              if len(rows)<100:break
+          Path('stage38_db').mkdir(exist_ok=True)
+          matches=[]
+          if winner:
+              try:
+                  subprocess.run(['gh','run','download',str(winner['workflow_run']['id']),'--repo',repo,'--name',winner['name'],'--dir','stage38_db'],check=True)
+                  matches=list(Path('stage38_db').rglob('*.sqlite'))
+              except subprocess.CalledProcessError:pass
+          if matches:db=max(matches,key=lambda p:p.stat().st_size).resolve()
+          else:
+              import kagglehub
+              source=kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025')
+              db=Path('stage38_db/historical_ukie_staging.sqlite').resolve()
+              subprocess.run([sys.executable,'import_historical_ukie.py','--mode','import','--input',str(source),'--min-date','1988-01-01','--max-date','2026-10-07','--database',str(db),'--report','stage38_db/historical_stage2_report.json'],check=True)
+              subprocess.run([sys.executable,'audit_history_coverage.py','--database',str(db),'--expect-first-year','1988','--output','stage38_db/historical_annual_coverage.csv','--summary','stage38_db/historical_coverage_summary.json'],check=True)
+          if not db.is_file() or db.stat().st_size<10_000_000:raise SystemExit('No valid historical database')
+          with open(os.environ['GITHUB_ENV'],'a') as f:print('STAGE38_DB='+str(db),file=f)
+          PY
+      - name: Score frozen Model D and Model Z without modifying app UI
+        run: |
+          set -euo pipefail
+          python -u scripts/stage38_model_dz_live.py live --repo . --db "$STAGE38_DB"
+          python scripts/stage38_fullfield_bridge.py --repo .
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data=Path('data')
+          d=json.loads((data/'strategy-d-probabilities.json').read_text())
+          z=json.loads((data/'strategy-z-probabilities.json').read_text())
+          b=json.loads((data/'strategy-b-all-races.json').read_text())
+          c=json.loads((data/'model-assessment-coverage.json').read_text())
+          registry=json.loads((data/'model-z-strategies.json').read_text())
+          assert d['model']=='D' and d['version']==1 and d['selection_policy']=='RESEARCH_ONLY_NOT_PROVEN_PROFITABLE'
+          assert z['model']=='Z' and z['automatic_paper_only'] is True and not z['live_models_changed']
+          assert not registry['active_strategy_ids']
+          assert b['model']=='B' and c['version']==1 and len(b['races'])==len(c['races'])
+          assert all(set(row['models'])==set('ABCDZ') for row in c['races'])
+          assert all(r['selection_status'] in ('PAPER_ONLY','NO_SELECTION') for r in z['races'])
+          print('Independent D:',d['state'],len(d['races']),'Z:',len(z['races']))
+          PY
+      - name: Publish model forecasts without touching app UI
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/strategy-b-all-races.json data/model-assessment-coverage.json data/strategy-d-probabilities.json data/strategy-d-results.json data/strategy-d-history.json data/strategy-z-probabilities.json data/strategy-z-paper-history.json data/strategy-z-results.json
+          if git diff --cached --quiet; then echo 'No data updates'; exit 0; fi
+          git commit -m 'Stage38: publish frozen D and Z forecasts'
+          for attempt in 1 2 3 4 5; do
+            if git pull --rebase origin main && git push origin HEAD:main; then exit 0; fi
+            git rebase --abort || true
+            sleep "$((attempt*3))"
+          done
+          echo 'Forecast publication failed' >&2
+          exit 1
+      - name: Save forecast files on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage38-research-dz-and-race-coverage
+          path: |
+            data/strategy-d-probabilities.json
+            data/strategy-z-probabilities.json
+            data/strategy-z-paper-history.json
+            data/strategy-b-all-races.json
+            data/model-assessment-coverage.json
+          retention-days: 14
+          if-no-files-found: warn
