@@ -1,0 +1,58 @@
+name: Stage66 - Three Model D Daily Paper Selections
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  three-way:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1 kagglehub
+      - name: Reconstruct historical baseline
+        run: |
+          python - <<'PY'
+          import kagglehub,subprocess,sys
+          from pathlib import Path
+          source=kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025/versions/129')
+          Path('reports/stage66/daily').mkdir(parents=True,exist_ok=True)
+          subprocess.run([sys.executable,'import_historical_ukie.py','--mode','import','--input',str(source),'--min-date','1988-01-01','--max-date','2026-10-07','--database','reports/stage66/daily/original.sqlite','--report','reports/stage66/daily/import.json'],check=True)
+          PY
+      - name: Recover verified history without changing live model
+        run: |
+          python -u scripts/stage65m_backfill.py --baseline reports/stage66/daily/original.sqlite --out reports/stage66/daily/backfill --keep-candidate --skip-replay
+      - name: Restore race-detail table required by C
+        run: |
+          python - <<'PYCODE'
+          import sqlite3
+          db='reports/stage66/daily/backfill/backfilled_research_only.sqlite'
+          con=sqlite3.connect(db)
+          con.execute('CREATE TABLE IF NOT EXISTS stage65p_race_details (race_id INTEGER PRIMARY KEY, race_name TEXT)')
+          con.execute('INSERT OR IGNORE INTO stage65p_race_details(race_id,race_name) SELECT id, race_type FROM historical_races WHERE race_type IS NOT NULL AND TRIM(race_type) != ""')
+          con.commit()
+          print('Race details rows:',con.execute('SELECT COUNT(*) FROM stage65p_race_details').fetchone()[0],flush=True)
+          con.close()
+          PYCODE
+      - name: Generate A B C pre-off selections
+        run: |
+          python -u scripts/stage66_live_paper_comparison.py --db reports/stage66/daily/backfill/backfilled_research_only.sqlite --out reports/stage66/daily/snapshots
+      - name: Upload comparison report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage66-three-model-d-daily-selections
+          path: |
+            reports/stage66/daily/snapshots/*.csv
+            reports/stage66/daily/snapshots/*.json
+            reports/stage66/daily/backfill/*.json
+          if-no-files-found: warn
+          retention-days: 30
