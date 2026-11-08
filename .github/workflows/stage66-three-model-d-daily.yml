@@ -30,6 +30,19 @@ jobs:
       - name: Recover verified history without changing live model
         run: |
           python -u scripts/stage65m_backfill.py --baseline reports/stage66/daily/original.sqlite --out reports/stage66/daily/backfill --keep-candidate --skip-replay
+      - name: Ensure race detail lookup table exists for research-only model C
+        run: |
+          python - <<'PY'
+          import sqlite3
+          path='reports/stage66/daily/backfill/backfilled_research_only.sqlite'
+          cx=sqlite3.connect(path)
+          cx.execute('CREATE TABLE IF NOT EXISTS stage65p_race_details (race_id INTEGER PRIMARY KEY, race_name TEXT)')
+          cx.commit()
+          rows=cx.execute('SELECT COUNT(*) FROM stage65p_race_details').fetchone()[0]
+          print('Race-detail rows:',rows,flush=True)
+          print('Missing race details will fall back to historical_races.race_type; no fabricated categories.',flush=True)
+          cx.close()
+          PY
       - name: Generate A B C pre-off selections
         run: |
           python -u scripts/stage66_live_paper_comparison.py --db reports/stage66/daily/backfill/backfilled_research_only.sqlite --out reports/stage66/daily/snapshots
