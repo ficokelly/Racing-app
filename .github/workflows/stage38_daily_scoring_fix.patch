@@ -1,0 +1,12 @@
+--- a/.github/workflows/stage38-all-models-app-and-coverage.yml
++++ b/.github/workflows/stage38-all-models-app-and-coverage.yml
+@@
+-    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode != 'score-only' }}
++    # Legacy installer is incompatible with the current Model D-only app.
++    # Keep it disabled; scoring runs independently below.
++    if: ${{ false }}
+@@
+   score-independent-dz:
+-    needs: [install-ui]
+-    if: ${{ always() && (needs.install-ui.result == 'success' || needs.install-ui.result == 'skipped') && (github.event_name == 'schedule' || github.event.inputs.mode != 'install-ui-only') }}
++    if: ${{ github.event_name == 'schedule' || github.event.inputs.mode != 'install-ui-only' }}
