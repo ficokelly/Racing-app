@@ -71,11 +71,16 @@ def runner_key(day: str, course: object, off: object, horse: object) -> str:
 
 
 def is_starter(row: dict) -> bool:
+    # Failed to complete is still a RUNNER for trainer/jockey strike-rate
+    # denominators. Do not quietly drop falls and pulled-up horses.
     pos = str(row.get('position') or '').strip().upper()
-    if pos in NONRUNNERS:
+    status = str(row.get('status') or '').strip().lower()
+    if pos in {'NR','N/R','NON RUNNER','NON-RUNNER','WD','WITHDRAWN','SCRATCHED','DNS','VOID','ABANDONED'}:
         return False
-    if str(row.get('status') or '').strip().lower() in {'scratched','non-runner','withdrawn','abandoned'}:
+    if status in {'nr','n/r','scratched','non runner','non-runner','withdrawn','abandoned','dns'}:
         return False
+    if not pos:
+        return status in {'unplaced','finished unplaced','pu','pulled up','f','fell','ur','unseated rider','bd','brought down','ro','ran out','r','refused','disqualified','dq'}
     return True
 
 

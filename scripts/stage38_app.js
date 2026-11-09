@@ -218,9 +218,28 @@ renderStrategySelections=function(){
  const message=model==='Z'?'Frozen course-candidate research. Paper picks are timestamped before the race; no active or approved Z strategies.':
     'Independent eight-factor rankings for all available races; research shortlist only, never a validated betting edge.';
  host.innerHTML=`<div class="panel"><strong>Model ${model} · ${published.length} research/paper selections</strong><p class="hint">${s38esc(message)} Every eligible race is assessed separately; betting selections are not forced.</p></div>`+
-  (published.map(r=>`<article class="horse s38-paper-card"><div class="horse-top"><div><div class="name">${s38esc(r.selection.horse)}</div><div class="meta">${s38esc(r.time)} · ${s38esc(r.course)} · ${s38esc(r.strategy_name||'Model D independent research')}</div></div><span class="pill">${model==='Z'?'Paper only':'Research only'}</span></div><p>${s38esc(r.verdict)}</p><p class="hint">Recorded ${s38esc(r.published_at||feed.generated_at)} · frozen score gap ${Number(r.decision?.gap||0).toFixed(3)}. No real bet placed.</p></article>`).join('')||'<div class="rhp-ab-empty">No qualifying research or paper selections have been published for this period.</div>')+
+  (published.map(r=>`<article class="horse s38-paper-card"><div class="horse-top"><div><div class="name">${s38esc(r.selection.horse)}</div><div class="meta">${s38esc(r.time)} · ${s38esc(r.course)} · ${s38esc(r.strategy_name||'Model D independent research')}</div></div><span class="pill">${model==='Z'?'Paper only':'Research only'}</span></div><p>${s38esc(r.verdict)}</p><p class="hint">Recorded ${s38esc(r.published_at||feed.generated_at)} · frozen score gap ${Number(r.decision?.gap||0).toFixed(3)}. No real bet placed.</p><div class="actions" style="margin-top:10px"><button type="button" class="action small outline" data-rhp-hp-race="1" data-rhp-hp-day="${s38esc(r.date)}" data-rhp-hp-course="${s38esc(r.course)}" data-rhp-hp-time="${s38esc(r.time)}">View race</button></div></article>`).join('')||'<div class="rhp-ab-empty">No qualifying research or paper selections have been published for this period.</div>')+
  s38everyRaceHTML(model,target,abViewState.selections.type);
 };
+// Stage68: only the provider's verified final finishing order; top three are
+// descriptive and are not bookmaker-specific each-way place terms.
+function s38VerifiedFinishers(record){
+ const id=courseMatchKey(record.course)+'|'+record.date+'|'+String(record.time||'').slice(0,5);
+ const race=finishedRaceIndex.get(id);
+ if(!race)return '';
+ const all=[...race.values()];
+ const podium=all.filter(x=>Number.isInteger(x.position)&&x.position<=3)
+                 .sort((a,b)=>a.position-b.position);
+ const ord=n=>n===1?'1st':n===2?'2nd':n===3?'3rd':n+'th';
+ const raceStatus=x=>({pu:'Pulled up',f:'Fell',ur:'Unseated rider',bd:'Brought down',ro:'Ran out',r:'Refused'}[String(x.status||'').toLowerCase()]||x.status||'Unplaced');
+ const resultText=x=>s38esc((x.position?ord(x.position):raceStatus(x))+' · '+x.horse+' · SP '+(x.sp||'unavailable'));
+ const selected=race.get(horseMatchKey(record.horse));
+ const below=selected&&!(Number.isInteger(selected.position)&&selected.position<=3)
+              ?'<p class="hint">Hot Pot selection: '+resultText(selected)+'</p>':'';
+ return '<div class="hint" style="margin-top:9px"><strong>Verified finishers (top three)</strong>'+
+    (podium.length?podium.map(x=>'<div>'+resultText(x)+'</div>').join(''):'<div>Full finishing order not supplied.</div>')+
+    below+'</div>';
+}
 const s38OldResults=renderStrategyResults;
 renderStrategyResults=function(){
  const model=abViewState.results.model;
@@ -243,7 +262,7 @@ renderStrategyResults=function(){
  sum.textContent=`Model ${model} · ${list.length} paper/research logs · ${settled.length} settled · ${wins} winners. `+
   (model==='Z'?'ROI includes only verified pre-off bookmaker prices; no SP substitution.':'D results are settled at official SP where available, NOT attainable pre-off bookmaker quotes.')+
   ' Real My Bets and P&L are unchanged.';
- host.innerHTML=list.length?list.map(r=>`<article class="horse"><div class="horse-top"><div><div class="name">${s38esc(r.horse)}</div><div class="meta">${s38esc(r.date)} · ${s38esc(r.time)} ${s38esc(r.course)} · ${s38esc(r.strategy_name||'Independent Model D')}</div></div><span class="pill">${s38esc(r.status||'Pending')}</span></div><p class="hint">Recorded before off: ${s38esc(r.published_at||'time not recorded')} · ${model==='Z'?'Paper only':'Research only'} · ${r.odds>1?s38esc((model==='Z'?'Pre-off odds':'Official SP')+' '+r.odds):'No verified bookmaker quote'}</p></article>`).join(''):
+ host.innerHTML=list.length?list.map(r=>`<article class="horse"><div class="horse-top"><div><div class="name">${s38esc(r.horse)}</div><div class="meta">${s38esc(r.date)} · ${s38esc(r.time)} ${s38esc(r.course)} · ${s38esc(r.strategy_name||'Independent Model D')}</div></div><span class="pill">${s38esc(r.status||'Pending')}</span></div><p class="hint">Recorded before off: ${s38esc(r.published_at||'time not recorded')} · ${model==='Z'?'Paper only':'Research only'} · ${r.odds>1?s38esc((model==='Z'?'Pre-off odds':'Official SP')+' '+r.odds):'No verified bookmaker quote'}${r.position?' · Finish '+s38esc(r.position):r.finishing_status?' · '+s38esc(r.finishing_status):''}</p>${model==='D'?s38VerifiedFinishers(r):''}</article>`).join(''):
    '<div class="rhp-ab-empty">No recorded results for this model and period yet. Paper entries appear only after a genuine pre-off prediction.</div>';
  const hist=$('strategy-historical-roi');if(hist)hist.innerHTML=`<p class="hint">${model==='D'?'Model D historical evidence is recorded separately in Stage 30–37 reports.':'Model Z candidates remain frozen. Promotion requires independent forward paper results and explicit approval.'}</p>`;
 };
@@ -258,5 +277,19 @@ for(const f of ['strategy-b-all-races.json','strategy-d-probabilities.json','str
 renderPower=renderStrategySelections;
 renderPowerResults=renderStrategyResults;
 loadPowerResults=loadStrategyData;
+// Stage68: View Race works even when the selection has no bookmaker odds.
+document.addEventListener('click',function(event){
+ const button=event.target.closest('[data-rhp-hp-race]');
+ if(!button)return;
+ event.preventDefault();
+ const day=button.dataset.rhpHpDay,course=button.dataset.rhpHpCourse,time=button.dataset.rhpHpTime;
+ const popup={day,course,time};
+ $('race-info').textContent=course+' · '+time+' · '+day;
+ renderRacecards(popup);
+ if(!$('race-runner-list').querySelector('.panel'))
+    $('race-runner-list').innerHTML='<div class="empty">The complete racecard has not yet been published.</div>';
+ $('race-overlay').classList.remove('hidden');
+ document.body.style.overflow='hidden';
+},true);
 // Also load directly for cached app views which skip the usual tab setup.
 s38load();
