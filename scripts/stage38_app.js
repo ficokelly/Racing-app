@@ -181,7 +181,7 @@ function s38ranking(model,x){
  const f={A:strategyProbabilityFeed,B:stage38B||strategyBProbFeed,C:strategyCFeed,D:stage38D}[model];
  const r=s38find(f,course,date,time);
  if(!r)return {label:'Independent forecast pending',detail:'No current complete-field assessment'};
- if(rhpCFieldChanged(r,course,date,time))return {label:'Field changed',detail:'Reassessment required; old rank withheld'};
+ if(model!=='D'&&rhpCFieldChanged(r,course,date,time))return {label:'Field changed',detail:'Reassessment required; old rank withheld'};
  const rows=[...(r.runners||[])];
  if(model==='A')rows.sort((a,b)=>Number(b.probability)-Number(a.probability));
  if(model==='C')rows.sort((a,b)=>Number(b.win_probability)-Number(a.win_probability));
