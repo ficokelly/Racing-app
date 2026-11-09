@@ -1,0 +1,303 @@
+name: Stage77 - Full Historical Missing Data Audit
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: rhp-stage77-full-history-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Read current repository without publishing changes
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Recover previously verified Stage65E historical database artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage65e
+          gh run download 42218307313 --repo "$GITHUB_REPOSITORY" \
+            --name stage65e-detailed-history-database --dir reports/stage65e
+          test -s reports/stage65e/detailed_history.sqlite
+          echo 'Archive restored into working directory only; no git changes.'
+      - name: Install read-only independent audit script
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/stage77_full_audit.py <<'STAGE77_AUDIT_PY'
+          #!/usr/bin/env python3
+          """Stage 77: read-only UK/IE historical data gap audit.
+
+          No archive mutation, guessed values, odds recalculation, selection updates,
+          model training or promotion. Report only source-specific documented absences.
+          """
+          from __future__ import annotations
+          import argparse, collections, csv, datetime as dt, hashlib, json, pathlib, re, sqlite3, unicodedata
+          from urllib.parse import quote
+
+          FIELDS=('race_date','course','race_id','horse','finish','trainer','jockey','weight',
+                  'official_rating','rpr','ts','beaten','overall_beaten','race_class',
+                  'race_type','going','distance','sp')
+          REGIONS=('GB','IE','IRE')
+          COUNTRIES=re.compile(r'\s*\((?:IRE|IRL|GB|FR|USA|CAN|GER|AUS|NZ|SAF|ITA|ITY)\)\s*$',re.I)
+          COURSEREGIONS=re.compile(r'\s*\((?:AW|ALL WEATHER|IRE|IRL|GB)\)',re.I)
+
+
+          def norm(value):
+              x=unicodedata.normalize('NFKD',str(value or ''))
+              return re.sub(r'[^a-z0-9]','', ''.join(c for c in x if not unicodedata.combining(c)).casefold())
+
+          def horse(value):return norm(COUNTRIES.sub('',str(value or '')))
+          def course(value):return norm(COURSEREGIONS.sub('',str(value or '')))
+
+          def off(value):
+              try:
+                  z=dt.datetime.fromisoformat(str(value).replace('Z','+00:00'))
+                  if z.tzinfo is None:z=z.replace(tzinfo=dt.timezone.utc)
+                  return z.astimezone(dt.timezone.utc).strftime('%H:%M')
+              except (TypeError,ValueError):
+                  m=re.search(r'\b\d\d:\d\d\b',str(value or ''))
+                  return m.group() if m else ''
+
+          def present(x):return x is not None and str(x).strip()!=''
+
+          def safe_file(path):
+              try:return json.loads(path.read_text(encoding='utf-8'))
+              except (FileNotFoundError,ValueError) as e:return {'_load_error':str(e)}
+
+          def csv_out(path,rows,columns):
+              with path.open('w',newline='',encoding='utf-8') as f:
+                  w=csv.DictWriter(f,fieldnames=columns,extrasaction='ignore')
+                  w.writeheader();w.writerows(rows)
+
+          def historical_audit(db,out):
+              if not db.is_file():raise RuntimeError('Stage65E historical DB is missing')
+              cx=sqlite3.connect('file:'+quote(str(db.resolve()))+'?mode=ro',uri=True)
+              cx.execute('pragma query_only=on')
+              integrity=cx.execute('pragma quick_check').fetchone()[0]
+              if integrity!='ok':raise RuntimeError('SQLite integrity check failed: '+str(integrity))
+              cols={x[1] for x in cx.execute('PRAGMA table_info(historical_runs)')}
+              if not {'race_date','course','race_id','horse','finish'}<=cols:
+                  raise RuntimeError('Stage65E schema lacks key fields: '+repr(cols))
+              included=[x for x in FIELDS if x in cols]
+              cols_sql=["substr(cast(race_date as text),1,4) as year",
+                        "substr(cast(race_date as text),1,7) as month", "count(*) as runner_rows"]
+              for c in included:
+                  cols_sql.append(f"sum(case when {c} is null or trim(cast({c} as text))='' then 1 else 0 end) as missing_{c}")
+              qry='select '+', '.join(cols_sql)+' from historical_runs group by 1,2 order by 1,2'
+              data=[];keys=['year','month','runner_rows']+['missing_'+c for c in included]
+              for record in cx.execute(qry):data.append(dict(zip(keys,record)))
+              valid=[];malformed=[]
+              for x in data:
+                  try:
+                      d=dt.date.fromisoformat(x['month']+'-01')
+                      if d.year<1988 or d.year>2026:raise ValueError('outside expected year range')
+                      valid.append(x)
+                  except ValueError:malformed.append(x)
+              by_year=collections.defaultdict(lambda:collections.Counter())
+              for x in valid:
+                  v=by_year[x['year']]
+                  v['runner_rows']+=x['runner_rows']
+                  v['months_with_rows']+=int(x['runner_rows']>0)
+                  for c in included:v['missing_'+c]+=x['missing_'+c]
+              years=[]
+              for yr in sorted(by_year):
+                  b=by_year[yr];z={'year':yr,'runner_rows':b['runner_rows'],'months_with_rows':b['months_with_rows']}
+                  for c in included:
+                      z['missing_'+c]=b['missing_'+c]
+                      z['coverage_pct_'+c]=round(100*(1-b['missing_'+c]/b['runner_rows']),3) if b['runner_rows'] else 0
+                  years.append(z)
+              fields=[];total=sum(x['runner_rows'] for x in years)
+              for c in included:
+                  missing=sum(y['missing_'+c] for y in years)
+                  fields.append({'field':c,'missing':missing,'present':total-missing,'coverage_pct':round(100*(total-missing)/total,3) if total else 0})
+              csv_out(out/'historical_by_year.csv',years,list(years[0]) if years else ['year','runner_rows'])
+              csv_out(out/'historical_by_month.csv',valid,keys)
+              csv_out(out/'historical_field_gaps.csv',fields,['field','missing','present','coverage_pct'])
+              dup_total=0;dup_extra=0;dup_samples=[]
+              query='''select race_date,course,race_id,horse,count(*) n from historical_runs
+                group by race_date,course,race_id,horse having count(*)>1'''
+              for date,venue,rid,horse0,n in cx.execute(query):
+                  dup_total+=1;dup_extra+=n-1
+                  if len(dup_samples)<60:dup_samples.append({'date':date,'course':venue,'race_id':rid,'horse':horse0,'count':n})
+              csv_out(out/'historical_duplicate_samples.csv',dup_samples,['date','course','race_id','horse','count'])
+              # Full row-level finishing validity / winner count by unique race identity.
+              # No winner does not imply bad result: void, abandoned and incomplete source
+              # races may legitimately have none; mark only for external review.
+              field_fin="upper(trim(cast(finish as text))) in ('1','1ST','1=')"
+              review=collections.Counter();finish_samples=[]
+              q=f'''select race_date,course,race_id,count(*) runners,
+                sum(case when {field_fin} then 1 else 0 end) winners
+                from historical_runs group by race_date,course,race_id'''
+              for day,venue,rid,n,wins in cx.execute(q):
+                  if not str(day)[:4].isdigit():continue
+                  review['unique_race_ids']+=1
+                  if not wins:review['no_recorded_winner']+=1
+                  if wins>1:review['multiple_recorded_winners']+=1
+                  if n<2:review['under_two_rows']+=1
+                  if (wins!=1 or n<2) and len(finish_samples)<100:
+                      finish_samples.append({'date':day,'course':venue,'race_id':rid,'runners':n,'winner_rows':wins})
+              csv_out(out/'historical_race_review_samples.csv',finish_samples,['date','course','race_id','runners','winner_rows'])
+              existing_years={int(z['year']) for z in years}
+              missing_years=[i for i in range(1988,2027) if i not in existing_years]
+              missing_months=[f'{y}-{m:02d}' for y in range(1988,2026) for m in range(1,13)
+                              if not any(z['month']==f'{y}-{m:02d}' for z in valid)]
+              cx.close()
+              return {'source':'Stage65E detailed_history.sqlite','sqlite_quick_check':integrity,
+                'rows_valid_date':total,'rows_malformed_date':sum(x['runner_rows'] for x in malformed),
+                'rows_total_including_malformed':total+sum(x['runner_rows'] for x in malformed),
+                'first_year':years[0]['year'] if years else None,'last_year':years[-1]['year'] if years else None,
+                'missing_entire_years':missing_years,'missing_months_1988_2025':missing_months,
+                'schema_columns_missing':sorted(set(FIELDS)-cols),
+                'field_missing':{x['field']:x['missing'] for x in fields},
+                'duplicate_runner_groups':dup_total,'duplicate_extra_rows':dup_extra,
+                'race_winner_check':dict(review),
+                'limitations':['A non-null value can be invalid or refer to a different horse; no source data overwritten',
+                               'Missing full-course fixtures need independent calendar data; internal annual counts cannot certify completeness',
+                               '2026 source is partial and must be bridged with the separately stored daily result archives']}
+
+
+          def recent_audit(root,out):
+              root=pathlib.Path(root)
+              folder=root/'data/racing-results';files=sorted(folder.glob('????-??-??.json'))
+              raw=collections.Counter();dups=[];no_status=[];no_winner=[];field_missing_raw=collections.Counter()
+              unique_runners=collections.defaultdict(list);race_slots=collections.defaultdict(list)
+              for path in files:
+                  try:day=dt.date.fromisoformat(path.stem).isoformat()
+                  except ValueError:continue
+                  data=safe_file(path)
+                  if not isinstance(data.get('results'),list):raise RuntimeError('Result archive unreadable: '+str(path))
+                  raw['daily_files']+=1
+                  for r in data['results']:
+                      if not isinstance(r,dict):continue
+                      raw['raw_race_rows']+=1
+                      status=r.get('status') or 'missing'
+                      raw['status_'+status]+=1
+                      if status=='missing':no_status.append({'date':day,'course':r.get('course'),'time':off(r.get('off_dt') or r.get('race_time') or r.get('off')),'race_id':r.get('race_id') or ''})
+                      slot=(day,course(r.get('course')),off(r.get('off_dt') or r.get('race_time') or r.get('off')))
+                      race_slots[slot].append(r)
+                      runners=r.get('runners') or []
+                      if not isinstance(runners,list):continue
+                      raw['raw_runner_rows']+=len(runners)
+                      if status not in ('superseded','abandoned'):
+                          winners=[horse(q.get('horse')) for q in runners if isinstance(q,dict) and str(q.get('position'))=='1']
+                          if len(winners)!=1:no_winner.append({'date':day,'course':r.get('course'),'off':slot[2],'status':status,'winner_rows':len(winners)})
+                      for fld,values in {
+                          'race_id':(r.get('race_id'),),'race_type':(r.get('type'),r.get('race_type')),
+                          'distance':(r.get('dist_f'),r.get('distance_f'),r.get('distance')),
+                          'going':(r.get('going'),)}.items():
+                          if not any(present(v) for v in values):field_missing_raw['race_'+fld]+=1
+                      for q in runners:
+                          if not isinstance(q,dict) or not q.get('horse'):continue
+                          for fld,v in {'trainer':q.get('trainer'),'jockey':q.get('jockey'),'sp':q.get('sp'),
+                                        'position':q.get('position'),'sire':q.get('sire'),'dam':q.get('dam'),
+                                        'official_rating':q.get('or') or q.get('official_rating')}.items():
+                              if not present(v):field_missing_raw['runner_'+fld]+=1
+                          if status not in ('superseded','abandoned'):
+                              unique_runners[(slot,horse(q.get('horse')))].append(q)
+              conflicts=[]
+              for (day,venue,t),arr in race_slots.items():
+                  if len(arr)<=1:continue
+                  all_winners=[];live_winners=[]
+                  for r in arr:
+                      winners=[horse(z.get('horse')) for z in r.get('runners',[]) if isinstance(z,dict) and str(z.get('position'))=='1']
+                      if len(winners)==1:
+                          all_winners.extend(winners)
+                          if r.get('status')!='superseded':live_winners.extend(winners)
+                  if len(set(all_winners))>1 or len(set(live_winners))>1:
+                      conflicts.append({'date':day,'course':venue,'time':t,'distinct_winners_all_sources':len(set(all_winners)),
+                                        'distinct_winners_non_superseded':len(set(live_winners)),'status':'RESOLVED_SUPERSEDED' if len(set(live_winners))<=1 else 'REVIEW'})
+                  dups.append({'date':day,'course':venue,'time':t,'source_records':len(arr),'winning_horses':', '.join(sorted(set(all_winners)))})
+              unique_gaps=collections.Counter()
+              for recs in unique_runners.values():
+                  for key in ('trainer','jockey','sp','position','sire','dam'):
+                      if not any(present(z.get(key)) for z in recs):unique_gaps[key]+=1
+                  if not any(present(z.get('or') or z.get('official_rating')) for z in recs):unique_gaps['official_rating']+=1
+              csv_out(out/'recent_duplicate_races.csv',dups,['date','course','time','source_records','winning_horses'])
+              csv_out(out/'recent_winner_conflicts.csv',conflicts,['date','course','time','distinct_winners_all_sources','distinct_winners_non_superseded','status'])
+              csv_out(out/'recent_not_final.csv',no_status,['date','course','time','race_id'])
+              csv_out(out/'recent_no_unique_winner.csv',no_winner,['date','course','off','status','winner_rows'])
+              return {'scope':f'{files[0].stem}..{files[-1].stem}' if files else 'none',
+                  'raw':dict(raw),'missing_raw':dict(field_missing_raw),
+                  'distinct_race_slots':len(race_slots),'duplicate_race_slots':len(dups),
+                  'winner_conflicts_all_sources':len(conflicts),'unresolved_winner_conflicts':sum(z['status']=='REVIEW' for z in conflicts),
+                  'distinct_runner_slots_excluding_superseded':len(unique_runners),
+                  'missing_by_unique_runner_slot':dict(unique_gaps),
+                  'not_final_slots':len(no_status),'races_missing_unique_winner':len(no_winner),
+                  'limitations':['A missing field in raw duplicate rows may already exist in another stored result; distinct-runner counts control for that',
+                                 'Racecard-only records and missing fixtures require independent official fixture list',
+                                 'A runner without SP or identity data is labelled missing and not guessed']}
+
+
+          def main():
+              p=argparse.ArgumentParser();p.add_argument('--db',required=True)
+              p.add_argument('--root',default='.');p.add_argument('--out',default='reports/stage77')
+              args=p.parse_args();out=pathlib.Path(args.out);out.mkdir(parents=True,exist_ok=True)
+              hist=historical_audit(pathlib.Path(args.db),out)
+              recent=recent_audit(args.root,out)
+              summary={'stage':'77','generated_at_utc':dt.datetime.now(dt.timezone.utc).isoformat(),
+                'mode':'READ_ONLY_NO_PRODUCTION_CHANGES','missing_data_policy':'Absent fields are missing data, not factual errors. Never impute zeros or infer missing winners',
+                'historical':hist,'recent_results':recent,
+                'scope_warning':'No independent exhaustive UK/IE fixture-and-starter calendar connected; cannot certify absolute completeness',
+                'model_protection':'No changes to selections, rankings, form, model code or archive; output files only in reports/stage77'}
+              (out/'summary.json').write_text(json.dumps(summary,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
+              print(json.dumps(summary,indent=2,ensure_ascii=False))
+
+          if __name__=='__main__':main()
+          STAGE77_AUDIT_PY
+          python -m py_compile /tmp/stage77_full_audit.py
+      - name: Audit full 1988-2026 database and daily results
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u /tmp/stage77_full_audit.py \
+            --db reports/stage65e/detailed_history.sqlite \
+            --root . --out reports/stage77 > /tmp/stage77-run-output.json
+          python - <<'STAGE77_VERIFY'
+          import json
+          x=json.load(open('reports/stage77/summary.json'))
+          assert x['stage']=='77'
+          assert x['mode']=='READ_ONLY_NO_PRODUCTION_CHANGES'
+          assert x['historical']['sqlite_quick_check']=='ok'
+          assert x['historical']['rows_total_including_malformed']>=5000000
+          assert x['recent_results']['raw']['daily_files']>=30
+          print('Audited historical rows:',x['historical']['rows_total_including_malformed'])
+          print('Historical duplicate groups:',x['historical']['duplicate_runner_groups'])
+          print('Raw recent race rows:',x['recent_results']['raw']['raw_race_rows'])
+          print('Recent nonfinal rows:',x['recent_results']['not_final_slots'])
+          print('Recent missing fields per unique runner:',x['recent_results']['missing_by_unique_runner_slot'])
+          STAGE77_VERIFY
+      - name: Verify production model and archive files remained untouched
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "$(git status --porcelain -- data scripts .github/workflows)" ]; then
+            echo 'ERROR: Audit has modified protected production files' >&2
+            git status --short -- data scripts .github/workflows
+            exit 1
+          fi
+          echo 'PASS: all protected production files unchanged'
+      - name: Upload compact historical audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage77-full-history-missing-data-audit
+          path: reports/stage77/
+          retention-days: 90
+          if-no-files-found: warn
