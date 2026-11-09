@@ -194,6 +194,9 @@ def get_best_rows(as_of: dt.date, cache: dict, audit: collections.Counter):
         for race in races:
             if not isinstance(race, dict):
                 continue
+            if race.get('status') == 'superseded':
+                audit['stage76_superseded_race_rows_excluded'] += 1
+                continue
             region = str(race.get('region') or '').upper()
             if region and region not in ('GB', 'IRE', 'IE'):
                 audit['excluded_non_ukie_races'] += 1
