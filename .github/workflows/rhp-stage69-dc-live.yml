@@ -1,0 +1,171 @@
+name: Hot Pots D(c) - Scheduled Race-Type-Aware Selections
+
+on:
+  workflow_dispatch:
+    inputs:
+      day:
+        description: 'Optional Irish racing date YYYY-MM-DD (blank = auto)'
+        required: false
+        type: string
+  workflow_run:
+    workflows:
+      - 'Racing Hot Pots - Five Minute Data Updates'
+      - 'Collect Racing Racecards'
+    types: [completed]
+  schedule:
+    # Hourly UTC 05–23. The Python scheduler gates all times in Europe/Dublin,
+    # including DST, with first-next-day-cards and non-runner change triggers.
+    # Also triggers promptly on each successful five-minute/racecard workflow.
+    - cron: '3 5-23 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rhp-dc-live
+  cancel-in-progress: false
+
+jobs:
+  score:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - name: Fetch latest racing data and verified history
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Settle D(c) results as soon as a final race result is published
+        run: python scripts/rhp_stage68_settle.py
+
+      - name: Publish newly settled D(c) results (without changing selections)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f data/strategy-dc-results.json ]; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/strategy-dc-results.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Settle Hot Pots D(c) from verified finishing results'
+          for attempt in 1 2 3 4; do
+            if git pull --rebase origin main && git push origin HEAD:main; then exit 0; fi
+            git rebase --abort || true
+            sleep $((attempt*3))
+          done
+          exit 1
+
+      - name: Decide whether a requested Irish-time selection slot is due
+        id: guard
+        env:
+          MANUAL_DAY: ${{ github.event.inputs.day || '' }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: python scripts/rhp_stage68_schedule.py --day "$MANUAL_DAY" --event "$EVENT_NAME"
+
+      - name: Install pinned modelling dependencies
+        if: steps.guard.outputs.run == 'true'
+        run: python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1 kagglehub
+
+      - name: Restore historical SQLite cache instead of rebuilding millions of runners
+        if: steps.guard.outputs.run == 'true'
+        id: sqlite_cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            reports/stage68/base/original.sqlite
+            reports/stage68/base/c_classifier_2024.joblib
+            ~/.cache/kagglehub
+          key: rhp-dc-sqlite-v2-${{ hashFiles('import_historical_ukie.py', 'scripts/stage65p_race_type_c_only.py', 'scripts/rhp_stage68_dc.py') }}
+
+      - name: Restore exact cached historical SQLite or import on cache miss
+        if: steps.guard.outputs.run == 'true'
+        run: |
+          python - <<'PY'
+          import kagglehub,subprocess,sys
+          from pathlib import Path
+          home=Path('reports/stage68/base');home.mkdir(parents=True,exist_ok=True)
+          source=kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025/versions/129')
+          (home/'source_path.txt').write_text(str(source))
+          db=home/'original.sqlite'
+          if not db.exists() or db.stat().st_size<1000000:
+              subprocess.run([sys.executable,'import_historical_ukie.py','--mode','import','--input',str(source),
+                '--min-date','1988-01-01','--max-date','2026-10-07','--database',str(db),
+                '--report',str(home/'import.json')],check=True)
+          print('Historical SQLite cache:',db,db.stat().st_size,'bytes',flush=True)
+          PY
+
+      - name: Reconcile verified newer races without rewriting frozen SQLite
+        if: steps.guard.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export MAX_DATE=$(TZ=Europe/Dublin date +%Y-%m-%d)
+          python -u scripts/stage65m_backfill.py \
+            --baseline reports/stage68/base/original.sqlite \
+            --out reports/stage68/current \
+            --max-date "$MAX_DATE" --keep-candidate --skip-replay
+          python -u scripts/stage65p_enrich_race_details.py \
+            --db reports/stage68/current/backfilled_research_only.sqlite \
+            --source "$(cat reports/stage68/base/source_path.txt)" \
+            --out reports/stage68/current/enrichment
+
+      - name: Publish Model D(c) rankings using pre-off racecards only
+        if: steps.guard.outputs.run == 'true'
+        env:
+          TARGET_DAY: ${{ steps.guard.outputs.day }}
+          SLOT_NAME: ${{ steps.guard.outputs.slot }}
+        run: |
+          python -u scripts/rhp_stage68_dc.py \
+            --db reports/stage68/current/backfilled_research_only.sqlite \
+            --day "$TARGET_DAY" --slot "$SLOT_NAME"
+          python scripts/rhp_stage68_settle.py
+
+      - name: Commit pre-off scores and settled results before pushing alerts
+        if: steps.guard.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/strategy-dc-probabilities.json data/strategy-dc-schedule.json
+          test ! -f data/strategy-dc-results.json || git add data/strategy-dc-results.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Publish scheduled frozen D(c) race-type-aware Hot Pots selections'
+          for attempt in 1 2 3; do
+            if git pull --rebase origin main && git push origin HEAD:main; then exit 0; fi
+            git rebase --abort || true
+            sleep $((attempt*4))
+          done
+          echo 'Failed to publish selections: no push sent' >&2
+          exit 1
+
+      - name: Notify only for new or changed Hot Pots selections
+        if: steps.guard.outputs.run == 'true'
+        env:
+          ONESIGNAL_API_KEY: ${{ secrets.ONESIGNAL_API_KEY }}
+          ONESIGNAL_SUBSCRIPTION_ID: ${{ secrets.ONESIGNAL_SUBSCRIPTION_ID }}
+        run: python scripts/rhp_stage68_push.py
+
+      - name: Persist successful push deduplication state
+        if: steps.guard.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f data/hot-pots-dc-push-state.json || exit 0
+          git add data/hot-pots-dc-push-state.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Archive Hot Pots D(c) notification delivery state'
+          for attempt in 1 2 3; do
+            if git pull --rebase origin main && git push origin HEAD:main; then exit 0; fi
+            git rebase --abort || true
+            sleep $((attempt*4))
+          done
+          exit 1
