@@ -94,6 +94,9 @@ def audit(now=None):
         return best[3]
     days=collections.defaultdict(lambda:{'declared_races':0,'declared_horses':0,'active_races':0,'d_c_ranked':0,'results_found':0})
     missing_dc=[];awaiting_dc=[];missing_results=[];insufficient=[];withdrawn=[]
+    non_run_races=[]
+    exceptions={(str(e.get('day')),norm(e.get('course')),str(e.get('time'))):e
+                for e in data('data/rhp-stage72-race-exceptions.json',{}).get('races',[])}
     for key,horses in sorted(grouped.items()):
         day,course,time=key
         daydate=dt.date.fromisoformat(day)
@@ -114,7 +117,9 @@ def audit(now=None):
         if 0<len(active)<2:insufficient.append({'day':day,'course':allrows[0]['course'],'time':time,'active_runners':len(active)})
         nr=[x['horse'] for x in allrows if is_nr(x)]
         if nr:withdrawn.append({'day':day,'course':allrows[0]['course'],'time':time,'horses':nr})
-        if result_for(key,horses):record['results_found']+=1
+        if key in exceptions:
+            non_run_races.append(dict(exceptions[key]))
+        elif result_for(key,horses):record['results_found']+=1
         # Only previous calendar days are checked as fully complete; same-day
         # results can be delayed by the upstream publisher.
         elif daydate<today:
@@ -134,6 +139,7 @@ def audit(now=None):
         'by_day':dict(sorted(days.items())),'missing_rankings_for_already_scored_date':missing_dc,
         'racecards_waiting_for_next_d_c_scoring_slot':awaiting_dc,
         'missing_verified_results_for_historic_declared_races':missing_results,
+        'historical_races_not_run':non_run_races,
         'missing_form_dates_with_declared_races':missing_form,
         'races_with_fewer_than_two_active_runners':insufficient,
         'confirmed_non_runners':withdrawn,

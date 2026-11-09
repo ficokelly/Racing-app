@@ -116,6 +116,11 @@ kept = [r for r in merged.values() if (dtparse(r.get('off_dt')) or datetime.min.
 # Stage69: preserve externally verified PU/F/UR statuses after each provider refresh.
 from scripts.rhp_stage69_verified_results import patch as apply_verified_race_finishes
 corrected,not_found=apply_verified_race_finishes(kept,strict=False)
+# Stage72: preserve documented amended result in subsequent provider refreshes.
+from scripts.rhp_stage72_reconcile import amend_newbury_race
+for _stage72_race in kept:
+    amend_newbury_race(_stage72_race)
+
 if corrected:print('Retained externally verified non-finisher statuses:',len(corrected))
 kept.sort(key=lambda r: r.get('off_dt', ''), reverse=True)
 DEST.parent.mkdir(parents=True, exist_ok=True)
