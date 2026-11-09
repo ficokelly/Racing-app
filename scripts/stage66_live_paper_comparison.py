@@ -11,7 +11,7 @@ import stage30_gap_aware_abcd as OLD
 from stage38_model_dz_live import LivePast,live_row,prediction_rows,name,clock,nonrunner,time_utc
 
 def main():
- p=argparse.ArgumentParser();p.add_argument('--db',required=True);p.add_argument('--out',required=True);p.add_argument('--day');a=p.parse_args()
+ p=argparse.ArgumentParser();p.add_argument('--db',required=True);p.add_argument('--out',required=True);p.add_argument('--day');p.add_argument('--baseline',required=True);a=p.parse_args()
  day=a.day or dt.datetime.now(ZoneInfo('Europe/Dublin')).date().isoformat()
  out=pathlib.Path(a.out);out.mkdir(parents=True,exist_ok=True)
  cards=json.loads(pathlib.Path('data/racecards.json').read_text());d=json.loads(pathlib.Path('data/strategy-d-probabilities.json').read_text())
@@ -29,6 +29,11 @@ def main():
  audit=json.loads(pathlib.Path('reports/stage30/stage30-summary.json').read_text())
  cfg=audit['model_results']['D'];weights=[float(cfg['weights_pct'][k])/100 for k in OLD.METRICS]
  past=LivePast({});history_info=past.scan_until(a.db,day)
+ original=LivePast({});original_info=original.scan_until(a.baseline,day)
+ original_unique={}
+ for h,country in original.last:
+  if h not in original_unique:original_unique[h]=country
+  elif original_unique[h]!=country:original_unique[h]=None
  unique={}
  for h,country in past.last:
   if h not in unique:unique[h]=country
@@ -49,14 +54,21 @@ def main():
   dz=(ds-ds.mean())/(ds.std()+1e-8);lz=(learned-learned.mean())/(learned.std()+1e-8)
   rank_b=sorted(range(len(rs)),key=lambda i:(-ds[i],i));rank_c=sorted(range(len(rs)),key=lambda i:(-(.75*dz[i]+.25*lz[i]),i))
   dr=dmap.get(key);dranks=sorted(dr.get('runners',[]),key=lambda r:r.get('rank',999)) if dr else []
+  a_source='published_live_snapshot' if len(dranks)>=2 else 'frozen_original_reconstruction'
+  if len(dranks)<2:
+   original_scored=original.score([live_row(z,day,'STAGE66-ORIGINAL|'+day+'|'+e['course']+'|'+e['time'],original_unique) for z in rs],live=True)
+   if original_scored is not None:
+    _,original_order,_=prediction_rows(original_scored,weights)
+    dranks=[{'horse':rs[int(i)]['horse']} for i in original_order[:2]]
+   else:a_source='unavailable'
   typ=rs[0].get('race_name') or rs[0].get('race_type') or ''
   discipline=infos[0]['discipline'];category=C.category(typ)
   nh_handicap=category=='handicap' and discipline in ('hurdle','chase')
-  rows.append({'date':day,'time':e['time'],'course':e['course'],'race_name':typ,'race_type':category,'discipline':discipline,'nh_handicap':nh_handicap,'off_utc':off.isoformat(),'a_rank1':dranks[0]['horse'] if len(dranks)>0 else '', 'a_rank2':dranks[1]['horse'] if len(dranks)>1 else '', 'a_snapshot_generated_at':d.get('generated_at') if dr else '', 'b_rank1':rs[rank_b[0]]['horse'],'b_rank2':rs[rank_b[1]]['horse'],'c_rank1':rs[rank_c[0]]['horse'],'c_rank2':rs[rank_c[1]]['horse'],'runner_count':len(rs)})
+  rows.append({'date':day,'time':e['time'],'course':e['course'],'race_name':typ,'race_type':category,'discipline':discipline,'nh_handicap':nh_handicap,'off_utc':off.isoformat(),'a_rank1':dranks[0]['horse'] if len(dranks)>0 else '', 'a_rank2':dranks[1]['horse'] if len(dranks)>1 else '', 'a_snapshot_generated_at':d.get('generated_at') if a_source=='published_live_snapshot' else '', 'a_source':a_source, 'b_rank1':rs[rank_b[0]]['horse'],'b_rank2':rs[rank_b[1]]['horse'],'c_rank1':rs[rank_c[0]]['horse'],'c_rank2':rs[rank_c[1]]['horse'],'runner_count':len(rs)})
  if not rows:raise RuntimeError('No future races to score')
  stamp=now.strftime('%Y%m%dT%H%M%SZ');path=out/f'comparison_{stamp}.csv'
  with path.open('w',newline='') as f:
   w=csv.DictWriter(f,fieldnames=list(rows[0]));w.writeheader();w.writerows(rows)
- (out/f'comparison_{stamp}.json').write_text(json.dumps({'generated_at':now.isoformat(),'day':day,'source_d_generated_at':d.get('generated_at'),'history_info':history_info,'research_only':True,'app_unchanged':True,'a_missing_count':sum(not x['a_rank1'] for x in rows),'races':rows},indent=2)+'\n')
+ (out/f'comparison_{stamp}.json').write_text(json.dumps({'generated_at':now.isoformat(),'day':day,'source_d_generated_at':d.get('generated_at'),'history_info':history_info,'original_history_info':original_info,'a_reconstruction_is_not_verified_live_snapshot':True,'research_only':True,'app_unchanged':True,'a_missing_count':sum(not x['a_rank1'] for x in rows),'races':rows},indent=2)+'\n')
  print(f'Wrote {len(rows)} races; A missing in {sum(not x["a_rank1"] for x in rows)} races; file {path}',flush=True)
 if __name__=='__main__':main()
