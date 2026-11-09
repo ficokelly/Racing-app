@@ -36,16 +36,37 @@ jobs:
       - name: Archive older odds snapshots (no API call)
         run: python archive-odds-history.py
 
-      - name: Send newly detected Power Fav alerts
-        env:
-          ONESIGNAL_API_KEY: ${{ secrets.ONESIGNAL_API_KEY }}
-          ONESIGNAL_SUBSCRIPTION_ID: ${{ secrets.ONESIGNAL_SUBSCRIPTION_ID }}
-        run: python send-power-fav-alerts.py
+      - name: Publish odds first (before slower racecard and result processing)
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/latest-odds.json data/odds-history.json data/odds-archive/
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Publish current bookmaker odds promptly'
+          for attempt in 1 2 3 4; do
+            if git pull --rebase origin main && git push origin HEAD:main; then exit 0; fi
+            git rebase --abort || true
+            sleep $((attempt * 3))
+          done
+          echo 'Could not publish timely odds: GitHub update conflict' >&2
+          exit 1
 
       - name: Update final UK and Irish race results
         env:
           PUNTERSEDGE_API_KEY: ${{ secrets.PUNTERSEDGE_API_KEY }}
         run: python collect-puntersedge-results.py
+
+      - name: Reconcile verified results, finishing SPs and trainer/jockey form
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/stage68_result_reconciler.py
+          # Only recompute 14-day form when new verified race results were appended.
+          if [ -n "$(git status --porcelain -- data/racing-results/)" ]; then
+            python calculate-strike-rates.py || echo "WARNING: Form rebuild failed; verified results will still be published."
+          fi
 
       - name: Update and archive complete racecards once an hour
         env:
@@ -93,7 +114,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add data/aw2-track-stats.json data/latest-odds.json data/odds-history.json data/odds-archive/ data/power-fav-alert-state.json data/race-results.json data/racecards.json data/racecards-archive.json data/nonrunner-monitor.json
+          git add data/aw2-track-stats.json data/latest-odds.json data/odds-history.json data/odds-archive/ data/race-results.json data/racecards.json data/racecards-archive.json data/nonrunner-monitor.json data/racing-results/ data/strike-rates.json data/form-identity-cache.json data/strategy-d-history.json data/strategy-d-results.json reports/stage32/form-rebuild-audit.json
           # This file is created only after a confirmed non-runner. It is optional.
           if [ -f data/nonrunner-decision-history.json ]; then
             git add data/nonrunner-decision-history.json

@@ -18,6 +18,12 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1 kagglehub
+      - name: Restore frozen historical SQLite baseline (research only)
+        uses: actions/cache@v4
+        with:
+          path: reports/stage66/daily/original.sqlite
+          key: stage66-frozen-baseline-ukie-v129-1988-20261007-v1
+
       - name: Download historical source and build baseline
         run: |
           python - <<'PY'
@@ -26,7 +32,15 @@ jobs:
           source=kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025/versions/129')
           Path('reports/stage66/daily').mkdir(parents=True,exist_ok=True)
           Path('reports/stage66/daily/source_path.txt').write_text(str(source))
-          subprocess.run([sys.executable,'import_historical_ukie.py','--mode','import','--input',str(source),'--min-date','1988-01-01','--max-date','2026-10-07','--database','reports/stage66/daily/original.sqlite','--report','reports/stage66/daily/import.json'],check=True)
+          db=Path('reports/stage66/daily/original.sqlite')
+          if db.is_file() and db.stat().st_size >= 1000000:
+            import sqlite3
+            with sqlite3.connect('file:'+str(db.resolve())+'?mode=ro',uri=True) as cx:
+              valid=cx.execute('SELECT name FROM sqlite_master WHERE type="table" AND name="historical_races"').fetchone()
+            if not valid:raise RuntimeError('Cached baseline is not a historical SQLite racing database')
+            print('Stage66: reusing immutable cached historical SQLite instead of rebuilding it',flush=True)
+          else:
+            subprocess.run([sys.executable,'import_historical_ukie.py','--mode','import','--input',str(source),'--min-date','1988-01-01','--max-date','2026-10-07','--database',str(db),'--report','reports/stage66/daily/import.json'],check=True)
           PY
       - name: Recover verified history without changing live model
         run: |
