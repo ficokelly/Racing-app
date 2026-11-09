@@ -156,6 +156,23 @@ def combine_person_cache(cache: dict, cards: dict, source: str, audit: collectio
             audit['identity_cache_new'] += 1
 
 
+# Stage75: only the listed, result-sourced runner/person-name aliases are allowed.
+# A pre-race person record cannot override an observed result or prove a
+# substitution; the recorded result name stays authoritative.
+STAGE75_PERSON_ALIASES = {'2026-11-04|dundalk|19:15|robotrock': ('jockey',), '2026-11-04|dundalk|19:15|connova': ('trainer',), '2026-11-04|dundalk|19:15|dancingsteve': ('trainer', 'jockey'), '2026-11-04|dundalk|19:15|lisnadill': ('trainer', 'jockey'), '2026-11-04|dundalk|19:15|missglenville': ('jockey',), '2026-11-04|dundalk|19:15|suerte': ('trainer',), '2026-11-04|dundalk|19:15|pettusbridge': ('trainer', 'jockey'), '2026-11-04|dundalk|19:15|starmind': ('trainer', 'jockey'), '2026-11-04|dundalk|19:15|jessabi': ('trainer', 'jockey'), '2026-11-04|dundalk|19:15|onyeisi': ('trainer', 'jockey'), '2026-11-04|dundalk|19:15|thompsongunner': ('trainer', 'jockey'), '2026-11-08|ffoslas|16:12|rulabula': ('trainer',), '2026-11-08|ffoslas|16:12|imperialbede': ('trainer',), '2026-11-08|ffoslas|16:12|centara': ('trainer', 'jockey')}
+
+def stage75_approved_result_alias(race, runner, ref, kind):
+    if race.get('source') != 'Stage72 independently verified published result':
+        return False
+    if not ref or ref.get('identity_conflict') or not ref.get(kind+'_id'):
+        return False
+    if not runner.get(kind) or not ref.get(kind):
+        return False
+    k = runner_key(str(race.get('date') or '')[:10], race.get('course'),
+                   race.get('off_dt') or race.get('race_time') or race.get('off'),
+                   runner.get('horse'))
+    return kind in STAGE75_PERSON_ALIASES.get(k, ())
+
 def get_best_rows(as_of: dt.date, cache: dict, audit: collections.Counter):
     start = as_of - dt.timedelta(days=13)
     selected = {}  # One horse in one race exactly once, even if legacy+API duplicate.
@@ -215,6 +232,11 @@ def get_best_rows(as_of: dt.date, cache: dict, audit: collections.Counter):
                     # Otherwise preserve the original conservative withholding.
                     if race.get('race_id') and runner.get('trainer_id'):
                         audit['result_identity_trainer_preferred_over_declared_card'] += 1
+                    elif stage75_approved_result_alias(race, runner, ref, 'trainer'):
+                        # Result source is independently verified and the exact
+                        # pre-race horse/person identity supplies the provider ID.
+                        # Preserve the actual result name, never the card name.
+                        audit['stage75_verified_trainer_alias_kept'] += 1
                     else:
                         trainer=''
                         audit['result_identity_trainer_conflict_withheld'] += 1
@@ -224,6 +246,8 @@ def get_best_rows(as_of: dt.date, cache: dict, audit: collections.Counter):
                     # race ID and actual result jockey ID are provided.
                     if race.get('race_id') and runner.get('jockey_id'):
                         audit['result_identity_jockey_preferred_over_declared_card'] += 1
+                    elif stage75_approved_result_alias(race, runner, ref, 'jockey'):
+                        audit['stage75_verified_jockey_alias_kept'] += 1
                     else:
                         jockey=''
                         audit['result_identity_jockey_conflict_withheld'] += 1
