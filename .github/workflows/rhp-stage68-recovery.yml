@@ -1,0 +1,108 @@
+name: RHP Stage68 - Recover App Fixes and Export Workflow Updates
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rhp-stage68-install
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Check out latest Racing Hot Pots
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Recover original Stage68 installer and run validations
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pathlib, subprocess, sys, textwrap
+          original = pathlib.Path('.github/workflows/rhp-stage68-install.yml').read_text(encoding='utf-8')
+          begin = "          python - <<'STAGE68_INSTALL_BUNDLE'\n"
+          end = '          STAGE68_INSTALL_BUNDLE\n'
+          if original.count(begin) != 1 or original.count(end) != 1:
+              raise SystemExit('Original Stage68 installation bundle not found uniquely; refuse to proceed')
+          code = textwrap.dedent(original.split(begin, 1)[1].split(end, 1)[0])
+          if not code.strip().startswith('import base64,gzip,pathlib'):
+              raise SystemExit('Unexpected installer source; refuse to proceed')
+          subprocess.run([sys.executable, '-c', code], check=True)
+          PY
+          python scripts/stage68_result_reconciler.py --self-test
+          python scripts/stage68_install.py
+          python -m py_compile scripts/stage68_result_reconciler.py scripts/stage68_install.py scripts/stage32_form_rebuild.py
+          node --check scripts/stage38_app.js
+          git diff --check
+
+      - name: Reconcile existing verified results and form
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/stage68_result_reconciler.py
+          if ! python calculate-strike-rates.py; then
+            echo 'WARNING: Strike-rate source not available; original output remains as published.'
+          fi
+
+      - name: Preserve workflow changes for manual upload
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/rhp-stage68-schedules/.github/workflows
+          for file in racing-hot-pots-five-minute.yml collect-racing-results.yml stage66-three-model-d-daily.yml; do
+            cp ".github/workflows/$file" "/tmp/rhp-stage68-schedules/.github/workflows/$file"
+          done
+          echo 'The three workflow files must be uploaded through your GitHub account.'
+
+      - name: Upload new workflow files as a ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rhp-stage68-schedule-files-upload-manually
+          path: /tmp/rhp-stage68-schedules/.github/workflows/*.yml
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Publish code and data only - avoid missing workflows permission
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          # A GitHub Actions token can commit ordinary files but GitHub refuses
+          # edits to .github/workflows without the separate Workflows permission.
+          git restore --source=HEAD --staged --worktree -- \
+            .github/workflows/racing-hot-pots-five-minute.yml \
+            .github/workflows/collect-racing-results.yml \
+            .github/workflows/stage66-three-model-d-daily.yml
+          git add index.html scripts/stage38_app.js scripts/stage32_form_rebuild.py \
+            scripts/stage68_result_reconciler.py scripts/stage68_install.py
+          git add data/racing-results/ data/strategy-d-history.json \
+            data/strategy-d-results.json data/strike-rates.json \
+            data/form-identity-cache.json reports/stage32/form-rebuild-audit.json
+          if git diff --cached --quiet; then
+            echo 'Code and data fixes already published; no new commit required.'
+            exit 0
+          fi
+          git commit -m 'Stage68: reconcile results and form, repair odds display and Hot Pots UI'
+          for attempt in 1 2 3 4; do
+            if git pull --rebase origin main && git push origin HEAD:main; then
+              echo 'Stage68 code and data PUBLISHED. Workflow changes remain in download artifact for manual upload.'
+              exit 0
+            fi
+            git rebase --abort || true
+            sleep $((attempt * 3))
+          done
+          echo 'Publish failed; inspect the exact git error. Do not assume changes were installed.' >&2
+          exit 1
