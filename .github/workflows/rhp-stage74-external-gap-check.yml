@@ -1,0 +1,699 @@
+name: Stage74 - Automatic External Racing Gap Checks
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_dates:
+        description: 'Maximum Sydney dates checked in this run (recommended 18; maximum 30)'
+        required: false
+        type: number
+        default: 18
+  workflow_run:
+    workflows:
+      - 'Collect Racing Results Daily'
+      - 'Stage70 - Racing Data Coverage and Late Results Recovery'
+    types: [completed]
+  schedule:
+    # Run after normal collections and revisit unresolved gaps during the day.
+    - cron: '25 9,16,23 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rhp-stage74-external-gap-check
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Protect all frozen model and racecard inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          find data -maxdepth 1 -type f \( -name 'strategy-*.json' -o -name 'racecards*.json' -o -name 'hot-pots*.json' \) -print0 | sort -z | xargs -0 -r sha256sum > /tmp/stage74-model-before.sha256
+          if [ -f scripts/rhp_stage68_dc.py ]; then sha256sum scripts/rhp_stage68_dc.py >> /tmp/stage74-model-before.sha256; fi
+      - name: Install validated non-scraping external results checker
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p scripts
+          cat > scripts/rhp_stage74_external_gap_recovery.py <<'RHP_STAGE74_SOURCE'
+          #!/usr/bin/env python3
+          """Stage74 — evidence-first, source-authorized racing results gap recovery.
+
+          Uses the *documented* PuntersEdge /v1/racing/results?date= interface, never
+          scrapes copyrighted website content. Does not modify selections, predictions,
+          weights, existing verified positions, or contradictory outcomes.
+          """
+          from __future__ import annotations
+
+          import argparse
+          import collections
+          import datetime as dt
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import time
+          import unicodedata
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+          from fractions import Fraction
+          from zoneinfo import ZoneInfo
+
+          ROOT = Path(__file__).resolve().parent.parent
+          UTC = dt.timezone.utc
+          SYDNEY = ZoneInfo('Australia/Sydney')
+          DUBLIN = ZoneInfo('Europe/Dublin')
+          REPORT = ROOT / 'data/rhp-stage74-external-check.json'
+          RESULTS = ROOT / 'data/racing-results'
+
+
+          def read(path, default):
+              try:
+                  return json.loads(path.read_text(encoding='utf-8'))
+              except (FileNotFoundError, ValueError):
+                  return default
+
+
+          def write_if_changed(path, value):
+              s = json.dumps(value, ensure_ascii=False, indent=2) + '\n'
+              path.parent.mkdir(parents=True, exist_ok=True)
+              if path.exists() and path.read_text(encoding='utf-8') == s:
+                  return False
+              path.write_text(s, encoding='utf-8')
+              return True
+
+
+          def simple(s):
+              val = unicodedata.normalize('NFKD', str(s or ''))
+              return re.sub(r'[^a-z0-9]', '', ''.join(c for c in val if not unicodedata.combining(c)).lower())
+
+
+          def course(s):
+              x = re.sub(r'\s*\((?:aw|all.weather|ire|irl|gb)\)', '', str(s or ''), flags=re.I)
+              v = simple(x)
+              return {'chelmsfordcity': 'chelmsford', 'sandownpark': 'sandown', 'downroyal': 'downroyal'}.get(v, v)
+
+
+          def horse(s):
+              x = re.sub(r'\s*\((?:gb|ire|irl|fr|can|usa|aus|nz|ger|saf|ita|ity)\)\s*$', '', str(s or ''), flags=re.I)
+              return simple(x)
+
+
+          def moment(value):
+              try:
+                  x = dt.datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+                  return x.astimezone(UTC) if x.tzinfo else x.replace(tzinfo=UTC)
+              except (TypeError, ValueError):
+                  return None
+
+
+          def pos(x):
+              if isinstance(x, bool):
+                  return None
+              z = str(x or '').strip()
+              return int(z) if z.isdecimal() and int(z) > 0 else None
+
+
+          def runners_of(external):
+              rows = external.get('runners')
+              return rows if isinstance(rows, list) else []
+
+
+          def placed_of(external):
+              rows = external.get('placings')
+              return rows if isinstance(rows, list) else []
+
+
+          def results_of(external):
+              a = runners_of(external)
+              return a if a else placed_of(external)
+
+
+          def ext_name(row):
+              return row.get('name') or row.get('horse') or ''
+
+
+          def ext_winner(external):
+              winner_names = {horse(ext_name(z)) for z in results_of(external)
+                              if isinstance(z, dict) and pos(z.get('position')) == 1}
+              return next(iter(winner_names)) if len(winner_names) == 1 else None
+
+
+          def archive_winner(arch):
+              names = {horse(x.get('horse')) for x in arch.get('runners', [])
+                       if isinstance(x, dict) and pos(x.get('position')) == 1}
+              return next(iter(names)) if len(names) == 1 else None
+
+
+          def full_field(external):
+              av = external.get('availability') or {}
+              return (external.get('field_status') == 'complete' or av.get('full_field') == 'available') \
+                  and bool(runners_of(external))
+
+
+          def ext_slot(external):
+              return (course(external.get('venue') or external.get('venue_canonical')),
+                      moment(external.get('start_time')))
+
+
+          def span_minutes(a, b):
+              return abs((a - b).total_seconds()) / 60 if a and b else 1e9
+
+
+          def match_external(day, name, off, archive_horses, external_rows):
+              """Only an unambiguous course/time match with at least two matching horses."""
+              known = {horse(x) for x in archive_horses if horse(x)}
+              if len(known) < 2 or not off:
+                  return None, 'INSUFFICIENT_LOCAL_RACE_IDENTITY'
+              eligible = []
+              for x in external_rows:
+                  if not isinstance(x, dict) or x.get('status') != 'final' or x.get('country') not in ('GB', 'IE'):
+                      continue
+                  c, race_time = ext_slot(x)
+                  if c != course(name) or not race_time or race_time.astimezone(DUBLIN).date().isoformat() != day:
+                      continue
+                  delta = span_minutes(off, race_time)
+                  if delta > 12:
+                      continue
+                  if not ext_winner(x):
+                      continue
+                  other = {horse(ext_name(y)) for y in results_of(x) if isinstance(y, dict)}
+                  overlap = len(known.intersection(other))
+                  if overlap < 2:
+                      continue
+                  eligible.append((delta, -overlap, str(x.get('race_id') or ''), x))
+              if not eligible:
+                  return None, 'NO_MATCHING_FINAL_EXTERNAL_RESULT'
+              eligible.sort(key=lambda x: (x[0], x[1], x[2]))
+              best = eligible[0]
+              tied = [v for v in eligible if v[0] == best[0] and v[1] == best[1]]
+              if len(tied) != 1:
+                  return None, 'AMBIGUOUS_EXTERNAL_RACE_MATCH'
+              return best[3], None
+
+
+          def check_existing(arch, external):
+              """Never silently overwrite a conflicting historical/result steward order."""
+              if archive_winner(arch) != ext_winner(external):
+                  return 'WINNER_CONFLICT', 0, False
+              candidates = {horse(ext_name(z)): z for z in results_of(external) if isinstance(z, dict)}
+              if not candidates:
+                  return 'NO_EXTERNAL_FINISHING_ROWS', 0, False
+              numeric_agreements = 0
+              for a in arch.get('runners', []):
+                  b = candidates.get(horse(a.get('horse')))
+                  if b is None:
+                      continue
+                  p, q = pos(a.get('position')), pos(b.get('position'))
+                  if p is not None and q is not None:
+                      if p != q:
+                          return 'FINISHING_POSITION_CONFLICT', numeric_agreements, False
+                      numeric_agreements += 1
+              # Only claim the archived *whole result* independently confirmed if provider
+              # declares a full field, its named starters cover the archived field, and
+              # it corroborates at least 2 numerical positions.
+              names = {horse(ext_name(z)) for z in runners_of(external) if isinstance(z, dict)}
+              starters = {horse(z.get('horse')) for z in arch.get('runners', [])
+                          if isinstance(z, dict) and simple(z.get('status')) not in
+                          {'nr', 'nonrunner', 'withdrawn', 'scratched', 'dns'}
+                          and str(z.get('position') or '').strip().upper() not in {'NR', 'WD', 'DNS'}}
+              all_covered = full_field(external) and starters.issubset(names) and numeric_agreements >= 2
+              return None, numeric_agreements, all_covered
+
+
+          def fractional(sp):
+              if sp in (None, ''):
+                  return None
+              if isinstance(sp, str) and '/' in sp:
+                  return sp
+              try:
+                  d = float(sp)
+                  if d <= 1:
+                      return None
+                  f = Fraction(d - 1).limit_denominator(30)
+                  if abs(float(f) - (d - 1)) > 0.03:
+                      return None
+                  return f'{f.numerator}/{f.denominator}'
+              except (TypeError, ValueError, OverflowError):
+                  return None
+
+
+          def normalized_result(external):
+              """Construct a source-labelled result only for confirmed complete full fields."""
+              if not full_field(external) or not ext_winner(external) or external.get('status') != 'final':
+                  return None
+              off = moment(external.get('start_time'))
+              if not off:
+                  return None
+              people = []
+              for raw in runners_of(external):
+                  if not isinstance(raw, dict) or not ext_name(raw):
+                      return None
+                  num = pos(raw.get('position'))
+                  status = str(raw.get('status') or '').strip().lower()
+                  if num is None and status not in ('nr', 'non-runner', 'non runner', 'withdrawn', 'scratched', 'dns',
+                                                    'pu', 'pulled up', 'f', 'fell', 'ur', 'unseated rider',
+                                                    'bd', 'brought down', 'r', 'refused', 'ro', 'ran out', 'unplaced', 'did not finish'):
+                      # Unknown finish reason should not be silently counted as a verified loss.
+                      status = 'unknown'
+                  person = {'horse': ext_name(raw), 'position': num,
+                            'status': status if status else ('ran' if num is not None else 'unknown'),
+                            'sp': fractional(raw.get('sp'))}
+                  for field in ('trainer', 'jockey'):
+                      if raw.get(field):
+                          person[field] = str(raw[field])
+                  people.append(person)
+              if len(people) < 2 or sum(x['position'] == 1 for x in people) != 1:
+                  return None
+              return {'course': external.get('venue_canonical') or external.get('venue'),
+                      'date': off.astimezone(DUBLIN).date().isoformat(),
+                      'off_dt': off.isoformat().replace('+00:00', 'Z'),
+                      'status': 'final', 'region': external.get('country'),
+                      'runners': people,
+                      'source': 'PuntersEdge dated GB/IE final full-field results',
+                      'external_source': 'PuntersEdge /v1/racing/results date query',
+                      'external_race_id': external.get('race_id')}
+
+
+          def scan_candidates(root, today, now):
+              reasons = collections.defaultdict(set)
+              archives = {}
+              detected_gaps = []
+              start = today - dt.timedelta(days=30)
+              for path in sorted((root / 'data/racing-results').glob('????-??-??.json')):
+                  try:
+                      day = dt.date.fromisoformat(path.stem)
+                  except ValueError:
+                      continue
+                  if not start <= day <= today:
+                      continue
+                  doc = read(path, {})
+                  archives[path.stem] = doc
+                  for race in doc.get('results', []):
+                      if not isinstance(race, dict):
+                          continue
+                      if race.get('status') not in ('final', 'abandoned'):
+                          reasons[path.stem].add('legacy_unverified_result')
+                      if day >= today - dt.timedelta(days=14):
+                          # Focus missing person data; a known runner with either identity
+                          # missing deserves a second provider check.
+                          for runner in race.get('runners', []):
+                              if not isinstance(runner, dict):
+                                  continue
+                              p = runner.get('position')
+                              st = simple(runner.get('status'))
+                              if st in {'nr', 'nonrunner', 'withdrawn', 'scratched', 'dns'}:
+                                  continue
+                              if p in (None, '') and st in {'', 'unknown'}:
+                                  continue
+                              if not runner.get('jockey') or not runner.get('trainer'):
+                                  reasons[path.stem].add('missing_person_identity')
+                                  break
+              # Independently find declared races with no final result, including TODAY's
+              # races that are at least two hours past the advertised off. A race missing
+              # from the local archive is not immediately called missing in the world.
+              declarations = collections.defaultdict(set)
+              for fname in ('racecards-archive.json', 'racecards.json'):
+                  for x in read(root/'data'/fname, {}).get('runners', []):
+                      if not isinstance(x, dict) or not x.get('horse') or not x.get('course'):
+                          continue
+                      off = moment(x.get('race_time') or x.get('off_dt'))
+                      if not off or (now - off).total_seconds() < 7200:
+                          continue
+                      day = str(x.get('date') or '')[:10]
+                      try:
+                          d = dt.date.fromisoformat(day)
+                      except ValueError:
+                          continue
+                      if start <= d <= today:
+                          declarations[(day,course(x['course']),off.strftime('%H:%M'))].add(horse(x['horse']))
+              archived_final = collections.defaultdict(list)
+              for day, doc in archives.items():
+                  for race in doc.get('results', []):
+                      if isinstance(race,dict) and race.get('status')=='final':
+                          archived_final[day].append(race)
+              for race in read(root/'data/race-results.json', {}).get('races',[]):
+                  if isinstance(race,dict) and race.get('status')=='final':
+                      archived_final[str(race.get('date') or '')[:10]].append(race)
+              no_race = {(str(z.get('day')),course(z.get('course')),str(z.get('time')))
+                         for z in read(root/'data/rhp-stage72-race-exceptions.json',{}).get('races',[])}
+              for key, listed in declarations.items():
+                  day, name, clock = key
+                  if key in no_race or len(listed) < 2:
+                      continue
+                  off = moment(day + 'T' + clock + ':00Z')
+                  matched = False
+                  for r in archived_final.get(day, []):
+                      if course(r.get('course'))!=name or span_minutes(moment(r.get('off_dt') or r.get('race_time')),off)>12:
+                          continue
+                      names = {horse(z.get('horse')) for z in r.get('runners', []) if isinstance(z,dict)}
+                      if len(listed.intersection(names))>=2 and archive_winner(r):
+                          matched = True
+                          break
+                  if not matched:
+                      reasons[day].add('missing_known_result')
+                      detected_gaps.append({'day':day,'course':name,'time':clock})
+              prior = read(root/'data/rhp-stage70-coverage.json', {})
+              for gap in prior.get('missing_verified_results_for_historic_declared_races', []):
+                  day = gap.get('day') or gap.get('date')
+                  try:
+                      d = dt.date.fromisoformat(day)
+                  except (TypeError, ValueError):
+                      continue
+                  if start <= d <= today:
+                      reasons[day].add('missing_known_result')
+              return reasons, archives, detected_gaps
+
+
+          def card_index(root, targets):
+              grouped = collections.defaultdict(set)
+              for name in ('racecards-archive.json', 'racecards.json'):
+                  doc = read(root/'data'/name, {})
+                  for x in doc.get('runners', []):
+                      if not isinstance(x, dict) or not x.get('course') or not x.get('horse'):
+                          continue
+                      day = str(x.get('date') or '')[:10]
+                      if day not in targets:
+                          continue
+                      off = moment(x.get('race_time') or x.get('off_dt'))
+                      if off:
+                          grouped[(day, course(x['course']), off.strftime('%H:%M'))].add(horse(x['horse']))
+              return grouped
+
+
+          def get_date(api_key, aet_date, max_pages=4):
+              result = []
+              offset = 0
+              for page in range(max_pages):
+                  query = urllib.parse.urlencode({'date': aet_date, 'categories': 'horse',
+                                                  'country': 'GB,IE', 'limit': 200, 'offset': offset})
+                  url = 'https://api.puntersedge.online/v1/racing/results?' + query
+                  req = urllib.request.Request(url, headers={'X-API-Key': api_key, 'Accept': 'application/json',
+                                                              'User-Agent': 'RacingHotPots-Stage74/1.0'})
+                  try:
+                      with urllib.request.urlopen(req, timeout=40) as resp:
+                          payload = json.load(resp)
+                          limit = int(resp.headers.get('X-Limit-Applied', '200'))
+                  except urllib.error.HTTPError as e:
+                      # Return only HTTP status, never raw body, secrets or request headers.
+                      return None, 'HTTP_' + str(e.code)
+                  except (OSError, ValueError, TimeoutError) as e:
+                      return None, type(e).__name__
+                  if not isinstance(payload, list):
+                      return None, 'INVALID_RESPONSE_SHAPE'
+                  result.extend(payload)
+                  if len(payload) < max(1, limit):
+                      return result, None
+                  offset += max(1, limit)
+                  time.sleep(1.2)
+              return None, 'PAGINATION_LIMIT'
+
+
+          def run(root=ROOT, api_key=None, max_dates=18, now=None, fetcher=get_date):
+              now = now or dt.datetime.now(UTC)
+              today = now.astimezone(DUBLIN).date()
+              reasons, archives, detected_gaps = scan_candidates(root, today, now)
+              old = read(root/'data/rhp-stage74-external-check.json', {})
+              state = old.get('aet_dates_checked', {}) if isinstance(old.get('aet_dates_checked'), dict) else {}
+              dates_to_check = collections.defaultdict(set)
+              for day, why in reasons.items():
+                  d = dt.date.fromisoformat(day)
+                  for d0 in (d, d + dt.timedelta(days=1)):
+                      # Provider dates use Sydney local time. A UK/Irish afternoon event
+                      # is sometimes indexed under the NEXT Australian calendar day.
+                      dates_to_check[d0.isoformat()].update(why)
+              priority = {'missing_known_result': 0, 'legacy_unverified_result': 1,
+                          'missing_person_identity': 2}
+              choices = []
+              for day, why in dates_to_check.items():
+                  entry = state.get(day, {})
+                  at = moment(entry.get('checked_at'))
+                  age = (now - at).total_seconds() / 3600 if at else 1e9
+                  # Historical misses are checked weekly; recent results may change daily.
+                  threshold = 6 if (today - dt.date.fromisoformat(day)).days <= 3 else 24 * 7
+                  if age < threshold:
+                      continue
+                  choices.append((min(priority[x] for x in why), day))
+              choices.sort(key=lambda x: (x[0], x[1]))
+              chosen = [day for _, day in choices[:max_dates]]
+              events = []
+              checked = {}
+              errors = []
+              for day in chosen:
+                  if not api_key:
+                      break
+                  page, err = fetcher(api_key, day)
+                  if err:
+                      errors.append({'aet_day': day, 'error': err})
+                      if err in ('HTTP_401', 'HTTP_402', 'HTTP_403', 'HTTP_429'):
+                          break
+                      continue
+                  checked[day] = page
+                  state[day] = {'checked_at': now.isoformat(), 'received_results': len(page)}
+                  time.sleep(1.2)  # Provider's free plan has a low rate limit.
+
+              combined = []
+              seen = set()
+              for day, rows in checked.items():
+                  for r in rows:
+                      if not isinstance(r, dict) or r.get('country') not in ('GB', 'IE'):
+                          continue
+                      rid = str(r.get('race_id') or '')
+                      slot = ext_slot(r)
+                      key = (rid, slot[0], slot[1].isoformat() if slot[1] else '')
+                      if key not in seen:
+                          seen.add(key)
+                          combined.append(r)
+
+              changes = collections.Counter()
+              review = []
+              touched = set()
+              indexes = card_index(root, reasons)
+              for day, doc in archives.items():
+                  if day not in reasons or not any(day == date or (dt.date.fromisoformat(day) + dt.timedelta(days=1)).isoformat() == date for date in checked):
+                      continue
+                  for race in doc.get('results', []):
+                      if not isinstance(race, dict) or not race.get('course') or race.get('status') == 'abandoned':
+                          continue
+                      off = moment(race.get('off_dt') or race.get('race_time'))
+                      if not off:
+                          continue
+                      horses = [x.get('horse') for x in race.get('runners', []) if isinstance(x, dict)]
+                      target, err = match_external(day, race['course'], off, horses, combined)
+                      if err:
+                          review.append({'date':day,'course':race['course'], 'time':off.strftime('%H:%M'), 'status':err})
+                          continue
+                      conflict, agreements, verified_full = check_existing(race, target)
+                      if conflict:
+                          changes['held_conflicts'] += 1
+                          review.append({'date':day,'course':race['course'], 'time':off.strftime('%H:%M'), 'status':conflict})
+                          continue
+                      if agreements >= 2 and not race.get('external_verification'):
+                          race['external_verification'] = {'source': 'PuntersEdge dated final result',
+                              'source_race_id': target.get('race_id'), 'agreed_positions': agreements,
+                              'full_field_confirmed': bool(verified_full)}
+                          changes['source_matches_recorded'] += 1
+                          touched.add(day)
+                      if verified_full and race.get('status') not in ('final', 'abandoned'):
+                          race['status'] = 'final'
+                          race['result_classification_source'] = 'stage74_puntersedge_full_field_confirmed'
+                          changes['old_races_provenance_verified'] += 1
+                          touched.add(day)
+                      # The provider may include winner + placings, but no jockey/trainer.
+                      # Never infer them. Only add explicit race-result identities.
+                      others = {horse(ext_name(z)): z for z in runners_of(target) if isinstance(z, dict)}
+                      if agreements >= 2:
+                          for row in race.get('runners', []):
+                              source = others.get(horse(row.get('horse')))
+                              if source is None:
+                                  continue
+                              for field in ('trainer', 'jockey'):
+                                  if not row.get(field) and source.get(field):
+                                      row[field] = str(source[field])
+                                      changes['recovered_' + field] += 1
+                                      touched.add(day)
+              # A missing declared race can be recovered only with an unambiguous card
+              # overlap and a provider-complete full field; otherwise leave for review.
+              gaps = read(root/'data/rhp-stage70-coverage.json', {}).get('missing_verified_results_for_historic_declared_races', []) + detected_gaps
+              gap_seen = set()
+              for gap in gaps:
+                  gap_id = (gap.get('day'), course(gap.get('course')), gap.get('time'))
+                  if gap_id in gap_seen:
+                      continue
+                  gap_seen.add(gap_id)
+                  day = gap.get('day')
+                  if day not in reasons or not any(d in checked for d in (day, (dt.date.fromisoformat(day)+dt.timedelta(days=1)).isoformat())):
+                      continue
+                  name, clock = gap.get('course'), gap.get('time')
+                  grouped = indexes.get((day, course(name), clock), set())
+                  off = moment(day + 'T' + clock + ':00Z') if clock else None
+                  target, err = match_external(day, name, off, grouped, combined)
+                  if err or not full_field(target):
+                      review.append({'date':day,'course':name,'time':clock,'status':err or 'EXTERNAL_FULL_FIELD_UNAVAILABLE'})
+                      continue
+                  race = normalized_result(target)
+                  if not race:
+                      review.append({'date':day,'course':name,'time':clock,'status':'EXTERNAL_RESULT_INCOMPLETE'})
+                      continue
+                  path = root/'data/racing-results'/(day + '.json')
+                  doc = archives.get(day, read(path, {'date':day,'results':[]}))
+                  seen = any(course(x.get('course')) == course(name) and span_minutes(moment(x.get('off_dt')), off) <= 12
+                             for x in doc.get('results', []))
+                  if not seen:
+                      doc.setdefault('results', []).append(race)
+                      archives[day] = doc
+                      touched.add(day)
+                      changes['new_declared_races_recovered'] += 1
+              for day in sorted(touched):
+                  write_if_changed(root/'data/racing-results'/(day + '.json'), archives[day])
+
+              for item in review:
+                  day = item['date']
+                  item['review_links'] = {'racing_post': 'https://www.racingpost.com/results/' + day + '/',
+                                          'sporting_life': 'https://www.sportinglife.com/racing/results/' + day}
+              # Never store API responses or personal credentials in a public report.
+              out = {'generated_at': now.isoformat(), 'audit_scope': 'Saved UK/IE declared races and existing archives',
+                     'source': 'PuntersEdge documented date-indexed GB/IE racing results API',
+                     'aet_dates_checked': state, 'target_irish_days': len(reasons), 'missing_declared_races_detected': len(detected_gaps),
+                     'new_api_dates_checked_this_run': len(checked), 'provider_rows_examined_this_run': len(combined),
+                     'changes': dict(changes), 'modified_result_dates': sorted(touched),
+                     'blocked_or_failed_api_dates': errors, 'manual_review': review[:250],
+                     'manual_review_total': len(review),
+                     'waiting_for_retry_or_access': len(choices) - len(checked),
+                     'safety_notes': [
+                       'No changes to odds, predictions or pre-off rankings.',
+                       'A provider final result without full-field runners verifies only its published placings.',
+                       'A race with conflicting positions is held, not overwritten.',
+                       'Third-party website URLs are manual review links only; no site scraping.',
+                       'A missing race outside saved racecards cannot be inferred from this audit.'
+                     ]}
+              write_if_changed(root/'data/rhp-stage74-external-check.json', out)
+              return out
+
+
+          def self_test():
+              assert course('Chelmsford City (AW)') == 'chelmsford'
+              assert course('Dundalk (AW) (IRE)') == 'dundalk'
+              assert horse('Look Sport (FR)') == horse('Look Sport')
+              a = {'date':'2026-11-02','course':'Ffos Las','off_dt':'2026-11-02T15:45:00Z',
+                   'runners':[{'horse':'A (IRE)','position':1},{'horse':'B','position':2}]}
+              b = {'race_id':'source1','country':'GB','venue':'Ffos Las','start_time':'2026-11-02T15:45:00Z',
+                   'status':'final','field_status':'complete', 'runners':[
+                    {'name':'A','position':1,'jockey':'Rider A'}, {'name':'B','position':2,'jockey':'Rider B'}]}
+              match, err = match_external('2026-11-02','Ffos Las',moment(a['off_dt']),
+                                          [x['horse'] for x in a['runners']], [b])
+              assert not err and match is b
+              assert check_existing(a,b) == (None,2,True)
+              assert normalized_result(b)['runners'][0]['jockey'] == 'Rider A'
+              conflict = {**b, 'runners':[{'name':'A','position':2},{'name':'B','position':1}]}
+              assert check_existing(a, conflict)[0] == 'WINNER_CONFLICT'
+              assert match_external('2026-11-02','Ffos Las',moment(a['off_dt']), ['A'], [b])[1] == 'INSUFFICIENT_LOCAL_RACE_IDENTITY'
+              print('Stage74 matching and no-guess safeguards passed')
+
+
+          def main():
+              parser=argparse.ArgumentParser()
+              parser.add_argument('--self-test', action='store_true')
+              parser.add_argument('--max-dates', type=int, default=18)
+              p=parser.parse_args()
+              if p.self_test:
+                  self_test()
+                  return
+              report=run(api_key=os.environ.get('PUNTERSEDGE_API_KEY','').strip(),max_dates=max(0,min(p.max_dates,30)))
+              print(json.dumps({k:report[k] for k in ('target_irish_days','new_api_dates_checked_this_run','provider_rows_examined_this_run','changes','modified_result_dates','blocked_or_failed_api_dates','manual_review_total')},indent=2))
+
+          if __name__ == '__main__':
+              main()
+          RHP_STAGE74_SOURCE
+          python -m py_compile scripts/rhp_stage74_external_gap_recovery.py
+          python scripts/rhp_stage74_external_gap_recovery.py --self-test
+      - name: Check missing races externally and recover only trustworthy data
+        env:
+          PUNTERSEDGE_API_KEY: ${{ secrets.PUNTERSEDGE_API_KEY }}
+          MAX_DATES: ${{ inputs.max_dates || '18' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/rhp_stage74_external_gap_recovery.py --max-dates "$MAX_DATES"
+          python - <<'REPORT'
+          import json,os
+          r=json.load(open('data/rhp-stage74-external-check.json'))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
+              f.write('## Stage74 external result gap checks\n\n')
+              f.write('Source: **PuntersEdge date-indexed GB/IE final racing results**, not website scraping.\n\n')
+              f.write('Irish dates with outstanding gaps: **'+str(r['target_irish_days'])+'**.\n\n')
+              f.write('Sydney dates actually queried this run: **'+str(r['new_api_dates_checked_this_run'])+'**.\n\n')
+              f.write('Source records examined: **'+str(r['provider_rows_examined_this_run'])+'**.\n\n')
+              f.write('Verified changes: `'+str(r['changes'])+'`.\n\n')
+              f.write('Provider errors: `'+str(r['blocked_or_failed_api_dates'])+'`.\n\n')
+              f.write('Manual review records (including unmatched): **'+str(r['manual_review_total'])+'**.\n\n')
+              f.write('No odds, racecards, scores or pre-off model selections were changed.\n')
+          REPORT
+      - name: Rebuild form statistics only after actual finishing or person changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if python - <<'NEED_FORM'
+          import json,sys
+          r=json.load(open('data/rhp-stage74-external-check.json'))
+          c=r.get('changes',{})
+          need=any(c.get(k,0) for k in ('new_declared_races_recovered',
+                   'old_races_provenance_verified','recovered_trainer','recovered_jockey'))
+          sys.exit(0 if need else 1)
+          NEED_FORM
+          then
+            python calculate-strike-rates.py
+          fi
+          python scripts/rhp_stage70_data_coverage.py --out data/rhp-stage70-coverage.json
+      - name: Confirm protected models and racecards remain unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum -c /tmp/stage74-model-before.sha256
+          echo 'PASS: Frozen model inputs and racecards unchanged.'
+      - name: Commit only result, audit, and form improvements
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A -- scripts/rhp_stage74_external_gap_recovery.py \
+              data/rhp-stage74-external-check.json data/racing-results/ \
+              data/strike-rates.json data/form-identity-cache.json \
+              data/rhp-stage70-coverage.json reports/stage32/form-rebuild-audit.json
+          if git diff --cached --quiet; then echo 'No source or audit changes'; exit 0; fi
+          git commit -m 'Stage74 validate missing UK IE racing data against dated external results'
+          for attempt in 1 2 3 4; do
+            if git pull --rebase origin main && git push origin HEAD:main; then exit 0; fi
+            git rebase --abort || true
+            sleep $((attempt*3))
+          done
+          echo 'Could not publish Stage74 data; artifact retains audit evidence.' >&2
+          exit 1
+      - name: Save accessible audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage74-external-racing-gap-audit
+          path: |
+            data/rhp-stage74-external-check.json
+            data/rhp-stage70-coverage.json
+          retention-days: 30
+          if-no-files-found: warn
