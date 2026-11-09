@@ -17,8 +17,10 @@ def data(path,default):
     except (FileNotFoundError,ValueError):return default
 
 def norm(s):
-    s=re.sub(r'\s*\((?:aw|all.weather)\)\s*$','',str(s or ''),flags=re.I)
-    return re.sub('[^a-z0-9]','',s.casefold())
+    # Remove all recognised course/horse suffixes, including multiple suffixes.
+    s=re.sub(r'\s*\((?:aw|all.weather|ire|irl|gb|fr|usa|can|ger|aus|nz)\)', '', str(s or ''), flags=re.I)
+    cleaned=re.sub('[^a-z0-9]','',s.casefold())
+    return {'chelmsfordcity':'chelmsford'}.get(cleaned,cleaned)
 
 def stamp(s):
     try:
@@ -55,13 +57,41 @@ def audit(now=None):
     feed=data('data/strategy-dc-probabilities.json',{})
     rankings={race_key(r.get('date'),r.get('course'),r.get('race_time') or r.get('time')):r for r in feed.get('races',[]) if isinstance(r,dict)}
     form=data('data/strike-rates.json',{})
-    archive=collections.defaultdict(dict)
-    root=ROOT/'data/racing-results'
+    # Include archived finals and separately verified final provider results.
+    archive=collections.defaultdict(list)
     for day in (today-dt.timedelta(days=n) for n in range(0,15)):
         document=data('data/racing-results/'+day.isoformat()+'.json',{})
         for x in document.get('results',[]):
-            if x.get('status')=='final':
-                archive[day.isoformat()][race_key(day.isoformat(),x.get('course'),x.get('off_dt') or x.get('race_time'))]=x
+            if isinstance(x,dict) and x.get('status')=='final' and x.get('course'):
+                archive[day.isoformat()].append(x)
+    for x in data('data/race-results.json',{}).get('races',[]):
+        if isinstance(x,dict) and x.get('status')=='final' and x.get('course'):
+            day=str(x.get('date') or '')[:10]
+            archive[day].append(x)
+
+    def result_for(key,horses):
+        day,course_name,off_time=key
+        target=int(off_time[:2])*60+int(off_time[3:])
+        hits=[]
+        for r in archive.get(day,[]):
+            if norm(r.get('course'))!=course_name:continue
+            actual=clock(r.get('off_dt') or r.get('race_time') or r.get('off'))
+            if not actual:continue
+            delta=abs(int(actual[:2])*60+int(actual[3:])-target)
+            if delta>12:continue
+            rows=r.get('runners') or []
+            winners=[norm(z.get('horse')) for z in rows if isinstance(z,dict) and str(z.get('position')) in ('1','1.0')]
+            if len(winners)!=1:continue
+            names={norm(z.get('horse')) for z in rows if isinstance(z,dict) and z.get('horse')}
+            count=len(names.intersection(horses))
+            if count<(1 if delta==0 else 2):continue
+            hits.append((delta,-count,winners[0],r))
+        if not hits:return None
+        hits.sort(key=lambda x:(x[0],x[1]))
+        best=hits[0]
+        # Do not silently count conflicting winner reports as verified coverage.
+        if any(item[2]!=best[2] for item in hits if item[0]==best[0]):return None
+        return best[3]
     days=collections.defaultdict(lambda:{'declared_races':0,'declared_horses':0,'active_races':0,'d_c_ranked':0,'results_found':0})
     missing_dc=[];awaiting_dc=[];missing_results=[];insufficient=[];withdrawn=[]
     for key,horses in sorted(grouped.items()):
@@ -84,7 +114,7 @@ def audit(now=None):
         if 0<len(active)<2:insufficient.append({'day':day,'course':allrows[0]['course'],'time':time,'active_runners':len(active)})
         nr=[x['horse'] for x in allrows if is_nr(x)]
         if nr:withdrawn.append({'day':day,'course':allrows[0]['course'],'time':time,'horses':nr})
-        if key in archive.get(day,{}):record['results_found']+=1
+        if result_for(key,horses):record['results_found']+=1
         # Only previous calendar days are checked as fully complete; same-day
         # results can be delayed by the upstream publisher.
         elif daydate<today:
@@ -129,7 +159,17 @@ def main():
     p=argparse.ArgumentParser();p.add_argument('--out',default='data/rhp-stage70-coverage.json');p.add_argument('--self-test',action='store_true')
     a=p.parse_args()
     if a.self_test:self_test();return
+    # Stage71 reruns safely whenever the existing Stage70 schedule fires.
+    # This avoids changing restricted GitHub workflow files.
+    from rhp_stage71_result_recovery import recover
+    recovery=recover(ROOT,apply=True)
+    if recovery['newly_validated']:
+        import subprocess,sys
+        subprocess.run([sys.executable,'calculate-strike-rates.py'],cwd=ROOT,check=True)
     value=audit()
+    value['stage71_recovery_summary']={k:recovery[k] for k in (
+        'missing_final_flag','newly_validated','provider_cross_checked',
+        'archive_only_validated','unresolved_classification_count')}
     path=ROOT/a.out;path.parent.mkdir(parents=True,exist_ok=True)
     path.write_text(json.dumps(value,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
     print(json.dumps({'status':value['status'],'days':value['by_day'],'missing_scores':len(value['missing_rankings_for_already_scored_date']),
