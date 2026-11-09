@@ -40,7 +40,7 @@ jobs:
           PY
       - name: Generate A B C pre-off selections
         run: |
-          python -u scripts/stage66_live_paper_comparison.py --db reports/stage66/daily/backfill/backfilled_research_only.sqlite --out reports/stage66/daily/snapshots
+          python -u scripts/stage66_live_paper_comparison.py --baseline reports/stage66/daily/original.sqlite --db reports/stage66/daily/backfill/backfilled_research_only.sqlite --out reports/stage66/daily/snapshots
       - name: Upload comparison and diagnostics
         if: always()
         uses: actions/upload-artifact@v4
