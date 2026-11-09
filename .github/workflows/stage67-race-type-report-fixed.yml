@@ -1,0 +1,27 @@
+name: Stage67 - A B C Race Type ROI Report
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Build read-only report
+        run: |
+          python scripts/stage67_race_type_report.py \
+            --nov7 nov7_stage66_selections.csv \
+            --nov8 nov8_stage66_settled.csv \
+            --performance data/model-performance/2026-11-07.json \
+            --out reports/stage67
+      - name: Upload CSVs and audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage67-race-type-roi
+          path: reports/stage67/*
+          if-no-files-found: warn
