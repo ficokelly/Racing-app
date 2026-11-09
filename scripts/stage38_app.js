@@ -4,16 +4,15 @@ let stage38B=null,stage38D=null,stage38Z=null,stage38DResults=null,stage38ZResul
 function s38esc(s){return safe(String(s??''));}
 function s38key(c,d,t){return commentaryKey(c,d,t);}
 function s38find(feed,course,date,time){
- if(!feed||feed.day!==date)return null;
+ if(!feed||!Array.isArray(feed.races))return null;
  return (feed.races||[]).find(r=>s38key(r.course,r.date,r.time||clock(r.race_time))===s38key(course,date,time))||null;
 }
 function s38field(r,course,date,time){return !!r && !rhpCFieldChanged(r,course,date,time) && !rhpNonrunnerPending(rcSelectedModel,{course,date,time});}
 async function s38load(){
- const ts='?v='+Date.now(),files=['strategy-b-all-races.json','strategy-d-probabilities.json','strategy-z-probabilities.json',
-       'strategy-d-results.json','strategy-z-results.json','model-assessment-coverage.json'];
+ const ts='?v='+Date.now(),files=['strategy-dc-probabilities.json','strategy-dc-results.json'];
  try{
   const p=await Promise.all(files.map(f=>fetch('./data/'+f+ts,{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null)));
-  [stage38B,stage38D,stage38Z,stage38DResults,stage38ZResults,stage38Coverage]=p;
+  stage38B=null;stage38D=p[0];stage38Z=null;stage38DResults=p[1];stage38ZResults=null;stage38Coverage=null;
   if(activeTab==='racecards')renderRacecards();
   if(activeTab==='power')renderStrategySelections();
   if(activeTab==='powerresults')renderStrategyResults();
@@ -212,7 +211,7 @@ renderStrategySelections=function(){
  abSwitchState();
  document.querySelectorAll('[data-strategy-day]').forEach(b=>b.classList.toggle('active',b.dataset.strategyDay===strategyDay));
  const target=strategyDate(strategyDay),feed=model==='D'?stage38D:stage38Z;
- const raceRows=(feed?.day===target?feed.races||[]:[]).filter(r=>abTypeMatches(r,abViewState.selections.type));
+ const raceRows=(feed?.races||[]).filter(r=>r.date===target&&abTypeMatches(r,abViewState.selections.type));
  const now=new Date();
  const published=raceRows.filter(r=>r.selection&&['RESEARCH_ONLY','PAPER_ONLY'].includes(r.selection_status)&&!rhpCFieldChanged(r,r.course,r.date,r.time)&&new Date(r.race_time)>now);
  const message=model==='Z'?'Frozen course-candidate research. Paper picks are timestamped before the race; no active or approved Z strategies.':

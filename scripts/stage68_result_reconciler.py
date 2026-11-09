@@ -101,6 +101,15 @@ def insert_races(root, races):
                         if prior.get(field) in (None, '') and runner.get(field) not in (None, ''):
                             prior[field] = runner[field]
                             update = True
+                    # STAGE69_TERMINAL_STATUS_RECOVERY: A generic 'ran' must not
+                    # obscure a separately verified non-completion event.
+                    terminal={'pu','pulled up','f','fell','ur','unseated rider','bd','brought down','r','refused','ro','ran out'}
+                    new_status=str(runner.get('status') or '').strip().lower()
+                    old_status=str(prior.get('status') or '').strip().lower()
+                    if (prior.get('position') is None and old_status in ('','ran','finished')
+                            and new_status in terminal and old_status != new_status):
+                        prior['status']=new_status
+                        update=True
                 continue
             existing.append({**race, 'region': race.get('region') or '',
                              'source': 'verified PuntersEdge final results'})

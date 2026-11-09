@@ -560,6 +560,15 @@ OneSignalDeferred.push(async function(OneSignal) {
 .rhp-model-race>summary{cursor:pointer;font-weight:700;line-height:1.6}
 .rhp-model-runner{display:grid;grid-template-columns:42px minmax(0,1fr) auto;align-items:center;gap:8px;padding:7px 2px;border-bottom:1px solid var(--rhp-edge);font-size:13px}
 .rhp-model-runner .hint{font-size:11px}.rhp-model-pick{font-weight:750;color:var(--rhp-focus)}
+
+/* RHP_STAGE68_D_C_ONLY: preserve research archives but display only D(c). */
+#modelsview, #section-buttons [data-section="models"], [data-section="models"],
+#section-buttons .model-z-nav, #powerview .panel:has(#power-type-toggle),
+#powerview [data-stage40-paper], #powerview .stage41-link {display:none!important}
+.rhp-result-finishers{display:grid;gap:7px;margin:10px 0}
+.rhp-result-runner{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:8px 10px;border:1px solid var(--rhp-edge);border-radius:8px}
+.rhp-result-runner.is-picked{font-weight:750;border-width:2px}
+.rhp-stale-feed{color:#e4a225!important}
 </style></head><body><header><div class="top"><div><div class="brand"><span class="brand-icon">♞</span><span class="brand-words">Racing <span>Hot Pots</span></span></div><div class="sub">UK & IRELAND ◆ RACING INTELLIGENCE</div></div><div class="live" id="status">Checking feed</div></div></header><main><div id="rhp-nav-overlay" class="hidden" role="dialog" aria-modal="true" aria-label="Racing Hot Pots sections"><div class="rhp-nav-sheet"><div class="rhp-nav-sheet-head"><strong>All sections</strong><button type="button" id="rhp-nav-close" class="action small outline" aria-label="Close sections menu">✕</button></div><nav id="section-buttons" aria-label="Racing Hot Pots sections"><div class="nav-column"><button type="button" data-section="racecards">🏇 Racecards</button><button type="button" data-section="markets">📈 Market Movers</button><button type="button" data-section="watchlist">⭐ Watchlist</button><button type="button" data-section="hot">🔥 Hot Trainers</button></div><div class="nav-column"><button type="button" data-section="power">🎯 Hot Pots</button><button type="button" data-section="powerresults">📊 Hot Pots Results</button><button type="button" data-section="models">📊 Models</button><button type="button" data-section="bets">📁 My Bets</button><button type="button" data-section="pnl">📊 P&amp;L</button><a class="model-z-nav" href="./model-z.html" aria-label="Model Z paper portfolio">🧪 Model Z · Paper</a><a class="model-z-nav" href="./price-aware.html" aria-label="Price-aware paper value research">💶 Value · Paper</a></div><a class="form-price-nav" href="./form-price.html" aria-label="Form versus bookmaker prices">💡 Form vs Price</a></nav></div></div><div class="rhp-main-toolbar"><h1 id="pageTitle">📈 Market Movers</h1><button type="button" id="rhp-advanced-shortcut" class="rhp-header-settings" aria-label="Open advanced controls">⚙ <span>Settings</span></button></div><div class="rhp-update-line"><div class="muted" id="asof">Loading odds…</div><button type="button" class="action outline" id="rhp-refresh-odds" aria-label="Refresh latest published odds">↻ Refresh Odds</button></div>
 <div id="bet-overlay" class="hidden" role="dialog" aria-modal="true" aria-label="Add to My Bets"><div id="bet-dialog"><div id="bet-dialog-header"><strong>Add to My Bets</strong><button type="button" class="action small outline" id="close-bet">✕ Close</button></div><div id="bet-modal-content"></div></div></div>
 <!-- HOT_POTS_MODELS_V1 -->
@@ -1790,6 +1799,7 @@ function setup(){rhpSetupNavigation();loadPowerResults();$('pr-period').onchange
 // A changed data file triggers a page reload; unchanged files never reload the page.
 const AUTO_REFRESH_INTERVAL_MS=60000;
 const AUTO_REFRESH_FILES=['latest-odds.json','odds-history.json','racecards.json','strike-rates.json','strategy-selections.json','strategy-results.json','strategy-commentary.json','strategy-probabilities.json','strategy-ab-selections.json','strategy-ab-results.json','strategy-c-probabilities.json','strategy-c-results.json','strategy-b-probabilities.json','race-results.json','racecards-archive.json','nonrunner-monitor.json'];
+for(const f of ['strategy-dc-probabilities.json','strategy-dc-results.json'])if(!AUTO_REFRESH_FILES.includes(f))AUTO_REFRESH_FILES.push(f);
 // Preserve tab, selected filters, collapsed panels and scroll while published data refreshes.
 const RHP_REFRESH_STATE='rhp-auto-refresh-view';
 const RHP_FILTER_IDS=['rc-meeting','rc-time','rc-type','rc-odds','rc-result','rc-gear','rc-market','rc-sort','pr-period','pr-stake','period','bet-status','custom-from','custom-to','hot-min-runs','trainer-days','jockey-days'];
@@ -2120,16 +2130,15 @@ let stage38B=null,stage38D=null,stage38Z=null,stage38DResults=null,stage38ZResul
 function s38esc(s){return safe(String(s??''));}
 function s38key(c,d,t){return commentaryKey(c,d,t);}
 function s38find(feed,course,date,time){
- if(!feed||feed.day!==date)return null;
+ if(!feed||!Array.isArray(feed.races))return null;
  return (feed.races||[]).find(r=>s38key(r.course,r.date,r.time||clock(r.race_time))===s38key(course,date,time))||null;
 }
 function s38field(r,course,date,time){return !!r && !rhpCFieldChanged(r,course,date,time) && !rhpNonrunnerPending(rcSelectedModel,{course,date,time});}
 async function s38load(){
- const ts='?v='+Date.now(),files=['strategy-b-all-races.json','strategy-d-probabilities.json','strategy-z-probabilities.json',
-       'strategy-d-results.json','strategy-z-results.json','model-assessment-coverage.json'];
+ const ts='?v='+Date.now(),files=['strategy-dc-probabilities.json','strategy-dc-results.json'];
  try{
   const p=await Promise.all(files.map(f=>fetch('./data/'+f+ts,{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null)));
-  [stage38B,stage38D,stage38Z,stage38DResults,stage38ZResults,stage38Coverage]=p;
+  stage38B=null;stage38D=p[0];stage38Z=null;stage38DResults=p[1];stage38ZResults=null;stage38Coverage=null;
   if(activeTab==='racecards')renderRacecards();
   if(activeTab==='power')renderStrategySelections();
   if(activeTab==='powerresults')renderStrategyResults();
@@ -2167,13 +2176,13 @@ function s38raceSummary(race,model,sample,date,time){
    'These are relative research scores, not calibrated win probabilities. No strategy was automatically promoted.')+'</div>';
  }
  if(model==='D'){
-  if(!race)return `<div class="rhp-verdict s38-verdict"><strong>Model D · forecast pending</strong>${s38paragraph('The original eight-factor scoring engine has not yet published a valid full-field assessment for this race.','Its research weights remain unchanged; no probability or leader is invented from another model.')}</div>`;
-  const a=[...(race.runners||[])].sort((x,y)=>Number(x.rank)-Number(y.rank));
-  const top=a[0],next=a[1];
-  return `<div class="rhp-verdict s38-verdict"><strong>Model D · eight-factor assessment</strong>`+
-    s38paragraph(top?`<strong>${s38esc(top.horse)}</strong> comes out highest on the independent historical factors${next?`, with <strong>${s38esc(next.horse)}</strong> next in the order`:''}.`:'Full-field assessment was incomplete.',
-      top?`The score gap is ${Number(race.decision?.gap||0).toFixed(3)}, against the frozen research cut-off of ${Number(race.decision?.minimum_gap||0).toFixed(2)}. ${race.selection_status==='RESEARCH_ONLY'?'The research shortlist threshold is met.':'No betting selection clears the threshold.'}`:'',
-      'Model D scores are not winning percentages. Its historical selected-bet ROI has not shown a reliably profitable edge.')+'</div>';
+  if(!race)return `<div class="rhp-verdict s38-verdict"><strong>Hot Pots · assessment pending</strong>${s38paragraph('The race-type-aware D(c) workflow has not yet published a pre-off assessment for this field. No old model is substituted.')}</div>`;
+  const ranks=[...(race.runners||[])].sort((a,b)=>Number(a.rank)-Number(b.rank));
+  const top=ranks[0],second=ranks[1];
+  return `<div class="rhp-verdict s38-verdict"><strong>Hot Pots · race-type-aware assessment</strong>`+
+   s38paragraph(top?`<strong>${s38esc(top.horse)}</strong> ranks first${second?`, ahead of <strong>${s38esc(second.horse)}</strong>`:''}, combining frozen historical D evidence with the separately trained race-type C form signals.`:'No supported ranking available.',
+     top?`The relative research-score gap is ${Number(race.decision?.gap||0).toFixed(3)}. ${race.selection_status==='RESEARCH_ONLY'?'Research shortlist condition met.':'No shortlist qualified.'}`:'',
+     'Scores are not calibrated winning chances and do not establish profitable ROI.')+'</div>';
  }
  if(model==='B'){
   if(!race)return `<div class="rhp-verdict s38-verdict"><strong>Model B · historical evidence pending</strong>${s38paragraph('The whole field is included in the assessment queue, but verified form and comparable-race evidence are not available for a responsible order.','No ranking or betting selection is fabricated.')}</div>`;
@@ -2328,13 +2337,13 @@ renderStrategySelections=function(){
  abSwitchState();
  document.querySelectorAll('[data-strategy-day]').forEach(b=>b.classList.toggle('active',b.dataset.strategyDay===strategyDay));
  const target=strategyDate(strategyDay),feed=model==='D'?stage38D:stage38Z;
- const raceRows=(feed?.day===target?feed.races||[]:[]).filter(r=>abTypeMatches(r,abViewState.selections.type));
+ const raceRows=(feed?.races||[]).filter(r=>r.date===target&&abTypeMatches(r,abViewState.selections.type));
  const now=new Date();
  const published=raceRows.filter(r=>r.selection&&['RESEARCH_ONLY','PAPER_ONLY'].includes(r.selection_status)&&!rhpCFieldChanged(r,r.course,r.date,r.time)&&new Date(r.race_time)>now);
  const message=model==='Z'?'Frozen course-candidate research. Paper picks are timestamped before the race; no active or approved Z strategies.':
     'Independent eight-factor rankings for all available races; research shortlist only, never a validated betting edge.';
  host.innerHTML=`<div class="panel"><strong>Model ${model} · ${published.length} research/paper selections</strong><p class="hint">${s38esc(message)} Every eligible race is assessed separately; betting selections are not forced.</p></div>`+
-  (published.map(r=>`<article class="horse s38-paper-card"><div class="horse-top"><div><div class="name">${s38esc(r.selection.horse)}</div><div class="meta">${s38esc(r.time)} · ${s38esc(r.course)} · ${s38esc(r.strategy_name||'Model D independent research')}</div></div><span class="pill">${model==='Z'?'Paper only':'Research only'}</span></div><p>${s38esc(r.verdict)}</p><p class="hint">Recorded ${s38esc(r.published_at||feed.generated_at)} · frozen score gap ${Number(r.decision?.gap||0).toFixed(3)}. No real bet placed.</p></article>`).join('')||'<div class="rhp-ab-empty">No qualifying research or paper selections have been published for this period.</div>')+
+  (published.map(r=>`<article class="horse s38-paper-card"><div class="horse-top"><div><div class="name">${s38esc(r.selection.horse)}</div><div class="meta">${s38esc(r.time)} · ${s38esc(r.course)} · ${s38esc(r.strategy_name||'Model D independent research')}</div></div><span class="pill">${model==='Z'?'Paper only':'Research only'}</span></div><p>${s38esc(r.verdict)}</p><p class="hint">Recorded ${s38esc(r.published_at||feed.generated_at)} · research score gap ${Number(r.decision?.gap||0).toFixed(3)}. No real bet placed.</p><div class="actions"><button type="button" class="action small outline" data-rhp-open-race="${encodeURIComponent(JSON.stringify({course:r.course,day:r.date,time:r.time}))}">View Race</button></div></article>`).join('')||'<div class="rhp-ab-empty">No qualifying research or paper selections have been published for this period.</div>')+
  s38everyRaceHTML(model,target,abViewState.selections.type);
 };
 const s38OldResults=renderStrategyResults;
@@ -2538,6 +2547,92 @@ restoreRefreshFiltersAfterFeed=function(){
  if(v){rhpRaceDetailActive=!!v.rhpRaceDetailActive;rhpModelDate=v.rhpModelDate||rhpModelDate;$('rhp-model-date').value=rhpModelDate;}
  if(activeTab==='racecards')renderRacecards();
 };
+
+// RHP_STAGE68_D_C_ONLY — authoritative D(c) display and verified result detail.
+// Research A/B/C/D/Z continue independently in data archives, not on app tabs.
+(function(){
+ function statusName(value){
+  const x=String(value||'').toLowerCase().replace(/[^a-z]/g,'');
+  if(x==='fell'||x==='f')return 'Fell';
+  if(x==='pu'||x==='pulledup')return 'Pulled Up';
+  if(x==='ur'||x==='unseatedrider')return 'Unseated Rider';
+  if(x==='bd'||x==='broughtdown')return 'Brought Down';
+  if(['nr','nonrunner','withdrawn','scratched'].includes(x))return 'Non-runner';
+  return value||'Pending';
+ }
+ function spLabel(value){
+  const v=String(value??'').trim();
+  return v&&v!=='null'&&v!=='None'?'SP '+safe(v):'SP unavailable';
+ }
+ function ordinal(n){
+  n=Number(n);if(!Number.isInteger(n)||n<1)return '—';
+  return n+(n%100>=11&&n%100<=13?'th':n%10===1?'st':n%10===2?'nd':n%10===3?'rd':'th');
+ }
+ function spDecimal(v){
+  const s=String(v??'').trim();
+  if(/^evens?$/i.test(s))return 2;
+  const m=s.match(/^(\d+)\s*\/\s*(\d+)$/);
+  if(m&&Number(m[2])>0)return 1+Number(m[1])/Number(m[2]);
+  return null;
+ }
+ function raceResultRows(entry){
+  if(Array.isArray(entry.finishers)&&entry.finishers.length)return entry.finishers;
+  const index=finishedRaceIndex.get(finishedRaceKey(entry.course,entry.race_time,entry.date));
+  if(index)return [...index.values()].map(x=>({horse:x.horse,position:x.position,sp:x.sp,status:x.status}));
+  return [];
+ }
+ function resultCard(entry){
+  const runners=raceResultRows(entry);
+  const top=runners.filter(x=>Number.isInteger(Number(x.position))&&Number(x.position)>0&&Number(x.position)<=3)
+    .sort((a,b)=>Number(a.position)-Number(b.position));
+  const selection=runners.find(x=>horseMatchKey(x.horse)===horseMatchKey(entry.horse));
+  const picked=selection||{horse:entry.horse,position:entry.position,status:entry.status,sp:entry.sp};
+  const status=statusName(entry.status);
+  const header=`<div class="horse-top"><div><div class="name">${safe(entry.horse)}</div><div class="meta">${safe(entry.date)} · ${safe(entry.time)} · ${safe(entry.course)}</div></div><span class="pill ${status==='Won'?'yes':status==='Pending'?'':'no'}">${safe(status)}</span></div>`;
+  const finisher=(x,selected=false)=>`<div class="rhp-result-runner${selected?' is-picked':''}"><span>${Number(x.position)>0?safe(ordinal(x.position))+' · ':''}${safe(x.horse)}${selected?' ★ Hot Pot':''}${!x.position?' · '+safe(statusName(x.status)):''}</span><span>${spLabel(x.sp)}</span></div>`;
+  const seen=new Set();
+  const placed=top.map(x=>{seen.add(horseMatchKey(x.horse));return finisher(x,horseMatchKey(x.horse)===horseMatchKey(entry.horse))}).join('');
+  const pickedOutside=!seen.has(horseMatchKey(entry.horse))&&entry.status!=='Pending';
+  const additional=pickedOutside?finisher(picked,true):'';
+  const reason=entry.status==='Pending'?'<p class="hint">Awaiting verified final results. No finishing position or SP has been guessed.</p>':'';
+  const note=runners.length?'<p class="hint">Verified first three finishers, followed by the Hot Pot when outside the first three. Second/third does not always qualify for an each-way payout.</p>':'';
+  const off={course:entry.course,day:entry.date,time:entry.time};
+  return `<article class="horse">${header}<div class="rhp-result-finishers">${placed}${additional}</div>${note}${reason}<div class="hint">Research pick: ${safe(status)}${entry.position?' · '+safe(ordinal(entry.position)):''} · ${spLabel(entry.sp)} · ${safe(entry.result_source||'Awaiting official results')}</div><div class="actions"><button class="action small outline" type="button" data-rhp-open-race="${encodeURIComponent(JSON.stringify(off))}">View Race</button></div></article>`;
+ }
+ function renderDResults(){
+  const host=$('strategy-results-list'),summary=$('strategy-results-summary');
+  if(!host||!summary)return;
+  const all=(stage38DResults?.selections||[]);
+  const period=$('strategy-results-period')?.value||'all';
+  const cutoff=new Date();cutoff.setDate(cutoff.getDate()-(period==='all'?99999:Number(period)-1));
+  const shown=all.filter(r=>(period==='all'||r.date>=dateKey(cutoff.toISOString()))&&abTypeMatches(r,abViewState.results.type))
+     .sort((a,b)=>String(b.date).localeCompare(String(a.date))||String(b.time).localeCompare(String(a.time)));
+  const settled=shown.filter(r=>['Won','Placed','Unplaced','Fell','Pulled Up','Unseated Rider','Brought Down','Refused'].includes(r.status));
+  const wins=settled.filter(r=>r.status==='Won').length;
+  const priceable=settled.filter(r=>spDecimal(r.sp)!==null);
+  const profit=priceable.reduce((x,r)=>x+(r.status==='Won'?spDecimal(r.sp)-1:-1),0);
+  $('strategy-results-sr').textContent=settled.length?(100*wins/settled.length).toFixed(1)+'%':'—';
+  $('strategy-results-roi').textContent=priceable.length?(100*profit/priceable.length).toFixed(1)+'%':'—';
+  $('strategy-results-pnl').textContent=priceable.length?(profit<0?'−':'+')+money(Math.abs(profit)):'—';
+  summary.textContent=`Hot Pots D(c) · ${shown.length} timestamped research selections · ${settled.length} settled · ${wins} winners · ${shown.filter(r=>r.status==='Pending').length} awaiting verified results. SP-based ROI uses only selections with confirmed starting prices; no real bets are counted.`;
+  host.innerHTML=shown.length?shown.map(resultCard).join(''):'<div class="rhp-ab-empty">No D(c) research selections recorded yet for this period. Rankings are never inferred from the older D feed.</div>';
+  const history=$('strategy-historical-roi');if(history)history.textContent='D(c) is a separate research model. Its live win strike rate and SP ROI are not proof of future profitability.';
+ }
+ renderStrategyResults=function(){abViewState.results.model='D';renderDResults();};
+ renderPowerResults=renderStrategyResults;
+ document.addEventListener('click',event=>{
+  const btn=event.target.closest('[data-rhp-open-race]');if(!btn)return;
+  event.preventDefault();event.stopPropagation();
+  let target;try{target=JSON.parse(decodeURIComponent(btn.dataset.rhpOpenRace))}catch(e){return}
+  if(!target?.course||!target?.time||!target?.day)return;
+  const card=racecardRunners.find(r=>r.course===target.course&&(r.date||dateKey(r.race_time))===target.day&&clock(r.race_time)===target.time);
+  $('race-info').textContent=`${target.course} · ${target.day} · ${target.time} · full racecard`;
+  renderRacecards(target);
+  if(!$('race-runner-list').querySelector('.panel'))$('race-runner-list').innerHTML='<div class="empty">Racecard details are no longer available in the rolling archive.</div>';
+  $('race-overlay').classList.remove('hidden');document.body.style.overflow='hidden';
+ },true);
+})();
+
 
 setup();
 // Manual refresh uses the existing state-preserving reload path, not a new API call.

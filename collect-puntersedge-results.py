@@ -111,8 +111,12 @@ merged = {key(r): r for r in existing if isinstance(r, dict) and r.get('course')
 for r in results:
     merged[key(r)] = r
 # Keep seven days of results, not an ever-expanding archive.
-cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).date()
+cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).date()
 kept = [r for r in merged.values() if (dtparse(r.get('off_dt')) or datetime.min.replace(tzinfo=timezone.utc)).date() >= cutoff]
+# Stage69: preserve externally verified PU/F/UR statuses after each provider refresh.
+from scripts.rhp_stage69_verified_results import patch as apply_verified_race_finishes
+corrected,not_found=apply_verified_race_finishes(kept,strict=False)
+if corrected:print('Retained externally verified non-finisher statuses:',len(corrected))
 kept.sort(key=lambda r: r.get('off_dt', ''), reverse=True)
 DEST.parent.mkdir(parents=True, exist_ok=True)
 tmp = DEST.with_suffix('.json.tmp')
