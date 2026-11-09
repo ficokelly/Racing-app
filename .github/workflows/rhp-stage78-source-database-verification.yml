@@ -1,0 +1,88 @@
+name: Stage78 - Verify Original Source Against Full Database
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/rhp-stage78-source-database-verification.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: rhp-stage78-original-source-check
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Read repository only
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Restore verified Stage65E historical SQLite without committing it
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage65e
+          gh run download 42218307313 --repo "$GITHUB_REPOSITORY" \
+            --name stage65e-detailed-history-database --dir reports/stage65e
+          test -s reports/stage65e/detailed_history.sqlite
+      - name: Download exact original Kaggle CSV source version 129
+        shell: bash
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check kagglehub
+          python - <<'PY'
+          import pathlib,kagglehub
+          src=kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025/versions/129')
+          pathlib.Path('/tmp/stage78_source_path.txt').write_text(str(pathlib.Path(src).resolve()))
+          print('Restored original source version 129')
+          PY
+      - name: Compare all source records field by field against SQLite and raw JSON
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/stage78_source_database_compare.py \
+            --db reports/stage65e/detailed_history.sqlite \
+            --source-dir "$(cat /tmp/stage78_source_path.txt)" \
+            --out reports/stage78
+          python - <<'PY'
+          import json
+          r=json.load(open('reports/stage78/summary.json'))
+          print('SOURCE-TO-DB STATUS:',r['status'])
+          print('SOURCE RUNNERS:',r['runner_rows_original_source'])
+          print('DATABASE RUNNERS:',r['runner_rows_database'])
+          print('EXACTLY MATCHED RUNNERS:',r['runner_rows_exactly_matched'])
+          print('MISMATCHES:',r['source_to_db_discrepancies'])
+          PY
+      - name: Confirm production data and models remain unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "$(git status --porcelain -- data scripts .github/workflows)" ]; then
+            echo 'Protected production files modified: refusing to finish' >&2
+            exit 1
+          fi
+          echo 'Protected production files unchanged.'
+      - name: Upload compact comparison reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage78-source-database-comparison
+          path: reports/stage78/
+          retention-days: 90
+          if-no-files-found: warn
