@@ -1,0 +1,46 @@
+{
+  "generated_at": "2026-11-09T21:03:02.710757+00:00",
+  "as_of": "2026-11-09",
+  "credentials_status": "secret_pair_present",
+  "probes": {
+    "today_free": {
+      "http_status": 200,
+      "response_shape_valid": true
+    },
+    "today_basic": {
+      "http_status": 401,
+      "response_shape_valid": false
+    },
+    "standard_history": {
+      "http_status": 401,
+      "response_shape_valid": false
+    }
+  },
+  "historical_dates_attempted": 0,
+  "historical_dates_read": 0,
+  "historical_race_records_verified": 0,
+  "changes": {},
+  "unresolved_examples": [],
+  "person_identity_gap_before": {
+    "trainer": 23,
+    "jockey": 489
+  },
+  "frozen_model_protection": "Script touches only archived race results and Stage32 form logic; never model selections/racecards.",
+  "notes": [
+    "Daily API access works; historical endpoint is denied, likely plan/endpoint access restriction rather than invalid credentials.",
+    "Historical changes skipped: source access not confirmed."
+  ],
+  "stage32_patch_count": 2,
+  "person_identity_gap_after": {
+    "trainer": 23,
+    "jockey": 21
+  },
+  "14_day_form_runners_after": 4690,
+  "person_identity_change": {
+    "trainer": 0,
+    "jockey": -468
+  },
+  "declared_race_result_gaps_after": 0,
+  "older_unverified_archive_races_after": 108,
+  "protection_note": "Archived results, trainer/jockey form and provenance only; no model rankings changed"
+}

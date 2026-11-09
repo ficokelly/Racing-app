@@ -210,12 +210,23 @@ def get_best_rows(as_of: dt.date, cache: dict, audit: collections.Counter):
                     audit['rows_with_identity_enrichment'] += 1
                 if ref and original_trainer and ref.get('trainer') and compact(original_trainer)!=compact(ref['trainer']):
                     audit['result_card_trainer_disagreement'] += 1
-                    # Trust provider's explicit identity, but withhold this record if
-                    # conflicting metadata could attribute it to the wrong trainer.
-                    trainer=''
+                    # Stage73: a provider race ID + trainer ID is stronger evidence
+                    # of the actual result than an earlier declared racecard.
+                    # Otherwise preserve the original conservative withholding.
+                    if race.get('race_id') and runner.get('trainer_id'):
+                        audit['result_identity_trainer_preferred_over_declared_card'] += 1
+                    else:
+                        trainer=''
+                        audit['result_identity_trainer_conflict_withheld'] += 1
                 if ref and original_jockey and ref.get('jockey') and compact(original_jockey)!=compact(ref['jockey']):
                     audit['result_card_jockey_disagreement'] += 1
-                    jockey=''
+                    # Stage73: permit verified result-rider changes when BOTH
+                    # race ID and actual result jockey ID are provided.
+                    if race.get('race_id') and runner.get('jockey_id'):
+                        audit['result_identity_jockey_preferred_over_declared_card'] += 1
+                    else:
+                        jockey=''
+                        audit['result_identity_jockey_conflict_withheld'] += 1
                 normalized = {'date':race_date, 'trainer':trainer, 'trainer_id':trainer_id,
                               'jockey':jockey, 'jockey_id':jockey_id, 'position':str(runner.get('position')).upper(),
                               'had_explicit_provider_identity': bool(original_trainer and original_jockey),
