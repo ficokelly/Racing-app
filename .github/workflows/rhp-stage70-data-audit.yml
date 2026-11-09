@@ -1,0 +1,83 @@
+name: Stage70 - Racing Data Coverage and Late Results Recovery
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Multiple checks each day; GitHub schedules in UTC and can start late.
+    - cron: '20 8,12,20 * * *'
+    - cron: '40 23 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rhp-stage70-coverage
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Recover available verified results on the late check
+        env:
+          PUNTERSEDGE_API_KEY: ${{ secrets.PUNTERSEDGE_API_KEY }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ "$(date -u +%H)" = 23 ] || [ "$EVENT_NAME" = workflow_dispatch ]; then
+            python collect-puntersedge-results.py || echo 'Upstream result recovery unavailable; audit will report any observed gaps.'
+            python scripts/stage68_result_reconciler.py
+            python calculate-strike-rates.py || echo 'Person-form rebuild not possible; prior file retained.'
+            python scripts/rhp_stage68_settle.py
+          fi
+      - name: Audit saved racecards, selections, official results and form
+        run: |
+          set -euo pipefail
+          python scripts/rhp_stage70_data_coverage.py --out data/rhp-stage70-coverage.json
+          python - <<'SUMMARY'
+          import json,os
+          a=json.load(open('data/rhp-stage70-coverage.json'))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
+            f.write('## Racing Hot Pots: data coverage\n\n')
+            f.write('**'+a['status']+'**\n\n')
+            f.write('Missing expected D(c) race assessments: '+str(len(a['missing_rankings_for_already_scored_date']))+'\n\n')
+            f.write('Missing known historical results: '+str(len(a['missing_verified_results_for_historic_declared_races']))+'\n\n')
+            f.write('Unmatched trainer/jockey identities: '+str(a['unmatched_result_person_identities'])+'\n\n')
+            f.write('Results are limited to published UK/IE card/result sources; unknown external omissions remain unknown.\n')
+          if a['warnings_count']:
+            print('::warning::Coverage gaps or not-yet-scored races appear in the audit JSON')
+          SUMMARY
+      - name: Save coverage report and any independently verified recovered results
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/rhp-stage70-coverage.json data/race-results.json data/racing-results/ \
+             data/strike-rates.json data/form-identity-cache.json reports/stage32/form-rebuild-audit.json
+          if test -f data/strategy-dc-results.json; then git add data/strategy-dc-results.json; fi
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Audit UK IE race and result coverage and reconcile verified late results'
+          for attempt in 1 2 3 4; do
+            if git pull --rebase origin main && git push origin HEAD:main; then exit 0; fi
+            git rebase --abort || true
+            sleep $((attempt*3))
+          done
+          echo 'Coverage report publication failed' >&2
+          exit 1
+      - name: Upload dated coverage report as a workflow artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rhp-stage70-data-coverage
+          path: data/rhp-stage70-coverage.json
+          retention-days: 30
+          if-no-files-found: warn
