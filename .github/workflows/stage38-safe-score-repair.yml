@@ -1,0 +1,70 @@
+name: Stage38 - Repair Safe Score-Only Default
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  repair-stage38:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Retire obsolete five-model UI install and default to scoring
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('.github/workflows/stage38-all-models-app-and-coverage.yml')
+          s = p.read_text(encoding='utf-8')
+          replacements = [
+              ("description: 'App-only fast update, live scoring, or both'",
+               "description: 'Score frozen Model D and Z without altering the app UI'"),
+              ("options:\n          - install-and-score\n          - install-ui-only\n          - score-only\n        default: install-and-score",
+               "options:\n          - score-only\n        default: score-only"),
+              ("  install-ui:\n    if: " + "$" + "{{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode != 'score-only' }}",
+               "  install-ui:\n    # Retired: this installer targets the obsolete A/B/C/D/Z interface.\n    # Do not overwrite the live Model-D-only Hot Pots UI.\n    if: " + "$" + "{{ false }}")
+          ]
+          for old, new in replacements:
+              if old in s:
+                  if s.count(old) != 1:
+                      raise SystemExit('Refusing ambiguous workflow replacement')
+                  s = s.replace(old, new, 1)
+              elif new not in s:
+                  raise SystemExit('Workflow changed unexpectedly: manual review required')
+          p.write_text(s, encoding='utf-8')
+          print('Stage38 safe scoring default installed. Frozen model code unchanged.')
+          PY
+      - name: Publish workflow repair
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/workflows/stage38-all-models-app-and-coverage.yml
+          if git diff --cached --quiet; then
+            echo 'Already repaired'
+          else
+            git commit -m 'Stage38: default to scoring and retire obsolete five-model UI installer'
+            for attempt in 1 2 3; do
+              if git pull --rebase origin main && git push origin HEAD:main; then
+                echo 'Published safe scoring workflow'
+                exit 0
+              fi
+              git rebase --abort || true
+              sleep "$((attempt*2))"
+            done
+            echo 'Could not publish repaired workflow' >&2
+            exit 1
+          fi
+      - name: Trigger today's Model D scoring without reinstalling app UI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run stage38-all-models-app-and-coverage.yml --ref main -f mode=score-only
+          echo 'Score-only workflow requested; check the Stage38 Actions run for final result.'
