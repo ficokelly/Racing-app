@@ -1,0 +1,81 @@
+name: Stage79 - Recover Priority Historical Class and 2026 SP
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/rhp-stage79-priority-recovery.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: rhp-stage79-priority-historical-recovery
+  cancel-in-progress: false
+
+jobs:
+  audit-and-recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Read repository only (no publishing)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Restore independently verified Stage65E historical SQLite
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage65e
+          gh run download 42218307313 --repo "$GITHUB_REPOSITORY" \
+            --name stage65e-detailed-history-database --dir reports/stage65e
+          test -s reports/stage65e/detailed_history.sqlite
+          echo 'Recovered historical data in temporary runner only.'
+      - name: Validate recovery script
+        run: python -m py_compile scripts/stage79_priority_recovery.py
+      - name: Recover explicit race classes and verified 2026 starting prices
+        shell: bash
+        env:
+          RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
+          RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
+        run: |
+          set -euo pipefail
+          python -u scripts/stage79_priority_recovery.py \
+            --db reports/stage65e/detailed_history.sqlite \
+            --root . --out reports/stage79 \
+            --max-api-calls 650 --api-days 0
+          python - <<'PY'
+          import json, pathlib
+          s=json.loads(pathlib.Path('reports/stage79/summary.json').read_text())
+          assert s['stage']==79 and s['production_changes']==0
+          assert s['mode']=='READ_ONLY_RESEARCH_OVERLAY'
+          print('RESEARCH CANDIDATES:',s['candidate_counts'])
+          print('API ERRORS:',s['api_errors'])
+          print('RPR CONSTRAINT:',s['rpr_status'])
+          PY
+      - name: Verify original repository production files are unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "$(git status --porcelain -- data scripts .github/workflows)" ]; then
+            echo 'Unexpected change in protected files: stop now' >&2
+            exit 1
+          fi
+          echo 'PASS: protected production data and model code unchanged.'
+      - name: Publish separate research-only recovery overlay and audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage79-recovery-candidates-and-provenance
+          path: reports/stage79/
+          retention-days: 90
+          compression-level: 6
+          if-no-files-found: warn
