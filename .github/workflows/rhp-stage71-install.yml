@@ -1,0 +1,397 @@
+name: Stage71 - Install and Repair Archived Racing Results
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rhp-stage71-install
+  cancel-in-progress: false
+
+jobs:
+  install:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out protected current main branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: true
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install source-constrained status repair and safer audit matcher
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p scripts
+          cat > scripts/rhp_stage71_result_recovery.py <<'RHP_STAGE71_RECOVERY'
+          #!/usr/bin/env python3
+          """Stage71: recognise completed results already saved in Racing API history.
+          
+          No scores, selections, names, SPs, finishing positions or results are invented.
+          Ambiguous/conflicting records stay unchanged and appear in the review report.
+          """
+          from __future__ import annotations
+          import argparse
+          import collections
+          import datetime as dt
+          import json
+          import pathlib
+          import re
+          import unicodedata
+          
+          ROOT = pathlib.Path(__file__).resolve().parent.parent
+          UTC = dt.timezone.utc
+          
+          
+          def normalized(value):
+              s = unicodedata.normalize('NFKD', str(value or ''))
+              s = ''.join(ch for ch in s if not unicodedata.combining(ch))
+              s = re.sub(r'\s*\((?:aw|all[ -]?weather|ire|irl|gb|fr|usa|can|aus|nz|ger)\)', '', s, flags=re.I)
+              return re.sub(r'[^a-z0-9]', '', s.lower())
+          
+          
+          def minute(value):
+              try:
+                  x = dt.datetime.fromisoformat(str(value or '').replace('Z', '+00:00'))
+                  if x.tzinfo is None:
+                      x = x.replace(tzinfo=UTC)
+                  return x.astimezone(UTC).strftime('%H:%M')
+              except (TypeError, ValueError):
+                  m = re.search(r'\b(\d\d:\d\d)\b', str(value or ''))
+                  return m.group(1) if m else ''
+          
+          
+          def identity(r):
+              return (str(r.get('date') or '')[:10], normalized(r.get('course')),
+                      minute(r.get('off_dt') or r.get('race_time') or r.get('off')))
+          
+          
+          def winner(r):
+              wins = [z for z in r.get('runners', []) if isinstance(z, dict)
+                      and str(z.get('position') or '').strip() in ('1', '1.0')]
+              return normalized(wins[0].get('horse')) if len(wins) == 1 else None
+          
+          
+          def eligibility(r, day, source):
+              if not isinstance(r, dict):
+                  return 'invalid_record'
+              if r.get('status') == 'final':
+                  return 'already_final'
+              if r.get('status') not in (None, ''):
+                  return 'conflicting_race_status'
+              if 'racing api' not in str(source or '').lower():
+                  return 'unconfirmed_archive_provenance'
+              if r.get('date') != day or not all(identity(r)):
+                  return 'missing_date_course_or_time'
+              if not str(r.get('race_id') or '').startswith('rac_'):
+                  return 'missing_provider_race_id'
+              rows = r.get('runners')
+              if not isinstance(rows, list) or len(rows) < 2:
+                  return 'too_few_runners'
+              horses = [normalized(z.get('horse')) for z in rows if isinstance(z, dict)]
+              if len(horses) != len(rows) or not all(horses) or len(set(horses)) != len(horses):
+                  return 'duplicated_or_missing_runner_identity'
+              if not winner(r):
+                  return 'no_unique_recorded_winner'
+              starters = {'ran','finished','unplaced','pu','pulledup','f','fell','ur',
+                          'unseatedrider','bd','broughtdown','ro','ranout','r','refused','dq',
+                          'disqualified','nr','nonrunner','dns','scratched','withdrawn'}
+              for z in rows:
+                  p = z.get('position')
+                  if p not in (None, ''):
+                      continue
+                  if normalized(z.get('status')) not in starters:
+                      return 'runner_outcome_not_recorded'
+              won = next(z for z in rows if str(z.get('position') or '').strip() in ('1','1.0'))
+              if normalized(won.get('status')) in {'nr','nonrunner','dns','withdrawn','scratched'}:
+                  return 'winner_is_nonrunner'
+              return 'eligible'
+          
+          
+          def recover(root=ROOT, as_of=None, dry_run=False):
+              as_of = as_of or dt.datetime.now(UTC).date()
+              counter = collections.Counter()
+              problems = []
+              changed_dates = []
+              for path in sorted((root/'data/racing-results').glob('????-??-??.json')):
+                  try:
+                      day = dt.date.fromisoformat(path.stem)
+                  except ValueError:
+                      continue
+                  if day >= as_of or day < as_of - dt.timedelta(days=30):
+                      continue
+                  payload = json.loads(path.read_text(encoding='utf-8'))
+                  races = payload.get('results', [])
+                  if not isinstance(races, list):
+                      continue
+                  slots = collections.defaultdict(list)
+                  ids = collections.defaultdict(list)
+                  for r in races:
+                      if not isinstance(r, dict):
+                          continue
+                      slots[identity(r)].append(r)
+                      if r.get('race_id'):
+                          ids[r['race_id']].append(r)
+                  did_change = False
+                  for r in races:
+                      reason = eligibility(r, path.stem, payload.get('source'))
+                      if reason == 'eligible':
+                          if len(ids[r['race_id']]) != 1:
+                              reason = 'duplicate_provider_race_id'
+                          else:
+                              # Multiple upstream records for the same race are allowed
+                              # ONLY if their recorded winning horse agrees.
+                              others = slots[identity(r)]
+                              if len(others) > 1 and any(winner(other) != winner(r) for other in others):
+                                  reason = 'conflicting_recorded_winners'
+                      counter[reason] += 1
+                      if reason != 'eligible':
+                          if reason != 'already_final':
+                              problems.append({'date':path.stem,'course':r.get('course') if isinstance(r,dict) else None,
+                                               'time':r.get('off_dt') if isinstance(r,dict) else None,'reason':reason})
+                          continue
+                      if not dry_run:
+                          r['status'] = 'final'
+                          r['completion_evidence'] = 'Existing Racing API finishing order with one recorded winner'
+                          r['completion_validation'] = 'Stage71: status classified; positions, identities and odds unchanged'
+                      did_change = True
+                  if did_change:
+                      changed_dates.append(path.stem)
+                      if not dry_run:
+                          path.write_text(json.dumps(payload,indent=2,ensure_ascii=False)+'\n', encoding='utf-8')
+              report = {'generated_at':dt.datetime.now(UTC).isoformat(),
+                        'as_of':as_of.isoformat(),'dry_run':dry_run,
+                        'existing_completed_races_recognised':counter['eligible'],
+                        'already_final':counter['already_final'],
+                        'updated_dates':changed_dates,
+                        'remaining_validation_issues':dict((k,v) for k,v in counter.items() if k not in {'eligible','already_final'}),
+                        'requires_manual_or_external_check':problems,
+                        'model_protection':'No frozen Model D, D(c), historical selections or predictions modified',
+                        'note':'Status recognition is based on already stored Racing API result data; it is not independent external verification.'}
+              if not dry_run:
+                  (root/'data/rhp-stage71-recovery.json').write_text(json.dumps(report,indent=2,ensure_ascii=False)+'\n', encoding='utf-8')
+              return report
+          
+          
+          def self_test():
+              valid = {'date':'2026-11-02','course':'Dundalk (AW) (IRE)','off_dt':'2026-11-02T12:30:00Z',
+                       'race_id':'rac_1','runners':[{'horse':'Winner (IRE)','position':'1','trainer':'A','jockey':'B'},
+                                                    {'horse':'Other (GB)','position':'2'}]}
+              assert eligibility(valid, '2026-11-02', 'Racing API archive') == 'eligible'
+              assert eligibility(valid, '2026-11-02', 'unknown') != 'eligible'
+              assert eligibility({**valid,'runners':[valid['runners'][0],valid['runners'][0]]},
+                                 '2026-11-02','Racing API archive') != 'eligible'
+              assert normalized('Dundalk (AW) (IRE)') == normalized('Dundalk')
+              print('Stage71 recovery self-test passed')
+          
+          
+          if __name__ == '__main__':
+              parser = argparse.ArgumentParser()
+              parser.add_argument('--self-test',action='store_true')
+              parser.add_argument('--dry-run',action='store_true')
+              parser.add_argument('--as-of',default=None)
+              a = parser.parse_args()
+              if a.self_test:
+                  self_test()
+              else:
+                  print(json.dumps(recover(as_of=dt.date.fromisoformat(a.as_of) if a.as_of else None,
+                                           dry_run=a.dry_run),indent=2))
+          RHP_STAGE71_RECOVERY
+          mkdir -p scripts
+          cat > scripts/rhp_stage71_patch_stage70.py <<'RHP_STAGE71_PATCH'
+          #!/usr/bin/env python3
+          """Install the audited Stage71 matching fix into existing Stage70 scripts.
+          
+          Fails safely if the expected Stage70 revision has changed.
+          """
+          from pathlib import Path
+          
+          COVERAGE=Path('scripts/rhp_stage70_data_coverage.py')
+          WORKFLOW=Path('.github/workflows/rhp-stage70-data-audit.yml')
+          
+          
+          def replace_once(text, old, new, label):
+              if new in text:
+                  print(label, 'already installed')
+                  return text
+              if text.count(old) != 1:
+                  raise RuntimeError('Stage70 changed; refusing uncertain patch: '+label)
+              return text.replace(old,new,1)
+          
+          
+          def main():
+              txt=COVERAGE.read_text()
+              original_norm="""def norm(s):
+              s=re.sub(r'\\s*\\((?:aw|all.weather)\\)\\s*$','',str(s or ''),flags=re.I)
+              return re.sub('[^a-z0-9]','',s.casefold())
+          """
+              improved_norm="""def norm(s):
+              # Source names may have multiple suffixes: Dundalk (AW) (IRE), for example.
+              s=re.sub(r'\\s*\\((?:aw|all.weather|ire|irl|gb|fr|usa|can|ger|aus|nz)\\)', '', str(s or ''), flags=re.I)
+              cleaned=re.sub('[^a-z0-9]','',s.casefold())
+              return {'chelmsfordcity':'chelmsford'}.get(cleaned,cleaned)
+          """
+              txt=replace_once(txt,original_norm,improved_norm,'course/runner names')
+          
+              old_archive="""    archive=collections.defaultdict(dict)
+              root=ROOT/'data/racing-results'
+              for day in (today-dt.timedelta(days=n) for n in range(0,15)):
+                  document=data('data/racing-results/'+day.isoformat()+'.json',{})
+                  for x in document.get('results',[]):
+                      if x.get('status')=='final':
+                          archive[day.isoformat()][race_key(day.isoformat(),x.get('course'),x.get('off_dt') or x.get('race_time'))]=x
+          """
+              new_archive="""    # Read every verified final-result source, not only archived records with
+              # exactly matching course spelling and scheduled off time.
+              archive=collections.defaultdict(list)
+              for day in (today-dt.timedelta(days=n) for n in range(0,15)):
+                  document=data('data/racing-results/'+day.isoformat()+'.json',{})
+                  for x in document.get('results',[]):
+                      if isinstance(x,dict) and x.get('status')=='final' and x.get('course'):
+                          archive[day.isoformat()].append(x)
+              for x in data('data/race-results.json',{}).get('races',[]):
+                  if isinstance(x,dict) and x.get('status')=='final' and x.get('course'):
+                      day=str(x.get('date') or '')[:10]
+                      archive[day].append(x)
+          
+              def resolved_result(key,horses):
+                  day,co,off=key
+                  target=int(off[:2])*60+int(off[3:])
+                  candidates=[]
+                  for r in archive.get(day,[]):
+                      race_co=norm(r.get('course'))
+                      t=clock(r.get('off_dt') or r.get('race_time') or r.get('off'))
+                      if race_co != co or not t:continue
+                      delta=abs(target-(int(t[:2])*60+int(t[3:])))
+                      if delta>12:continue
+                      rows=r.get('runners') or []
+                      if sum(str(z.get('position')) in ('1','1.0') for z in rows if isinstance(z,dict)) != 1:continue
+                      listed={norm(z.get('horse')) for z in rows if isinstance(z,dict) and z.get('horse')}
+                      matches=len(listed.intersection(horses.keys()))
+                      # Exact-time matches still need one common horse. For a changed
+                      # advertised off, require two common horses to avoid false matches.
+                      if matches < (1 if delta==0 else 2):continue
+                      candidates.append((delta,-matches,r))
+                  if not candidates:return None
+                  candidates.sort(key=lambda t:(t[0],t[1]))
+                  best=candidates[0]
+                  # Two providers can supply the same race; conflicting winners are not
+                  # silently accepted even if one appears to be an exact match.
+                  same=[v for v in candidates if v[0]==best[0]]
+                  w={norm(next(z.get('horse') for z in c[2].get('runners',[])
+                          if isinstance(z,dict) and str(z.get('position')) in ('1','1.0'))) for c in same}
+                  return best if len(w)==1 else None
+          """
+              txt=replace_once(txt,old_archive,new_archive,'archived and provider results')
+              old_check="""        if key in archive.get(day,{}):record['results_found']+=1
+                  # Only previous calendar days are checked as fully complete; same-day
+                  # results can be delayed by the upstream publisher.
+                  elif daydate<today:
+                      missing_results.append({'day':day,'course':allrows[0]['course'],'time':time})
+          """
+              new_check="""        found=resolved_result(key,horses)
+                  if found:
+                      record['results_found']+=1
+                      if found[0]>0:record['results_time_reconciled']=record.get('results_time_reconciled',0)+1
+                  # Only previous calendar days are checked as fully complete; same-day
+                  # results can be delayed by the upstream publisher.
+                  elif daydate<today:
+                      missing_results.append({'day':day,'course':allrows[0]['course'],'time':time})
+          """
+              txt=replace_once(txt,old_check,new_check,'safe completed-result matching')
+              COVERAGE.write_text(txt)
+          
+              wf=WORKFLOW.read_text()
+              old_run='          python scripts/rhp_stage70_data_coverage.py --out data/rhp-stage70-coverage.json\n'
+              new_run="""          python scripts/rhp_stage71_result_recovery.py
+                    # Rebuild trainer/jockey statistics only when new historical races
+                    # were safely recognised; ordinary checks must not churn live form.
+                    if python - <<'CHECK'
+                    import json,sys
+                    r=json.load(open('data/rhp-stage71-recovery.json'))
+                    sys.exit(0 if r['existing_completed_races_recognised'] else 1)
+                    CHECK
+                    then
+                      python calculate-strike-rates.py || echo 'Form refresh unavailable; prior published form preserved'
+                    fi
+                    python scripts/rhp_stage70_data_coverage.py --out data/rhp-stage70-coverage.json
+          """
+              wf=replace_once(wf,old_run,new_run,'Stage70 recovery invocation')
+              add='          git add data/rhp-stage71-recovery.json\n'
+              if add not in wf:
+                  marker='          git add data/rhp-stage70-coverage.json data/race-results.json data/racing-results/ \\\n'
+                  if marker not in wf:raise RuntimeError('Stage70 git add block changed')
+                  wf=wf.replace(marker, add+marker,1)
+              WORKFLOW.write_text(wf)
+              print('Stage70 audit and scheduled workflow updated safely')
+          
+          if __name__=='__main__':main()
+          RHP_STAGE71_PATCH
+          python scripts/rhp_stage71_patch_stage70.py
+          python -m py_compile scripts/rhp_stage71_result_recovery.py scripts/rhp_stage70_data_coverage.py
+          python scripts/rhp_stage71_result_recovery.py --self-test
+          python scripts/rhp_stage70_data_coverage.py --self-test
+          python scripts/rhp_stage71_result_recovery.py --dry-run > /tmp/rhp-stage71-before.json
+          python - <<'REVIEW'
+          import json
+          r=json.load(open('/tmp/rhp-stage71-before.json'))
+          print('Source-validated archived completions before repair:',r['existing_completed_races_recognised'])
+          print('Unclear archived result records (not changed):',r['remaining_validation_issues'])
+          REVIEW
+      - name: Promote only source-validated completed races, rebuild form and audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/rhp_stage71_result_recovery.py > /tmp/rhp-stage71-after.json
+          python calculate-strike-rates.py
+          python scripts/rhp_stage70_data_coverage.py --out data/rhp-stage70-coverage.json
+          python - <<'SUMMARY'
+          import json,os
+          rec=json.load(open('data/rhp-stage71-recovery.json'))
+          cov=json.load(open('data/rhp-stage70-coverage.json'))
+          unresolved=len(cov['missing_verified_results_for_historic_declared_races'])
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
+              f.write('## Stage71 targeted racing data recovery\n\n')
+              f.write('Existing completed Racing API races classified final: **'+str(rec['existing_completed_races_recognised'])+'**\n\n')
+              f.write('Unresolved declared historical races after correction: **'+str(unresolved)+'**\n\n')
+              f.write('Remaining archive validation problems: '+str(rec['remaining_validation_issues'])+'\n\n')
+              f.write('Frozen models and their historical rankings were not changed.\n')
+          print('Remaining declared race results requiring independent source check:',unresolved)
+          SUMMARY
+      - name: Commit verified improvements without modifying model predictions
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A -- scripts/rhp_stage71_result_recovery.py scripts/rhp_stage71_patch_stage70.py \
+            scripts/rhp_stage70_data_coverage.py .github/workflows/rhp-stage70-data-audit.yml \
+            data/racing-results data/rhp-stage71-recovery.json data/rhp-stage70-coverage.json \
+            data/strike-rates.json data/form-identity-cache.json reports/stage32/form-rebuild-audit.json
+          if git diff --cached --quiet; then echo "No repair changes to commit"; exit 0; fi
+          git commit -m 'Stage71: recognise saved completed results and prevent misleading coverage gaps'
+          for attempt in 1 2 3 4; do
+            if git pull --rebase origin main && git push origin HEAD:main; then exit 0; fi
+            git rebase --abort || true
+            sleep $((attempt*3))
+          done
+          echo "Stage71 commit failed to publish" >&2
+          exit 1
+      - name: Upload before-and-after audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage71-verified-result-recovery
+          path: |
+            /tmp/rhp-stage71-before.json
+            /tmp/rhp-stage71-after.json
+            data/rhp-stage71-recovery.json
+            data/rhp-stage70-coverage.json
+          retention-days: 30
+          if-no-files-found: warn
