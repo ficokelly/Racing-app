@@ -1,0 +1,131 @@
+name: Stage79B - Recover Priority Data (Fixed Audit Guard)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/rhp-stage79-recovery-repair.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: rhp-stage79-priority-historical-recovery
+  cancel-in-progress: false
+
+jobs:
+  audit-and-recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Read repository only (no publishing)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Restore independently verified Stage65E historical SQLite
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage65e
+          gh run download 42218307313 --repo "$GITHUB_REPOSITORY" \
+            --name stage65e-detailed-history-database --dir reports/stage65e
+          test -s reports/stage65e/detailed_history.sqlite
+          echo 'Recovered historical data in temporary runner only.'
+      - name: Validate recovery script
+        run: PYTHONPYCACHEPREFIX=/tmp/rhp-stage79-bytecode python -m py_compile scripts/stage79_priority_recovery.py
+      - name: Diagnose current versus historical Racing API access
+        shell: bash
+        env:
+          RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
+          RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage79
+          PYTHONDONTWRITEBYTECODE=1 python - <<'PY'
+          import os, base64, json, pathlib, urllib.request, urllib.error
+          username=os.getenv('RACING_API_USERNAME','').strip()
+          password=os.getenv('RACING_API_PASSWORD','').strip()
+          checks={}
+          endpoints={
+              'daily_free':'https://api.theracingapi.com/v1/results/today/free?region=gb&limit=1',
+              'historical':'https://api.theracingapi.com/v1/results?start_date=2026-11-08&end_date=2026-11-08&limit=1&region=gb',
+          }
+          if not username or not password:
+              checks={'credentials':'MISSING'}
+          else:
+              token=base64.b64encode((username+':'+password).encode()).decode()
+              for name,url in endpoints.items():
+                  req=urllib.request.Request(url,headers={'Authorization':'Basic '+token,'Accept':'application/json','User-Agent':'RHP-Stage79-access-diagnostic/1.0'})
+                  try:
+                      with urllib.request.urlopen(req,timeout=25) as resp:
+                          checks[name]={'http_status':resp.status}
+                  except urllib.error.HTTPError as exc:
+                      checks[name]={'http_status':exc.code}
+                  except Exception as exc:
+                      checks[name]={'error_type':type(exc).__name__}
+          pathlib.Path('reports/stage79/api_access_probe.json').write_text(json.dumps(checks,indent=2)+'\n')
+          print('Racing API access, status only:',checks)
+          if checks.get('daily_free',{}).get('http_status')==200 and checks.get('historical',{}).get('http_status') in (401,403):
+              print('::warning::Daily API login works, but historical access is rejected; check subscription/permissions.')
+          PY
+      - name: Recover explicit race classes and verified 2026 starting prices
+        shell: bash
+        env:
+          RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
+          RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PYTHONDONTWRITEBYTECODE=1 python -u scripts/stage79_priority_recovery.py \
+            --db reports/stage65e/detailed_history.sqlite \
+            --root . --out reports/stage79 \
+            --max-api-calls 650 --api-days 0
+          python - <<'PY'
+          import json, pathlib
+          s=json.loads(pathlib.Path('reports/stage79/summary.json').read_text())
+          assert s['stage']==79 and s['production_changes']==0
+          assert s['mode']=='READ_ONLY_RESEARCH_OVERLAY'
+          print('RESEARCH CANDIDATES:',s['candidate_counts'])
+          print('API ERRORS:',s['api_errors'])
+          if s['api_errors'].get('HTTP_401'):
+              print('::warning::Historical Racing API rejected authentication (401); SP and provider class recovery remains blocked. No replacement values were claimed.')
+          if not s['candidate_counts']:
+              print('::notice::No verified recovery candidates; original historical database remains unchanged.')
+          print('RPR CONSTRAINT:',s['rpr_status'])
+          PY
+      - name: Verify original repository production files are unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Compare tracked production files with the committed baseline.
+          # Python bytecode produced during compile is NOT a production edit.
+          if ! git diff --quiet HEAD -- data scripts .github/workflows; then
+            echo 'ERROR: a tracked production file was changed' >&2
+            git diff --name-only HEAD -- data scripts .github/workflows
+            exit 1
+          fi
+          # Keep checking unexpected new files, ignoring interpreter-only bytecode.
+          unexpected="$(git ls-files --others --exclude-standard -- data scripts .github/workflows \
+            | grep -Ev '(^|/)__pycache__/|\.pyc$' || true)"
+          if [ -n "$unexpected" ]; then
+            echo 'ERROR: unexpected new files in protected directories' >&2
+            printf '%s\n' "$unexpected" >&2
+            exit 1
+          fi
+          echo 'PASS: protected production files unchanged; bytecode excluded.'
+      - name: Publish separate research-only recovery overlay and audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage79-recovery-candidates-and-provenance
+          path: reports/stage79/
+          retention-days: 90
+          compression-level: 6
+          if-no-files-found: warn
