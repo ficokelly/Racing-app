@@ -1,0 +1,104 @@
+name: Stage86 - Model E HPR Daily Permanent Performance Archive
+
+on:
+  workflow_dispatch:
+    inputs:
+      finished_date:
+        description: 'Completed racing date YYYY-MM-DD (blank = yesterday, Ireland)'
+        type: string
+        required: false
+        default: ''
+  schedule:
+    - cron: '35 4 * * *'
+    - cron: '35 9 * * *'
+
+# Only own dedicated Model E HPR research DB and dated audit snapshot may change.
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: stage86-hpr-daily-ledger
+  cancel-in-progress: false
+
+jobs:
+  store:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - name: Check out source and historical pre-off card commits
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check research-only store safety and idempotent revisions
+        run: python scripts/stage86_hpr_engine.py --mode self-test
+      - name: Restore Stage86 research baseline
+        uses: actions/cache@v4
+        with:
+          path: |
+            reports/stage86/base/original.sqlite
+            ~/.cache/kagglehub
+          key: stage86-base-v129-${{ hashFiles('import_historical_ukie.py') }}
+          restore-keys: |
+            stage84-base-ukie-v129-
+      - name: Install historical source downloader
+        run: python -m pip install --disable-pip-version-check kagglehub
+      - name: Verify or build strictly historical database
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import kagglehub,subprocess,sys,sqlite3
+          from pathlib import Path
+          p=Path('reports/stage86/base/original.sqlite');p.parent.mkdir(parents=True,exist_ok=True)
+          if not p.exists() or p.stat().st_size<1000000:
+            src=kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025/versions/129')
+            subprocess.run([sys.executable,'import_historical_ukie.py','--mode','import',
+              '--input',str(src),'--min-date','1988-01-01','--max-date','2026-10-07',
+              '--database',str(p),'--report','reports/stage86/base/import.json'],check=True)
+          with sqlite3.connect('file:'+str(p.resolve())+'?mode=ro',uri=True) as c:
+            assert c.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+            assert c.execute('SELECT COUNT(*) FROM historical_races').fetchone()[0]>100000
+          PY
+      - name: Rate completed day and persist all previously assessed runs
+        shell: bash
+        env:
+          USER_DAY: ${{ inputs.finished_date }}
+        run: |
+          set -euo pipefail
+          args=(--mode daily --db reports/stage86/base/original.sqlite --root . \
+            --store data/hpr/hpr-ratings.sqlite --output reports/stage86/daily --git-preoff)
+          if [ -n "$USER_DAY" ]; then args+=(--date "$USER_DAY"); fi
+          python -u scripts/stage86_hpr_engine.py "${args[@]}"
+      - name: Commit research-only ratings database and completed-day record
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/hpr/hpr-ratings.sqlite data/hpr/daily/
+          if git diff --cached --quiet; then
+            echo 'No new or revised HPR evidence';exit 0
+          fi
+          git commit -m 'Archive verified daily Model E HPR performance ratings'
+          for n in 1 2 3; do
+            if git pull --rebase origin main && git push origin HEAD:main; then exit 0; fi
+            git rebase --abort || true
+            sleep $((n*4))
+          done
+          echo 'HPR update was not persisted: commit push failed' >&2
+          exit 1
+      - name: Upload daily HPR audit as additional backup
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage86-hpr-daily-${{ github.run_id }}
+          path: |
+            reports/stage86/daily/hpr-audit.json
+            reports/stage86/daily/hpr-rated-today.csv
+          retention-days: 90
+          if-no-files-found: warn
