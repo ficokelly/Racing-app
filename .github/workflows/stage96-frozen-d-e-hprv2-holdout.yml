@@ -1,0 +1,201 @@
+name: Stage96 - Frozen D Dc E with HPRv2 Independent-Date Research
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage96-d-dc-e-hprv2-research
+  cancel-in-progress: false
+
+jobs:
+  replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - name: Checkout full historic pre-off snapshots read-only
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned frozen-scoring dependencies
+        run: |
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1 kagglehub joblib beautifulsoup4
+      - name: Verify unchanged baselines and Stage96 safeguards
+        run: |
+          python -u scripts/stage94_dc_probability_replay.py --self-test
+          python -u scripts/stage95_five_model_paired_replay.py --self-test
+          python -u scripts/stage96_frozen_models_hprv2_holdout.py --self-test
+      - name: Obtain immutable HPRv2 and Stage95 baseline reference runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage96/input/hpr reports/stage96/input/baseline
+          gh run download 42895103772 --repo "${GITHUB_REPOSITORY}" \
+            --name stage94-hpr-v2-research-42895103772 \
+            --dir reports/stage96/input/hpr
+          gh run download 42870009858 --repo "${GITHUB_REPOSITORY}" \
+            --name stage95-five-model-matched-comparison-42870009858 \
+            --dir reports/stage96/input/baseline
+          python - <<'PY'
+          from pathlib import Path
+          import json,zipfile
+          root=Path('reports/stage96/input')
+          a=root/'hpr'
+          summary=json.loads((a/'stage94-summary.json').read_text())
+          assert summary['stage']==94 and summary['version']=='hpr-v2-research-2026-11-10'
+          assert summary['counts']['pre_race_rating_available']>1000
+          with zipfile.ZipFile(root/'stage94-pinned.zip','w',compression=zipfile.ZIP_DEFLATED) as z:
+            for file in sorted(a.iterdir()):
+              if file.is_file():z.write(file,file.name)
+          assert (root/'baseline/output/stage95-all30-line-by-line.csv').is_file()
+          print('PASS pinned Stage94 and prior Stage95 artifacts')
+          PY
+      - name: Restore original Kaggle research cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            reports/stage94/base/original.sqlite
+            reports/stage68/base/c_classifier_2024_stage81_v1.joblib
+            ~/.cache/kagglehub
+          key: stage94-dc-replay-base-v1-${{ hashFiles('import_historical_ukie.py') }}
+          restore-keys: |
+            stage94-dc-replay-base-v1-
+            rhp-dc-stage81-v1-
+      - name: Download pinned version129 CSV and build disposable UK/IE history
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pathlib,subprocess,sys,kagglehub,sqlite3,shutil
+          dataset='deltaromeo/horse-racing-results-ukireland-2015-2025/versions/129'
+          src=pathlib.Path(kagglehub.dataset_download(dataset))
+          assert src.is_dir() and list(src.rglob('*.csv'))
+          base=pathlib.Path('reports/stage94/base/original.sqlite')
+          base.parent.mkdir(parents=True,exist_ok=True)
+          out=pathlib.Path('reports/stage96/base');out.mkdir(parents=True,exist_ok=True)
+          (out/'source_path.txt').write_text(str(src))
+          if not base.exists() or base.stat().st_size<1_000_000:
+            subprocess.run([sys.executable,'import_historical_ukie.py','--mode','import',
+              '--input',str(src),'--min-date','1988-01-01','--max-date','2026-10-07',
+              '--database',str(base),'--report',str(base.parent/'import.json')],check=True)
+          with sqlite3.connect('file:'+str(base.resolve())+'?mode=ro',uri=True) as db:
+            assert db.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+            assert db.execute('SELECT COUNT(*) FROM historical_races').fetchone()[0]>100000
+          shutil.copyfile(base,out/'original.sqlite')
+          print('PASS original pinned baseline copied to disposable research workspace')
+          PY
+      - name: Reconstruct identical Stage95 disposable database and race-type features
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/stage65m_backfill.py \
+            --baseline reports/stage96/base/original.sqlite \
+            --out reports/stage96/base --max-date 2026-11-09 \
+            --keep-candidate --skip-replay
+          python -u scripts/stage65p_enrich_race_details.py \
+            --db reports/stage96/base/backfilled_research_only.sqlite \
+            --source "$(cat reports/stage96/base/source_path.txt)" \
+            --out reports/stage96/enrichment
+      - name: Integrate unchanged verified Stage81 race types
+        run: |
+          python - <<'PY'
+          import hashlib
+          from scripts.rhp_stage83_dc_integrated import integrate
+          path='data/rhp-stage81-ukie-2021plus-hashes.csv.gz'
+          with open(path,'rb') as f:sha=hashlib.file_digest(f,'sha256').hexdigest()
+          assert sha=='b028ec32d2bae1d34331cda150d545b7441c9e45aa4ddb27b5ce450562288cbe'
+          integrate('reports/stage96/base/backfilled_research_only.sqlite',
+                    path,'reports/stage96/integration')
+          print('PASS: unchanged Stage81 race-type classifier verification')
+          PY
+      - name: Restore unchanged HPRv0 ledger for baseline E research comparison
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/stage87_hpr_storage.py restore \
+            --dir data/hpr/shards --db reports/stage96/hpr-ratings.sqlite
+          python - <<'PY'
+          import sqlite3
+          c=sqlite3.connect('file:reports/stage96/hpr-ratings.sqlite?mode=ro',uri=True)
+          n=c.execute('select count(*) from hpr_ratings').fetchone()[0]
+          assert n==110111, f'Unexpected frozen ledger size: {n}'
+          print('PASS unchanged HPRv0 archive:',n)
+          c.close()
+          PY
+      - name: Score all frozen D Dc and E runner fields and strictly earlier HPRv2 overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/stage96_frozen_models_hprv2_holdout.py \
+            --root . \
+            --db reports/stage96/base/backfilled_research_only.sqlite \
+            --ratings reports/stage96/hpr-ratings.sqlite \
+            --stage94 reports/stage96/input/stage94-pinned.zip \
+            --kaggle "$(cat reports/stage96/base/source_path.txt)" \
+            --out reports/stage96/output
+      - name: Verify holdout, full-field ranking and exact frozen baseline replay
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv,json,collections,re
+          from pathlib import Path
+          root=Path('reports/stage96/output')
+          report=json.loads((root/'stage96-summary.json').read_text())
+          assert report['status']=='RESEARCH_ONLY_NO_LIVE_CHANGES'
+          assert report['dates']['train_end'] < report['dates']['holdout_start']
+          assert report['matched_heldout_races']>=40
+          assert len(report['scorecard'])==24
+          assert report['probability_fit']['train_D_races']>=25
+          assert all(x['priced']>0 for x in report['scorecard'] if x['selections'])
+          with (root/'stage96-all-rank1-rank2.csv').open() as f:
+            rows=list(csv.DictReader(f))
+          first={}
+          for row in rows:
+            if row['rank']!='1':continue
+            key=(row['date'],re.sub(r'[^A-Z0-9]','',re.sub(r'\((?:AW|IRE|GB|UK)\)','',row['course'],flags=re.I).upper()),row['time_utc'])
+            first[(key,row['model'])]=row
+          baseline=Path('reports/stage96/input/baseline/output/stage95-all30-line-by-line.csv')
+          checked=0
+          with baseline.open(encoding='utf-8-sig') as f:
+            for row in csv.DictReader(f):
+              if not '2026-10-12'<=row['date']<='2026-10-23':continue
+              key=(row['date'],re.sub(r'[^A-Z0-9]','',re.sub(r'\((?:AW|IRE|GB|UK)\)','',row['course'],flags=re.I).upper()),row['time'])
+              for model,prefix in [('D_ORIGINAL','d_original'),('D_C','d_c'),('E_75_25_NO_HPR','e_75_25_no_hpr'),('E_75_25_WITH_HPR','e_75_25_with_hpr')]:
+                chosen=first.get((key,model))
+                if chosen is None:continue
+                a=re.sub('[^A-Z0-9]','',chosen['horse'].upper())
+                b=re.sub('[^A-Z0-9]','',row[prefix+'_horse'].upper())
+                assert a==b, f'Frozen Rank 1 drift {key} {model}: {a} vs {b}'
+                checked+=1
+          assert checked>=4*40, f'Only {checked} frozen Rank 1 checks completed'
+          print('PASS exact frozen rank1 regression comparisons',checked,
+                'heldout races:',report['matched_heldout_races'])
+          PY
+      - name: Publish read-only Rank1 Rank2, ROI, thresholds and all-runner audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage96-frozen-d-e-hprv2-heldout-${{ github.run_id }}
+          path: |
+            reports/stage96/output/stage96-summary.json
+            reports/stage96/output/stage96-scorecard.csv
+            reports/stage96/output/stage96-thresholds.csv
+            reports/stage96/output/stage96-race-types.csv
+            reports/stage96/output/stage96-daily.csv
+            reports/stage96/output/stage96-all-rank1-rank2.csv
+            reports/stage96/output/stage96-holdout-all-runners.csv.gz
+            reports/stage96/output/stage96-probability-accuracy.csv
+          if-no-files-found: warn
+          retention-days: 90
