@@ -1,0 +1,110 @@
+name: Stage80 - Recover Detailed Historical Race Categories
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/rhp-stage80-race-category-recovery.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: rhp-stage80-detailed-category-research
+  cancel-in-progress: false
+
+jobs:
+  classify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Check out repository read-only
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify evidence-only classification safeguards
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PYTHONDONTWRITEBYTECODE=1
+          python -m py_compile scripts/stage80_race_category_recovery.py
+          python scripts/stage80_race_category_recovery.py --self-test
+      - name: Restore verified historical database without changing repository
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage65e
+          gh run download 42218307313 --repo "$GITHUB_REPOSITORY" \
+            --name stage65e-detailed-history-database --dir reports/stage65e
+          test -s reports/stage65e/detailed_history.sqlite
+          echo 'Historical SQLite available in temporary runner; main unchanged.'
+      - name: Classify historical and recent race conditions from recorded source
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PYTHONDONTWRITEBYTECODE=1
+          python -u scripts/stage80_race_category_recovery.py \
+            --db reports/stage65e/detailed_history.sqlite \
+            --root . --out reports/stage80
+          python - <<'PY'
+          import json, pathlib
+          d=json.loads(pathlib.Path('reports/stage80/summary.json').read_text())
+          assert d['stage']==80 and d['mode']=='READ_ONLY_RESEARCH_ONLY'
+          assert d['model_d_changed'] is False and d['live_records_changed'] is False
+          assert d['api_calls']==0 and d['historical_runner_rows']>=5000000
+          print('Historical races:', d['historical_races'])
+          print('Explicitly classified:', d['historical_races_with_verified_detailed_category'])
+          print('Unclassified or flagged:', d['historical_races_unclassified_or_review'])
+          print('Classifications:', d['categories'])
+          print('Source-conflict races:', d['metadata_conflict_races'])
+          print('Recent archived races:', d['recent_distinct_races'])
+          PY
+      - name: Verify frozen model and production files untouched
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git diff --quiet HEAD -- data scripts .github/workflows; then
+            echo 'ERROR: tracked protected files changed' >&2
+            git diff --name-only HEAD -- data scripts .github/workflows
+            exit 1
+          fi
+          unexpected="$(git ls-files --others --exclude-standard -- data scripts .github/workflows \
+            | grep -Ev '(^|/)__pycache__/|\.pyc$' || true)"
+          if [ -n "$unexpected" ]; then
+            echo 'ERROR: new protected-directory files detected' >&2
+            printf '%s\n' "$unexpected" >&2
+            exit 1
+          fi
+          echo 'PASS: model D, application data, source and production code unchanged.'
+      - name: Upload compact classifications and annual coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage80-race-category-audit-small
+          path: |
+            reports/stage80/summary.json
+            reports/stage80/classification_by_year.csv
+            reports/stage80/race_category_counts.csv
+            reports/stage80/category_by_year.csv
+            reports/stage80/discipline_by_year.csv
+            reports/stage80/review_conflicts_sample.csv
+            reports/stage80/unclassified_sample.csv
+          if-no-files-found: warn
+          retention-days: 90
+      - name: Upload separate full research classification overlay
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage80-full-race-category-research-overlay
+          path: reports/stage80/race_category_research.sqlite
+          if-no-files-found: error
+          compression-level: 6
+          retention-days: 90
