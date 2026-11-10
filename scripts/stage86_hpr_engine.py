@@ -540,16 +540,12 @@ def main():
  # Older races are sourced exclusively from the dated SQLite source archive.
  earliest=max(start-dt.timedelta(days=90),dt.date(2026,10,8))
  all_results,bad=load_results(a.root,earliest,end)
- lookup_start=earliest if a.mode=='backtest' else start
+ # Both backtest and daily rating runs use only dated Git snapshots when
+ # --git-preoff is requested. Never fall back to mutable current racecards.
+ # Include the full recent bridge for reliable identity matching of prior runs.
+ lookup_start=earliest
  lookup_end=end
- dated=card_dates(a.root,lookup_start,lookup_end,git_preoff=a.git_preoff and a.mode=='backtest')
- if a.mode=='daily':
-  # For daily settlement we may use earlier captured card snapshots if today's
-  # committed racecards have already rolled; if absent, only full-result IDs
-  # and pedigree can qualify, not a name-only guess.
-  for d in list(dated):pass
-  if not dated and a.git_preoff:
-   dated=card_dates(a.root,start,end,git_preoff=True)
+ dated=card_dates(a.root,lookup_start,lookup_end,git_preoff=a.git_preoff)
  cardmaps={d:by_race_cards(rs) for d,rs in dated.items()}
  cards=[x for rs in dated.values() for x in rs]
  profiles,names=profiles_from_cards(cards)
