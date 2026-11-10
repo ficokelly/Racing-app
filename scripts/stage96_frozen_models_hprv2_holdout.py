@@ -19,7 +19,8 @@ import argparse,collections,csv,datetime as dt,gzip,io,json,math,pathlib,re,stat
 
 VERSION='stage96-fixed-hprv2-oos-v1'
 START='2026-10-12'
-REPLAY_SEED='2026-10-11'  # Exact 30-day Stage95 initial state date
+REPLAY_SEED='2026-10-11'  # Frozen Stage95 start date
+REPLAY_END='2026-11-09'  # Replay same 30-day source envelope as successful Stage95
 TRAIN_END='2026-10-18'
 TEST_START='2026-10-19'
 END='2026-10-23'
@@ -179,36 +180,49 @@ def prepare_frozen_replay(root,db,ratings,artifact_hpr):
  weights=[float(frozen['weights_pct'][k])/100 for k in OLD.METRICS]
  C.rows=S83.corrected_rows
  clf=S83.patched_classifier(None,C,str(db))
- results=HPR.load_results(root,dt.date.fromisoformat(REPLAY_SEED),dt.date.fromisoformat(END))[0]
- cards_by_date=HPR.card_dates(root,dt.date.fromisoformat(REPLAY_SEED),dt.date.fromisoformat(END),git_preoff=True)
- changes=S94.load_incremental_history(str(db),REPLAY_SEED,END)
+ results,result_rejections=HPR.load_results(root,dt.date.fromisoformat(REPLAY_SEED),dt.date.fromisoformat(REPLAY_END))
+ cards_by_date=HPR.card_dates(root,dt.date.fromisoformat(REPLAY_SEED),dt.date.fromisoformat(REPLAY_END),git_preoff=True)
+ changes=S94.load_incremental_history(str(db),REPLAY_SEED,REPLAY_END)
  past=D.LivePast({});past.scan_until(str(db),REPLAY_SEED)
  form=C.Form()
  for group in C.rows(str(db),REPLAY_SEED):
   for v in group:
    v['field_size']=len(group);form.update(v)
  population,draw_hist=E92.historical_population(str(db),(dt.date.fromisoformat(REPLAY_SEED)-dt.timedelta(days=365)).isoformat())
- earlier=HPR.load_results(root,dt.date(2026,10,8),dt.date.fromisoformat(END))[0]
- cards_earlier=HPR.card_dates(root,dt.date(2026,10,8),dt.date.fromisoformat(END),git_preoff=True)
+ earlier=HPR.load_results(root,dt.date(2026,10,8),dt.date.fromisoformat(REPLAY_END))[0]
+ cards_earlier=HPR.card_dates(root,dt.date(2026,10,8),dt.date.fromisoformat(REPLAY_END),git_preoff=True)
  recent=E92.recent_population(earlier,cards_earlier)
  for d in sorted(recent):population.extend(recent[d])
  people=E92.aggregate_people(population,None)
  conn=sqlite3.connect('file:'+str(ratings.resolve())+'?mode=ro',uri=True)
  cache={};scored=[];rejections=collections.Counter()
+ # Diagnostic is emitted even when no eligible races survive. Never silently
+ # soften runner, winner or pre-off identity verification.
+ diagnostics={'source_replay_start':REPLAY_SEED,'source_replay_end':REPLAY_END,
+              'evaluation_window':[START,END], 'results_loaded':len(results),
+              'result_load_exclusions':result_rejections,
+              'snapshot_card_dates':len(cards_by_date),'per_date':{}}
  try:
-  for daynum in range((dt.date.fromisoformat(END)-dt.date.fromisoformat(REPLAY_SEED)).days+1):
+  for daynum in range((dt.date.fromisoformat(REPLAY_END)-dt.date.fromisoformat(REPLAY_SEED)).days+1):
    date=(dt.date.fromisoformat(REPLAY_SEED)+dt.timedelta(days=daynum)).isoformat()
    known=HPR.by_race_cards(cards_by_date.get(date,[]))
    candidates=[]
+   day_races=0; statuses=collections.Counter()
    for key,race in results.items():
     if key[:10]!=date:continue
+    day_races+=1
     matched,status=HPR.card_match(race,known)
-    if status!='PREOFF_FIELD_VERIFIED':rejections[status]+=1;continue
+    if status!='PREOFF_FIELD_VERIFIED':
+     rejections[status]+=1;statuses[status]+=1;continue
     cards,ok=S94.verify_preoff_field(matched,race)
-    if ok!='OK':rejections[ok]+=1;continue
+    if ok!='OK':
+     rejections[ok]+=1;statuses[ok]+=1;continue
     entry={'date':date,'course':cards[0]['course'],'time':key[-5:],'runners':cards}
     candidates.append((race,entry,cards))
-   for obj in S95.score_date(candidates,date,past,form,clf,weights,people,draw_hist,conn,cache):
+   returned=S95.score_date(candidates,date,past,form,clf,weights,people,draw_hist,conn,cache)
+   day_scored=0
+   for obj in returned:
+    day_scored+=1
     if obj['winner_idx'] is None or obj['disc']=='Unknown':
      rejections['NO_WINNER_OR_DISCIPLINE']+=1;continue
     # Check each starter's result against race snapshots (no invented placings).
@@ -216,11 +230,19 @@ def prepare_frozen_replay(root,db,ratings,artifact_hpr):
     if len(field)!=len(obj['cards']) or set(field)!={norm(c['horse']) for c in obj['cards']}:
      rejections['STARTER_SET_CHANGED']+=1;continue
     vectors={b:zscores(list(obj['scores_by_model'][b])) for b in BASE}
-    if date>=START:scored.append({**obj,'vectors':vectors})
+    if START<=date<=END:scored.append({**obj,'vectors':vectors})
    S94.add_completed_date(past,form,changes.get(date,[]))
-   print('Stage96 pre-off replay',date,'eligible',len(scored),flush=True)
+   diagnostics['per_date'][date]={
+     'final_races':day_races, 'preoff_card_rows':len(cards_by_date.get(date,[])),
+     'exact_candidate_races':len(candidates),'model_scorer_returns':day_scored,
+     'rejection_reasons':dict(statuses)}
+   if START<=date<=END:
+    print('Stage96 pre-off replay',date,'results',day_races,'cards',len(cards_by_date.get(date,[])),
+          'complete_candidates',len(candidates),'model_scored',day_scored,
+          'cumulative',len(scored), 'rejected',dict(statuses),flush=True)
  finally:conn.close()
- return scored,dict(rejections)
+ diagnostics['preoff_rejections']=dict(rejections)
+ return scored,dict(rejections),diagnostics
 
 
 def run(args):
@@ -229,7 +251,10 @@ def run(args):
  root=pathlib.Path(args.root);db=pathlib.Path(args.db);ratings=pathlib.Path(args.ratings)
  if not args.stage94.is_file():raise RuntimeError('Pinned Stage94 artifact missing')
  hpr,hpr_flags=load_hpr(args.stage94)
- original,rej=prepare_frozen_replay(root,db,ratings,args.stage94)
+ original,rej,diagnostics=prepare_frozen_replay(root,db,ratings,args.stage94)
+ # Upload diagnostics on both successful and failed runs via the existing
+ # workflow artifact stage96-summary.json path (no workflow edit necessary).
+ (out/'stage96-diagnostics.json').write_text(json.dumps(diagnostics,indent=2)+'\n')
  accepted=[];excluded=collections.Counter()
  for r in original:
   histories,reason=match_hpr(r,hpr)
@@ -247,7 +272,16 @@ def run(args):
  hold=[r for r in accepted if r['date']>=TEST_START]
  calibration=[r for r in original if r['date']<=TRAIN_END]
  if len(calibration)<25 or len(train)<15 or len(hold)<40:
-  raise RuntimeError(f'Insufficient strictly prior training / paired holdout: {len(calibration)} training races, {len(train)} matched training, {len(hold)} matched test')
+  diagnostic_report={
+   'stage':96,'status':'FAILED_PREOFF_OR_COHORT_AUDIT_NO_PERFORMANCE_RESULTS',
+   'reason':'Insufficient strictly prior calibration / paired holdout',
+   'counts':{'preoff_scored':len(original),'calibration':len(calibration),
+             'matched_train':len(train),'matched_holdout':len(hold)},
+   'source_diagnostics':diagnostics,'hpr_match_rejections':dict(excluded),
+   'safety':'No live changes; no incomplete or fabricated performance tables'
+  }
+  (out/'stage96-summary.json').write_text(json.dumps(diagnostic_report,indent=2)+'\n')
+  raise RuntimeError(f'Insufficient strictly prior training / paired holdout: {len(calibration)} training races, {len(train)} matched training, {len(hold)} matched test. See uploaded stage96-summary.json for detailed source/runner matching audit.')
  temp,losses=training_temperature(calibration)
  prices,ps=A.sp_map(args.kaggle)
  selected=[];runners=[];duplicates=set();nll=collections.defaultdict(list);brier=collections.defaultdict(list)
@@ -324,7 +358,7 @@ def run(args):
          'overlay_neutral_holdout':sum(not x['active'] for x in hold),
          'fixed_alpha':HPR_ALPHA,'fixed_margin_scale':HPR_DENOM,'fixed_additive_cap':HPR_CAP},
   'prices':ps,'matched_exclusions':dict(excluded),'frozen_preoff_rejections':rej,
-  'stage94_link_warnings':hpr_flags,'scorecard':scorecards,'proper_scoring':proper,
+  'stage94_link_warnings':hpr_flags,'replay_diagnostics':diagnostics,'scorecard':scorecards,'proper_scoring':proper,
   'limitations':[
     'Comparison includes unchanged frozen D and D(c) recipe, and TWO RECONSTRUCTED E75 research formulas; not exact archived live E picks.',
     'Archived E v2 published probabilities were fitted partly on October 2026 outcomes; excluded from independent heldout benchmark.',
@@ -346,6 +380,8 @@ def run(args):
 
 
 def self_test():
+ assert REPLAY_SEED=='2026-10-11' and REPLAY_END=='2026-11-09'
+ assert START=='2026-10-12' and TRAIN_END < TEST_START <= END
  assert abs(sum(zscores([10,20,30])))<1e-10
  a=[.5,-.2,1.1];b,active=overlay(a,[None,None,None]);assert not active and a==b
  b,active=overlay(a,[70,50,20]);assert active and b[0]>a[0] and b[2]<a[2]
