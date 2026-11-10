@@ -12,7 +12,7 @@ on:
     - cron: '35 4 * * *'
     - cron: '35 9 * * *'
 
-# Only own dedicated Model E HPR research DB and dated audit snapshot may change.
+# Model E archive only. No changes to D, D(c), live model or racecard data.
 permissions:
   contents: write
   actions: read
@@ -34,8 +34,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Check research-only store safety and idempotent revisions
-        run: python scripts/stage86_hpr_engine.py --mode self-test
+      - name: Verify HPR research and sharded database safety
+        run: |
+          python scripts/stage86_hpr_engine.py --mode self-test
+          python scripts/stage87_hpr_storage.py self-test
       - name: Restore Stage86 research baseline
         uses: actions/cache@v4
         with:
@@ -64,28 +66,13 @@ jobs:
             assert c.execute('PRAGMA quick_check').fetchone()[0]=='ok'
             assert c.execute('SELECT COUNT(*) FROM historical_races').fetchone()[0]>100000
           PY
-      - name: Restore versioned, compressed HPR history from repository
+      - name: Restore verified HPR historical ratings from shards or legacy
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PYCODE'
-          import gzip,shutil,sqlite3
-          from pathlib import Path
-          archive=Path('data/hpr/hpr-ratings.sqlite.gz')
-          db=Path('data/hpr/hpr-ratings.sqlite')
-          db.parent.mkdir(parents=True,exist_ok=True)
-          if archive.exists():
-              if db.exists(): raise SystemExit('Conflicting raw and compressed HPR stores')
-              with gzip.open(archive,'rb') as inp,db.open('wb') as out:
-                  shutil.copyfileobj(inp,out,1024*1024)
-              with sqlite3.connect(db) as conn:
-                  assert conn.execute('PRAGMA quick_check').fetchone()[0]=='ok','Stored HPR archive failed integrity check'
-              print('Restored HPR historical ratings:',db.stat().st_size,'bytes')
-          elif db.exists():
-              raise SystemExit('Refusing unmanaged raw HPR database; use compressed store')
-          else:
-              print('First daily HPR run: starting new persistent ratings history')
-          PYCODE
+          python scripts/stage87_hpr_storage.py restore \
+            --db data/hpr/hpr-ratings.sqlite \
+            --dir data/hpr/shards --legacy data/hpr/hpr-ratings.sqlite.gz
       - name: Rate completed day and persist all previously assessed runs
         shell: bash
         env:
@@ -96,62 +83,48 @@ jobs:
             --store data/hpr/hpr-ratings.sqlite --output reports/stage86/daily --git-preoff)
           if [ -n "$USER_DAY" ]; then args+=(--date "$USER_DAY"); fi
           python -u scripts/stage86_hpr_engine.py "${args[@]}"
-      - name: Commit research-only ratings database and completed-day record
+      - name: Verify and commit independent research-only shards and day snapshot
         shell: bash
         run: |
           set -euo pipefail
-          # Never commit an empty target-day snapshot if final result data
-          # has not yet been verified. The next scheduled run will retry.
           python - <<'PY'
-          import csv,json,pathlib
+          import csv,json,pathlib,sqlite3
           p=pathlib.Path('reports/stage86/daily/hpr-rated-today.csv')
           rows=list(csv.DictReader(p.open(encoding='utf-8-sig',newline=''))) if p.exists() else []
           report=json.loads(pathlib.Path('reports/stage86/daily/hpr-audit.json').read_text())
-          print('Verified newly scored target-day performances:',len(rows))
-          if not rows and not report.get('store_write',{}).get('revised',0):
-              pathlib.Path('reports/stage86/daily/SKIP_COMMIT').write_text('No new verifiable daily HPR scores or corrections')
-          # Do not publish an oversized database through GitHub Contents.
-          # A single compressed file is a research-scale intermediate solution;
-          # migrate to dated shards/object storage before reaching 45 MiB.
+          print('New target-day HPR performance ratings:',len(rows))
           db=pathlib.Path('data/hpr/hpr-ratings.sqlite')
-          if not db.is_file():
-              raise SystemExit('No research HPR database produced')
-          import sqlite3
+          if not db.exists():raise SystemExit('HPR source store missing')
           with sqlite3.connect(db) as conn:
-              assert conn.execute('PRAGMA quick_check').fetchone()[0]=='ok','HPR database integrity check failed'
-          if not pathlib.Path('reports/stage86/daily/SKIP_COMMIT').exists():
-              import gzip,shutil
-              dst=pathlib.Path('data/hpr/hpr-ratings.sqlite.gz')
-              temp=dst.with_suffix('.gz.tmp')
-              with db.open('rb') as inp,temp.open('wb') as out:
-                  with gzip.GzipFile(filename='',fileobj=out,mode='wb',compresslevel=6,mtime=0) as archived:
-                      shutil.copyfileobj(inp,archived,1024*1024)
-              compressed=temp.stat().st_size
-              if compressed>45*1024*1024:
-                  temp.unlink(missing_ok=True)
-                  raise SystemExit('Compressed HPR archive exceeded 45 MiB; migrate to sharded persistence before pushing')
-              temp.replace(dst)
-              print('Compressed HPR store size:',compressed,'bytes')
+            assert conn.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+          migrating=(not pathlib.Path('data/hpr/shards/manifest.json').exists())
+          if not rows and not report.get('store_write',{}).get('revised',0) and not migrating:
+            pathlib.Path('reports/stage86/daily/SKIP_COMMIT').write_text('No verified new scores/corrections')
           PY
           if [ -f reports/stage86/daily/SKIP_COMMIT ]; then
-            echo 'No verified completed-day ratings: skipping persistent commit'
+            echo 'No new finished-run evidence: no archive update necessary'
             exit 0
           fi
+          python scripts/stage87_hpr_storage.py archive \
+            --db data/hpr/hpr-ratings.sqlite --dir data/hpr/shards
+          # Once all shards pass checksum and lossless restore, retire the
+          # single large legacy archive from Git. Existing Git history retains it.
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add data/hpr/hpr-ratings.sqlite.gz data/hpr/daily/
+          git rm -f --ignore-unmatch data/hpr/hpr-ratings.sqlite.gz
+          git add -A data/hpr/shards data/hpr/daily
           if git diff --cached --quiet; then
             echo 'No new or revised HPR evidence';exit 0
           fi
-          git commit -m 'Archive verified daily Model E HPR performance ratings'
+          git commit -m 'Archive Model E HPR with verified Stage87 horse-key shards'
           for n in 1 2 3; do
             if git pull --rebase origin main && git push origin HEAD:main; then exit 0; fi
             git rebase --abort || true
             sleep $((n*4))
           done
-          echo 'HPR update was not persisted: commit push failed' >&2
+          echo 'HPR shard update was not persisted: Git push failed' >&2
           exit 1
-      - name: Upload daily HPR audit as additional backup
+      - name: Upload small daily HPR audit (not large database)
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -159,7 +132,5 @@ jobs:
           path: |
             reports/stage86/daily/hpr-audit.json
             reports/stage86/daily/hpr-rated-today.csv
-            data/hpr/hpr-ratings.sqlite.gz
-            data/hpr/daily/*.json
           retention-days: 90
           if-no-files-found: warn
