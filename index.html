@@ -1701,8 +1701,34 @@ function renderPowerResults(){
    return `<article class="horse"><div class="horse-top"><div><div class="name">${safe(s.horse)}</div><div class="meta">${safe(s.date)} · ${safe(clock(s.race_time))} · ${safe(s.course)}</div></div><span class="pill ${s.status==='Won'?'yes':s.status==='Lost'?'no':''}">${safe(s.status)}</span></div><div class="odds"><div><small>First → recorded T−15</small><b style="${style};white-space:nowrap;font-size:clamp(13px,3.7vw,20px)">${priceLabel} ${first!==null&&last!==null?arrow:''}</b><small style="${style}">${label}</small></div><div><small>Recorded T−15 odds</small><b>${fmt(s.odds)}</b></div><div><small>Second favourite</small><b>${fmt(s.second_favourite_odds)}</b></div></div>${individual===null?'':`<p class="hint">Simulated win-only P&amp;L (${money(stake)} stake): <strong style="color:${individual>=0?'#82f3c5':'#ff7777'}">${formatSigned(individual)}</strong></p>`}<div class="hint">${safe(s.bookmaker)} · Observed ${safe(when(s.observed_at))} · ${safe(s.minutes_before_off)} min before off · ${s.position?'Finish: '+safe(s.position):'Awaiting result'}</div>${s.baseline_source==='api_open_unverified'?'<div class="hint notice">First price uses API opening price (unverified).</div>':''}</article>`;
  }).join(''):'<div class="empty">No qualifying T−15 observations in this period.</div>';
 }
+// Show newly committed odds before GitHub Pages finishes a slower deployment.
+// Raw GitHub is optional: when the repository is private/unavailable, fall back to Pages.
+// This fetch never calls the bookmaker API or changes Model D decisions.
+const RHP_FAST_ODDS_BASE='https://raw.githubusercontent.com/ficokelly/Racing-app/main/data/';
+async function rhpFetchNewerOdds(q,pages){
+ const age=Date.now()-Date.parse((pages&&pages.collected_at)||'');
+ if(Number.isFinite(age)&&age<90000)return null;
+ try{
+  const response=await fetch(RHP_FAST_ODDS_BASE+'latest-odds.json'+q,{cache:'no-store'});
+  if(!response.ok)return null;
+  const candidate=await response.json(),candidateTime=Date.parse((candidate&&candidate.collected_at)||'');
+  if(!Array.isArray(candidate&&candidate.prices)||!Number.isFinite(candidateTime))return null;
+  const pagesTime=Date.parse((pages&&pages.collected_at)||'');
+  return !Number.isFinite(pagesTime)||candidateTime>pagesTime?candidate:null;
+ }catch(e){return null}
+}
 async function loadFeed(){loadForm();loadFinishedRaceFeed();try{const q='?v='+Date.now(),responses=await Promise.all([fetch('./data/latest-odds.json'+q,{cache:'no-store'}),fetch('./data/odds-history.json'+q,{cache:'no-store'}),fetch('./data/racecards.json'+q,{cache:'no-store'}).catch(()=>null)]);
-  if(responses[2]?.ok){try{const live=await responses[2].json();let history=[];try{const a=await fetch('./data/racecards-archive.json?v='+Date.now(),{cache:'no-store'});if(a.ok){const j=await a.json();history=Array.isArray(j.runners)?j.runners:[]}}catch(e){}const current=Array.isArray(live.runners)?live.runners:[];const merged=new Map();for(const r of history){if(r&&r.horse&&r.course)merged.set(racecardKey(r.horse,r.course,r.date||dateKey(r.race_time)),r)}for(const r of current){if(r&&r.horse&&r.course){const k=racecardKey(r.horse,r.course,r.date||dateKey(r.race_time));merged.set(k,{...(merged.get(k)||{}),...r})}}loadRacecardIndex({runners:[...merged.values()]})}catch(e){loadRacecardIndex(null)}}if(!responses[0].ok||!responses[1].ok)throw Error('Odds files unavailable');const latest=await responses[0].json(),hist=await responses[1].json();if(!Array.isArray(hist)||!Array.isArray(latest.prices))throw Error('Invalid JSON feed');rows=build(latest,hist);rhpSyncBookControl();rhpApplyBookPreference(rhpGlobalBook,{redraw:false});supplementRacecardsFromMarket();autoWatchQualifiers();historyCount=hist.length;const rhpOddsAgeMinutes=(Date.now()-Date.parse(latest.collected_at))/60000;$('status').textContent=Number.isFinite(rhpOddsAgeMinutes)&&rhpOddsAgeMinutes>=20?'⚠ ODDS STALE · '+Math.floor(rhpOddsAgeMinutes)+'m':'● ODDS SYNCED';$('asof').textContent=`Last collected: ${when(latest.collected_at)} (Irish time) · ${latest.races_returned} races · ${latest.prices_collected} bookmaker quotes · ${hist.length} snapshots`;
+  if(responses[2]?.ok){try{const live=await responses[2].json();let history=[];try{const a=await fetch('./data/racecards-archive.json?v='+Date.now(),{cache:'no-store'});if(a.ok){const j=await a.json();history=Array.isArray(j.runners)?j.runners:[]}}catch(e){}const current=Array.isArray(live.runners)?live.runners:[];const merged=new Map();for(const r of history){if(r&&r.horse&&r.course)merged.set(racecardKey(r.horse,r.course,r.date||dateKey(r.race_time)),r)}for(const r of current){if(r&&r.horse&&r.course){const k=racecardKey(r.horse,r.course,r.date||dateKey(r.race_time));merged.set(k,{...(merged.get(k)||{}),...r})}}loadRacecardIndex({runners:[...merged.values()]})}catch(e){loadRacecardIndex(null)}}if(!responses[0].ok||!responses[1].ok)throw Error('Odds files unavailable');let latest=await responses[0].json(),hist=await responses[1].json();
+ const newer=await rhpFetchNewerOdds(q,latest);
+ if(newer){
+  latest=newer;
+  // Use matching recent odds history when the raw feed is ahead of Pages.
+  try{
+   const h=await fetch(RHP_FAST_ODDS_BASE+'odds-history.json'+q,{cache:'no-store'});
+   if(h.ok){const rawHistory=await h.json();if(Array.isArray(rawHistory))hist=rawHistory}
+  }catch(e){}
+ }
+ if(!Array.isArray(hist)||!Array.isArray(latest.prices))throw Error('Invalid JSON feed');rows=build(latest,hist);rhpSyncBookControl();rhpApplyBookPreference(rhpGlobalBook,{redraw:false});supplementRacecardsFromMarket();autoWatchQualifiers();historyCount=hist.length;const rhpOddsAgeMinutes=(Date.now()-Date.parse(latest.collected_at))/60000;$('status').textContent=Number.isFinite(rhpOddsAgeMinutes)&&rhpOddsAgeMinutes>=20?'⚠ ODDS STALE · '+Math.floor(rhpOddsAgeMinutes)+'m':'● ODDS SYNCED';$('asof').textContent=`Last collected: ${when(latest.collected_at)} (Irish time) · ${latest.races_returned} races · ${latest.prices_collected} bookmaker quotes · ${hist.length} snapshots`;
  const dates=[...new Set(rows.map(x=>x.day).filter(Boolean))].sort().reverse();selectedDate=['today','tomorrow'].map(marketDateFor).includes(selectedDate)?selectedDate:marketDateFor('today');selOpts('race-date',[['all','All available dates'],...dates.map(d=>[d,d])],selectedDate);refreshSelects();renderPersonFilters('markets');renderPersonFilters('power');renderMarkets();await loadAw2Stats();renderPower();renderStrategyA();renderStrategyB();renderHot();rcSetupFilters();restoreRefreshFiltersAfterFeed();renderRacecards();showTab(activeTab,true);if(refreshScrollPosition!==null){const pos=refreshScrollPosition;refreshScrollPosition=null;requestAnimationFrame(()=>setTimeout(()=>window.scrollTo(0,pos),160))}}catch(e){$('status').textContent='NO DATA';$('asof').textContent='Could not load odds feed: '+e.message;}}
 // Within each card/list area, opening one collapsible card closes its siblings.
 // Filter panels and expanded sections inside a horse remain independent.
@@ -1801,7 +1827,7 @@ function setup(){rhpSetupNavigation();loadPowerResults();$('pr-period').onchange
  $('import-bets').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{const o=JSON.parse(await f.text());if(o.format!=='racing-hot-pots-bets-v1'||!Array.isArray(o.bets))throw Error('Not a valid Racing Hot Pots backup');if(!confirm('Replace current saved bets with the backup?'))return;bets=o.bets;storeBets();renderSavedBets();renderPnL();refreshStrategyCards()}catch(err){alert('Import failed: '+err.message)}finally{e.target.value=''}};loadFeed()}
 // Automatically notice freshly published GitHub Pages data, without additional bookmaker API requests.
 // A changed data file triggers a page reload; unchanged files never reload the page.
-const AUTO_REFRESH_INTERVAL_MS=60000;
+const AUTO_REFRESH_INTERVAL_MS=45000;
 const AUTO_REFRESH_FILES=['latest-odds.json','odds-history.json','racecards.json','strike-rates.json','strategy-selections.json','strategy-results.json','strategy-commentary.json','strategy-probabilities.json','strategy-ab-selections.json','strategy-ab-results.json','strategy-c-probabilities.json','strategy-c-results.json','strategy-b-probabilities.json','race-results.json','racecards-archive.json','nonrunner-monitor.json'];
 for(const f of ['strategy-dc-probabilities.json','strategy-dc-results.json'])if(!AUTO_REFRESH_FILES.includes(f))AUTO_REFRESH_FILES.push(f);
 // Preserve tab, selected filters, collapsed panels and scroll while published data refreshes.
@@ -1847,7 +1873,15 @@ function restoreRefreshFiltersAfterFeed(){
 }
 let autoRefreshSignatures=null,autoRefreshBusy=false,autoRefreshLastCheck=0;
 async function dataSignature(file){
- const response=await fetch('./data/'+file+'?autocheck='+Date.now(),{method:'HEAD',cache:'no-store'});
+ let response=null;
+ // Check committed odds directly; Pages builds may still be queued or cancelled.
+ if(file==='latest-odds.json'){
+  try{
+   const raw=await fetch(RHP_FAST_ODDS_BASE+file+'?autocheck='+Date.now(),{method:'HEAD',cache:'no-store'});
+   if(raw.ok)response=raw;
+  }catch(e){}
+ }
+ if(!response)response=await fetch('./data/'+file+'?autocheck='+Date.now(),{method:'HEAD',cache:'no-store'});
  if(!response.ok)throw Error('Unable to inspect '+file);
  const etag=response.headers.get('etag'),modified=response.headers.get('last-modified'),size=response.headers.get('content-length');
  // If cache validators are missing, avoid false "changed" notifications.
