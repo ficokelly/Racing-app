@@ -1,0 +1,140 @@
+name: Stage82 - Independent Form Verification Queues
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/rhp-stage82-external-form-verification.yml'
+      - 'data/stage82-authorised-evidence/**'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: rhp-stage82-independent-evidence-recovery
+  cancel-in-progress: false
+
+jobs:
+  evidence-queue:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Check out read-only (no publishing)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test evidence matching and no-imputation safeguards
+        run: |
+          set -euo pipefail
+          PYTHONDONTWRITEBYTECODE=1 python scripts/stage82_external_form_verification.py --self-test
+      - name: Restore Stage65E independently verified original source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage65e
+          gh run download 42218307313 --repo "$GITHUB_REPOSITORY" \
+            --name stage65e-detailed-history-database --dir reports/stage65e
+          test -s reports/stage65e/detailed_history.sqlite
+      - name: Restore Stage81 UK and Irish verified course-scoped categories
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage81
+          gh run download 42728478158 --repo "$GITHUB_REPOSITORY" \
+            --name stage81-ukie-category-research-overlay --dir reports/stage81
+          test -s reports/stage81/stage81_ukie_category_research.sqlite
+      - name: Build precise missing-record manifests and examine authorised evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONDONTWRITEBYTECODE=1 python -u scripts/stage82_external_form_verification.py \
+            --stage81 reports/stage81/stage81_ukie_category_research.sqlite \
+            --history reports/stage65e/detailed_history.sqlite \
+            --root . --out reports/stage82
+          python - <<'PY'
+          import pathlib,json
+          d=json.loads(pathlib.Path('reports/stage82/summary.json').read_text())
+          assert d['stage']==82 and d['status']=='PASS_READ_ONLY_EVIDENCE_MANIFEST'
+          assert d['source_stage81_verified_ukie_races']==414215
+          assert d['source_stage81_unclassified_or_review']==14827
+          assert d['counts']['ukie_2026_missing_rpr_runner_rows']>0
+          assert not any([d['original_database_changed'],d['frozen_model_d_changed'],d['live_app_changed']])
+          assert d['externally_verified_recovered_values']==0
+          print('RACES QUEUED:',d['counts']['stage81_ukie_races'])
+          print('RACE TYPE GAPS:',d['counts']['ukie_unclassified_races'])
+          print('CLASS GAPS (UK/IE RUNNER ROWS):',d['counts']['ukie_missing_class_runner_rows'])
+          print('2026 SP GAPS (UK/IE RUNNER ROWS):',d['counts']['ukie_2026_missing_sp_runner_rows'])
+          print('2026 RPR GAPS (UK/IE RUNNER ROWS):',d['counts']['ukie_2026_missing_rpr_runner_rows'])
+          print('LIVE/HISTORIC DATE OVERLAP:',d['historical_and_live_archive_overlap_days'])
+          print('EVIDENCE CANDIDATES (NOT APPLIED):',d['matched_evidence_candidate_count'])
+          PY
+      - name: Confirm the app, Model D and production archive were never modified
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git diff --quiet HEAD -- data scripts .github/workflows; then
+            echo 'ERROR: existing tracked protected production files changed' >&2
+            git diff --name-only HEAD -- data scripts .github/workflows
+            exit 1
+          fi
+          unexpected="$(git ls-files --others --exclude-standard -- data scripts .github/workflows \
+            | grep -Ev '(^|/)__pycache__/|\.pyc$' || true)"
+          if [ -n "$unexpected" ]; then
+            printf 'ERROR: unexpected protected file: %s\n' "$unexpected" >&2
+            exit 1
+          fi
+          echo 'PASS: models, source DB and live archive unchanged.'
+      - name: Upload small summary and provenance template
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage82-summary-and-evidence-guide
+          path: |
+            reports/stage82/summary.json
+            reports/stage82/how_to_verify.txt
+            reports/stage82/yearly_priority_queue.csv
+            reports/stage82/external_evidence_template.csv
+            reports/stage82/source_evidence_review.csv
+            reports/stage82/matched_evidence_candidates.csv
+          retention-days: 90
+          if-no-files-found: warn
+      - name: Upload 2026 SP and RPR race and runner verification queue
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage82-2026-sp-rpr-queue
+          path: |
+            reports/stage82/2026_priority_races.csv
+            reports/stage82/2026_missing_sp_rpr_runners.csv
+          compression-level: 6
+          retention-days: 90
+          if-no-files-found: warn
+      - name: Upload unresolved historical categories with cross-year clues
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage82-unclassified-ukie-races
+          path: |
+            reports/stage82/ukie_unclassified_races.csv
+            reports/stage82/cross_year_named_race_clues.csv
+          retention-days: 90
+          if-no-files-found: warn
+      - name: Upload separate all-year missing numerical race-class queue
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage82-all-year-race-class-queue
+          path: reports/stage82/all_years_missing_class_races.csv
+          compression-level: 6
+          retention-days: 90
+          if-no-files-found: warn
