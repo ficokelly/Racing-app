@@ -1,0 +1,115 @@
+name: Stage84 - Model E Active Horse Form Coverage Audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      as_of:
+        description: 'Irish date YYYY-MM-DD (blank = today)'
+        type: string
+        required: false
+        default: ''
+      lookback_days:
+        description: 'Recent declaration cohort, 1 to 365 days'
+        type: choice
+        required: true
+        default: '30'
+        options: ['14', '30', '60', '90']
+
+# RESEARCH ONLY: this workflow cannot write rankings or modify the live app.
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage84-model-e-active-horse-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - name: Checkout research code (read-only)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Test Stage84 eligibility and identity logic
+        run: PYTHONDONTWRITEBYTECODE=1 python scripts/stage84_active_horse_audit.py --self-test
+
+      - name: Restore historic UK IE source cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            reports/stage84/base/original.sqlite
+            ~/.cache/kagglehub
+          key: stage84-base-ukie-v129-${{ hashFiles('import_historical_ukie.py') }}
+          restore-keys: |
+            stage84-base-ukie-v129-
+
+      - name: Install source download support
+        run: python -m pip install --disable-pip-version-check kagglehub
+
+      - name: Obtain original historical research baseline (no modifications)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import kagglehub, sqlite3, subprocess, sys
+          base=Path('reports/stage84/base');base.mkdir(parents=True,exist_ok=True)
+          db=base/'original.sqlite'
+          valid=False
+          if db.is_file() and db.stat().st_size>1000000:
+              try:
+                  with sqlite3.connect('file:'+db.resolve().as_posix()+'?mode=ro',uri=True) as cx:
+                      valid=(cx.execute('PRAGMA quick_check').fetchone()[0]=='ok' and
+                             cx.execute('SELECT COUNT(*) FROM historical_races').fetchone()[0]>100000)
+              except sqlite3.Error:valid=False
+          if not valid:
+              source=kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025/versions/129')
+              subprocess.run([sys.executable,'import_historical_ukie.py',
+                '--mode','import','--input',str(source),'--min-date','1988-01-01',
+                '--max-date','2026-10-07','--database',str(db),
+                '--report',str(base/'import.json')],check=True)
+          with sqlite3.connect('file:'+db.resolve().as_posix()+'?mode=ro',uri=True) as cx:
+              assert cx.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+              print('Historical race rows:',cx.execute('SELECT COUNT(*) FROM historical_races').fetchone()[0])
+          PY
+
+      - name: Audit currently declared horses and recent source records
+        shell: bash
+        env:
+          AS_OF: ${{ inputs.as_of }}
+          LOOKBACK_DAYS: ${{ inputs.lookback_days }}
+        run: |
+          set -euo pipefail
+          DAY="$AS_OF"
+          if [ -z "$DAY" ]; then DAY="$(TZ=Europe/Dublin date +%F)"; fi
+          python scripts/stage84_active_horse_audit.py \
+            --db reports/stage84/base/original.sqlite \
+            --cards data/racecards.json \
+            --archive data/racecards-archive.json \
+            --recent-dir data/racing-results \
+            --verified-results data/race-results.json \
+            --as-of "$DAY" \
+            --lookback-days "$LOOKBACK_DAYS" \
+            --output reports/stage84/output
+
+      - name: Upload detailed audit and 90 percent coverage evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage84-model-e-active-horse-coverage-${{ github.run_id }}
+          path: |
+            reports/stage84/output/stage84_summary.json
+            reports/stage84/output/stage84_report.md
+            reports/stage84/output/stage84_active_horses.csv
+            reports/stage84/output/stage84_applicable_field_coverage.csv
+          retention-days: 90
+          if-no-files-found: warn
