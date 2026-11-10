@@ -1,0 +1,113 @@
+name: Racing Hot Pots - Speed Up Odds Display
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rhp-speed-up-odds-display
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out Racing Hot Pots
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Add fast odds source with Pages fallback
+        shell: bash
+        run: |
+          python - <<'PYCODE'
+          from pathlib import Path
+
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+          if "const RHP_FAST_ODDS_BASE='https://raw.githubusercontent.com/ficokelly/Racing-app/main/data/';" in s:
+              print('Fast odds patch is already installed; nothing to change.')
+              raise SystemExit(0)
+
+          def replace_once(old, new):
+              global s
+              count = s.count(old)
+              if count != 1:
+                  raise SystemExit(f'Expected one matching app section, found {count}: {old[:80]}')
+              s = s.replace(old, new, 1)
+
+          helper = """// Show newly committed odds before GitHub Pages finishes a slower deployment.
+          // Raw GitHub is optional: when the repository is private/unavailable, fall back to Pages.
+          // This fetch never calls the bookmaker API or changes Model D decisions.
+          const RHP_FAST_ODDS_BASE='https://raw.githubusercontent.com/ficokelly/Racing-app/main/data/';
+          async function rhpFetchNewerOdds(q,pages){
+           const age=Date.now()-Date.parse((pages&&pages.collected_at)||'');
+           if(Number.isFinite(age)&&age<90000)return null;
+           try{
+            const response=await fetch(RHP_FAST_ODDS_BASE+'latest-odds.json'+q,{cache:'no-store'});
+            if(!response.ok)return null;
+            const candidate=await response.json(),candidateTime=Date.parse((candidate&&candidate.collected_at)||'');
+            if(!Array.isArray(candidate&&candidate.prices)||!Number.isFinite(candidateTime))return null;
+            const pagesTime=Date.parse((pages&&pages.collected_at)||'');
+            return !Number.isFinite(pagesTime)||candidateTime>pagesTime?candidate:null;
+           }catch(e){return null}
+          }
+          """
+          replace_once('async function loadFeed(){loadForm();loadFinishedRaceFeed();try{', helper+'async function loadFeed(){loadForm();loadFinishedRaceFeed();try{')
+          replace_once(
+              'const latest=await responses[0].json(),hist=await responses[1].json();if(!Array.isArray(hist)||!Array.isArray(latest.prices))',
+              """let latest=await responses[0].json(),hist=await responses[1].json();
+           const newer=await rhpFetchNewerOdds(q,latest);
+           if(newer){
+            latest=newer;
+            // Use matching recent odds history when the raw feed is ahead of Pages.
+            try{
+             const h=await fetch(RHP_FAST_ODDS_BASE+'odds-history.json'+q,{cache:'no-store'});
+             if(h.ok){const rawHistory=await h.json();if(Array.isArray(rawHistory))hist=rawHistory}
+            }catch(e){}
+           }
+           if(!Array.isArray(hist)||!Array.isArray(latest.prices))"""
+          )
+          replace_once(
+              "const response=await fetch('./data/'+file+'?autocheck='+Date.now(),{method:'HEAD',cache:'no-store'});\n if(!response.ok)throw Error('Unable to inspect '+file);",
+              """let response=null;
+           // Check committed odds directly; Pages builds may still be queued or cancelled.
+           if(file==='latest-odds.json'){
+            try{
+             const raw=await fetch(RHP_FAST_ODDS_BASE+file+'?autocheck='+Date.now(),{method:'HEAD',cache:'no-store'});
+             if(raw.ok)response=raw;
+            }catch(e){}
+           }
+           if(!response)response=await fetch('./data/'+file+'?autocheck='+Date.now(),{method:'HEAD',cache:'no-store'});
+           if(!response.ok)throw Error('Unable to inspect '+file);"""
+          )
+          replace_once('const AUTO_REFRESH_INTERVAL_MS=60000;', 'const AUTO_REFRESH_INTERVAL_MS=45000;')
+          p.write_text(s, encoding='utf-8')
+          print('Fast odds code installed successfully; polling every 45 seconds.')
+          PYCODE
+
+      - name: Commit faster odds display
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html
+          if git diff --cached --quiet; then
+            echo 'No changes required.'
+            exit 0
+          fi
+          git commit -m 'Show newly committed bookmaker odds before Pages deployment'
+          for attempt in 1 2 3 4; do
+            if git pull --rebase origin main && git push origin HEAD:main; then
+              echo 'Published faster odds display.'
+              exit 0
+            fi
+            git rebase --abort || true
+            sleep $((attempt * 3))
+          done
+          echo 'Unable to publish fast odds display after retries.' >&2
+          exit 1
