@@ -1,0 +1,64 @@
+name: Stage91 - Historical Comment Intelligence Audit (Research Only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      lookback_days:
+        description: 'Historical completed days to examine; 0 for entire archive'
+        type: choice
+        required: true
+        default: '365'
+        options: ['30', '90', '365', '0']
+      as_of:
+        description: 'Last historical date YYYY-MM-DD (blank = today in Ireland)'
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage91-historical-comment-research
+  cancel-in-progress: false
+
+jobs:
+  interpret:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run deterministic parser and interpretation tests
+        run: |
+          python -m py_compile scripts/stage91_comments_intelligence.py
+          python scripts/stage91_comments_intelligence.py --self-test
+      - name: Install historical dataset helper
+        run: python -m pip install --disable-pip-version-check 'kagglehub>=0.3,<1'
+      - name: Interpret verified historical records (no model updates)
+        shell: bash
+        env:
+          DAYS: ${{ inputs.lookback_days }}
+          ASOF: ${{ inputs.as_of }}
+        run: |
+          set -euo pipefail
+          args=(--days "${DAYS:-365}" --dataset-version 129 --out reports/stage91)
+          if [ -n "${ASOF:-}" ]; then args+=(--as-of "$ASOF"); fi
+          python -u scripts/stage91_comments_intelligence.py "${args[@]}"
+      - name: Archive read-only structured evidence and audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage91-comments-research-${{ github.run_id }}
+          path: |
+            reports/stage91/stage91-summary.json
+            reports/stage91/stage91-monthly-coverage.csv
+            reports/stage91/stage91-review-sample.csv
+            reports/stage91/stage91-per-run-evidence.csv.gz
+          retention-days: 60
+          if-no-files-found: warn
