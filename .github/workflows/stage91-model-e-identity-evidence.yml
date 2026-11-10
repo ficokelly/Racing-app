@@ -1,0 +1,131 @@
+name: Stage91 - Model E Horse Identity Evidence Research
+
+on:
+  workflow_dispatch:
+    inputs:
+      as_of:
+        description: 'As-of date in Ireland YYYY-MM-DD (blank = today)'
+        required: false
+        type: string
+        default: ''
+      days:
+        description: 'Completed historical racing days to audit'
+        required: true
+        type: choice
+        default: '30'
+        options: ['7', '14', '30', '60', '90']
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage91-hpr-identity-evidence-research
+  cancel-in-progress: false
+
+jobs:
+  investigate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - name: Checkout dated pre-off cards with no write permission
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify original HPR, Stage90 and Stage91 identity safeguards
+        run: |
+          python scripts/stage86_hpr_engine.py --mode self-test
+          python scripts/stage89_hpr_gap_triage.py --self-test
+          python scripts/stage90_hpr_identity_triage.py --self-test
+          python scripts/stage91_hpr_identity_evidence.py --self-test
+      - name: Restore historical source cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            reports/stage86/base/original.sqlite
+            ~/.cache/kagglehub
+          key: stage86-base-v129-${{ hashFiles('import_historical_ukie.py') }}
+          restore-keys: |
+            stage84-base-ukie-v129-
+      - name: Install historical source helper
+        run: python -m pip install --disable-pip-version-check kagglehub
+      - name: Verify historical UK and Ireland original database
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import kagglehub,sqlite3,subprocess,sys
+          from pathlib import Path
+          p=Path('reports/stage86/base/original.sqlite');p.parent.mkdir(parents=True,exist_ok=True)
+          if not p.exists() or p.stat().st_size < 1000000:
+            source=kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025/versions/129')
+            subprocess.run([sys.executable,'import_historical_ukie.py','--mode','import',
+              '--input',str(source),'--min-date','1988-01-01','--max-date','2026-10-07',
+              '--database',str(p),'--report','reports/stage86/base/import.json'],check=True)
+          with sqlite3.connect('file:'+str(p.resolve())+'?mode=ro',uri=True) as conn:
+            assert conn.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+            assert conn.execute('SELECT COUNT(*) FROM historical_races').fetchone()[0]>100000
+          PY
+      - name: Reproduce original E v0 research HPR scores read-only
+        env:
+          AS_OF: ${{ inputs.as_of }}
+          DAYS: ${{ inputs.days }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--mode backtest --db reports/stage86/base/original.sqlite --root . \
+             --output reports/stage91/base --days "${DAYS:-30}" --git-preoff)
+          if [ -n "$AS_OF" ]; then args+=(--as-of "$AS_OF"); fi
+          python -u scripts/stage86_hpr_engine.py "${args[@]}"
+      - name: Recreate Stage90 verified and name-only gap diagnostics
+        env:
+          AS_OF: ${{ inputs.as_of }}
+          DAYS: ${{ inputs.days }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--root . --db reports/stage86/base/original.sqlite \
+             --ratings reports/stage91/base/hpr-backtest-research.sqlite \
+             --output reports/stage91/source-stage90 --days "${DAYS:-30}")
+          if [ -n "$AS_OF" ]; then args+=(--as-of "$AS_OF"); fi
+          python -u scripts/stage90_hpr_identity_triage.py "${args[@]}"
+      - name: Investigate corroborating age, sex and exact last-run evidence
+        env:
+          AS_OF: ${{ inputs.as_of }}
+          DAYS: ${{ inputs.days }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--root . --db reports/stage86/base/original.sqlite \
+             --stage90-csv reports/stage91/source-stage90/stage90-missing-horse-source-diagnostics.csv \
+             --output reports/stage91/output --days "${DAYS:-30}")
+          if [ -n "$AS_OF" ]; then args+=(--as-of "$AS_OF"); fi
+          python -u scripts/stage91_hpr_identity_evidence.py "${args[@]}"
+      - name: Verify no automatic identity joins or ratings were published
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          v=json.loads(Path('reports/stage91/source-stage90/stage90-summary.json').read_text())
+          s=json.loads(Path('reports/stage91/output/stage91-summary.json').read_text())
+          assert v['automatically_recovered_hpr']==0 and s['verified_auto_recoveries']==0
+          assert s['cases_inspected']+s['snapshots_missing']+s['snapshots_ambiguous'] == (
+            v['classifications'].get('HISTORY_NAME_ONLY_UNVERIFIED',0)+v['classifications'].get('EXACT_HISTORY_UNRATED',0))
+          print('PASS: research-only identity review, zero unauthorised historical merges')
+          PY
+      - name: Upload compact summary and review queues only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage91-identity-evidence-${{ github.run_id }}
+          path: |
+            reports/stage91/output/stage91-summary.json
+            reports/stage91/output/stage91-identity-evidence-queue.csv
+            reports/stage91/output/stage91-exact-identity-outcomes-needing-review.csv
+            reports/stage91/source-stage90/stage90-summary.json
+          retention-days: 90
+          if-no-files-found: warn
