@@ -1,0 +1,122 @@
+name: Stage95B - E v2 vs E v2 plus HPR v2 (Rank 1 and 2 Research)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage95b-e-v2-hpr-readonly-comparison
+  cancel-in-progress: false
+
+jobs:
+  comparison:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - name: Checkout research scripts without write credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify HPR overlay and previous comparator invariants
+        run: |
+          python scripts/stage95a_hpr_v2_out_of_sample.py --self-test
+          python scripts/stage95b_e_v2_hpr_overlay.py --self-test
+      - name: Download pinned successful reference artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage95b/sources/{e,q,h,a}
+          gh run download 42833900420 --repo "${GITHUB_REPOSITORY}" \
+            --name stage92-model-e-v2-winprob-42833900420 \
+            --dir reports/stage95b/sources/e
+          gh run download 42890039641 --repo "${GITHUB_REPOSITORY}" \
+            --name stage92-performance-research-42890039641 \
+            --dir reports/stage95b/sources/q
+          gh run download 42895103772 --repo "${GITHUB_REPOSITORY}" \
+            --name stage94-hpr-v2-research-42895103772 \
+            --dir reports/stage95b/sources/h
+          gh run download 42897933320 --repo "${GITHUB_REPOSITORY}" \
+            --name stage95a-hpr-v2-heldout-42897933320 \
+            --dir reports/stage95b/sources/a
+          python - <<'PY'
+          import pathlib,zipfile,json
+          home=pathlib.Path('reports/stage95b/sources')
+          for name, required in [('e','output/stage92-race-probabilities.csv'),
+                                 ('q','stage92-per-run-quality.csv.gz'),
+                                 ('h','stage94-hpr-v2-research.csv.gz'),
+                                 ('a','stage95a-summary.json')]:
+              folder=home/name
+              assert (folder/required).is_file(), f'Missing expected immutable input: {folder/required}'
+              zpath=home/(name+'.zip')
+              with zipfile.ZipFile(zpath,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=6) as z:
+                  for file in sorted(folder.rglob('*')):
+                      if file.is_file():z.write(file,file.relative_to(folder))
+              print('Verified immutable source:',name,zpath.stat().st_size)
+          p=home/'e/output/stage92-summary.json'
+          q=json.loads(p.read_text())
+          assert q['holdout_days'][0]=='2026-11-03', 'E original training window changed; audit invalid'
+          PY
+      - name: Retrieve pinned Kaggle v129 solely for verified SP settlement
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check 'kagglehub>=0.3,<1'
+          python - <<'PY'
+          import kagglehub,pathlib
+          p=pathlib.Path(kagglehub.dataset_download(
+              'deltaromeo/horse-racing-results-ukireland-2015-2025/versions/129'))
+          assert p.is_dir() and list(p.rglob('*.csv'))
+          pathlib.Path('reports/stage95b/sources/kaggle-path.txt').write_text(str(p))
+          print('Verified Kaggle historical source for settlement')
+          PY
+      - name: Run same-field Rank 1 and Rank 2 probability and ROI comparison
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/stage95b_e_v2_hpr_overlay.py \
+            --e92-zip reports/stage95b/sources/e.zip \
+            --quality-zip reports/stage95b/sources/q.zip \
+            --hpr-zip reports/stage95b/sources/h.zip \
+            --stage95a-zip reports/stage95b/sources/a.zip \
+            --kaggle-source "$(cat reports/stage95b/sources/kaggle-path.txt)" \
+            --out reports/stage95b/output
+      - name: Validate field-matched comparison and report verifiable SP coverage
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json,pathlib
+          p=pathlib.Path('reports/stage95b/output/stage95b-summary.json')
+          r=json.loads(p.read_text())
+          assert r['stage']=='95b' and r['status']=='READ_ONLY_RESEARCH'
+          n=r['race_period']['matched_races']
+          assert n>=150, f'Only {n} matched races; refuse incomplete evidence'
+          assert len(r['scorecard'])==6
+          for row in r['scorecard']:
+              assert row['priced']>0, f'No SP settlement for {row}'
+              if row['rank'] in (1,2):assert row['selections']==n
+          print('PASS matched race cohort',n)
+          print('Results (training-overlap caveat applies):',r['scorecard'])
+          print('NLL/Brier:',r['probability_accuracy'])
+          PY
+      - name: Publish research-only output, never modify live models
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage95b-e-v2-hpr-rank12-${{ github.run_id }}
+          path: |
+            reports/stage95b/output/stage95b-summary.json
+            reports/stage95b/output/stage95b-scorecard.csv
+            reports/stage95b/output/stage95b-thresholds.csv
+            reports/stage95b/output/stage95b-segments.csv
+            reports/stage95b/output/stage95b-rank1-rank2.csv
+            reports/stage95b/output/stage95b-allrunner.csv.gz
+          if-no-files-found: warn
+          retention-days: 90
