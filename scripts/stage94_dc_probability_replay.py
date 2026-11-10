@@ -284,6 +284,26 @@ def stats(rows):
    'sp_missing':n-len(priced),'profit_1u':round(pnl,3),
    'sp_roi_pct':round(100*pnl/len(priced),2) if priced else None}
 
+def verify_preoff_field(matched, result_race):
+ """Keep original card records intact while comparing runner identities.
+
+ A set of canonical names is only for the comparison; never overwrite the
+ list of runner dictionaries, which the actual D(c) scorer consumes.
+ """
+ cards=list(matched.values())
+ if any(not isinstance(row,dict) or not row.get('horse') for row in cards):
+  return None,'MALFORMED_PREOFF_CARD'
+ starters={R86.norm(row['horse']) for row in result_race['runners']}
+ declared={R86.norm(row['horse']) for row in cards}
+ if len(starters)!=len(result_race['runners']) or len(declared)!=len(cards):
+  return None,'DUPLICATE_RUNNER_NAME'
+ if starters!=declared:
+  return None,'FIELD_CHANGED_AFTER_SNAPSHOT'
+ if len(cards)<2 or any(not row.get('trainer') or not row.get('jockey') for row in cards):
+  return None,'MISSING_PREOFF_FEATURES'
+ return cards,'OK'
+
+
 def self_test():
  p=tempscore([2.,1.,0.],.5);assert abs(sum(p)-1)<1e-10 and p[0]>p[1]>p[2]
  assert sp_decimal('9/4')==3.25 and sp_decimal('EVS')==2. and sp_decimal(None) is None
@@ -292,6 +312,15 @@ def self_test():
  assert race_cat({'race_name':"A Handicap Hurdle",'type':'Hurdle'})=='Handicap Hurdle'
  assert parse_finish({'position':1})==('1',True)
  assert parse_finish({'position':'F','status':'fell'})==('F',False)
+ # Regression: the matching code must preserve runner dictionaries, not turn
+ # them into strings when constructing canonical-name sets.
+ field={'A':{'horse':'A','trainer':'T1','jockey':'J1'},
+        'B':{'horse':'B','trainer':'T2','jockey':'J2'}}
+ race={'runners':[{'horse':'A'},{'horse':'B'}]}
+ matched,status=verify_preoff_field(field,race)
+ assert status=='OK' and len(matched)==2 and all(isinstance(z,dict) for z in matched)
+ assert verify_preoff_field(field,{'runners':[{'horse':'A'},{'horse':'C'}]})[1]=='FIELD_CHANGED_AFTER_SNAPSHOT'
+ assert verify_preoff_field({'A':{'horse':'A','trainer':'','jockey':'J1'},'B':field['B']},race)[1]=='MISSING_PREOFF_FEATURES'
  assert stats([{'won':True,'sp_decimal':3.,'finish':'1','pnl_1u':2.},
    {'won':False,'sp_decimal':4.,'finish':'3','pnl_1u':-1.}])['sp_roi_pct']==50.
  print('PASS: probability invariants, no odds inputs to scores, SP settlement and race type')
@@ -330,15 +359,12 @@ def run(a):
    matched,status=R86.card_match(race,cards)
    if status!='PREOFF_FIELD_VERIFIED':
     reject[status]+=1;rejected_rows.append({'date':day,'course':race.get('course'),'time':key.split('|')[-1],'reason':status});continue
-   preoff=list(matched.values())
-   actual={R86.norm(x['horse']) for x in race['runners']}
-   preoff={R86.norm(x['horse']) for x in preoff}
-   # NR field changes after a morning snapshot create a different model ranking.
-   # Refuse hindsight removal; don't pretend it was a truly live prediction.
-   if actual!=preoff:
-    reject['FIELD_CHANGED_AFTER_SNAPSHOT']+=1;rejected_rows.append({'date':day,'course':race.get('course'),'time':key.split('|')[-1],'reason':'FIELD_CHANGED_AFTER_SNAPSHOT'});continue
-   if len(preoff)<2 or any(not x.get('trainer') or not x.get('jockey') for x in preoff):
-    reject['MISSING_PREOFF_FEATURES']+=1;rejected_rows.append({'date':day,'course':race.get('course'),'time':key.split('|')[-1],'reason':'MISSING_PREOFF_FEATURES'});continue
+   preoff,preoff_status=verify_preoff_field(matched,race)
+   if preoff_status!='OK':
+    reject[preoff_status]+=1
+    rejected_rows.append({'date':day,'course':race.get('course'),
+                          'time':key.split('|')[-1],'reason':preoff_status})
+    continue
    source=preoff[0]
    e={'date':day,'course':source['course'],'time':key.split('|')[-1],
       'runners':preoff}
