@@ -1,0 +1,143 @@
+name: Stage94 - D(c) 30-Day Probability Replay and Last 7 Days
+
+on:
+  workflow_dispatch:
+    inputs:
+      as_of:
+        description: 'Irish as-of date YYYY-MM-DD (blank = 2026-11-10 for comparison with E)'
+        required: false
+        type: string
+        default: '2026-11-10'
+      days:
+        description: 'Number of completed days; default same 30-day Model E sample'
+        required: true
+        type: choice
+        default: '30'
+        options: ['30', '60', '90']
+  push:
+    paths:
+      - 'scripts/stage94_dc_probability_replay.py'
+      - '.github/workflows/stage94-dc-probability-replay.yml'
+
+# Research only. No changes to live models or app.
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage94-dc-retrospective-calibration
+  cancel-in-progress: false
+
+jobs:
+  backtest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - name: Checkout complete pre-off Git history (no write credentials)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install original model research dependencies and HTML source parser
+        run: python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1 kagglehub joblib beautifulsoup4
+      - name: Original scorer checks plus new research invariants
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 python scripts/rhp_stage83_dc_integrated.py --self-test
+          PYTHONDONTWRITEBYTECODE=1 python scripts/stage94_dc_probability_replay.py --self-test
+      - name: Restore historical Stage83 base and separate classifier cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            reports/stage94/base/original.sqlite
+            reports/stage68/base/c_classifier_2024_stage81_v1.joblib
+            ~/.cache/kagglehub
+          key: stage94-dc-replay-base-v1-${{ hashFiles('import_historical_ukie.py') }}
+          restore-keys: |
+            rhp-dc-stage81-v1-
+            rhp-dc-sqlite-v2-
+      - name: Load pinned historical UK IE archive into disposable research database
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import kagglehub,subprocess,sys,sqlite3
+          from pathlib import Path
+          p=Path('reports/stage94/base/original.sqlite');p.parent.mkdir(parents=True,exist_ok=True)
+          src=kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025/versions/129')
+          (p.parent/'source_path.txt').write_text(str(src))
+          if not p.exists() or p.stat().st_size<1_000_000:
+              subprocess.run([sys.executable,'import_historical_ukie.py','--mode','import',
+                '--input',str(src),'--min-date','1988-01-01','--max-date','2026-10-07',
+                '--database',str(p),'--report',str(p.parent/'import.json')],check=True)
+          with sqlite3.connect('file:'+str(p.resolve())+'?mode=ro',uri=True) as c:
+              assert c.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+              assert c.execute('SELECT count(*) FROM historical_races').fetchone()[0]>100000
+          print('PASS historical research source')
+          PY
+      - name: Backfill exact documented pre-off races through 9 November, never changing source DB
+        run: |
+          python -u scripts/stage65m_backfill.py \
+            --baseline reports/stage94/base/original.sqlite \
+            --out reports/stage94/base \
+            --max-date 2026-11-09 --keep-candidate --skip-replay
+          python -u scripts/stage65p_enrich_race_details.py \
+            --db reports/stage94/base/backfilled_research_only.sqlite \
+            --source "$(cat reports/stage94/base/source_path.txt)" \
+            --out reports/stage94/enrichment
+      - name: Verify pinned Stage81 metadata and integrate in candidate DB only
+        run: |
+          python - <<'PY'
+          import hashlib
+          p='data/rhp-stage81-ukie-2021plus-hashes.csv.gz'
+          with open(p,'rb') as f:s=hashlib.file_digest(f,'sha256').hexdigest()
+          assert s=='b028ec32d2bae1d34331cda150d545b7441c9e45aa4ddb27b5ce450562288cbe'
+          print('PASS fixed Stage81 source')
+          PY
+          python - <<'PY'
+          from scripts.rhp_stage83_dc_integrated import integrate
+          integrate('reports/stage94/base/backfilled_research_only.sqlite',
+                    'data/rhp-stage81-ukie-2021plus-hashes.csv.gz',
+                    'reports/stage94/integration')
+          PY
+      - name: Reconstruct actual D(c) 75 percent D plus 25 percent C; calibrate probability and settle
+        shell: bash
+        env:
+          AS_OF: ${{ inputs.as_of }}
+          DAYS: ${{ inputs.days }}
+        run: |
+          set -euo pipefail
+          python -u scripts/stage94_dc_probability_replay.py \
+            --root . --db reports/stage94/base/backfilled_research_only.sqlite \
+            --output reports/stage94/output --as-of "${AS_OF:-2026-11-10}" --days "${DAYS:-30}"
+      - name: Verify complete Rank 1 30-day and 7-day reports and probability ranges
+        run: |
+          python - <<'PY'
+          import json,csv,collections
+          from pathlib import Path
+          p=Path('reports/stage94/output')
+          s=json.loads((p/'stage94-summary.json').read_text())
+          allrows=list(csv.DictReader((p/'stage94-30d-all-rank1.csv').open(encoding='utf-8-sig')))
+          seven=list(csv.DictReader((p/'stage94-last7-rank1.csv').open(encoding='utf-8-sig')))
+          assert len(allrows)==s['races'] and len(seven)==s['holdout_races']
+          assert all(0<float(z['win_probability_pct'])<100 for z in allrows)
+          assert all(z['data_split']=='HOLDOUT' for z in seven)
+          assert len(set((z['date'],z['time'],z['course']) for z in allrows))==len(allrows)
+          assert len(allrows)>100 and len(seven)>20
+          print('PASS: independent 7-day holdout, 30-day all Rank 1, no duplicate races')
+          PY
+      - name: Upload small downloadable audit files only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage94-dc-probability-replay-${{ github.run_id }}
+          path: |
+            reports/stage94/output/*.csv
+            reports/stage94/output/stage94-summary.json
+            reports/stage94/integration/integration_audit.json
+            reports/stage94/base/backfill_summary.json
+          retention-days: 90
+          if-no-files-found: warn
