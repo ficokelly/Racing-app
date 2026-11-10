@@ -1,0 +1,61 @@
+name: Stage85 - Model E Active Horse Gap Reconciliation
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: 'Successful Stage84 workflow run ID containing the source artifact'
+        required: true
+        type: string
+        default: '42799625306'
+
+# Research-only. No commit, app, scoring, notifications, or model updates.
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage85-model-e-reconciliation
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout research scripts read-only
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Configure Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Self-test reconciliation and no auto-promote safeguards
+        run: python scripts/stage85_active_horse_reconciliation.py --self-test
+      - name: Download independently retained Stage84 evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: stage84-model-e-active-horse-coverage-${{ inputs.source_run_id }}
+          run-id: ${{ inputs.source_run_id }}
+          github-token: ${{ github.token }}
+          path: reports/stage85/input
+      - name: Verify Stage84 evidence exists
+        run: |
+          test -s reports/stage85/input/stage84_summary.json
+          test -s reports/stage85/input/stage84_active_horses.csv
+      - name: Investigate source gaps and prepare evidence review queue
+        run: |
+          python scripts/stage85_active_horse_reconciliation.py \
+            --stage84-dir reports/stage85/input \
+            --recent-dir data/racing-results \
+            --verified-results data/race-results.json \
+            --out reports/stage85/output
+      - name: Upload audit and candidate evidence queues
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage85-model-e-reconciliation-${{ github.run_id }}
+          path: reports/stage85/output/*
+          retention-days: 90
+          if-no-files-found: warn
