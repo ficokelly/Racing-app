@@ -1,0 +1,92 @@
+name: Stage92 - Finished Race Quality Intelligence Research
+
+on:
+  workflow_dispatch:
+    inputs:
+      stage91_run_id:
+        description: 'Successful Stage91 run ID (blank uses latest successful Stage91 run)'
+        type: string
+        default: ''
+        required: false
+      from_date:
+        description: 'Optional first date (YYYY-MM-DD), blank = all Stage91 dates'
+        type: string
+        default: ''
+        required: false
+      through:
+        description: 'Optional final date (YYYY-MM-DD)'
+        type: string
+        default: ''
+        required: false
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage92-performance-quality-research
+  cancel-in-progress: false
+
+jobs:
+  research:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run Stage92 deterministic safety tests
+        run: python -u scripts/stage92_performance_quality.py --self-test
+      - name: Download completed Stage91 evidence only
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN: ${{ inputs.stage91_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$SOURCE_RUN" ]; then
+            SOURCE_RUN="$(gh run list --workflow stage91-comments-intelligence.yml \
+              --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          fi
+          if ! [[ "$SOURCE_RUN" =~ ^[0-9]+$ ]]; then
+            echo 'Cannot identify successful Stage91 run'; exit 2
+          fi
+          mkdir -p reports/stage92/source
+          gh run download "$SOURCE_RUN" --name "stage91-comments-research-${SOURCE_RUN}" \
+            --dir reports/stage92/source
+          test -s reports/stage92/source/stage91-per-run-evidence.csv.gz
+          test -s reports/stage92/source/stage91-summary.json
+          python - <<'PY'
+          import json,pathlib
+          p=pathlib.Path('reports/stage92/source/stage91-summary.json')
+          r=json.loads(p.read_text())
+          assert r['stage']==91 and r['version']=='stage91-comment-evidence-v1'
+          assert r.get('counts',{}).get('rated_historical_runs',0)>100, 'Unexpectedly empty Stage91 data'
+          print('PASS: Stage91 research artifact verified; records:',r['counts']['rated_historical_runs'])
+          PY
+      - name: Assess finished-race comment, placing and beaten-distance evidence
+        env:
+          START: ${{ inputs.from_date }}
+          FINISH: ${{ inputs.through }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--input reports/stage92/source/stage91-per-run-evidence.csv.gz \
+            --out reports/stage92/output)
+          if [ -n "$START" ]; then args+=(--from-date "$START"); fi
+          if [ -n "$FINISH" ]; then args+=(--through "$FINISH"); fi
+          python -u scripts/stage92_performance_quality.py "${args[@]}"
+      - name: Upload research-only audit (no original comments or production databases)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage92-performance-research-${{ github.run_id }}
+          path: |
+            reports/stage92/output/stage92-summary.json
+            reports/stage92/output/stage92-review-sample.csv
+            reports/stage92/output/stage92-per-run-quality.csv.gz
+          retention-days: 90
+          if-no-files-found: warn
