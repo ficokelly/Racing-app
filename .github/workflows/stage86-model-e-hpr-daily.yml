@@ -64,6 +64,28 @@ jobs:
             assert c.execute('PRAGMA quick_check').fetchone()[0]=='ok'
             assert c.execute('SELECT COUNT(*) FROM historical_races').fetchone()[0]>100000
           PY
+      - name: Restore versioned, compressed HPR history from repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PYCODE'
+          import gzip,shutil,sqlite3
+          from pathlib import Path
+          archive=Path('data/hpr/hpr-ratings.sqlite.gz')
+          db=Path('data/hpr/hpr-ratings.sqlite')
+          db.parent.mkdir(parents=True,exist_ok=True)
+          if archive.exists():
+              if db.exists(): raise SystemExit('Conflicting raw and compressed HPR stores')
+              with gzip.open(archive,'rb') as inp,db.open('wb') as out:
+                  shutil.copyfileobj(inp,out,1024*1024)
+              with sqlite3.connect(db) as conn:
+                  assert conn.execute('PRAGMA quick_check').fetchone()[0]=='ok','Stored HPR archive failed integrity check'
+              print('Restored HPR historical ratings:',db.stat().st_size,'bytes')
+          elif db.exists():
+              raise SystemExit('Refusing unmanaged raw HPR database; use compressed store')
+          else:
+              print('First daily HPR run: starting new persistent ratings history')
+          PYCODE
       - name: Rate completed day and persist all previously assessed runs
         shell: bash
         env:
@@ -88,11 +110,28 @@ jobs:
           print('Verified newly scored target-day performances:',len(rows))
           if not rows and not report.get('store_write',{}).get('revised',0):
               pathlib.Path('reports/stage86/daily/SKIP_COMMIT').write_text('No new verifiable daily HPR scores or corrections')
-          # GitHub has a hard 100 MiB per-file limit. Stop well before this
-          # threshold; migrate to sharded persistence before growth continues.
+          # Do not publish an oversized database through GitHub Contents.
+          # A single compressed file is a research-scale intermediate solution;
+          # migrate to dated shards/object storage before reaching 45 MiB.
           db=pathlib.Path('data/hpr/hpr-ratings.sqlite')
-          if db.is_file() and db.stat().st_size>45*1024*1024:
-              raise SystemExit('HPR database >45 MiB; do not push. Implement partitioned storage.')
+          if not db.is_file():
+              raise SystemExit('No research HPR database produced')
+          import sqlite3
+          with sqlite3.connect(db) as conn:
+              assert conn.execute('PRAGMA quick_check').fetchone()[0]=='ok','HPR database integrity check failed'
+          if not pathlib.Path('reports/stage86/daily/SKIP_COMMIT').exists():
+              import gzip,shutil
+              dst=pathlib.Path('data/hpr/hpr-ratings.sqlite.gz')
+              temp=dst.with_suffix('.gz.tmp')
+              with db.open('rb') as inp,temp.open('wb') as out:
+                  with gzip.GzipFile(filename='',fileobj=out,mode='wb',compresslevel=6,mtime=0) as archived:
+                      shutil.copyfileobj(inp,archived,1024*1024)
+              compressed=temp.stat().st_size
+              if compressed>45*1024*1024:
+                  temp.unlink(missing_ok=True)
+                  raise SystemExit('Compressed HPR archive exceeded 45 MiB; migrate to sharded persistence before pushing')
+              temp.replace(dst)
+              print('Compressed HPR store size:',compressed,'bytes')
           PY
           if [ -f reports/stage86/daily/SKIP_COMMIT ]; then
             echo 'No verified completed-day ratings: skipping persistent commit'
@@ -100,7 +139,7 @@ jobs:
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add data/hpr/hpr-ratings.sqlite data/hpr/daily/
+          git add data/hpr/hpr-ratings.sqlite.gz data/hpr/daily/
           if git diff --cached --quiet; then
             echo 'No new or revised HPR evidence';exit 0
           fi
@@ -120,7 +159,7 @@ jobs:
           path: |
             reports/stage86/daily/hpr-audit.json
             reports/stage86/daily/hpr-rated-today.csv
-            data/hpr/hpr-ratings.sqlite
+            data/hpr/hpr-ratings.sqlite.gz
             data/hpr/daily/*.json
           retention-days: 90
           if-no-files-found: warn
