@@ -1,0 +1,113 @@
+name: Stage81 - UK Ireland Historical Race Type Reconciliation
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/rhp-stage81-ukie-category-reconciliation.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: rhp-stage81-ukie-category-research
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Read Racing Hot Pots repository only
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test UK Ireland race types and country identification
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PYTHONDONTWRITEBYTECODE=1
+          python scripts/stage81_ukie_category_reconciliation.py --self-test
+      - name: Retrieve verified Stage80 research overlay
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage80
+          gh run download 42725917969 --repo "$GITHUB_REPOSITORY" \
+            --name stage80-full-race-category-research-overlay --dir reports/stage80
+          test -s reports/stage80/race_category_research.sqlite
+          echo 'Read-only Stage80 input available; no production file was modified.'
+      - name: Reconcile historical UK and Irish race types
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PYTHONDONTWRITEBYTECODE=1
+          python -u scripts/stage81_ukie_category_reconciliation.py \
+            --source reports/stage80/race_category_research.sqlite \
+            --out reports/stage81
+          python - <<'PY'
+          import json,pathlib
+          s=json.loads(pathlib.Path('reports/stage81/summary.json').read_text())
+          assert s['stage']==81 and s['mode']=='READ_ONLY_RESEARCH_OVERLAY'
+          assert s['source_races_scanned'] >= 500000
+          assert s['uk_ie_races'] >= 250000
+          assert s['source_database_modified'] is False and s['frozen_model_d_modified'] is False
+          print('UK races:',s['uk_races'])
+          print('Irish races:',s['irish_races'])
+          print('UK/Irish detailed categories:',s['uk_ie_confidently_classified_races'])
+          print('Remaining UK/Irish gaps:',s['uk_ie_unclassified_or_review'])
+          print('UK/Irish corrected historical disciplines:',s['uk_ie_discipline_changed'])
+          print('Venue records excluded as foreign:',s['foreign_races_excluded'])
+          print('Uncertain venue records for review:',s['unknown_region_races_for_review'])
+          PY
+      - name: Verify frozen Model D and production remain unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git diff --quiet HEAD -- data scripts .github/workflows; then
+            git diff --name-only HEAD -- data scripts .github/workflows
+            echo 'ERROR: Unexpected change to tracked production files' >&2
+            exit 1
+          fi
+          unexpected="$(git ls-files --others --exclude-standard -- data scripts .github/workflows \
+            | grep -Ev '(^|/)__pycache__/|\.pyc$' || true)"
+          if [ -n "$unexpected" ]; then
+            printf '%s\n' "$unexpected" >&2
+            exit 1
+          fi
+          echo 'PASS: Model D, published rankings, racecards and source data untouched.'
+      - name: Upload compact research report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage81-ukie-race-type-report
+          path: |
+            reports/stage81/summary.json
+            reports/stage81/ukie_coverage_by_year.csv
+            reports/stage81/ukie_category_by_year.csv
+            reports/stage81/ukie_discipline_by_year.csv
+            reports/stage81/venue_region_inventory.csv
+            reports/stage81/unknown_venue_review.csv
+            reports/stage81/newly_recognized_sample.csv
+            reports/stage81/remaining_gaps_sample.csv
+            reports/stage81/conflicts_sample.csv
+            reports/stage81/excluded_foreign_sample.csv
+          retention-days: 90
+          if-no-files-found: warn
+      - name: Upload separate research SQLite overlay
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage81-ukie-category-research-overlay
+          path: reports/stage81/stage81_ukie_category_research.sqlite
+          compression-level: 6
+          retention-days: 90
+          if-no-files-found: error
