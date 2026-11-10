@@ -1,0 +1,234 @@
+name: Stage97 - National Hunt October-November Frozen-Information Blind Replay
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage97-nh-blind-october-2026-research
+  cancel-in-progress: false
+
+jobs:
+  blind-research:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - name: Check out full historic morning-card Git history, read-only
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned unchanged model dependencies
+        run: |
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1 kagglehub joblib beautifulsoup4
+      - name: Verify blind script safeguards and original scoring components
+        run: |
+          python -u scripts/stage97_nh_blind_oct2026.py --mode self-test
+          python -u scripts/stage95_five_model_paired_replay.py --self-test
+          python -u scripts/stage96_frozen_models_hprv2_holdout.py --self-test
+      - name: Restore original historical source cache if available
+        uses: actions/cache@v4
+        with:
+          path: |
+            reports/stage94/base/original.sqlite
+            reports/stage68/base/c_classifier_2024_stage81_v1.joblib
+            ~/.cache/kagglehub
+          key: stage94-dc-replay-base-v1-${{ hashFiles('import_historical_ukie.py') }}
+          restore-keys: |
+            stage94-dc-replay-base-v1-
+            rhp-dc-stage81-v1-
+      - name: Construct disposable research database from pinned Kaggle source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pathlib,subprocess,sys,kagglehub,sqlite3,shutil
+          path=pathlib.Path(kagglehub.dataset_download(
+            'deltaromeo/horse-racing-results-ukireland-2015-2025/versions/129'))
+          assert path.is_dir() and list(path.rglob('*.csv')), 'Missing pinned historical data'
+          base=pathlib.Path('reports/stage94/base/original.sqlite')
+          base.parent.mkdir(parents=True,exist_ok=True)
+          dest=pathlib.Path('reports/stage97/base')
+          dest.mkdir(parents=True,exist_ok=True)
+          (dest/'kaggle-path.txt').write_text(str(path))
+          if not base.is_file() or base.stat().st_size<1_000_000:
+            subprocess.run([sys.executable,'import_historical_ukie.py','--mode','import',
+              '--input',str(path),'--min-date','1988-01-01','--max-date','2026-10-07',
+              '--database',str(base),'--report',str(base.parent/'import.json')],check=True)
+          with sqlite3.connect('file:'+str(base.resolve())+'?mode=ro',uri=True) as db:
+            assert db.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+            assert db.execute('SELECT COUNT(*) FROM historical_races').fetchone()[0]>100000
+          shutil.copyfile(base,dest/'original.sqlite')
+          print('Stage97 disposable research source ready, baseline untouched')
+          PY
+      - name: Rebuild source metadata and unchanged verified 2024 race-type classifier
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/stage65m_backfill.py \
+            --baseline reports/stage97/base/original.sqlite \
+            --out reports/stage97/base --max-date 2026-11-09 \
+            --keep-candidate --skip-replay
+          python -u scripts/stage65p_enrich_race_details.py \
+            --db reports/stage97/base/backfilled_research_only.sqlite \
+            --source "$(cat reports/stage97/base/kaggle-path.txt)" \
+            --out reports/stage97/enrichment
+          python - <<'PY'
+          import hashlib
+          from scripts.rhp_stage83_dc_integrated import integrate
+          p='data/rhp-stage81-ukie-2021plus-hashes.csv.gz'
+          with open(p,'rb') as f:sha=hashlib.file_digest(f,'sha256').hexdigest()
+          assert sha=='b028ec32d2bae1d34331cda150d545b7441c9e45aa4ddb27b5ce450562288cbe'
+          integrate('reports/stage97/base/backfilled_research_only.sqlite',
+                    p,'reports/stage97/integration')
+          print('Stage97 same frozen D(c) classifier source verified')
+          PY
+      - name: Obtain immutable Stage94 research and freeze HPR versions at September 30
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage97/hpr-source
+          gh run download 42895103772 --repo "${GITHUB_REPOSITORY}" \
+            --name stage94-hpr-v2-research-42895103772 \
+            --dir reports/stage97/hpr-source
+          test -s reports/stage97/hpr-source/stage94-hpr-v2-research.csv.gz
+          python scripts/stage87_hpr_storage.py restore \
+            --dir data/hpr/shards --db reports/stage97/hpr-frozen.sqlite
+          python - <<'PY'
+          import csv,gzip,json,sqlite3,pathlib
+          root=pathlib.Path('reports/stage97')
+          summary=json.loads((root/'hpr-source/stage94-summary.json').read_text())
+          assert summary['version']=='hpr-v2-research-2026-11-10'
+          count=0
+          with gzip.open(root/'hpr-source/stage94-hpr-v2-research.csv.gz','rt',newline='',encoding='utf-8') as src:
+            reader=csv.DictReader(src)
+            with gzip.open(root/'hpr-preoct01.csv.gz','wt',newline='',encoding='utf-8') as dst:
+              writer=csv.DictWriter(dst,fieldnames=reader.fieldnames)
+              writer.writeheader()
+              for r in reader:
+                if r['date']<'2026-10-01':
+                  writer.writerow(r);count+=1
+          assert count>1000, 'Insufficient pre-cutoff HPR research records'
+          import shutil
+          shutil.rmtree(root/'hpr-source')  # Remove unfiltered post-cutoff reports before forecasting
+          with sqlite3.connect(root/'hpr-frozen.sqlite') as db:
+            full=db.execute('SELECT COUNT(*) FROM hpr_ratings').fetchone()[0]
+            db.execute('DELETE FROM hpr_ratings WHERE race_date>=?',('2026-10-01',))
+            db.commit()
+            left=db.execute('SELECT COUNT(*) FROM hpr_ratings').fetchone()[0]
+            assert left>1000 and db.execute('SELECT COUNT(*) FROM hpr_ratings WHERE race_date>=?',('2026-10-01',)).fetchone()[0]==0
+            assert db.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+          print('HPRv2 completed runs before cutoff:',count,'HPRv0 records kept:',left,'of',full)
+          PY
+      - name: Physically embargo post-September outcomes from disposable database
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import sqlite3
+          file='reports/stage97/base/backfilled_research_only.sqlite'
+          with sqlite3.connect(file) as db:
+            count=db.execute('SELECT COUNT(*) FROM historical_races WHERE race_date>=?',('2026-10-01',)).fetchone()[0]
+            db.execute('DELETE FROM historical_runs WHERE race_id IN (SELECT id FROM historical_races WHERE race_date>=?)',('2026-10-01',))
+            db.execute('DELETE FROM historical_races WHERE race_date>=?',('2026-10-01',))
+            db.commit()
+            assert db.execute('SELECT COUNT(*) FROM historical_races WHERE race_date>=?',('2026-10-01',)).fetchone()[0]==0
+            assert db.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+          print('Embargoed',count,'post-Sep30 races from disposable training database')
+          PY
+      - name: Hide test-period result files before producing any selections
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage97/sealed
+          if [ -d data/racing-results ]; then
+            mv data/racing-results reports/stage97/sealed/racing-results
+          fi
+          if [ -f data/race-results.json ]; then
+            mv data/race-results.json reports/stage97/sealed/race-results.json
+          fi
+          test ! -e data/racing-results
+          test ! -e data/race-results.json
+          python - <<'PY'
+          from pathlib import Path
+          assert not Path('data/racing-results').exists()
+          assert not Path('data/race-results.json').exists()
+          assert Path('reports/stage97/hpr-preoct01.csv.gz').exists()
+          print('Post-cutoff provider results sealed; only preoff card history accessible')
+          PY
+      - name: PREDICT all archived preoff National Hunt races using frozen September history
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/stage97_nh_blind_oct2026.py \
+            --mode predict --root . \
+            --db reports/stage97/base/backfilled_research_only.sqlite \
+            --ratings reports/stage97/hpr-frozen.sqlite \
+            --hpr reports/stage97/hpr-preoct01.csv.gz \
+            --out reports/stage97/output
+          python - <<'PY'
+          import json,pathlib
+          p=pathlib.Path('reports/stage97/output')
+          info=json.loads((p/'stage97-blind-manifest.json').read_text())
+          assert info['cutoff_exclusive']=='2026-10-01'
+          assert info['results_not_available_during_prediction']
+          assert info['nh_races']>=40, 'Too few qualified predictions; investigate coverage'
+          assert (p/'stage97-blind-rank1-rank2.csv.gz').stat().st_size>1000
+          print('FORECAST FROZEN AND HASHED:',info['nh_races'],'races',info['predictions_sha256'])
+          PY
+      - name: Reveal stored result files only AFTER the prediction checksum exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s reports/stage97/output/stage97-blind-manifest.json
+          if [ -d reports/stage97/sealed/racing-results ]; then
+            mv reports/stage97/sealed/racing-results data/racing-results
+          fi
+          if [ -f reports/stage97/sealed/race-results.json ]; then
+            mv reports/stage97/sealed/race-results.json data/race-results.json
+          fi
+          test -d data/racing-results
+          echo 'Stage97 results REVEALED after independent predictions saved and hashed'
+      - name: SETTLE immutable blind selections with verified results and starting prices
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/stage97_nh_blind_oct2026.py \
+            --mode settle --root . --out reports/stage97/output
+          python - <<'PY'
+          import json,pathlib
+          j=json.loads(pathlib.Path('reports/stage97/output/stage97-summary.json').read_text())
+          assert j['status']=='RESEARCH_ONLY_NO_LIVE_CHANGES'
+          assert j['predictions_sha256_verified_unchanged']
+          assert len(j['models'])==8 and len(j['scorecard'])==24
+          print('Stage97 completed:',j['nh_prediction_races'],'NH races, result coverage:',j['settled_race_counts'])
+          PY
+      - name: Upload full read-only National Hunt model results and source-coverage audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage97-nh-blind-oct-nov-${{ github.run_id }}
+          path: |
+            reports/stage97/output/stage97-blind-manifest.json
+            reports/stage97/output/stage97-blind-rank1-rank2.csv.gz
+            reports/stage97/output/stage97-summary.json
+            reports/stage97/output/stage97-coverage.csv
+            reports/stage97/output/stage97-scorecard.csv
+            reports/stage97/output/stage97-by-discipline.csv
+            reports/stage97/output/stage97-by-racetype.csv
+            reports/stage97/output/stage97-by-day.csv
+            reports/stage97/output/stage97-thresholds.csv
+            reports/stage97/output/stage97-all-settled-rank1-rank2.csv
+            reports/stage97/output/stage97-nh-not-predicted.csv
+          retention-days: 90
+          if-no-files-found: warn
