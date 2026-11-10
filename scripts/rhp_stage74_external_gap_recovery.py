@@ -255,7 +255,7 @@ def scan_candidates(root, today, now):
         for race in doc.get('results', []):
             if not isinstance(race, dict):
                 continue
-            if race.get('status') not in ('final', 'abandoned', 'superseded'):
+            if race.get('status') not in ('final', 'abandoned'):
                 reasons[path.stem].add('legacy_unverified_result')
             if day >= today - dt.timedelta(days=14):
                 # Focus missing person data; a known runner with either identity
@@ -436,7 +436,7 @@ def run(root=ROOT, api_key=None, max_dates=18, now=None, fetcher=get_date):
         if day not in reasons or not any(day == date or (dt.date.fromisoformat(day) + dt.timedelta(days=1)).isoformat() == date for date in checked):
             continue
         for race in doc.get('results', []):
-            if not isinstance(race, dict) or not race.get('course') or race.get('status') in ('abandoned', 'superseded'):
+            if not isinstance(race, dict) or not race.get('course') or race.get('status') == 'abandoned':
                 continue
             off = moment(race.get('off_dt') or race.get('race_time'))
             if not off:
@@ -457,7 +457,7 @@ def run(root=ROOT, api_key=None, max_dates=18, now=None, fetcher=get_date):
                     'full_field_confirmed': bool(verified_full)}
                 changes['source_matches_recorded'] += 1
                 touched.add(day)
-            if verified_full and race.get('status') not in ('final', 'abandoned', 'superseded'):
+            if verified_full and race.get('status') not in ('final', 'abandoned'):
                 race['status'] = 'final'
                 race['result_classification_source'] = 'stage74_puntersedge_full_field_confirmed'
                 changes['old_races_provenance_verified'] += 1
