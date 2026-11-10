@@ -1,0 +1,94 @@
+name: Stage93 - Ground and Distance Intelligence Research
+
+on:
+  workflow_dispatch:
+    inputs:
+      stage92_run_id:
+        description: 'Successful Stage92 run ID (blank = latest successful Stage92 run)'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage93-conditions-intelligence-research
+  cancel-in-progress: false
+
+jobs:
+  research:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout research code (read only)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify Stage93 chronology and conditions self-tests
+        run: python -u scripts/stage93_conditions_intelligence.py --self-test
+      - name: Retrieve completed Stage92 research evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN: ${{ inputs.stage92_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${SOURCE_RUN:-}" ]; then
+            SOURCE_RUN="$(gh run list --workflow stage92-performance-quality.yml \
+              --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          fi
+          if ! [[ "$SOURCE_RUN" =~ ^[0-9]+$ ]]; then
+            echo 'Stage92 source run ID not found'; exit 2
+          fi
+          # Refuse to take arbitrary user-input run IDs without success check.
+          STATE="$(gh run view "$SOURCE_RUN" --json conclusion --jq '.conclusion')"
+          if [ "$STATE" != success ]; then
+            echo "Stage92 source run must be successful, got $STATE"; exit 2
+          fi
+          mkdir -p reports/stage93/source
+          gh run download "$SOURCE_RUN" --name "stage92-performance-research-${SOURCE_RUN}" \
+            --dir reports/stage93/source
+          test -s reports/stage93/source/stage92-per-run-quality.csv.gz
+          test -s reports/stage93/source/stage92-summary.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          j=json.loads(Path('reports/stage93/source/stage92-summary.json').read_text())
+          assert j.get('stage') == 92, 'Not Stage92 data'
+          assert j.get('version') == 'stage92-performance-quality-research-v1', 'Stage92 schema changed'
+          assert j.get('counts',{}).get('output_rows',0) >= 100, 'Insufficient source runs'
+          print('Verified Stage92 input rows:',j['counts']['output_rows'])
+          PY
+      - name: Obtain verified historical sire and damsire pedigree source
+        run: |
+          python -m pip install --disable-pip-version-check 'kagglehub>=0.3,<1'
+          python - <<'PYCODE'
+          import kagglehub,pathlib
+          p=pathlib.Path(kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025/versions/129'))
+          assert p.exists() and list(p.rglob('*.csv')), 'Historical Kaggle CSV source unavailable'
+          pathlib.Path('reports/stage93/pedigree-source-path.txt').write_text(str(p))
+          print('Historical pedigree source available for exact Stage91 hash validation')
+          PYCODE
+      - name: Produce ground and trip hypotheses with strictly prior-date breeding evidence
+        run: |
+          python -u scripts/stage93_conditions_intelligence.py \
+            --input reports/stage93/source/stage92-per-run-quality.csv.gz \
+            --pedigree-source "$(cat reports/stage93/pedigree-source-path.txt)" \
+            --out reports/stage93/output
+      - name: Upload read-only ground and distance audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage93-conditions-research-${{ github.run_id }}
+          path: |
+            reports/stage93/output/stage93-summary.json
+            reports/stage93/output/stage93-review-sample.csv
+            reports/stage93/output/stage93-prerace-condition-evidence.csv.gz
+          retention-days: 90
+          if-no-files-found: warn
