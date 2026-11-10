@@ -1,0 +1,104 @@
+name: Stage94 - HPR v2 Chronological Research (Read Only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      stage92_run_id:
+        description: 'Successful Stage92 run ID (blank = latest successful)'
+        type: string
+        default: ''
+        required: false
+      stage93_run_id:
+        description: 'Successful Stage93 run ID (blank = latest successful)'
+        type: string
+        default: ''
+        required: false
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage94-hpr-v2-research
+  cancel-in-progress: false
+
+jobs:
+  research:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout research files (read only)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test Stage94 chronology and evidence boundaries
+        run: python -u scripts/stage94_hpr_v2.py --self-test
+      - name: Retrieve only successful Stage92 and Stage93 research artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN92: ${{ inputs.stage92_run_id }}
+          RUN93: ${{ inputs.stage93_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$RUN92" ]; then
+            RUN92="$(gh run list --workflow stage92-performance-quality.yml --status success \
+              --limit 1 --json databaseId --jq '.[0].databaseId')"
+          fi
+          if [ -z "$RUN93" ]; then
+            RUN93="$(gh run list --workflow stage93-conditions-intelligence.yml --status success \
+              --limit 1 --json databaseId --jq '.[0].databaseId')"
+          fi
+          for run in "$RUN92" "$RUN93"; do
+            if ! [[ "$run" =~ ^[0-9]+$ ]]; then echo "Invalid source run: $run"; exit 2; fi
+            result="$(gh run view "$run" --json conclusion --jq '.conclusion')"
+            if [ "$result" != success ]; then echo "Source run $run not successful"; exit 2; fi
+          done
+          mkdir -p reports/stage94/source92 reports/stage94/source93
+          gh run download "$RUN92" --name "stage92-performance-research-${RUN92}" \
+            --dir reports/stage94/source92
+          gh run download "$RUN93" --name "stage93-conditions-research-${RUN93}" \
+            --dir reports/stage94/source93
+          test -s reports/stage94/source92/stage92-per-run-quality.csv.gz
+          test -s reports/stage94/source93/stage93-prerace-condition-evidence.csv.gz
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p92=json.loads(Path('reports/stage94/source92/stage92-summary.json').read_text())
+          p93=json.loads(Path('reports/stage94/source93/stage93-summary.json').read_text())
+          assert p92['stage']==92 and p92['version']=='stage92-performance-quality-research-v1'
+          assert p93['stage']==93 and p93['version']=='stage93-conditions-pedigree-research-v2'
+          assert p92['counts']['output_rows']>=100 and p93['counts']['total_rows']>=100
+          assert p92['counts']['output_rows']==p93['counts']['total_rows'], 'Different source sample sizes'
+          print('Source records matched by count:',p92['counts']['output_rows'])
+          PY
+      - name: Generate experimental HPR v2 from completed races and strictly earlier conditions
+        run: |
+          python -u scripts/stage94_hpr_v2.py \
+            --stage92 reports/stage94/source92/stage92-per-run-quality.csv.gz \
+            --stage93 reports/stage94/source93/stage93-prerace-condition-evidence.csv.gz \
+            --out reports/stage94/output
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('reports/stage94/output/stage94-summary.json').read_text())
+          assert r['status']=='RESEARCH_ONLY_NO_MODEL_CHANGES'
+          assert r['counts']['output_rows']>=.98 * min(r['input_rows'].values()), 'Too many unlinked runs'
+          assert r['counts']['pre_race_rating_available']>0, 'No prior-form ratings'
+          print('Stage94 verified:',r['counts'])
+          PY
+      - name: Publish experimental HPR v2 outputs, without modifying live models
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage94-hpr-v2-research-${{ github.run_id }}
+          path: |
+            reports/stage94/output/stage94-summary.json
+            reports/stage94/output/stage94-review-sample.csv
+            reports/stage94/output/stage94-hpr-v2-research.csv.gz
+          retention-days: 90
+          if-no-files-found: warn
