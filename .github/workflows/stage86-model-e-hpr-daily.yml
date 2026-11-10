@@ -78,6 +78,26 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Never commit an empty target-day snapshot if final result data
+          # has not yet been verified. The next scheduled run will retry.
+          python - <<'PY'
+          import csv,json,pathlib
+          p=pathlib.Path('reports/stage86/daily/hpr-rated-today.csv')
+          rows=list(csv.DictReader(p.open(encoding='utf-8-sig',newline=''))) if p.exists() else []
+          report=json.loads(pathlib.Path('reports/stage86/daily/hpr-audit.json').read_text())
+          print('Verified newly scored target-day performances:',len(rows))
+          if not rows and not report.get('store_write',{}).get('revised',0):
+              pathlib.Path('reports/stage86/daily/SKIP_COMMIT').write_text('No new verifiable daily HPR scores or corrections')
+          # GitHub has a hard 100 MiB per-file limit. Stop well before this
+          # threshold; migrate to sharded persistence before growth continues.
+          db=pathlib.Path('data/hpr/hpr-ratings.sqlite')
+          if db.is_file() and db.stat().st_size>45*1024*1024:
+              raise SystemExit('HPR database >45 MiB; do not push. Implement partitioned storage.')
+          PY
+          if [ -f reports/stage86/daily/SKIP_COMMIT ]; then
+            echo 'No verified completed-day ratings: skipping persistent commit'
+            exit 0
+          fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add data/hpr/hpr-ratings.sqlite data/hpr/daily/
@@ -100,5 +120,7 @@ jobs:
           path: |
             reports/stage86/daily/hpr-audit.json
             reports/stage86/daily/hpr-rated-today.csv
+            data/hpr/hpr-ratings.sqlite
+            data/hpr/daily/*.json
           retention-days: 90
           if-no-files-found: warn
