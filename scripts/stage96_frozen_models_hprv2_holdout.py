@@ -17,7 +17,7 @@ ratings, workflows or models are changed.
 from __future__ import annotations
 import argparse,collections,csv,datetime as dt,gzip,io,json,math,pathlib,re,statistics,sys,zipfile
 
-VERSION='stage96-fixed-hprv2-oos-v1'
+VERSION='stage96-fixed-hprv2-oos-v1.1-normalized-field'
 START='2026-10-12'
 REPLAY_SEED='2026-10-11'  # Frozen Stage95 start date
 REPLAY_END='2026-11-09'  # Replay same 30-day source envelope as successful Stage95
@@ -38,8 +38,17 @@ FIELDS=('date','course','time_utc','time_local','race_id','discipline','race_typ
 
 
 def norm(v):
+ """EXACT Stage86/95 canonical horse identity (including country suffixes).
+
+ Stage95 used stage86_hpr_engine.norm, which removes trailing (IRE), (GB),
+ etc. Stage96 previously used a stricter spelling and incorrectly rejected
+ legitimately matched frozen races at the redundant post-scoring check.
+ This normalization is used only in concert with exact race/date/field checks;
+ no name-only horse-career joins are introduced.
+ """
  import unicodedata
  s=unicodedata.normalize('NFKD',str(v or '')).encode('ascii','ignore').decode().upper()
+ s=re.sub(r'\s*\((?:IRE|GB|FR|USA|GER|AUS|NZ|IT|JPN)\)\s*$','',s)
  return re.sub('[^A-Z0-9]','',s)
 
 
@@ -396,6 +405,13 @@ def self_test():
  s=outcome_metrics([{'won':1,'sp_decimal':3.,'win_probability_pct':45.},
                     {'won':0,'sp_decimal':2.,'win_probability_pct':30.}]);assert s['sp_roi_pct']==50.
  assert venue('Dundalk (AW) (IRE)')=='DUNDALK'
+ # Regression for the previously failed run: Stage86 and Stage95 both strip
+ # nationality suffixes. Never reject an already-verified exact runner field.
+ assert norm('Sea Breeze (IRE)')==norm('Sea Breeze')
+ assert norm('Sea Breeze (GB)')==norm('Sea Breeze')
+ assert norm('Sea Breeze')!=norm('Sea Breezer')
+ assert {norm(z) for z in ['Horse A (IRE)','Horse B (GB)']} == \
+        {norm(z) for z in ['Horse A','Horse B']}
  assert number('') is None
  print('PASS Stage96: fixed HPR overlay, missing neutral, probability mass, holdout gating, equal-stakes ROI')
 
