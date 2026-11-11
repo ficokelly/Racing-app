@@ -1,0 +1,147 @@
+name: Update Hot Pots selection odds
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/update-hot-pots-selection-odds.yml
+
+permissions:
+  contents: write
+  pages: write
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout current app
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Add odds to top two selections (without changing model ranks)
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import sys
+
+          path = Path('index.html')
+          html = path.read_text(encoding='utf-8')
+          if 'function selectionPrice(race,horse,status)' in html:
+              print('Odds are already installed; nothing to change.')
+              sys.exit(0)
+
+          def replace_once(old, new, label):
+              global html
+              count = html.count(old)
+              if count != 1:
+                  raise RuntimeError(f'{label}: expected one match; found {count}. No changes saved.')
+              html = html.replace(old, new, 1)
+
+          css_marker = '.rhp70-nr{color:#d98742}.rhp70-next{padding:7px;font-size:12px;color:var(--rhp-muted)}'
+          css = '''
+          /* Bookmaker odds appear beside both published Hot Pots rankings. */
+          .rhp70-pair-row .rhp70-horse{min-width:0;flex:1}
+          .rhp70-pair-row .rhp70-price{flex:none;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;max-width:132px;padding:6px 9px;border:1px solid var(--rhp-edge);background:var(--rhp-tint);border-radius:10px;text-align:right;font-variant-numeric:tabular-nums}
+          .rhp70-pair-row .rhp70-price b{font-size:17px;line-height:1.2}
+          .rhp70-pair-row .rhp70-price small{display:block;margin:3px 0 0;font-size:10px;line-height:1.2;overflow-wrap:anywhere}
+          @media(max-width:360px){.rhp70-pair-row .rhp70-price{max-width:98px;padding:6px}.rhp70-pair-row .rhp70-price b{font-size:15px}}
+          '''
+          replace_once(css_marker, css_marker+css, 'Odds badge styles')
+
+          helper = r''' // Odds are for display only: bookmaker prices never affect the frozen ranking.
+           function selectionPrice(race,horse,status){
+            if(status==='nr')return '<span class="rhp70-price"><b>NR</b><small>Withdrawn</small></span>';
+            const choices=rows.filter(x=>norm(x.horse)===norm(horse)&&courseMatchKey(x.course)===courseMatchKey(race.course)&&x.day===race.date&&Number.isFinite(x.current)&&x.current>1);
+            const minutes=s=>{const m=String(s||'').match(/^(\d{1,2}):(\d{2})$/);return m?Number(m[1])*60+Number(m[2]):null};
+            const target=minutes(race.time);
+            let matches=choices.filter(x=>x.time===race.time);
+            // If the off time moves, accept only the unique nearest race within ten minutes.
+            if(!matches.length&&target!==null){
+             const nearby=choices.map(x=>({row:x,gap:Math.abs((minutes(x.time)??-9999)-target)})).filter(x=>x.gap<=10);
+             if(nearby.length){
+              const nearest=Math.min(...nearby.map(x=>x.gap));
+              matches=nearby.filter(x=>x.gap===nearest).map(x=>x.row);
+             }
+            }
+            if(!matches.length)return '<span class="rhp70-price"><b>—</b><small>Odds unavailable</small></span>';
+            const preference=bookName(rhpGlobalBook||'Paddy Power');
+            let chosen=preference==='all'?null:matches.find(x=>x.bookmaker===preference);
+            if(!chosen){
+             const priority=['Paddy Power','Sky Bet','bet365','Coral','Ladbrokes'];
+             chosen=[...matches].sort((a,b)=>{
+              if(preference==='all')return b.current-a.current||a.bookmaker.localeCompare(b.bookmaker);
+              const ai=priority.findIndex(v=>v.toLowerCase()===String(a.bookmaker).toLowerCase());
+              const bi=priority.findIndex(v=>v.toLowerCase()===String(b.bookmaker).toLowerCase());
+              return (ai<0?999:ai)-(bi<0?999:bi)||a.bookmaker.localeCompare(b.bookmaker);
+             })[0];
+            }
+            const alternative=preference!=='all'&&chosen.bookmaker!==preference;
+            return '<span class="rhp70-price" title="'+safe('Latest published odds from '+chosen.bookmaker+(alternative?' (alternative)':''))+'"><b>'+safe(fmt(chosen.current))+'</b><small>'+safe((alternative?'Alt · ':'Odds · ')+chosen.bookmaker)+'</small></span>';
+           }
+          '''
+          replace_once(' function pairHTML(race){', helper+' function pairHTML(race){', 'Odds matching function')
+          replace_once('<span class="rhp70-rank">#${safe(x.rank)}</span><div><strong>',
+                       '<span class="rhp70-rank">#${safe(x.rank)}</span><div class="rhp70-horse"><strong>',
+                       'Horse name container')
+          replace_once("${nr?' · pending reassessment':''}</small></div></div>`;",
+                       "${nr?' · pending reassessment':''}</small></div>${selectionPrice(race,x.horse,status)}</div>`;",
+                       'Ranking and price row')
+          assert 'selectionPrice(race,x.horse,status)' in html
+          path.write_text(html, encoding='utf-8')
+          print('Updated index.html. Both ranked horses now show latest odds and bookmaker.')
+          PY
+
+      - name: Syntax and installation checks
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          html = Path('index.html').read_text(encoding='utf-8')
+          for token in ('function selectionPrice(race,horse,status)',
+                        'selectionPrice(race,x.horse,status)',
+                        'Odds unavailable', 'rhp70-price', 'Withdrawn'):
+              assert token in html, f'Missing: {token}'
+          scripts = re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>', html, flags=re.S|re.I)
+          assert scripts, 'No inline scripts found'
+          for index, script in enumerate(scripts):
+              Path(f'/tmp/hot-pots-inline-{index}.js').write_text(script, encoding='utf-8')
+          print(f'{len(scripts)} inline script(s) extracted for JS validation')
+          PY
+          for js in /tmp/hot-pots-inline-*.js; do node --check "$js"; done
+          git diff --check
+
+      - name: Save and publish update
+        shell: bash
+        run: |
+          if git diff --quiet -- index.html; then
+            echo 'App already up to date.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html
+          git commit -m 'Display bookmaker odds alongside Hot Pots selections'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: Request Pages rebuild after bot commit
+        if: success()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # GitHub does not automatically rebuild Pages for commits authored by GITHUB_TOKEN.
+          code=$(curl --silent --show-error --location --output /tmp/pages-build.json --write-out '%{http_code}' \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/pages/builds")
+          if [ "$code" = "201" ]; then
+            echo "GitHub Pages build requested successfully."
+          else
+            echo "::warning::App source was saved, but Pages rebuild returned HTTP ${code}. Check Settings > Pages or run a manual Pages rebuild."
+            cat /tmp/pages-build.json 2>/dev/null || true
+          fi
