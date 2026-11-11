@@ -1,0 +1,106 @@
+name: Stage101 - All Models Nov 5-11 Matched Comparison
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage101-nov5-11-readonly
+  cancel-in-progress: false
+
+jobs:
+  comparison:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PYTHONUNBUFFERED: '1'
+      STAGE101_DB: reports/stage101/input/stage2/historical_ukie_staging.sqlite
+      STAGE101_MAP: reports/stage101/input/stage4/all_races_with_reference_event_ids.csv
+    steps:
+      - name: Check out all Git history for authenticated pre-off snapshots
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install existing model dependencies
+        run: |
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1 \
+            pandas==2.2.3 joblib==1.4.2
+      - name: Validate supplied Stage101 script and all required model sources
+        run: |
+          test -f scripts/stage101_all_models_compare.py
+          python -m py_compile scripts/stage101_all_models_compare.py
+          python scripts/stage101_all_models_compare.py self-test
+          test -f data/strategy-historical-model.json
+          test -f data/strategy-model-b-historical.json
+          test -f data/strategy-model-c-historical.json
+          test -f data/model-performance/2026-11-06.json
+      - name: Recover original A B C feature engines from Stage22's pinned install
+        run: |
+          python scripts/stage101_all_models_compare.py install-engines
+          python -m py_compile scripts/stage16_history_model.py scripts/stage18_historical_ab.py scripts/stage19_live_b.py scripts/stage21_live_c.py scripts/stage21_publish_c.py
+      - name: Download both source artifacts from SAME successful Stage100 V2 run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage101/input/stage2 reports/stage101/input/stage4
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage2-historical-staging-database --dir reports/stage101/input/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage4-reference-named-events-and-winners --dir reports/stage101/input/stage4
+          test -s "$STAGE101_DB"
+          test -s "$STAGE101_MAP"
+          python scripts/stage101_all_models_compare.py audit-inputs --db "$STAGE101_DB" --mapping "$STAGE101_MAP"
+      - name: Download frozen Stage92 E v2 predictions (independent research reference)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p reports/stage101/reference-e92
+          gh run download 42833900420 --repo "$GITHUB_REPOSITORY" --name stage92-model-e-v2-winprob-42833900420 --dir reports/stage101/reference-e92
+          find reports/stage101/reference-e92 -name 'stage92-race-probabilities.csv' -print
+      - name: Download existing Stage99 November 11 D(c) and E balanced research profiles
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p reports/stage101/reference-stage99
+          gh run download 43026556532 --repo "$GITHUB_REPOSITORY" --name stage99-11nov-dc-and-e-balanced-43026556532 --dir reports/stage101/reference-stage99
+          test -s reports/stage101/reference-stage99/stage99-11nov-all-rank1-rank2.csv
+      - name: Restore independent historical HPR ledger (never alter original)
+        run: |
+          python scripts/stage87_hpr_storage.py restore --dir data/hpr/shards --db reports/stage101/hpr.sqlite
+      - name: Replay recovered A B C, D family, E and both ranks in isolated research mode
+        run: |
+          python scripts/stage101_all_models_compare.py compare \
+            --db "$STAGE101_DB" \
+            --mapping "$STAGE101_MAP" \
+            --ratings reports/stage101/hpr.sqlite \
+            --start 2026-11-05 --end 2026-11-11 \
+            --output reports/stage101/output
+      - name: Show comparison in GitHub job summary
+        if: always()
+        run: |
+          if test -f reports/stage101/output/README.md; then
+            cat reports/stage101/output/README.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Stage101 comparison was interrupted. Inspect the failed step; no live model files were changed.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload concise reports and individual race records
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage101-all-model-nov5-11-${{ github.run_id }}
+          path: |
+            reports/stage101/output/*.csv
+            reports/stage101/output/*.json
+            reports/stage101/output/*.md
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 6
