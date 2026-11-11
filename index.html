@@ -588,6 +588,13 @@ OneSignalDeferred.push(async function(OneSignal) {
 .rhp70-pair-row.is-nr{opacity:.75;border-style:dashed}
 .rhp70-pick,.rhp70-nr{display:inline-block;margin-left:5px;font-size:11px;font-weight:750}
 .rhp70-nr{color:#d98742}.rhp70-next{padding:7px;font-size:12px;color:var(--rhp-muted)}
+/* Bookmaker odds appear beside both published Hot Pots rankings. */
+.rhp70-pair-row .rhp70-horse{min-width:0;flex:1}
+.rhp70-pair-row .rhp70-price{flex:none;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;max-width:132px;padding:6px 9px;border:1px solid var(--rhp-edge);background:var(--rhp-tint);border-radius:10px;text-align:right;font-variant-numeric:tabular-nums}
+.rhp70-pair-row .rhp70-price b{font-size:17px;line-height:1.2}
+.rhp70-pair-row .rhp70-price small{display:block;margin:3px 0 0;font-size:10px;line-height:1.2;overflow-wrap:anywhere}
+@media(max-width:360px){.rhp70-pair-row .rhp70-price{max-width:98px;padding:6px}.rhp70-pair-row .rhp70-price b{font-size:15px}}
+
 .rhp70-changed{padding:10px;border-left:3px solid #d99e3a;border-radius:5px;background:var(--rhp-tint);font-size:13px;line-height:1.5}
 .rhp70-explain{font-size:14px;line-height:1.55}
 </style></head><body><header><div class="top"><div><div class="brand"><span class="brand-icon">♞</span><span class="brand-words">Racing <span>Hot Pots</span></span></div><div class="sub">UK & IRELAND ◆ RACING INTELLIGENCE</div></div><div class="live" id="status">Checking feed</div></div></header><main><div id="rhp-nav-overlay" class="hidden" role="dialog" aria-modal="true" aria-label="Racing Hot Pots sections"><div class="rhp-nav-sheet"><div class="rhp-nav-sheet-head"><strong>All sections</strong><button type="button" id="rhp-nav-close" class="action small outline" aria-label="Close sections menu">✕</button></div><nav id="section-buttons" aria-label="Racing Hot Pots sections"><div class="nav-column"><button type="button" data-section="racecards">🏇 Racecards</button><button type="button" data-section="markets">📈 Market Movers</button><button type="button" data-section="watchlist">⭐ Watchlist</button><button type="button" data-section="hot">🔥 Hot Trainers</button></div><div class="nav-column"><button type="button" data-section="power">🎯 Hot Pots</button><button type="button" data-section="powerresults">📊 Hot Pots Results</button><button type="button" data-section="models">📊 Models</button><button type="button" data-section="bets">📁 My Bets</button><button type="button" data-section="pnl">📊 P&amp;L</button><a class="model-z-nav" href="./model-z.html" aria-label="Model Z paper portfolio">🧪 Model Z · Paper</a><a class="model-z-nav" href="./price-aware.html" aria-label="Price-aware paper value research">💶 Value · Paper</a></div><a class="form-price-nav" href="./form-price.html" aria-label="Form versus bookmaker prices">💡 Form vs Price</a></nav></div></div><div class="rhp-main-toolbar"><h1 id="pageTitle">📈 Market Movers</h1><button type="button" id="rhp-advanced-shortcut" class="rhp-header-settings" aria-label="Open advanced controls">⚙ <span>Settings</span></button></div><div class="rhp-update-line"><div class="muted" id="asof">Loading odds…</div><button type="button" class="action outline" id="rhp-refresh-odds" aria-label="Refresh latest published odds">↻ Refresh Odds</button></div>
@@ -2714,13 +2721,43 @@ restoreRefreshFiltersAfterFeed=function(){
   const changed=rhpCFieldChanged(race,race.course,race.date,race.time);
   return changed?'<p class="rhp70-changed"><strong>Runner list changed:</strong> these are the last published rankings. A withdrawal does not remove them. The next completed assessment can update the ranks and the selection.</p>':'';
  }
+ // Odds are for display only: bookmaker prices never affect the frozen ranking.
+ function selectionPrice(race,horse,status){
+  if(status==='nr')return '<span class="rhp70-price"><b>NR</b><small>Withdrawn</small></span>';
+  const choices=rows.filter(x=>norm(x.horse)===norm(horse)&&courseMatchKey(x.course)===courseMatchKey(race.course)&&x.day===race.date&&Number.isFinite(x.current)&&x.current>1);
+  const minutes=s=>{const m=String(s||'').match(/^(\d{1,2}):(\d{2})$/);return m?Number(m[1])*60+Number(m[2]):null};
+  const target=minutes(race.time);
+  let matches=choices.filter(x=>x.time===race.time);
+  // If the off time moves, accept only the unique nearest race within ten minutes.
+  if(!matches.length&&target!==null){
+   const nearby=choices.map(x=>({row:x,gap:Math.abs((minutes(x.time)??-9999)-target)})).filter(x=>x.gap<=10);
+   if(nearby.length){
+    const nearest=Math.min(...nearby.map(x=>x.gap));
+    matches=nearby.filter(x=>x.gap===nearest).map(x=>x.row);
+   }
+  }
+  if(!matches.length)return '<span class="rhp70-price"><b>—</b><small>Odds unavailable</small></span>';
+  const preference=bookName(rhpGlobalBook||'Paddy Power');
+  let chosen=preference==='all'?null:matches.find(x=>x.bookmaker===preference);
+  if(!chosen){
+   const priority=['Paddy Power','Sky Bet','bet365','Coral','Ladbrokes'];
+   chosen=[...matches].sort((a,b)=>{
+    if(preference==='all')return b.current-a.current||a.bookmaker.localeCompare(b.bookmaker);
+    const ai=priority.findIndex(v=>v.toLowerCase()===String(a.bookmaker).toLowerCase());
+    const bi=priority.findIndex(v=>v.toLowerCase()===String(b.bookmaker).toLowerCase());
+    return (ai<0?999:ai)-(bi<0?999:bi)||a.bookmaker.localeCompare(b.bookmaker);
+   })[0];
+  }
+  const alternative=preference!=='all'&&chosen.bookmaker!==preference;
+  return '<span class="rhp70-price" title="'+safe('Latest published odds from '+chosen.bookmaker+(alternative?' (alternative)':''))+'"><b>'+safe(fmt(chosen.current))+'</b><small>'+safe((alternative?'Alt · ':'Odds · ')+chosen.bookmaker)+'</small></span>';
+ }
  function pairHTML(race){
   const ranks=ordered(race),top=ranks.slice(0,2);
   if(!top.length)return '<p class="hint">Waiting for a published rank #1 and #2. No ranking is being guessed from odds.</p>';
   const rows=top.map(x=>{
    const status=cardState(race,x.horse),nr=status==='nr';
    const selected=race.selection_status==='RESEARCH_ONLY'&&norm(race.selection?.horse)===norm(x.horse);
-   return `<div class="rhp70-pair-row${nr?' is-nr':''}"><span class="rhp70-rank">#${safe(x.rank)}</span><div><strong>${safe(x.horse)}</strong>${nr?' <span class="rhp70-nr">NR · withdrawn</span>':''}${selected?' <span class="rhp70-pick">Model selection</span>':''}<small>${safe(x.rank===1?'Highest in this published ranking':'Second in this published ranking')}${nr?' · pending reassessment':''}</small></div></div>`;
+   return `<div class="rhp70-pair-row${nr?' is-nr':''}"><span class="rhp70-rank">#${safe(x.rank)}</span><div class="rhp70-horse"><strong>${safe(x.horse)}</strong>${nr?' <span class="rhp70-nr">NR · withdrawn</span>':''}${selected?' <span class="rhp70-pick">Model selection</span>':''}<small>${safe(x.rank===1?'Highest in this published ranking':'Second in this published ranking')}${nr?' · pending reassessment':''}</small></div>${selectionPrice(race,x.horse,status)}</div>`;
   });
   const withdrawnInTwo=top.some(x=>cardState(race,x.horse)==='nr');
   if(withdrawnInTwo){
