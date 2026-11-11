@@ -1,0 +1,260 @@
+name: Stage100 V2 - Recover original A B C shared history
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '10 4 * * 0' # V2 validated weekly rebuild; older V1 can be disabled after success
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage100-abc-shared-source
+  cancel-in-progress: false
+
+jobs:
+  restore-and-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - name: Read repository and original morning snapshot history without edits
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned historical downloader and run importer tests
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1 \
+            kagglehub joblib beautifulsoup4
+          python -m unittest -v test_stage2.py
+          python -m py_compile scripts/stage65p_enrich_race_details.py
+          python -u scripts/rhp_stage83_dc_integrated.py --self-test
+
+      - name: Restore Kaggle v129 long-term 1988 onward historical database
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage100/base reports/stage100/stage2 reports/stage100/audit
+          python - <<'PY'
+          import kagglehub,pathlib,subprocess,sys,sqlite3,json
+          root=pathlib.Path('reports/stage100')
+          data=pathlib.Path(kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025/versions/129'))
+          if not data.is_dir() or not list(data.rglob('*.csv')):
+              raise SystemExit('Pinned v129 source missing; refuse alternate unpinned dataset')
+          (root/'base/kaggle-path.txt').write_text(str(data))
+          db=root/'base/longterm_v129.sqlite'
+          subprocess.run([sys.executable,'import_historical_ukie.py','--mode','import',
+              '--input',str(data),'--min-date','1988-01-01','--max-date','2026-10-07',
+              '--database',str(db),'--report',str(root/'audit/stage2-import.json')],check=True)
+          with sqlite3.connect('file:'+str(db.resolve())+'?mode=ro',uri=True) as con:
+              assert con.execute('pragma quick_check').fetchone()[0]=='ok'
+              races=con.execute('select count(*) from historical_races').fetchone()[0]
+              runs=con.execute('select count(*) from historical_runs').fetchone()[0]
+              first,last=con.execute('select min(race_date),max(race_date) from historical_races').fetchone()
+          if races<350_000 or runs<3_000_000 or first>'1988-12-31' or last<'2025-01-01':
+              raise SystemExit(f'Historical coverage inadequate: {races=} {runs=} {first=} {last=}')
+          print('Original source imported',races,'races',runs,'runs',first,last,flush=True)
+          PY
+
+      - name: Integrate verified recent Hot Pots result metadata and Stage81 classifications
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Stage65M adds only individually verifiable result fields. It does NOT
+          # guess missing trainers, jockeys, identities, or starting prices.
+          python -u scripts/stage65m_backfill.py \
+            --baseline reports/stage100/base/longterm_v129.sqlite \
+            --out reports/stage100/backfill --max-date "$(date -u -d yesterday +%F)" \
+            --keep-candidate --skip-replay
+          python -u scripts/stage65p_enrich_race_details.py \
+            --db reports/stage100/backfill/backfilled_research_only.sqlite \
+            --source "$(cat reports/stage100/base/kaggle-path.txt)" \
+            --out reports/stage100/audit/race-details
+          python - <<'PY'
+          import hashlib,json,pathlib,shutil
+          from scripts.rhp_stage83_dc_integrated import integrate
+          overlay=pathlib.Path('data/rhp-stage81-ukie-2021plus-hashes.csv.gz')
+          sha=hashlib.sha256(overlay.read_bytes()).hexdigest()
+          frozen_stage97='b028ec32d2bae1d34331cda150d545b7441c9e45aa4ddb27b5ce450562288cbe'
+          if sha!=frozen_stage97:raise RuntimeError('Stage81 overlay changed since verified Stage97 source. Audit first.')
+          candidate=pathlib.Path('reports/stage100/backfill/backfilled_research_only.sqlite')
+          evidence=integrate(str(candidate),str(overlay),'reports/stage100/audit/stage81')
+          shutil.move(str(candidate),'reports/stage100/stage2/historical_ukie_staging.sqlite')
+          pathlib.Path('reports/stage100/base/longterm_v129.sqlite').unlink(missing_ok=True)
+          print('Released duplicate database files before Stage4 mapping')
+          print('Validated historical race-type sidecar records:',evidence['counts']['verified_records_applied'])
+          PY
+
+      - name: Audit recent provider results without filling missing form fields by guesswork
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This is NOT a replacement for a full runner-form history; the recent
+          # PuntersEdge feed lacks many trainers/jockeys/weights/margins.
+          mkdir -p reports/stage100/provider reports/stage100/audit
+          python - <<'PY'
+          import json,os,subprocess,pathlib
+          repo=os.environ['GITHUB_REPOSITORY']
+          obj=json.loads(subprocess.check_output(['gh','api',f'repos/{repo}/actions/artifacts?name=stage65c-ukie-form-archive&per_page=100'],text=True))
+          matches=[x for x in obj.get('artifacts',[]) if not x.get('expired') and x['name']=='stage65c-ukie-form-archive']
+          if not matches:raise SystemExit('Missing Stage65C verified recent-results archive; do not silently claim complete recent coverage.')
+          a=max(matches,key=lambda x:x['created_at'])
+          subprocess.run(['gh','run','download',str(a['workflow_run']['id']),'--repo',repo,'--name',a['name'],'--dir','reports/stage100/provider'],check=True)
+          p=pathlib.Path('reports/stage100/provider/stage65c_summary.json')
+          if not p.exists():raise SystemExit('Stage65C coverage report absent')
+          d=json.loads(p.read_text())
+          if d.get('status') not in ('RECOVERY_AUDIT_NOT_FULL_VERIFICATION','COMPLETE') or d.get('race_records',0)<900:
+              raise SystemExit('Recent PuntersEdge archive lacks expected result coverage')
+          report={'provider_artifact_run':a['workflow_run']['id'],'provider_artifact_created':a['created_at'],
+                  'provider_result_races':d.get('race_records'), 'provider_window':[d.get('since'),d.get('until')],
+                  'provider_status':d.get('status'),
+                  'policy':'Recent final results are reference data. Unknown trainer, jockey, weight and beaten-length fields are never imputed into A/B/C training.'}
+          pathlib.Path('reports/stage100/audit/recent-provider-audit.json').write_text(json.dumps(report,indent=2)+'\n')
+          print(json.dumps(report,indent=2),flush=True)
+          PY
+
+      - name: Assert shared Stage2 schema and Stage25 compatibility before publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Stage24 prepares the original Model A feature engine in-place.
+          # Stage100 V1 failed because this runtime file is GENERATED by the
+          # legacy Stage13/18 workflows and is absent from Git checkout.
+          # Restore the exact Stage18 embedded engine in this disposable job.
+          python - <<'PY_STAGE100_ENGINE'
+          import base64,gzip,pathlib,re,hashlib
+          wf=pathlib.Path('.github/workflows/stage18-historical-ab.yml')
+          if not wf.is_file():raise SystemExit('Original Stage18 engine source is missing')
+          text=wf.read_text(encoding='utf-8')
+          start="pathlib.Path('scripts/stage16_history_model.py').write_bytes(gzip.decompress(base64.b64decode('''"
+          if text.count(start)!=1:raise SystemExit('Stage18 historical engine changed unexpectedly; refusing incompatible bootstrap')
+          source=text.split(start,1)[1].split("'''",1)[0]
+          if not re.fullmatch(r'[A-Za-z0-9+/=\s]+',source):raise SystemExit('Invalid Stage18 engine encoding')
+          payload=gzip.decompress(base64.b64decode(source))
+          if b'def ' not in payload or len(payload)<3000:
+              raise SystemExit('Decoded historical engine is not valid Python source')
+          destination=pathlib.Path('scripts/stage16_history_model.py')
+          destination.write_bytes(payload)
+          print('Installed original Model A feature engine from Stage18:',
+                len(payload),'bytes, sha256=',hashlib.sha256(payload).hexdigest(),flush=True)
+          PY_STAGE100_ENGINE
+          python -m py_compile scripts/stage16_history_model.py
+          python -u scripts/stage24_history_integrity.py self-test
+          # Rehearse the exact historical integrity preparation required by
+          # original Model A, using a separate disposable copy of the database.
+          # Never let the compatibility test alter the published shared source.
+          cp reports/stage100/stage2/historical_ukie_staging.sqlite \
+            "$RUNNER_TEMP/stage100-history-compatibility.sqlite"
+          python -u scripts/stage24_history_integrity.py prepare \
+            --db "$RUNNER_TEMP/stage100-history-compatibility.sqlite" \
+            --repo . --strict --assert-form
+          # Never publish the temporary, compatibility-patched copy.
+          rm -f "$RUNNER_TEMP/stage100-history-compatibility.sqlite"
+          python - <<'PY'
+          import sqlite3,pathlib,json,hashlib
+          db=pathlib.Path('reports/stage100/stage2/historical_ukie_staging.sqlite')
+          con=sqlite3.connect('file:'+str(db.resolve())+'?mode=ro',uri=True)
+          if con.execute('pragma quick_check').fetchone()[0]!='ok':raise SystemExit('Candidate SQLite integrity check failed')
+          expected={'historical_races','historical_runs','data_provenance','stage65p_race_details','stage83_dc_verified_types'}
+          tables={x[0] for x in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+          if expected-tables:raise SystemExit('Missing A/B/C source tables: '+str(expected-tables))
+          rcols={x[1] for x in con.execute('pragma table_info(historical_races)')}
+          ucols={x[1] for x in con.execute('pragma table_info(historical_runs)')}
+          needr={'id','race_date','course','race_type','surface','distance_f','going','race_class'}
+          needu={'race_id','horse_name','horse_name_norm','horse_country','trainer','jockey','finish_pos','sp_decimal','official_rating'}
+          if needr-rcols or needu-ucols:raise SystemExit('Schema incompatible with A/B/C historical engines')
+          races=con.execute('select count(*) from historical_races').fetchone()[0]
+          runners=con.execute('select count(*) from historical_runs').fetchone()[0]
+          oldest,newest=con.execute('select min(race_date),max(race_date) from historical_races').fetchone()
+          verified=con.execute('select count(*) from stage83_dc_verified_types').fetchone()[0]
+          if races<350_000 or runners<3_000_000 or oldest>'1988-12-31' or newest<'2026-10-07' or verified<10_000:
+              raise SystemExit(f'Refusing incomplete shared source: {races=} {runners=} {oldest=} {newest=} {verified=}')
+          result={'status':'V2_DATABASE_VALIDATED_FOR_ARTIFACT_PUBLICATION','models_supported':['A','B','C'],
+                  'race_count':races,'runner_count':runners,'first_date':oldest,'last_date':newest,
+                  'stage81_verified_race_type_records':verified,
+                  'sha256':hashlib.file_digest(db.open('rb'),'sha256').hexdigest(),
+                  'source':'Pinned Kaggle v129 + audited Hot Pots Stage65M recent-race recovery + Stage65P race names + verified Stage81 race types',
+                  'model_weights_changed':False,'production_data_mutated':False,
+                  'caveats':['No unknown trainer or jockey values fabricated',
+                            'Provider SPs and result statuses alone do not constitute detailed historical horse form',
+                            'Running A/B/C will retrain or recalculate as required by their existing workflows',
+                            'Old model predictions must remain immutable for fair before/after comparisons',
+                  'The original Stage16 feature engine was restored only in the disposable Actions workspace']}
+          pathlib.Path('reports/stage100/audit/shared-history-manifest.json').write_text(json.dumps(result,indent=2)+'\n')
+          print(json.dumps(result,indent=2),flush=True)
+          PY
+
+      # Publish the audited shared SQLite BEFORE the slower named-race mapping.
+      # A late Stage4 failure must not discard the full historical rebuild.
+      - name: Upload original A B C compatible shared historical database
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage2-historical-staging-database
+          path: reports/stage100/stage2/historical_ukie_staging.sqlite
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
+      - name: Recreate Stage4 event identity mapping for independent B and C
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage100/stage4
+          python -u stage4_link_named_races.py \
+            --db reports/stage100/stage2/historical_ukie_staging.sqlite \
+            --source "$(cat reports/stage100/base/kaggle-path.txt)" \
+            --out reports/stage100/audit/stage4_link
+          python -u stage4_match_all_recurring_races.py \
+            --index reports/stage100/audit/stage4_link/named_race_index.csv \
+            --seed stage4_seed_known_events.csv \
+            --out reports/stage100/audit/stage4_match
+          python -u .github/workflows/stage4_apply_reference_registry.py \
+            --input reports/stage100/audit/stage4_match/all_races_with_event_ids.csv \
+            --registry .github/workflows/stage4_reference_race_registry.csv \
+            --out reports/stage100/stage4
+          python - <<'PY'
+          import csv,pathlib,json
+          p=pathlib.Path('reports/stage100/stage4/all_races_with_reference_event_ids.csv')
+          if not p.is_file():raise SystemExit('B/C required named-race mapping missing')
+          with p.open(encoding='utf-8-sig',newline='') as f:
+              n=sum(1 for _ in csv.DictReader(f))
+          if n<350_000:raise SystemExit(f'Refusing incomplete Stage4 named-race map: {n} rows')
+          print('Stage4 mapping for original A/B/C source:',n,'races')
+          PY
+
+      - name: Upload original A B C compatible named-event mapping
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage4-reference-named-events-and-winners
+          path: reports/stage100/stage4/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
+      - name: Publish source coverage and failure diagnostics, never live predictions
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage100-abc-shared-history-recovery-audit-${{ github.run_id }}
+          path: |
+            reports/stage100/audit/shared-history-manifest.json
+            reports/stage100/audit/stage2-import.json
+            data/history-integrity-audit.json
+            reports/stage100/backfill/backfill_summary.json
+            reports/stage100/backfill/backfill_audit.csv
+            reports/stage100/audit/recent-provider-audit.json
+            reports/stage100/audit/stage81/integration_audit.json
+            reports/stage100/audit/stage4_link/identity_link_audit.json
+            reports/stage100/audit/stage4_match/identity_audit.json
+            reports/stage100/stage4/reference_expansion_audit.json
+          if-no-files-found: warn
+          retention-days: 90
