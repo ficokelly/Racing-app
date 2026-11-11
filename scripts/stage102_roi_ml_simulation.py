@@ -588,9 +588,9 @@ def run(args):
  prices=PriceArchive(ROOT).load()
  group,rejections,counts=gather_candidates(entries,abc,de,prices)
  issues.extend({'date':d,'course':c,'time':t,'model':m,'reason':why} for d,c,t,m,why in rejections)
- rows,audit=run_walkforward(group)
+ rows,audit,accuracy=run_walkforward(group)
  if not rows:raise RuntimeError('No matched modeled/priced races')
- summary_output(rows,audit,issues,counts,prices.audit,args.output)
+ summary_output(rows,audit,accuracy,issues,counts,prices.audit,args.output)
 
 
 def self_test():
@@ -623,8 +623,8 @@ def self_test():
 def main():
  p=argparse.ArgumentParser(description=__doc__);sub=p.add_subparsers(dest='cmd',required=True)
  sub.add_parser('self-test')
- run=sub.add_parser('compare');run.add_argument('--db',required=True);run.add_argument('--mapping',required=True)
- run.add_argument('--ratings',required=True);run.add_argument('--output',default='reports/stage102/output')
+ compare_parser=sub.add_parser('compare');compare_parser.add_argument('--db',required=True);compare_parser.add_argument('--mapping',required=True)
+ compare_parser.add_argument('--ratings',required=True);compare_parser.add_argument('--output',default='reports/stage102/output')
  a=p.parse_args()
  if a.cmd=='self-test':self_test()
  else:run(a)
