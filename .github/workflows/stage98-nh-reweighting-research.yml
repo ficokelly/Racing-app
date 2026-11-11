@@ -1,0 +1,201 @@
+name: Stage98 - National Hunt D(c) E No HPR Full Weight Simulation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage98-nh-full-reweighting-research
+  cancel-in-progress: false
+
+jobs:
+  frozen-weight-research:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - name: Checkout full original preoff Git history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install same frozen model dependencies as Stage97
+        run: |
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1 kagglehub joblib beautifulsoup4
+      - name: Check new simulator and existing stage97 scoring contract
+        run: |
+          python -u scripts/stage98_nh_weight_grid_replay.py --mode self-test
+          python -u scripts/stage97_nh_blind_oct2026.py --mode self-test
+          python -u scripts/stage95_five_model_paired_replay.py --self-test
+      - name: Restore immutable original historical database cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            reports/stage94/base/original.sqlite
+            reports/stage68/base/c_classifier_2024_stage81_v1.joblib
+            ~/.cache/kagglehub
+          key: stage94-dc-replay-base-v1-${{ hashFiles('import_historical_ukie.py') }}
+          restore-keys: |
+            stage94-dc-replay-base-v1-
+            rhp-dc-stage81-v1-
+      - name: Rebuild Kaggle pinned v129 research source exactly as Stage97
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pathlib,subprocess,sys,kagglehub,sqlite3,shutil
+          path=pathlib.Path(kagglehub.dataset_download(
+            'deltaromeo/horse-racing-results-ukireland-2015-2025/versions/129'))
+          assert path.is_dir() and list(path.rglob('*.csv'))
+          base=pathlib.Path('reports/stage94/base/original.sqlite')
+          base.parent.mkdir(parents=True,exist_ok=True)
+          dest=pathlib.Path('reports/stage98/base')
+          dest.mkdir(parents=True,exist_ok=True)
+          (dest/'kaggle-path.txt').write_text(str(path))
+          if not base.is_file() or base.stat().st_size<1_000_000:
+            subprocess.run([sys.executable,'import_historical_ukie.py','--mode','import',
+              '--input',str(path),'--min-date','1988-01-01','--max-date','2026-10-07',
+              '--database',str(base),'--report',str(base.parent/'import.json')],check=True)
+          with sqlite3.connect('file:'+str(base.resolve())+'?mode=ro',uri=True) as db:
+            assert db.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+            assert db.execute('SELECT COUNT(*) FROM historical_races').fetchone()[0]>100000
+          shutil.copyfile(base,dest/'original.sqlite')
+          print('Identical Stage97 Kaggle v129 source restored',flush=True)
+          PY
+      - name: Reconstruct unchanged Stage97 metadata and original race-type classifier
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/stage65m_backfill.py \
+            --baseline reports/stage98/base/original.sqlite \
+            --out reports/stage98/base --max-date 2026-11-09 \
+            --keep-candidate --skip-replay
+          python -u scripts/stage65p_enrich_race_details.py \
+            --db reports/stage98/base/backfilled_research_only.sqlite \
+            --source "$(cat reports/stage98/base/kaggle-path.txt)" \
+            --out reports/stage98/enrichment
+          python - <<'PY'
+          import hashlib,sqlite3,pathlib
+          from scripts.rhp_stage83_dc_integrated import integrate
+          p='data/rhp-stage81-ukie-2021plus-hashes.csv.gz'
+          with open(p,'rb') as f:sha=hashlib.file_digest(f,'sha256').hexdigest()
+          assert sha=='b028ec32d2bae1d34331cda150d545b7441c9e45aa4ddb27b5ce450562288cbe'
+          integrate('reports/stage98/base/backfilled_research_only.sqlite',
+                    p,'reports/stage98/integration')
+          p=pathlib.Path('reports/stage98/empty-hpr.sqlite')
+          p.parent.mkdir(parents=True,exist_ok=True)
+          with sqlite3.connect(p) as db:
+            db.execute('CREATE TABLE IF NOT EXISTS hpr_ratings (race_date TEXT)')
+          print('No old or new HPR scores loaded into these two test variants')
+          PY
+      - name: Physically embargo every result from 1 October onwards
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import sqlite3
+          file='reports/stage98/base/backfilled_research_only.sqlite'
+          with sqlite3.connect(file) as db:
+            count=db.execute('SELECT COUNT(*) FROM historical_races WHERE race_date>=?',('2026-10-01',)).fetchone()[0]
+            db.execute('DELETE FROM historical_runs WHERE race_id IN (SELECT id FROM historical_races WHERE race_date>=?)',('2026-10-01',))
+            db.execute('DELETE FROM historical_races WHERE race_date>=?',('2026-10-01',))
+            db.commit()
+            assert db.execute('SELECT COUNT(*) FROM historical_races WHERE race_date>=?',('2026-10-01',)).fetchone()[0]==0
+            assert db.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+          print('Embargoed',count,'post-cutoff races')
+          PY
+      - name: Seal result files away BEFORE multi-runner weight reconstruction
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage98/sealed
+          if [ -d data/racing-results ]; then mv data/racing-results reports/stage98/sealed/racing-results; fi
+          if [ -f data/race-results.json ]; then mv data/race-results.json reports/stage98/sealed/race-results.json; fi
+          test ! -e data/racing-results
+          test ! -e data/race-results.json
+          echo 'No post-cutoff results accessible during prediction'
+      - name: PREDICT reconstructed D C E source pillars for all Stage97 preoff races
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/stage98_nh_weight_grid_replay.py \
+            --mode predict --root . \
+            --db reports/stage98/base/backfilled_research_only.sqlite \
+            --ratings reports/stage98/empty-hpr.sqlite \
+            --out reports/stage98/output
+          python - <<'PY'
+          import pathlib,hashlib,json
+          root=pathlib.Path('reports/stage98/output')
+          m=json.loads((root/'stage98-blind-manifest.json').read_text())
+          assert m['information_blind'] and m['no_outcomes_visible_at_prediction']
+          assert m['nh_races']==218, 'Coverage changed from Stage97; refuse mismatched trial'
+          p=root/'stage98-blind-all-runner-features.jsonl.gz'
+          assert hashlib.sha256(p.read_bytes()).hexdigest()==m['features_sha256']
+          print('BEFORE REVEAL: sealed',m['nh_races'],'full-runner race features',m['features_sha256'])
+          PY
+      - name: Reveal historical results only after immutable features have been sealed
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s reports/stage98/output/stage98-blind-manifest.json
+          if [ -d reports/stage98/sealed/racing-results ]; then mv reports/stage98/sealed/racing-results data/racing-results; fi
+          if [ -f reports/stage98/sealed/race-results.json ]; then mv reports/stage98/sealed/race-results.json data/race-results.json; fi
+          test -d data/racing-results
+          echo 'Recorded results only now available for retrospective settlement'
+      - name: Download pinned original Stage97 blind predictions to verify unchanged baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage98/reference
+          gh run download 42926669840 --repo "${GITHUB_REPOSITORY}" \
+            --name stage97-nh-blind-oct-nov-42926669840 \
+            --dir reports/stage98/reference
+          test -s reports/stage98/reference/stage97-blind-rank1-rank2.csv.gz
+          test -s reports/stage98/reference/stage97-blind-manifest.json
+      - name: SETTLE all new weight profiles on identical Stage97 outcomes with chronological holdout
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/stage98_nh_weight_grid_replay.py \
+            --mode settle --root . \
+            --out reports/stage98/output \
+            --reference reports/stage98/reference
+          python - <<'PY'
+          import json,pathlib
+          p=pathlib.Path('reports/stage98/output/stage98-summary.json')
+          report=json.loads(p.read_text())
+          assert report['Stage97_baseline_reproduced']
+          assert report['total_preoff_races']==218
+          assert report['heldout_verified_races']>35
+          print('Stage98 evaluation passed:',report['candidate_count'],'candidate profiles')
+          PY
+      - name: Upload research report or failure diagnostics without changing production models
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage98-nh-full-weight-simulation-${{ github.run_id }}
+          path: |
+            reports/stage98/output/stage98-blind-manifest.json
+            reports/stage98/output/stage98-blind-all-runner-features.jsonl.gz
+            reports/stage98/output/stage98-baseline-unsettled.csv
+            reports/stage98/output/stage98-reproducibility.json
+            reports/stage98/output/stage98-summary.json
+            reports/stage98/output/stage98-candidates.csv
+            reports/stage98/output/stage98-baseline-scorecard.csv
+            reports/stage98/output/stage98-optimal-profiles-by-race-type.csv
+            reports/stage98/output/stage98-combination-scorecard.csv
+            reports/stage98/output/stage98-profile-leaderboards.csv
+            reports/stage98/output/stage98-combined-rank1-selections.csv
+            reports/stage98/output/stage98-daily-combinations.csv
+            reports/stage98/output/stage98-missing-runner-sps.csv
+          if-no-files-found: warn
+          retention-days: 90
