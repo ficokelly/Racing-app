@@ -1,0 +1,433 @@
+name: Stage99 - Today NH Frozen Dc and E Balanced Selections (11 Nov 2026)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage99-today-nh-dc-e-balanced-20261111
+  cancel-in-progress: false
+
+jobs:
+  frozen-today-predictions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout current racecards and unchanged research scoring modules
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned Stage98 research dependencies
+        run: |
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1 kagglehub joblib beautifulsoup4
+      - name: Check today preoff card immediately before costly historical rebuild
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,datetime as dt,pathlib
+          card=json.loads(pathlib.Path('data/racecards.json').read_text())
+          stamp=dt.datetime.fromisoformat(card['collected_at'].replace('Z','+00:00'))
+          assert stamp.tzinfo is not None and stamp.date().isoformat()=='2026-11-11', '11 November racecard missing'
+          assert stamp.astimezone(dt.timezone.utc).time()<=dt.time(9,45), 'Post-09:45 card violates Stage97 information cutoff'
+          assert len([x for x in card.get('runners',[]) if x.get('date')=='2026-11-11'])>=100, 'Card contains too few runners'
+          print('Current same-day card verified:',stamp, len(card['runners']))
+          PY
+      - name: Download pinned Stage98 balanced weights and 218-race original manifest
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage99/reference
+          gh run download 42944089042 --repo "${GITHUB_REPOSITORY}" \
+            --name stage98-verified-recovery-v5-42944089042 \
+            --dir reports/stage99/reference
+          test -s reports/stage99/reference/stage98-optimal-profiles-by-race-type.csv
+          test -s reports/stage99/reference/stage98-blind-manifest.json
+      - name: Install single-use Stage99 research scorer and run regression checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage99
+          cat > reports/stage99/stage99_today_research.py <<'STAGE99_PY'
+          #!/usr/bin/env python3
+          """Stage99: score 11 Nov 2026 National Hunt racecards with Stage97/98 unchanged inputs.
+
+          Research-only: original D(c) Stage98 baseline and Stage98 E BALANCED
+          race-type-specific combinations. Historical source frozen at 2026-09-30;
+          current declared card from Racing Hot Pots; no price, result, or post-race
+          rating used. Scores are NOT calibrated winning probabilities.
+          """
+          from __future__ import annotations
+          import collections,csv,datetime as dt,hashlib,json,pathlib,sqlite3,statistics,sys
+          import numpy as np
+
+          # Work directly with precisely the same research modules used by Stages97/98.
+          sys.path.insert(0,'scripts')
+          import stage97_nh_blind_oct2026 as S97
+          import stage98_nh_weight_grid_replay as S98
+          import stage86_hpr_engine as H
+          import stage38_model_dz_live as D
+          import stage65p_race_type_c_only as C
+          import stage92_model_e_winprob as E
+          import stage94_dc_probability_replay as S94
+
+          TARGET='2026-11-11'
+          CUT='2026-10-01'
+          MODELS=(S98.MODEL_D,S98.MODEL_E)
+          BASELINE='DC__FROZEN_D__C25'
+          COLUMN_NAMES=['date','off_utc','course','race_type','discipline','race_name',
+                        'race_id','field_size','model','rank','horse','research_setting',
+                        'profile_fit_group','snapshot_collected_utc','source_history_through','racecard_sha256']
+
+
+          def corrected_weights(profile_name,disc,profile_map):
+              """Exact verified V5 fix: jumps ground boost also applies to NH Flat."""
+              w={k:float(profile_map[profile_name][k]) for k in S98.PILLARS}
+              w['draw']=0.0
+              if disc=='NH_FLAT':w['jumping']=0.0
+              if profile_name!='FROZEN_D':w['ground']*=1.4
+              denom=sum(w.values())
+              if denom<=0:raise RuntimeError('Empty pillar weights')
+              return np.asarray([w[k]/denom for k in S98.PILLARS],dtype=float)
+
+
+          def verify_weights():
+              d = S98.profiles([.1393,.0896,.056,.1777,.1225,.1117,.2503,.0528])
+              for kind, expected_kind in [('HURDLE','Jumps'),('CHASE','Jumps'),('NH_FLAT','Jumps')]:
+                  expected=E.weights('people_heavy',expected_kind)
+                  if kind=='NH_FLAT':
+                      expected['jumping']=0
+                      total=sum(expected.values())
+                      expected={k:v/total for k,v in expected.items()}
+                  observed=corrected_weights('people_heavy',kind,d)
+                  assert np.allclose(observed,[expected[k] for k in S98.PILLARS],atol=1e-12)
+              assert corrected_weights('FROZEN_D','HURDLE',d).shape==(8,)
+              return d
+
+
+          def load_stage98_profiles(csv_path):
+              with open(csv_path,encoding='utf-8',newline='') as f:
+                  rows=list(csv.DictReader(f))
+              matches=[r for r in rows if r['model']==S98.MODEL_E and r['objective']=='BALANCED']
+              if not matches:raise RuntimeError('Stage98 E BALANCED profile choices not in pinned artifact')
+              profiles={r['group']:r for r in matches}
+              assert 'OVERALL_NH' in profiles and 'TYPE:Handicap Hurdle' in profiles
+              valid={r['id'] for r in S98.candidates()}
+              assert all(row['selected_candidate'] in valid for row in matches)
+              return profiles
+
+
+          def fit_profile(race, selected):
+              typ='TYPE:'+race['race_type']
+              label=typ if typ in selected else race['discipline']
+              if label not in selected:label='OVERALL_NH'
+              return selected[label]
+
+
+          def rank_output(race, choice, map_,model,fit,metadata):
+              indices=S98.ranks(race,choice,map_)
+              out=[]
+              for pos,i in enumerate(indices[:2],start=1):
+                  out.append({
+                    'date':race['date'], 'off_utc':race['time_utc'],
+                    'course':race['course'],'race_type':race['race_type'],
+                    'discipline':race['discipline'],'race_name':race['race_name'],
+                    'race_id':race['race_id'],'field_size':len(race['horses']),
+                    'model':model,'rank':pos,'horse':race['horses'][i],
+                    'research_setting':choice['id'],'profile_fit_group':fit,
+                    'snapshot_collected_utc':metadata['collected_at'],
+                    'source_history_through':'2026-09-30',
+                    'racecard_sha256':metadata['sha256'],
+                  })
+              return out
+
+
+          def get_current_cards(root):
+              path=root/'data/racecards.json'
+              raw=path.read_bytes()
+              obj=json.loads(raw)
+              when=dt.datetime.fromisoformat(str(obj['collected_at']).replace('Z','+00:00'))
+              if when.tzinfo is None:raise RuntimeError('Racecards have no timezone')
+              when=when.astimezone(dt.timezone.utc)
+              if when.date().isoformat()!=TARGET:
+                  raise RuntimeError('Racecards are not dated 11 November 2026: '+str(when))
+              # Stage97 used a same-day 09:45 UTC archive cutoff. Preserve that boundary.
+              if when.time()>dt.time(9,45):
+                  raise RuntimeError('Racecards were collected after Stage97 09:45 UTC preoff cutoff; stop rather than silently change test protocol')
+              cards=[z for z in H.flat_cards(obj)
+                     if str(H.day(z.get('date') or z.get('race_time')))==TARGET]
+              if len(cards)<20:raise RuntimeError('Today declared card unexpectedly incomplete')
+              groups,rejected=S97.model_groups(TARGET,cards)
+              return groups,rejected,{'collected_at':obj['collected_at'],'sha256':hashlib.sha256(raw).hexdigest(),
+                                      'total_today_card_runners':len(cards),'nh_groups':len(groups)}
+
+
+          def score_today(root,db,ratings,research_dir,out):
+              root,db,ratings,research_dir,out=map(pathlib.Path,(root,db,ratings,research_dir,out))
+              out.mkdir(parents=True,exist_ok=True)
+              if not db.exists():raise RuntimeError('No Stage98 research DB')
+              with sqlite3.connect('file:'+str(db.resolve())+'?mode=ro',uri=True) as conn:
+                  assert conn.execute('SELECT COUNT(*) FROM historical_races WHERE race_date>=?',(CUT,)).fetchone()[0]==0
+                  assert conn.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+              baseline_manifest=json.loads((research_dir/'stage98-blind-manifest.json').read_text())
+              if baseline_manifest['nh_races']!=218 or baseline_manifest['cutoff_exclusive']!=CUT:
+                  raise RuntimeError('Wrong Stage98 benchmark artifact')
+              source_hash=hashlib.sha256((research_dir/'stage98-optimal-profiles-by-race-type.csv').read_bytes()).hexdigest()
+              selected=load_stage98_profiles(research_dir/'stage98-optimal-profiles-by-race-type.csv')
+              base={r['id']:r for r in S98.candidates()}
+              S98.nh_weights=corrected_weights
+              verify_weights()
+              groups,rejected,card_meta=get_current_cards(root)
+              (past,form,(scaler,clf),weights,people,draw,hr),state=S97.prepare_model_state(root,db,ratings)
+              if not np.allclose(weights,baseline_manifest['original_D_weights'],atol=1e-10):
+                  raise RuntimeError('Pinned Stage98 D weights differ from frozen model state')
+              profile_map=S98.profiles(weights)
+              output=[];missing=collections.Counter();races=0;compare={}
+              # The script NEVER reads data/racing-results or outcomes; those files
+              # have also been physically sealed by its workflow before this call.
+              try:
+                  unique={}
+                  for horse,country in past.last:
+                      if horse not in unique:unique[horse]=country
+                      elif unique[horse]!=country:unique[horse]=None
+                  for key,original_field in groups:
+                      # The Sept 30 information boundary forbids October/November form strings.
+                      field=[{**r,'form':''} for r in original_field]
+                      try:
+                          live=[D.live_row(r,TARGET,'STAGE97|'+key,unique) for r in field]
+                          prior=past.score(live,live=True)
+                          if prior is None:
+                              missing['UNSCORABLE_FROZEN_D']+=1;continue
+                          raw=np.asarray(prior['x'][:,:8],dtype=float)
+                          ors=[C.num(r.get('official_rating') or r.get('or') or r.get('ofr')) for r in field]
+                          lbs=[C.num(r.get('weight_lbs')) for r in field]
+                          aor=statistics.mean(v for v in ors if v is not None) if any(v is not None for v in ors) else None
+                          albs=statistics.mean(v for v in lbs if v is not None) if any(v is not None for v in lbs) else None
+                          vectors=[]
+                          for r in field:
+                              item={'date':TARGET,'horse':r.get('horse'),'country':r.get('horse_country'),
+                                    'trainer':r.get('trainer'),'jockey':r.get('jockey'),
+                                    'race_type':r.get('race_name') or r.get('race_type') or r.get('type'),
+                                    'surface':r.get('surface'),'race_class':r.get('race_class'),
+                                    'or':r.get('official_rating') or r.get('or') or r.get('ofr'),
+                                    'weight':r.get('weight_lbs')}
+                              vectors.append(form.vector(item,aor,albs)[0])
+                          cp=clf.predict_proba(scaler.transform(np.asarray(vectors)))[:,1]
+                          extra=np.asarray([[E.condition_pillars(r,[],field,people[0],people[1],draw)['pillars'][k]
+                                for k in S98.PILLARS] for r in field],dtype=float)
+                          if not all(np.isfinite(a).all() for a in (raw,extra,cp)):
+                              raise ValueError('Non-finite features')
+                          first=field[0]
+                          race={'date':TARGET,'course':first['course'],'time_utc':key.rsplit('|',1)[-1],
+                                'race_id':str(first.get('race_id') or ''),'race_name':str(first.get('race_name') or ''),
+                                'race_type':S94.race_cat(first),
+                                'discipline':S97.code(first.get('type') or first.get('race_type') or first.get('race_name')),
+                                'horses':[r['horse'] for r in field],
+                                'd_components':raw.tolist(),
+                                'contemporary_components':extra.tolist(),
+                                'c_probability':np.asarray(cp).tolist()}
+                          if race['discipline'] not in ('HURDLE','CHASE','NH_FLAT'):
+                              missing['BAD_DISCIPLINE']+=1;continue
+                          e_pick=fit_profile(race,selected)
+                          d_choose=base[BASELINE]
+                          e_choose=base[e_pick['selected_candidate']]
+                          assert e_choose['model']==S98.MODEL_E
+                          output+=rank_output(race,d_choose,profile_map,'D_C_ORIGINAL',
+                                              'STAGE98_FROZEN_BASELINE',card_meta)
+                          output+=rank_output(race,e_choose,profile_map,'E_BALANCED_OPTIMISED',
+                                              e_pick['fit_group'],card_meta)
+                          races+=1
+                      except (ValueError,ArithmeticError,KeyError) as error:
+                          missing['SCORING_'+type(error).__name__]+=1
+                          print('REJECTED',key,type(error).__name__,str(error)[:180],flush=True)
+              finally:
+                  hr.close()
+              rank1=[z for z in output if z['rank']==1]
+              dc={(z['date'],z['course'],z['off_utc']):z['horse'] for z in rank1 if z['model']=='D_C_ORIGINAL'}
+              ep={(z['date'],z['course'],z['off_utc']):z['horse'] for z in rank1 if z['model']=='E_BALANCED_OPTIMISED'}
+              agreement=sum(S97.norm(dc[k])==S97.norm(ep[k]) for k in dc.keys()&ep.keys())
+              if races<12:raise RuntimeError(f'Only {races} of {card_meta["nh_groups"]} NH races scored; investigate: {dict(missing)}')
+              output.sort(key=lambda x:(x['off_utc'],x['course'],x['model'],x['rank']))
+              csv_path=out/'stage99-11nov-all-rank1-rank2.csv'
+              with csv_path.open('w',encoding='utf-8',newline='') as f:
+                  writer=csv.DictWriter(f,fieldnames=COLUMN_NAMES)
+                  writer.writeheader();writer.writerows(output)
+              pair=[]
+              for k in sorted(dc):
+                  other=ep.get(k)
+                  pair.append(dict(date=k[0],course=k[1],off_utc=k[2],original_dc_rank1=dc[k],
+                                   e_balanced_rank1=other or '',agree=bool(other and S97.norm(dc[k])==S97.norm(other))))
+              with (out/'stage99-11nov-side-by-side.csv').open('w',encoding='utf-8',newline='') as f:
+                  cols=['date','course','off_utc','original_dc_rank1','e_balanced_rank1','agree']
+                  writer=csv.DictWriter(f,fieldnames=cols);writer.writeheader();writer.writerows(pair)
+              details={'run_label':'STAGE99_STG97_98_RESEARCH_INPUTS','for_date':TARGET,'research_only':True,
+                       'frozen_results_through':'2026-09-30','stage98_optimized_training_through':'2026-11-05',
+                       'stage98_selected_profiles_sha256':source_hash,'racecard':card_meta,
+                       'preoff_races_scored':races,'rank1_per_model':races,
+                       'same_rank1':agreement,'different_rank1':races-agreement,
+                       'skipped_races':dict(missing),'racecard_rejections':dict(rejected),
+                       'frozen_model_state':state,'source_runs':[42926669840,42944089042],
+                       'model_d_candidate':BASELINE,'model_e_method':'Stage98 BALANCED by exact race type with fallback',
+                       'no_result_data_read_by_scorer':True,'no_production_models_modified':True}
+              (out/'stage99-11nov-summary.json').write_text(json.dumps(details,indent=2,default=str)+'\n')
+              print(json.dumps({'status':'COMPLETE','races':races,'agreement':agreement,'date':TARGET,
+                                'reject':dict(missing)},indent=2),flush=True)
+              for x in pair:print(f"{x['off_utc']} {x['course']}: D(c) {x['original_dc_rank1']} / E {x['e_balanced_rank1']}",flush=True)
+              return details
+
+
+          def self_test(reference):
+              verify_weights()
+              choices=load_stage98_profiles(reference/'stage98-optimal-profiles-by-race-type.csv')
+              expected={
+                'Handicap Hurdle':'E__balanced__D50__C10',
+                'Handicap Chase':'E__people_heavy__D65__C65',
+                'Novice Hurdle':'E__course_distance__D35__C10',
+                'Novice Handicap Hurdle':'E__course_distance__D35__C10',
+                'Novice Handicap Chase':'E__frozen_d_prior__D100__C65',
+                'Maiden Hurdle':'E__frozen_d_prior__D100__C35',
+                'NH Flat / Bumper':'E__people_heavy__D35__C20',
+              }
+              for typ, profile in expected.items():
+                  chosen=fit_profile({'race_type':typ,'discipline':'HURDLE' if 'Hurdle' in typ else 'NH_FLAT' if typ=='NH Flat / Bumper' else 'CHASE'},choices)
+                  assert chosen['selected_candidate']==profile,(typ,chosen['selected_candidate'])
+              assert BASELINE in {r['id'] for r in S98.candidates()}
+              print('PASS Stage99 fixed D(c) and pinned E balanced profiles',len(choices))
+
+
+          if __name__=='__main__':
+              import argparse
+              p=argparse.ArgumentParser()
+              p.add_argument('--mode',choices=('self-test','predict'),default='predict')
+              p.add_argument('--reference',type=pathlib.Path,default=pathlib.Path('reports/stage99/reference'))
+              p.add_argument('--root',type=pathlib.Path,default=pathlib.Path('.'))
+              p.add_argument('--db',type=pathlib.Path,default=pathlib.Path('reports/stage99/base/backfilled_research_only.sqlite'))
+              p.add_argument('--ratings',type=pathlib.Path,default=pathlib.Path('reports/stage99/empty-hpr.sqlite'))
+              p.add_argument('--out',type=pathlib.Path,default=pathlib.Path('reports/stage99/output'))
+              x=p.parse_args()
+              if x.mode=='self-test':self_test(x.reference)
+              else:score_today(x.root,x.db,x.ratings,x.reference,x.out)
+          STAGE99_PY
+          python -m py_compile reports/stage99/stage99_today_research.py
+          python -u reports/stage99/stage99_today_research.py --mode self-test \
+            --reference reports/stage99/reference
+      - name: Restore identical pinned Kaggle Stage98 historical source cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            reports/stage94/base/original.sqlite
+            reports/stage68/base/c_classifier_2024_stage81_v1.joblib
+            ~/.cache/kagglehub
+          key: stage94-dc-replay-base-v1-${{ hashFiles('import_historical_ukie.py') }}
+          restore-keys: |
+            stage94-dc-replay-base-v1-
+            rhp-dc-stage81-v1-
+      - name: Rebuild Stage98 disposable Kaggle v129 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pathlib,subprocess,sys,kagglehub,sqlite3,shutil
+          path=pathlib.Path(kagglehub.dataset_download(
+              'deltaromeo/horse-racing-results-ukireland-2015-2025/versions/129'))
+          assert path.is_dir() and list(path.rglob('*.csv'))
+          base=pathlib.Path('reports/stage94/base/original.sqlite')
+          base.parent.mkdir(parents=True,exist_ok=True)
+          dest=pathlib.Path('reports/stage99/base')
+          dest.mkdir(parents=True,exist_ok=True)
+          (dest/'kaggle-path.txt').write_text(str(path))
+          if not base.is_file() or base.stat().st_size<1_000_000:
+              subprocess.run([sys.executable,'import_historical_ukie.py','--mode','import',
+                '--input',str(path),'--min-date','1988-01-01','--max-date','2026-10-07',
+                '--database',str(base),'--report',str(base.parent/'import.json')],check=True)
+          with sqlite3.connect('file:'+str(base.resolve())+'?mode=ro',uri=True) as db:
+              assert db.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+              assert db.execute('SELECT COUNT(*) FROM historical_races').fetchone()[0]>100000
+          shutil.copyfile(base,dest/'original.sqlite')
+          print('Exact Stage98 Kaggle source ready',flush=True)
+          PY
+      - name: Build same metadata and frozen race-type classifier used in Stage98
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/stage65m_backfill.py \
+            --baseline reports/stage99/base/original.sqlite \
+            --out reports/stage99/base --max-date 2026-11-09 \
+            --keep-candidate --skip-replay
+          python -u scripts/stage65p_enrich_race_details.py \
+            --db reports/stage99/base/backfilled_research_only.sqlite \
+            --source "$(cat reports/stage99/base/kaggle-path.txt)" \
+            --out reports/stage99/enrichment
+          python - <<'PY'
+          import hashlib,sqlite3,pathlib
+          from scripts.rhp_stage83_dc_integrated import integrate
+          p='data/rhp-stage81-ukie-2021plus-hashes.csv.gz'
+          with open(p,'rb') as f:sha=hashlib.file_digest(f,'sha256').hexdigest()
+          assert sha=='b028ec32d2bae1d34331cda150d545b7441c9e45aa4ddb27b5ce450562288cbe'
+          integrate('reports/stage99/base/backfilled_research_only.sqlite',p,'reports/stage99/integration')
+          p=pathlib.Path('reports/stage99/empty-hpr.sqlite')
+          with sqlite3.connect(p) as db:db.execute('CREATE TABLE IF NOT EXISTS hpr_ratings (race_date TEXT)')
+          PY
+      - name: Freeze historical outcomes through 30 September and seal all result files
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import sqlite3
+          db='reports/stage99/base/backfilled_research_only.sqlite'
+          with sqlite3.connect(db) as c:
+              late=c.execute('SELECT COUNT(*) FROM historical_races WHERE race_date>=?',('2026-10-01',)).fetchone()[0]
+              c.execute('DELETE FROM historical_runs WHERE race_id IN (SELECT id FROM historical_races WHERE race_date>=?)',('2026-10-01',))
+              c.execute('DELETE FROM historical_races WHERE race_date>=?',('2026-10-01',))
+              c.commit()
+              assert c.execute('SELECT COUNT(*) FROM historical_races WHERE race_date>=?',('2026-10-01',)).fetchone()[0]==0
+              assert c.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+          print('Removed test-window outcomes from disposable DB:',late)
+          PY
+          mkdir -p reports/stage99/sealed
+          if [ -d data/racing-results ]; then mv data/racing-results reports/stage99/sealed/racing-results; fi
+          if [ -f data/race-results.json ]; then mv data/race-results.json reports/stage99/sealed/race-results.json; fi
+          test ! -e data/racing-results
+          test ! -e data/race-results.json
+      - name: Produce both exact Stage98-format model rankings for 11 November
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u reports/stage99/stage99_today_research.py --mode predict \
+            --root . \
+            --db reports/stage99/base/backfilled_research_only.sqlite \
+            --ratings reports/stage99/empty-hpr.sqlite \
+            --reference reports/stage99/reference \
+            --out reports/stage99/output
+          python - <<'PY'
+          import json,pathlib,csv
+          p=pathlib.Path('reports/stage99/output')
+          info=json.loads((p/'stage99-11nov-summary.json').read_text())
+          rows=list(csv.DictReader((p/'stage99-11nov-all-rank1-rank2.csv').open()))
+          assert info['frozen_results_through']=='2026-09-30'
+          assert info['no_production_models_modified']
+          assert len(rows)==4*info['preoff_races_scored']
+          assert info['preoff_races_scored']>=12
+          print('STAGE99 SELECTIONS COMPLETE:',info['preoff_races_scored'], 'races,',info['same_rank1'],'model agreements')
+          PY
+      - name: Publish today's frozen D(c) and E balanced selections
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage99-11nov-dc-and-e-balanced-${{ github.run_id }}
+          path: |
+            reports/stage99/output/stage99-11nov-summary.json
+            reports/stage99/output/stage99-11nov-all-rank1-rank2.csv
+            reports/stage99/output/stage99-11nov-side-by-side.csv
+          if-no-files-found: warn
+          retention-days: 30
