@@ -1,0 +1,121 @@
+name: Stage102 - ROI First ML 30-Day Pre-Off Odds vs SP Oracle
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage102-roi-ml-research-only
+  cancel-in-progress: false
+
+jobs:
+  chronological-ml-simulation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 210
+    env:
+      PYTHONUNBUFFERED: '1'
+      STAGE102_DB: reports/stage102/input/stage2/historical_ukie_staging.sqlite
+      STAGE102_MAP: reports/stage102/input/stage4/all_races_with_reference_event_ids.csv
+    steps:
+      - name: Check out immutable historic snapshots and latest research code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned research dependencies
+        run: |
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1 \
+            pandas==2.2.3 joblib==1.4.2
+      - name: Verify the original Stage101 engines and Stage102 isolation tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f scripts/stage101_all_models_compare.py
+          test -f scripts/stage102_roi_ml_simulation.py
+          test -d data/odds-archive
+          python -m py_compile scripts/stage101_all_models_compare.py scripts/stage102_roi_ml_simulation.py
+          python scripts/stage101_all_models_compare.py self-test
+          python scripts/stage102_roi_ml_simulation.py self-test
+      - name: Restore original independent A B C features in disposable runner
+        run: |
+          python scripts/stage101_all_models_compare.py install-engines
+          python -m py_compile scripts/stage16_history_model.py scripts/stage18_historical_ab.py scripts/stage19_live_b.py scripts/stage21_live_c.py scripts/stage21_publish_c.py
+      - name: Reuse exact Stage100 UK and Irish historical database and event mapping
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage102/input/stage2 reports/stage102/input/stage4
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage2-historical-staging-database --dir reports/stage102/input/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage4-reference-named-events-and-winners --dir reports/stage102/input/stage4
+          test -s "$STAGE102_DB"
+          test -s "$STAGE102_MAP"
+          python scripts/stage101_all_models_compare.py audit-inputs \
+            --db "$STAGE102_DB" --mapping "$STAGE102_MAP"
+      - name: Retrieve original Stage92 E V2 probability archive (diagnostic only)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          mkdir -p reports/stage102/reference-e92
+          gh run download 42833900420 --repo "$GITHUB_REPOSITORY" \
+            --name stage92-model-e-v2-winprob-42833900420 \
+            --dir reports/stage102/reference-e92
+          find reports/stage102/reference-e92 -name 'stage92-race-probabilities.csv' -print
+      - name: Restore immutable historical HPR ledger (only into reports)
+        run: |
+          python scripts/stage87_hpr_storage.py restore \
+            --dir data/hpr/shards --db reports/stage102/hpr-research.sqlite
+      - name: Run date-locked 30-day ROI-first ML and separately labelled SP oracle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/stage102_roi_ml_simulation.py compare \
+            --db "$STAGE102_DB" --mapping "$STAGE102_MAP" \
+            --ratings reports/stage102/hpr-research.sqlite \
+            --output reports/stage102/output
+          test -s reports/stage102/output/stage102-audit.json
+          test -s reports/stage102/output/stage102-30day-overall.csv
+          test -s reports/stage102/output/stage102-training-and-coverage.csv
+          python - <<'PY'
+          import json,pathlib
+          p=pathlib.Path('reports/stage102/output/stage102-audit.json')
+          obj=json.loads(p.read_text())
+          assert obj['window']['test']=='2026-10-13..2026-11-11'
+          assert obj['training_eligible_test_races'] > 0
+          assert len(obj['base_model_names'])==8
+          print('Stage102 PASS:',obj['training_eligible_test_races'],'ML-scored test race/model cohorts')
+          PY
+      - name: Display historical ROI comparison in GitHub Actions summary
+        if: always()
+        shell: bash
+        run: |
+          if test -s reports/stage102/output/README.md; then
+            cat reports/stage102/output/README.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Stage102 stopped without a valid 30-day result. Check the failed step; source data and live models remain unchanged.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Publish full reports including Rank1 Rank2 matched ROI and price audit
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage102-roi-ml-30day-${{ github.run_id }}
+          path: |
+            reports/stage102/output/*.csv
+            reports/stage102/output/*.json
+            reports/stage102/output/*.md
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 7
