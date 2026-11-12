@@ -1,0 +1,142 @@
+name: Stage104 - All Bookmakers Winner First ML Morning ROI
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage104-all-bookmakers-winner-research
+  cancel-in-progress: false
+
+jobs:
+  all-bookmakers-winner-first:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 210
+    env:
+      PYTHONUNBUFFERED: '1'
+      STAGE104_DB: reports/stage104/input/stage2/historical_ukie_staging.sqlite
+      STAGE104_MAP: reports/stage104/input/stage4/all_races_with_reference_event_ids.csv
+    steps:
+      - name: Checkout full immutable pre-morning history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned ML dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1 \
+            pandas==2.2.3 joblib==1.4.2
+      - name: Validate all three research engines and Stage104 as-of quote isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f scripts/stage101_all_models_compare.py
+          test -f scripts/stage102_roi_ml_simulation.py
+          test -f scripts/stage103_winner_first_ml.py
+          test -f scripts/stage104_all_prices_winner_ml.py
+          test -d data/odds-archive
+          python -m py_compile scripts/stage101_all_models_compare.py \
+            scripts/stage102_roi_ml_simulation.py \
+            scripts/stage103_winner_first_ml.py \
+            scripts/stage104_all_prices_winner_ml.py
+          python scripts/stage101_all_models_compare.py self-test
+          python scripts/stage102_roi_ml_simulation.py self-test
+          python scripts/stage103_winner_first_ml.py self-test
+          python scripts/stage104_all_prices_winner_ml.py self-test
+      - name: Recover unchanged Stage22 original model A B C feature engines
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/stage101_all_models_compare.py install-engines
+          python -m py_compile scripts/stage16_history_model.py scripts/stage18_historical_ab.py \
+            scripts/stage19_live_b.py scripts/stage21_live_c.py scripts/stage21_publish_c.py
+      - name: Download fixed Stage100 historic race results and identity mapping
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage104/input/stage2 reports/stage104/input/stage4
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage2-historical-staging-database --dir reports/stage104/input/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage4-reference-named-events-and-winners --dir reports/stage104/input/stage4
+          test -s "$STAGE104_DB"
+          test -s "$STAGE104_MAP"
+          python scripts/stage101_all_models_compare.py audit-inputs \
+            --db "$STAGE104_DB" --mapping "$STAGE104_MAP"
+      - name: Retrieve Stage92 frozen E V2 research score reference (diagnostic only)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage102/reference-e92
+          gh run download 42833900420 --repo "$GITHUB_REPOSITORY" \
+            --name stage92-model-e-v2-winprob-42833900420 \
+            --dir reports/stage102/reference-e92
+          test -s reports/stage102/reference-e92/output/stage92-race-probabilities.csv
+      - name: Restore immutable HPR source into disposable local research database
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/stage87_hpr_storage.py restore \
+            --dir data/hpr/shards --db reports/stage104/hpr-research.sqlite
+      - name: Score pre-morning-only bookmaker features and train winner ML without ROI filters
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/stage104_all_prices_winner_ml.py compare \
+            --db "$STAGE104_DB" --mapping "$STAGE104_MAP" \
+            --ratings reports/stage104/hpr-research.sqlite \
+            --output reports/stage104/output
+          test -s reports/stage104/output/stage104-audit.json
+          test -s reports/stage104/output/stage104-overall.csv
+          test -s reports/stage104/output/stage104-three-way-strict-matched.csv
+          test -s reports/stage104/output/stage104-vs-market-favourite.csv
+          python - <<'PY'
+          import json,pathlib
+          data=json.loads(pathlib.Path('reports/stage104/output/stage104-audit.json').read_text())
+          assert data['test']=='2026-10-13..2026-11-11'
+          assert len(data['models'])==8
+          assert data['includes_all_available_bookmaker_quotes']
+          assert data['no_same_day_outcomes_in_training']
+          assert data['no_future_quotes_as_model_input']
+          assert data['no_roi_or_value_gate']
+          assert data['no_sp_input']
+          assert data['market_ml_test_picks']>=50
+          assert data['valid_3way_paired_rank1_races_utc']+data['valid_3way_paired_rank1_races_irish']>0
+          print('Stage104 verified: morning price cutoffs, all-books winner-first ML, matched morning-ROI only.')
+          PY
+      - name: Show all-model 3-way winner and ROI comparison
+        if: always()
+        shell: bash
+        run: |
+          if test -s reports/stage104/output/README.md; then
+            cat reports/stage104/output/README.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Stage104 stopped without trustworthy three-way comparison. No production data/model changes.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload morning odds audit and detailed Rank 1 Rank 2 combined race-by-race reports
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage104-all-bookmakers-winner-first-${{ github.run_id }}
+          path: |
+            reports/stage104/output/*.csv
+            reports/stage104/output/*.json
+            reports/stage104/output/*.md
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 7
