@@ -1,0 +1,126 @@
+name: Stage103 - Odds Blind Winner First ML Morning Prices 30 Days
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage103-winner-first-readonly
+  cancel-in-progress: false
+
+jobs:
+  winner-first-walkforward:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 210
+    env:
+      PYTHONUNBUFFERED: '1'
+      STAGE103_DB: reports/stage103/input/stage2/historical_ukie_staging.sqlite
+      STAGE103_MAP: reports/stage103/input/stage4/all_races_with_reference_event_ids.csv
+    steps:
+      - name: Checkout all historical Git commits (required for pre-morning snapshots)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned ML and historical data dependencies
+        run: |
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1 \
+            pandas==2.2.3 joblib==1.4.2
+      - name: Validate Stage103 odds isolation and original source engines
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f scripts/stage101_all_models_compare.py
+          test -f scripts/stage102_roi_ml_simulation.py
+          test -f scripts/stage103_winner_first_ml.py
+          test -d data/odds-archive
+          python -m py_compile scripts/stage101_all_models_compare.py scripts/stage102_roi_ml_simulation.py scripts/stage103_winner_first_ml.py
+          python scripts/stage101_all_models_compare.py self-test
+          python scripts/stage102_roi_ml_simulation.py self-test
+          python scripts/stage103_winner_first_ml.py self-test
+      - name: Restore unchanged original A B C engines in disposable runner
+        run: |
+          python scripts/stage101_all_models_compare.py install-engines
+          python -m py_compile scripts/stage16_history_model.py scripts/stage18_historical_ab.py scripts/stage19_live_b.py scripts/stage21_live_c.py scripts/stage21_publish_c.py
+      - name: Reuse exactly matched Stage100 UK and Ireland historical evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage103/input/stage2 reports/stage103/input/stage4
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage2-historical-staging-database --dir reports/stage103/input/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage4-reference-named-events-and-winners --dir reports/stage103/input/stage4
+          test -s "$STAGE103_DB"
+          test -s "$STAGE103_MAP"
+          python scripts/stage101_all_models_compare.py audit-inputs \
+            --db "$STAGE103_DB" --mapping "$STAGE103_MAP"
+      - name: Retrieve Stage92 E V2 research archive (diagnostic only)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage102/reference-e92
+          gh run download 42833900420 --repo "$GITHUB_REPOSITORY" \
+            --name stage92-model-e-v2-winprob-42833900420 \
+            --dir reports/stage102/reference-e92
+          test -s reports/stage102/reference-e92/output/stage92-race-probabilities.csv
+      - name: Restore frozen historic HPR ledger for D and E replay only
+        run: |
+          python scripts/stage87_hpr_storage.py restore \
+            --dir data/hpr/shards --db reports/stage103/hpr-research.sqlite
+      - name: Run winner-first odds-blind ML before reading the morning price archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/stage103_winner_first_ml.py compare \
+            --db "$STAGE103_DB" --mapping "$STAGE103_MAP" \
+            --ratings reports/stage103/hpr-research.sqlite \
+            --output reports/stage103/output
+          test -s reports/stage103/output/stage103-audit.json
+          test -s reports/stage103/output/stage103-overall.csv
+          test -s reports/stage103/output/stage103-strict-paired-morning-prices.csv
+          python - <<'PY'
+          import json,pathlib
+          d=json.loads(pathlib.Path('reports/stage103/output/stage103-audit.json').read_text())
+          assert d['window']['test']=='2026-10-13..2026-11-11'
+          assert len(d['base_models'])==8
+          assert not d['market_prices_in_model_features']
+          assert d['price_archive_loaded_only_after_all_picks_sealed']
+          assert d['ml_scored_test_model_races']>0
+          assert d['matched_primary_rank1_races']>0
+          print('Stage103 PASS: odds-blind winner model, dated training, morning quote isolation')
+          PY
+      - name: Show Rank 1 matched wins and ROI in job summary
+        if: always()
+        shell: bash
+        run: |
+          if test -s reports/stage103/output/README.md; then
+            cat reports/stage103/output/README.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Stage103 stopped before valid 30-day results. Source and production models were not modified.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload detailed Rank1 Rank2 combined, discipline, race type and odds audit reports
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage103-winner-first-ml-morning-${{ github.run_id }}
+          path: |
+            reports/stage103/output/*.csv
+            reports/stage103/output/*.json
+            reports/stage103/output/*.md
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 7
