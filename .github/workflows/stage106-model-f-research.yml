@@ -1,0 +1,128 @@
+name: "Stage106 - Model F Multi-day Honest ROI Research (paper only)"
+
+on:
+  workflow_dispatch:
+    inputs:
+      selection_date:
+        description: "Paper selections date YYYY-MM-DD (default 2026-11-13)"
+        required: false
+        type: string
+        default: '2026-11-13'
+      bookmaker:
+        description: "Source bookmaker - exact quotes only (williamhill, novibet etc)"
+        required: true
+        type: choice
+        options: [williamhill, novibet, paddypower]
+        default: williamhill
+
+# No writes, edits, deployments, or bets; archived D, D(c), E are frozen.
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage106-model-f-paper
+  cancel-in-progress: false
+
+jobs:
+  independent-research:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout fixed scripts, immutable prior pre-off snapshots, live data
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Research calculation dependencies
+        run: |
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 pandas==2.2.3 scipy==1.15.3 \
+            scikit-learn==1.6.1 joblib==1.4.2
+
+      - name: Self-test and validate read-only inputs
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/stage106_model_f.py
+          python scripts/stage106_model_f.py self-test
+          test -s data/strategy-dc-probabilities.json
+          test -s data/latest-odds.json
+
+      - name: Restore immutable Stage104 timestamped historical 14-day sample
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage106/source
+          gh run download 43128767572 --repo "$GITHUB_REPOSITORY" \
+            --name stage104-all-bookmakers-winner-first-43128767572 \
+            --dir reports/stage106/source
+          test -s reports/stage106/source/stage104-all-ranked-selections.csv
+
+      - name: Freeze Model F before any prospective choices
+        run: |
+          set -euo pipefail
+          python -u scripts/stage106_model_f.py backtest \
+            --input reports/stage106/source/stage104-all-ranked-selections.csv \
+            --out reports/stage106/research
+          test -s reports/stage106/research/stage106-audit.json
+
+      - name: Independent earlier National Hunt form-only diagnostic
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage106/source/stage97
+          gh run download 42926669840 --repo "$GITHUB_REPOSITORY" \
+            --name stage97-nh-blind-oct-nov-42926669840 \
+            --dir reports/stage106/source/stage97
+          test -s reports/stage106/source/stage97/stage97-all-settled-rank1-rank2.csv
+          python scripts/stage106_model_f.py diagnostic \
+            --input reports/stage106/source/stage97/stage97-all-settled-rank1-rank2.csv \
+            --out reports/stage106/research
+
+      - name: Paper-only upcoming prices and D(c) research crosscheck
+        env:
+          CHOSEN_DATE: ${{ inputs.selection_date }}
+          BOOKMAKER: ${{ inputs.bookmaker }}
+        run: |
+          set -euo pipefail
+          python -u scripts/stage106_model_f.py score \
+            --dc data/strategy-dc-probabilities.json \
+            --odds data/latest-odds.json \
+            --calibrator reports/stage106/research/stage106-fitted-calibrator.joblib \
+            --date "${CHOSEN_DATE:-2026-11-13}" \
+            --bookmaker "${BOOKMAKER:-williamhill}" \
+            --out reports/stage106/live
+
+      - name: Publish transparent research verdict
+        if: always()
+        shell: bash
+        run: |
+          if test -f reports/stage106/research/README.md; then
+            cat reports/stage106/research/README.md >> "$GITHUB_STEP_SUMMARY"
+            echo '' >> "$GITHUB_STEP_SUMMARY"
+            echo '**No live betting approval. Future choices are paper-only.**' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Stage106 source or safety check failed: no results invented.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Downloadable model research results and dated paper list
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage106-model-f-${{ github.run_id }}
+          path: |
+            reports/stage106/research/*.json
+            reports/stage106/research/*.csv
+            reports/stage106/research/*.md
+            reports/stage106/live/*.json
+            reports/stage106/live/*.csv
+          retention-days: 90
+          if-no-files-found: warn
