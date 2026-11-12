@@ -1,0 +1,119 @@
+name: "Stage107 - Model G independent form and chronological audit"
+
+on:
+  workflow_dispatch:
+    inputs:
+      selection_date:
+        description: "Paper-selection date YYYY-MM-DD (default: 2026-11-13)"
+        type: string
+        required: false
+        default: '2026-11-13'
+      bookmaker:
+        description: "Exact bookmaker quotes only - no SP or fallback"
+        type: choice
+        required: true
+        options:
+          - williamhill
+          - paddypower
+          - novibet
+        default: williamhill
+
+# Completely independent of the live app; no writes to main, results or D/E.
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage107-model-g-independent-research
+  cancel-in-progress: false
+
+jobs:
+  historical-form-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PYTHONUNBUFFERED: '1'
+      SOURCE_DB: reports/stage107/source/stage2/historical_ukie_staging.sqlite
+    steps:
+      - name: Checkout repository without modifying it
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install exact research dependencies
+        run: |
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 \
+            scikit-learn==1.6.1 joblib==1.4.2
+      - name: Check source and strictly as-of self-test
+        run: |
+          set -euo pipefail
+          test -s scripts/stage107_model_g.py
+          python -m py_compile scripts/stage107_model_g.py
+          python scripts/stage107_model_g.py self-test
+          test -s scripts/stage87_hpr_storage.py
+      - name: Retrieve immutable historical UK and Ireland race database
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage107/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage2-historical-staging-database \
+            --dir reports/stage107/source/stage2
+          test -s "$SOURCE_DB"
+          python - <<'PY'
+          import sqlite3,os
+          path=os.environ['SOURCE_DB']
+          c=sqlite3.connect(f'file:{os.path.abspath(path)}?mode=ro',uri=True)
+          assert c.execute('pragma quick_check').fetchone()[0]=='ok'
+          for tbl in ('historical_races','historical_runs'):
+            n=c.execute(f'select count(*) from {tbl}').fetchone()[0]
+            assert n>100000,(tbl,n)
+            print(tbl,'verified rows:',n)
+          c.close()
+          PY
+      - name: Independent 2024 training, 2025 validation and two holdouts
+        run: |
+          set -euo pipefail
+          python -u scripts/stage107_model_g.py backtest \
+            --db "$SOURCE_DB" --out reports/stage107/backtest
+          test -s reports/stage107/backtest/stage107-backtest-audit.json
+          test -s reports/stage107/backtest/stage107-frozen-form-model.joblib
+      - name: Publish an honest audit, not a performance claim
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json,pathlib
+          print('# Model G — research only')
+          p=pathlib.Path('reports/stage107/backtest/stage107-backtest-audit.json')
+          if not p.exists():
+            print('Historical audit failed: there is no validated Model G result.')
+          else:
+            a=json.loads(p.read_text()); print('Historical splits (SP proxy, not executable bookmaker ROI):')
+            print('| Split | Races | Rank 1 wins | Rank 1 strike | Rank 1 SP proxy ROI |')
+            print('|---|---:|---:|---:|---:|')
+            for k,r in a['splits'].items():
+              q=r.get('rank1',{})
+              print(f"| {k} | {r.get('races')} | {q.get('wins')} | {q.get('strike_pct')}% | {q.get('sp_proxy_roi_pct')}% |")
+          print('**NOT approved for live betting.** This is a historical form-only test, not a verified pre-off-price value-ROI result.')
+          PY
+      - name: Upload test results, full ranking data, and optional paper selections
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage107-model-g-${{ github.run_id }}
+          path: |
+            reports/stage107/backtest/stage107-backtest-audit.json
+            reports/stage107/backtest/stage107-holdout-rank1-rank2.csv
+            reports/stage107/backtest/stage107-holdout-race-type-daily.csv
+            reports/stage107/backtest/stage107-frozen-form-model.joblib
+            reports/stage107/backtest/stage107-prior-form-state.joblib
+            reports/stage107/backtest/README.md
+          retention-days: 90
+          if-no-files-found: warn
