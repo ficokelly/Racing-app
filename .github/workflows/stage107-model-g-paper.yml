@@ -1,0 +1,139 @@
+name: "Stage107 - Model G quick prospective paper selections"
+
+on:
+  workflow_dispatch:
+    inputs:
+      selection_date:
+        description: "Tomorrow/next racing date (YYYY-MM-DD)"
+        type: string
+        required: false
+        default: '2026-11-13'
+      bookmaker:
+        description: "Exact bookmaker prices; never substitute SP"
+        type: choice
+        required: true
+        options: [williamhill, paddypower, novibet]
+        default: williamhill
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage107-model-g-paper
+  cancel-in-progress: false
+
+jobs:
+  paper:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout current racing cards and market prices as-of run start
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Freeze actual decision time BEFORE restoring the model
+        shell: bash
+        run: |
+          echo "STAGE107_CUTOFF_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install exact research dependencies
+        run: |
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 \
+            scikit-learn==1.6.1 joblib==1.4.2
+      - name: Safety tests and source availability
+        run: |
+          set -euo pipefail
+          python scripts/stage107_model_g.py self-test
+          test -s data/racecards.json
+          test -s data/latest-odds.json
+          test -s scripts/stage87_hpr_storage.py
+      - name: Retrieve model and historical form ONLY from previously completed research run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUN_ID=$(gh run list --repo "$GITHUB_REPOSITORY" \
+            --workflow stage107-model-g-research.yml \
+            --status success --limit 10 --json databaseId --jq '.[0].databaseId')
+          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = 'null' ]; then
+            echo 'No previously completed Model G historical audit; paper scoring forbidden' >&2
+            exit 1
+          fi
+          mkdir -p reports/stage107/restore
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "stage107-model-g-${RUN_ID}" --dir reports/stage107/restore
+          test -s reports/stage107/restore/stage107-backtest-audit.json
+          test -s reports/stage107/restore/stage107-frozen-form-model.joblib
+          test -s reports/stage107/restore/stage107-prior-form-state.joblib
+          echo "RESTORED_RUN_ID=$RUN_ID" >> "$GITHUB_ENV"
+      - name: Restore prior dated HPR results independently
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test -s data/hpr/shards/manifest.json; then
+            python scripts/stage87_hpr_storage.py restore \
+              --dir data/hpr/shards --db reports/stage107/hpr.sqlite
+          else
+            echo 'HPR archive unavailable: paper scoring will only use earlier historical form' >&2
+          fi
+      - name: Score future races with form first, bookmaker prices second
+        env:
+          TARGET_DATE: ${{ inputs.selection_date }}
+          BOOK: ${{ inputs.bookmaker }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--state reports/stage107/restore/stage107-prior-form-state.joblib \
+            --model reports/stage107/restore/stage107-frozen-form-model.joblib \
+            --cards data/racecards.json --odds data/latest-odds.json \
+            --date "${TARGET_DATE:-2026-11-13}" \
+            --cutoff "$STAGE107_CUTOFF_UTC" \
+            --bookmaker "${BOOK:-williamhill}" \
+            --out reports/stage107/paper)
+          if test -s reports/stage107/hpr.sqlite; then
+            args+=(--hpr reports/stage107/hpr.sqlite)
+          fi
+          python -u scripts/stage107_model_g.py paper "${args[@]}"
+      - name: Display paper selections and missing data truthfully
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json,pathlib,csv
+          print('# Model G — paper selections only')
+          f=pathlib.Path('reports/stage107/paper/stage107-paper-audit.json')
+          if not f.exists():
+            print('No verified paper calculation; inspect workflow error. Do not invent bets.')
+          else:
+            a=json.loads(f.read_text())
+            print('Source historical audit run:', '${{ github.run_id }}', '(paper job ID; frozen model source printed in job logs)')
+            print('Decision time:',a['as_of_utc'])
+            print('Date:',a['target_date'],'Book:',a['bookmaker'])
+            print('Full-field ranked races:',a['ranked_races'],'Verified value selections:',a['verified_value_selections'])
+            p=pathlib.Path('reports/stage107/paper/stage107-paper-value-selections.csv')
+            if p.exists():
+              rows=list(csv.DictReader(p.open()))
+              print('| Time UTC | Course | Horse | Win % | Bookmaker decimal | Estimated EV |')
+              print('|---|---|---|---:|---:|---:|')
+              for r in rows:
+                print(f"| {r['off_utc']} | {r['course']} | {r['horse']} | {float(r['win_probability'])*100:.1f}% | {float(r['quote_decimal']):.2f} | {float(r['value_edge'])*100:.1f}% |")
+          print('**NOT approved for live use.** No selection quota, no post-off changes, no invented prices.')
+          PY
+      - name: Download unmodified predictions for later settlement
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage107-model-g-prospective-${{ github.run_id }}
+          path: |
+            reports/stage107/paper/stage107-paper-audit.json
+            reports/stage107/paper/stage107-paper-all-rankings.csv
+            reports/stage107/paper/stage107-paper-value-selections.csv
+          retention-days: 90
+          if-no-files-found: warn
