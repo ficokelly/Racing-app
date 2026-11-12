@@ -1,0 +1,124 @@
+name: Stage105c - E HPR ROI ML 10-40 Pinned 10-25 Odds
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage105c-e-hpr-1040-2026-11-12
+  cancel-in-progress: false
+
+jobs:
+  pinned-1040-replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PYTHONUNBUFFERED: '1'
+      SOURCE_DB: reports/stage105c/input/stage2/historical_ukie_staging.sqlite
+      SOURCE_MAP: reports/stage105c/input/stage4/all_races_with_reference_event_ids.csv
+    steps:
+      - name: Checkout all archived pre-selection commits
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install research ML dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1 \
+            pandas==2.2.3 joblib==1.4.2
+
+      - name: Verify 10-25 odds and racecard snapshots and run research checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s scripts/stage105_e_hpr_roi_all_races.py
+          test -s scripts/stage105c_e_hpr_roi_1040.py
+          test -s scripts/stage102_roi_ml_simulation.py
+          git cat-file -e 0f216fba04a2667248b02399557b8e2a53eac771:data/latest-odds.json
+          git cat-file -e f47a29990f2b00310ec7fff1e609020986740335:data/racecards.json
+          python -m py_compile scripts/stage105c_e_hpr_roi_1040.py scripts/stage105_e_hpr_roi_all_races.py scripts/stage102_roi_ml_simulation.py
+          python scripts/stage101_all_models_compare.py self-test
+          python scripts/stage102_roi_ml_simulation.py self-test
+          python scripts/stage105c_e_hpr_roi_1040.py self-test
+
+      - name: Download unchanged Stage100 UK Ireland historical database
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage105c/input/stage2 reports/stage105c/input/stage4
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage2-historical-staging-database --dir reports/stage105c/input/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage4-reference-named-events-and-winners --dir reports/stage105c/input/stage4
+          test -s "$SOURCE_DB"
+          test -s "$SOURCE_MAP"
+          python scripts/stage101_all_models_compare.py audit-inputs --db "$SOURCE_DB" --mapping "$SOURCE_MAP"
+
+      - name: Restore HPR research ratings without touching live models
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/stage87_hpr_storage.py restore \
+            --dir data/hpr/shards --db reports/stage105c/hpr-research.sqlite
+          test -s reports/stage105c/hpr-research.sqlite
+
+      - name: Recalculate full-field E HPR using pinned 10-25 odds at 10-40
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/stage105c_e_hpr_roi_1040.py run \
+            --date 2026-11-12 \
+            --db "$SOURCE_DB" \
+            --mapping "$SOURCE_MAP" \
+            --ratings reports/stage105c/hpr-research.sqlite \
+            --output reports/stage105c/output
+          python - <<'PY'
+          import json,pathlib
+          p=pathlib.Path('reports/stage105c/output/stage105-audit.json')
+          a=json.loads(p.read_text())
+          assert a['selection_cutoff_utc']=='2026-11-12T10:40:00+00:00'
+          assert a['locked_odds_commit_utc']=='2026-11-12T10:25:39+00:00'
+          assert a['locked_racecards_commit_utc']=='2026-11-12T10:25:56+00:00'
+          assert a['available_wh_runner_quotes']>=20
+          assert a['rank1_allowed']==a['race_count'] and a['race_count']>=3
+          assert a['excluded_nh_handicap_races']==0
+          assert a['training']['last_training_date']<'2026-11-12'
+          print('Verified fixed 10:40 model outputs:',a['race_count'],'races,',a['available_wh_runner_quotes'],'valid price quotes')
+          PY
+
+      - name: Display ranked horses and ROI-qualified shortlist
+        if: always()
+        shell: bash
+        run: |
+          if test -s reports/stage105c/output/README.md; then
+            cat reports/stage105c/output/README.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'No valid Stage105c predictions generated. See preceding errors; no results invented.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload pinned 10-40 selections rankings prices and probability report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage105c-e-hpr-pinned-1040-${{ github.run_id }}
+          path: |
+            reports/stage105c/output/*.csv
+            reports/stage105c/output/*.json
+            reports/stage105c/output/*.md
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 6
