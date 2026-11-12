@@ -1,0 +1,137 @@
+name: Stage105b - ALL Races E HPR ROI First ML Nov 12
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage105b-e-hpr-roi-nov12-all-races
+  cancel-in-progress: false
+
+jobs:
+  today-e-hpr:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PYTHONUNBUFFERED: '1'
+      STAGE105_DB: reports/stage105b/input/stage2/historical_ukie_staging.sqlite
+      STAGE105_MAP: reports/stage105b/input/stage4/all_races_with_reference_event_ids.csv
+    steps:
+      - name: Checkout full historical git evidence and today's declared racecards
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install research dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1 \
+            pandas==2.2.3 joblib==1.4.2
+
+      - name: Verify Stage105b and Stage102 scoring and no future-odds leakage
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in \
+            scripts/stage101_all_models_compare.py \
+            scripts/stage102_roi_ml_simulation.py \
+            scripts/stage105_e_hpr_roi_all_races.py \
+            scripts/stage95_five_model_paired_replay.py \
+            scripts/stage94_dc_probability_replay.py \
+            scripts/stage86_hpr_engine.py; do test -s "$f"; done
+          python -m py_compile \
+            scripts/stage101_all_models_compare.py \
+            scripts/stage102_roi_ml_simulation.py \
+            scripts/stage105_e_hpr_roi_all_races.py
+          python scripts/stage101_all_models_compare.py self-test
+          python scripts/stage102_roi_ml_simulation.py self-test
+          python scripts/stage105_e_hpr_roi_all_races.py self-test
+
+      - name: Download unmodified successful Stage100 historical data
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage105b/input/stage2 reports/stage105b/input/stage4
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage2-historical-staging-database --dir reports/stage105b/input/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage4-reference-named-events-and-winners --dir reports/stage105b/input/stage4
+          test -s "$STAGE105_DB"
+          test -s "$STAGE105_MAP"
+          python scripts/stage101_all_models_compare.py audit-inputs \
+            --db "$STAGE105_DB" --mapping "$STAGE105_MAP"
+
+      - name: Restore HPR research ratings without modifying production
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/stage87_hpr_storage.py restore \
+            --dir data/hpr/shards --db reports/stage105b/hpr-research.sqlite
+          test -s reports/stage105b/hpr-research.sqlite
+
+      - name: Run ROI-first E plus HPR ML on 12 November racecards
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/stage105_e_hpr_roi_all_races.py run \
+            --date 2026-11-12 \
+            --db "$STAGE105_DB" \
+            --mapping "$STAGE105_MAP" \
+            --ratings reports/stage105b/hpr-research.sqlite \
+            --output reports/stage105b/output
+          test -s reports/stage105b/output/stage105-audit.json
+          test -s reports/stage105b/output/stage105-all-runners-probabilities.csv
+          test -s reports/stage105b/output/stage105-rank1-allowed-races.csv
+          test -s reports/stage105b/output/stage105-rank1-all-races.csv
+          test -s reports/stage105b/output/stage105-rank2-all-races.csv
+          test -s reports/stage105b/output/stage105-top2-all-races.csv
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          a=json.loads(Path('reports/stage105b/output/stage105-audit.json').read_text())
+          assert a['date']=='2026-11-12' and a['race_count']>=3
+          assert a['runner_count']>=6 and a['training']['prior_races']>=25
+          assert a['training']['last_training_date']<'2026-11-12'
+          assert a['rank1_allowed']==a['race_count'], 'Rank 1 must cover EVERY scored race'
+          assert a['excluded_nh_handicap_races']==0, 'NH handicap exclusion still applied'
+          assert 'included_nh_handicap_races' in a
+          print('Stage105b complete:',a['race_count'],'races,',a['runner_count'],
+                'ranked runners. Morning run?',not a['provisional'],
+                'ROI shortlist:',a['roi_qualified_bets'])
+          PY
+
+      - name: Show ranked selections in GitHub Actions summary
+        if: always()
+        shell: bash
+        run: |
+          if test -s reports/stage105b/output/README.md; then
+            cat reports/stage105b/output/README.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Stage105b stopped before selecting runners. See the failing step; no results were fabricated and no live app changes were made.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload complete probability ranks and research ROI shortlist
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage105b-all-races-e-hpr-${{ github.run_id }}
+          path: |
+            reports/stage105b/output/*.csv
+            reports/stage105b/output/*.json
+            reports/stage105b/output/*.md
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 6
