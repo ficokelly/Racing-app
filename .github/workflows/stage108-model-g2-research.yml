@@ -1,0 +1,127 @@
+name: "Stage108 - Model G2 verified UK IE race-type research"
+
+on:
+  workflow_dispatch:
+
+# Completely independent of the live app; no writes to main, results or D/E.
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage108-model-g-independent-research
+  cancel-in-progress: false
+
+jobs:
+  historical-form-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PYTHONUNBUFFERED: '1'
+      SOURCE_DB: reports/stage108/source/stage2/historical_ukie_staging.sqlite
+      REFERENCE_CSV: reports/stage108/source/stage4/all_races_with_reference_event_ids.csv
+    steps:
+      - name: Checkout repository without modifying it
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install exact research dependencies
+        run: |
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 \
+            scikit-learn==1.6.1 joblib==1.4.2
+      - name: Check source and strictly as-of self-test
+        run: |
+          set -euo pipefail
+          test -s scripts/stage108_model_g2.py
+          python -m py_compile scripts/stage108_model_g2.py
+          python scripts/stage108_model_g2.py self-test
+          test -s scripts/stage87_hpr_storage.py
+      - name: Retrieve immutable historical UK and Ireland race database
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage108/source/stage2 reports/stage108/source/stage4
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage2-historical-staging-database \
+            --dir reports/stage108/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage4-reference-named-events-and-winners \
+            --dir reports/stage108/source/stage4
+          test -s "$SOURCE_DB"
+          test -s "$REFERENCE_CSV"
+          python - <<'PY'
+          import sqlite3,os
+          path=os.environ['SOURCE_DB']
+          c=sqlite3.connect(f'file:{os.path.abspath(path)}?mode=ro',uri=True)
+          assert c.execute('pragma quick_check').fetchone()[0]=='ok'
+          for tbl in ('historical_races','historical_runs'):
+            n=c.execute(f'select count(*) from {tbl}').fetchone()[0]
+            assert n>100000,(tbl,n)
+            print(tbl,'verified rows:',n)
+          c.close()
+          PY
+      - name: Independent 2024 training, 2025 validation and two holdouts
+        run: |
+          set -euo pipefail
+          python -u scripts/stage108_model_g2.py backtest \
+            --db "$SOURCE_DB" --reference "$REFERENCE_CSV" \
+            --out reports/stage108/backtest
+          test -s reports/stage108/backtest/stage108-backtest-audit.json
+          test -s reports/stage108/backtest/stage108-frozen-form-model.joblib
+          python - <<'PY'
+          import json
+          a=json.load(open('reports/stage108/backtest/stage108-backtest-audit.json'))
+          q=a['eligibility_exclusions']
+          assert q['region_GB']>1000 and q['region_IRELAND']>500
+          assert q['handicap_races']>1000 and q['aw_races']>100
+          assert q.get('race_ids_not_exactly_matched',0)<max(100,int(a['race_counts_loaded']*.02))
+          for key in ('HOLDOUT_MAY_AUG','HOLDOUT_SEP_DEC'):
+            assert a['splits'][key]['races']>1000
+            cover=a['feature_coverage'][key]
+            assert cover['handicap']['present_pct']>90,cover
+            assert cover['surface_aw']['present_pct']>40,cover
+          print('Verified exact-ID UK/IE history, handicap and AW metadata, independent holdouts')
+          PY
+      - name: Publish an honest audit, not a performance claim
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json,pathlib
+          print('# Model G2 — research only')
+          p=pathlib.Path('reports/stage108/backtest/stage108-backtest-audit.json')
+          if not p.exists():
+            print('Historical audit failed: there is no validated Model G result.')
+          else:
+            a=json.loads(p.read_text()); q=a['eligibility_exclusions']
+            print(f"UK/IE matched: {q.get('confirmed_uk_ireland_races')} / {q.get('source_all_races_scanned')} source races; foreign/unresolved excluded: {q.get('outside_confirmed_uk_ireland')}")
+            print(f"Handicap races detected: {q.get('handicap_races')}; identifiable AW races: {q.get('aw_races')}")
+            print('Historical splits (SP proxy, not executable bookmaker ROI):')
+            print('| Split | Races | Rank 1 wins | Rank 1 strike | Rank 1 SP proxy ROI |')
+            print('|---|---:|---:|---:|---:|')
+            for k,r in a['splits'].items():
+              q=r.get('rank1',{})
+              print(f"| {k} | {r.get('races')} | {q.get('wins')} | {q.get('strike_pct')}% | {q.get('sp_proxy_roi_pct')}% |")
+          print('**NOT approved for live betting.** Source repairs are not proof of profitability. These are SP diagnostics, not bettable prices.')
+          PY
+      - name: Upload test results, full ranking data, and optional paper selections
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage108-model-g2-${{ github.run_id }}
+          path: |
+            reports/stage108/backtest/stage108-backtest-audit.json
+            reports/stage108/backtest/stage108-holdout-rank1-rank2.csv
+            reports/stage108/backtest/stage108-holdout-race-type-daily.csv
+            reports/stage108/backtest/stage108-frozen-form-model.joblib
+            reports/stage108/backtest/stage108-prior-form-state.joblib
+            reports/stage108/backtest/README.md
+          retention-days: 90
+          if-no-files-found: warn
