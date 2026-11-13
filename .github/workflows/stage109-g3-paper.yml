@@ -1,0 +1,127 @@
+name: "Stage109 - G2 and G3 All Horses and Fancied paper views"
+on:
+  workflow_dispatch:
+    inputs:
+      selection_date:
+        description: "Race date YYYY-MM-DD (leave blank for today's remaining races)"
+        type: string
+        required: false
+        default: ''
+      bookmaker:
+        description: "Quote source; no SP or other bookmaker substitutions"
+        type: choice
+        required: true
+        options: [williamhill, paddypower, novibet]
+        default: williamhill
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage109-g3-paper
+  cancel-in-progress: false
+jobs:
+  paper:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Checkout unchanged app and capture PRE-OFF quotes
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Freeze quote and decision time BEFORE model restore
+        shell: bash
+        run: |
+          echo "STAGE109_CUTOFF=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install fixed research dependencies
+        run: |
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 \
+            scikit-learn==1.6.1 joblib==1.4.2
+      - name: Check as-of-date and pre-race form safety
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/stage109_model_g3.py
+          python scripts/stage109_model_g3.py self-test
+          test -s data/racecards.json
+          test -s data/latest-odds.json
+      - name: Restore model trained on completed 2025 races only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUN_ID=$(gh run list --repo "$GITHUB_REPOSITORY" \
+            --workflow stage109-g3-walkforward.yml --status success --limit 10 \
+            --json databaseId --jq '.[0].databaseId')
+          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = 'null' ]; then
+            echo 'No verified Stage109 walk-forward run; refuse paper selections' >&2
+            exit 1
+          fi
+          mkdir -p reports/stage109/restore
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "stage109-g3-learning-${RUN_ID}" --dir reports/stage109/restore
+          for f in stage109-future-form-model.joblib stage109-frozen-g2-original.joblib stage109-prior-form-state.joblib stage109-walkforward-audit.json; do
+            test -s "reports/stage109/restore/$f" || exit 1
+          done
+          echo "STAGE109_PARENT_RUN=$RUN_ID" >> "$GITHUB_ENV"
+      - name: Restore strictly past runs since December 2025
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test -s data/hpr/shards/manifest.json; then
+            python scripts/stage87_hpr_storage.py restore \
+              --dir data/hpr/shards --db reports/stage109/recent.sqlite
+          else
+            echo 'No recent archived HPR runs: history will be marked incomplete' >&2
+          fi
+      - name: Generate all-horse rankings and separate G2/G3 Fancied
+        env:
+          SELECTION_DATE: ${{ inputs.selection_date }}
+          BOOK: ${{ inputs.bookmaker }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET="${SELECTION_DATE:-$(date -u +%Y-%m-%d)}"
+          args=(--model reports/stage109/restore/stage109-future-form-model.joblib
+            --g2-frozen reports/stage109/restore/stage109-frozen-g2-original.joblib
+            --state reports/stage109/restore/stage109-prior-form-state.joblib
+            --cards data/racecards.json --odds data/latest-odds.json
+            --date "$TARGET" --bookmaker "${BOOK:-williamhill}"
+            --cutoff "$STAGE109_CUTOFF" --out reports/stage109/paper)
+          if test -s reports/stage109/recent.sqlite; then args+=(--hpr reports/stage109/recent.sqlite); fi
+          python -u scripts/stage109_model_g3.py paper "${args[@]}"
+      - name: Report separate rankings, Fancied and verifiable odds
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json,pathlib,os
+          print('# G2 vs G3 — Fancied comparison (paper only)')
+          p=pathlib.Path('reports/stage109/paper/stage109-paper-audit.json')
+          if not p.exists():
+            print('Paper predictions not created: see workflow logs. Never invent selections.')
+          else:
+            a=json.loads(p.read_text());print('Parent completed backtest:',os.getenv('STAGE109_PARENT_RUN'))
+            print('Decision UTC:',a['asof_utc'],'Race date:',a['target_day'])
+            print('Races G2/G3:',a['ranked_races_g2'],a['ranked_races_g3'])
+            print('Fancied G2/G3:',a['g2_fancied_horses'],a['g3_fancied_horses'])
+            print('Strictly price-qualified research:',a['quoted_value_opportunities'])
+            print('Download **stage109-paper-mobile-views.html** for four tap-to-switch mobile views.')
+          print('All selections are paper only. Predicted win chance is not calibrated proof of value.')
+          PY
+      - name: Download phone-friendly all-horses and Fancied comparison
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage109-g3-fancied-${{ github.run_id }}
+          path: |
+            reports/stage109/paper/*.csv
+            reports/stage109/paper/*.json
+            reports/stage109/paper/*.html
+          retention-days: 90
+          if-no-files-found: warn
