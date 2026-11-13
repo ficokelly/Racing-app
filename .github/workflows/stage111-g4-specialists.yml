@@ -1,0 +1,102 @@
+name: "Stage111 - G4 specialist learning vs locked G3, no odds"
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage111-g4-historical
+  cancel-in-progress: false
+jobs:
+  specialist-walk-forward:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      DB: reports/stage111/source/stage2/historical_ukie_staging.sqlite
+      REF: reports/stage111/source/stage4/all_races_with_reference_event_ids.csv
+      G3_HISTORY: reports/stage111/source/g3/stage109-all-horses-historical.csv.gz
+      OUT: reports/stage111/research
+    steps:
+      - name: Checkout Racing Hot Pots (read-only)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install exact audited model dependencies
+        run: |
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 \
+            scikit-learn==1.6.1 joblib==1.4.2
+      - name: Check specialist code and chronological self-tests
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/stage108_model_g2.py scripts/stage109_model_g3.py scripts/stage111_model_g4.py
+          python scripts/stage111_model_g4.py self-test
+      - name: Restore identical verified 2023-2025 historical source and immutable G3 decisions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage111/source/stage2 reports/stage111/source/stage4 reports/stage111/source/g3
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage2-historical-staging-database --dir reports/stage111/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage4-reference-named-events-and-winners --dir reports/stage111/source/stage4
+          gh run download 43407036838 --repo "$GITHUB_REPOSITORY" \
+            --name stage109-g3-learning-43407036838 --dir reports/stage111/source/g3
+          for f in "$DB" "$REF" "$G3_HISTORY"; do
+            test -s "$f" || { echo "MISSING immutable source: $f" >&2; exit 1; }
+          done
+          python - <<'PY'
+          import os,sqlite3,pandas as pd
+          cx=sqlite3.connect(f"file:{os.path.abspath(os.environ['DB'])}?mode=ro",uri=True)
+          assert cx.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+          assert cx.execute('select count(*) from historical_races').fetchone()[0]>30000
+          cx.close()
+          s=pd.read_csv(os.environ['G3_HISTORY'],compression='gzip',usecols=['period','model','race_id'],low_memory=False)
+          assert {'2024_PREQUENTIAL','2025_JAN_APR','2025_MAY_AUG','2025_SEP_DEC'}<=set(s.period)
+          print('Immutable G3 prediction records and verified historical DB available')
+          PY
+      - name: Train four separate specialist engines and compare paired outcomes at each date checkpoint
+        run: |
+          set -euo pipefail
+          python -u scripts/stage111_model_g4.py historical \
+            --db "$DB" --reference "$REF" --baseline "$G3_HISTORY" --out "$OUT"
+          python - <<'PY'
+          import os,json,csv,pathlib
+          p=pathlib.Path(os.environ['OUT'])
+          a=json.loads((p/'stage111-g4-audit.json').read_text())
+          assert a['writes_to_live_app'] is False
+          assert len(a['periods'])==12
+          assert all(row['settled']>500 for row in a['periods'])
+          assert any(len(row['available_discipline_models'])>=4 for row in a['train_checkpoints'])
+          assert (p/'stage111-paper-specialists.joblib').stat().st_size>1000
+          assert (p/'stage111-prior-form-state.joblib').stat().st_size>1000
+          print('Verified one-per-race, paired G3/G4 and specialist training history')
+          PY
+      - name: Show real performance without making a profit claim
+        if: always()
+        run: |
+          if test -s "$OUT/README.md"; then cat "$OUT/README.md" >> "$GITHUB_STEP_SUMMARY";
+          else echo 'No successful performance result. Examine earlier logs.' >> "$GITHUB_STEP_SUMMARY"; fi
+      - name: Download every paired selection, race-type ROI and future paper-only model
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage111-g4-specialists-${{ github.run_id }}
+          path: |
+            reports/stage111/research/*.csv
+            reports/stage111/research/*.csv.gz
+            reports/stage111/research/*.json
+            reports/stage111/research/*.joblib
+            reports/stage111/research/*.md
+          compression-level: 6
+          retention-days: 90
+          if-no-files-found: warn
