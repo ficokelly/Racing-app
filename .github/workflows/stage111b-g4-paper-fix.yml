@@ -1,0 +1,116 @@
+name: "Stage111b - G4 vs G3 odds-free paper rankings (archive fix)"
+on:
+  workflow_dispatch:
+    inputs:
+      selection_date:
+        description: "Race date YYYY-MM-DD; blank means today, and previous days are forbidden"
+        required: false
+        type: string
+        default: ''
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage111b-g4-paper
+  cancel-in-progress: false
+jobs:
+  paper:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - name: Checkout current pre-race cards (read-only)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Freeze run time BEFORE restoring any model
+        run: echo "STAGE111_CUTOFF=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install exact statistical libraries
+        run: |
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 \
+            scikit-learn==1.6.1 joblib==1.4.2
+      - name: Odds-free self-test
+        run: |
+          set -euo pipefail
+          test -s data/racecards.json
+          python scripts/stage111_model_g4.py self-test
+      - name: Restore previously completed Stage111 model plus original G3 benchmark
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUN_ID=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow stage111-g4-specialists.yml \
+            --status success --limit 10 --json databaseId --jq '.[0].databaseId')
+          test -n "$RUN_ID" && test "$RUN_ID" != null || { echo 'No successful G4 historical run' >&2; exit 1; }
+          # Each artifact includes README.md and other shared filenames.
+          # Restore into separate directories to prevent extraction collisions.
+          G4_DIR=reports/stage111/restore/g4
+          G3_DIR=reports/stage111/restore/g3
+          mkdir -p "$G4_DIR" "$G3_DIR"
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "stage111-g4-specialists-${RUN_ID}" --dir "$G4_DIR"
+          gh run download 43407036838 --repo "$GITHUB_REPOSITORY" \
+            --name stage109-g3-learning-43407036838 --dir "$G3_DIR"
+          for file in stage111-paper-specialists.joblib stage111-prior-form-state.joblib; do
+            test -s "$G4_DIR/$file" || { echo "Missing G4 file: $file" >&2; exit 1; }
+          done
+          test -s "$G3_DIR/stage109-future-form-model.joblib" || { echo 'Missing G3 benchmark model' >&2; exit 1; }
+          echo "PARENT_G4_RUN=$RUN_ID" >> "$GITHUB_ENV"
+      - name: Restore completed past form only when available
+        run: |
+          set -euo pipefail
+          if test -s data/hpr/shards/manifest.json; then
+            python scripts/stage87_hpr_storage.py restore \
+              --dir data/hpr/shards --db reports/stage111/recent.sqlite
+          else
+            echo 'No complete recent-form shards; this is NOT grounds to invent them.'
+          fi
+      - name: Score all remaining eligible races with G3 and both G4 variants, zero odds input
+        env:
+          TARGET: ${{ inputs.selection_date }}
+        run: |
+          set -euo pipefail
+          args=(--model reports/stage111/restore/g4/stage111-paper-specialists.joblib
+                --state reports/stage111/restore/g4/stage111-prior-form-state.joblib
+                --g3 reports/stage111/restore/g3/stage109-future-form-model.joblib
+                --cards data/racecards.json --cutoff "$STAGE111_CUTOFF"
+                --date "${TARGET:-$(date -u +%Y-%m-%d)}" --out reports/stage111/paper)
+          if test -s reports/stage111/recent.sqlite; then args+=(--hpr reports/stage111/recent.sqlite); fi
+          python -u scripts/stage111_model_g4.py paper "${args[@]}"
+      - name: Show paper-only selections and gaps
+        if: always()
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json,pathlib,os
+          p=pathlib.Path('reports/stage111/paper/stage111-paper-audit.json')
+          print('# Stage111 G3 vs G4 odds-free paper rankings')
+          if p.is_file():
+            x=json.loads(p.read_text())
+            print('Research run:',os.environ.get('PARENT_G4_RUN'))
+            print('Decision time:',x['asof_utc'])
+            print('One Rank 1 per eligible race:',x['rank1_per_model'])
+            print('No odds or value filtering used.')
+            print('Open the HTML artifact for mobile All Horses / Rank 1 views.')
+          else:print('No paper output: see job errors')
+          PY
+      - name: Download mobile views and exact pre-race ranking snapshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage111-g4-paper-${{ github.run_id }}
+          path: |
+            reports/stage111/paper/*.csv
+            reports/stage111/paper/*.json
+            reports/stage111/paper/*.html
+          retention-days: 90
+          if-no-files-found: warn
