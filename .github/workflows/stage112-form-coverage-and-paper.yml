@@ -1,0 +1,170 @@
+name: Stage112 - Audit and repair G3 G4 2026 form bridge (paper only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      selection_date:
+        description: 'Future paper race date YYYY-MM-DD (blank = today). Past dates audited only, not republished.'
+        required: false
+        type: string
+        default: ''
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage112-form-reconciliation
+  cancel-in-progress: false
+jobs:
+  form-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    env:
+      PYTHONUNBUFFERED: '1'
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+    steps:
+      - name: Checkout current repository read-only
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set exact audit timestamp and target day
+        env:
+          REQUESTED_DATE: ${{ inputs.selection_date }}
+        run: |
+          set -euo pipefail
+          echo "ASOF_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+          if [ -z "$REQUESTED_DATE" ]; then REQUESTED_DATE=$(date -u +%Y-%m-%d); fi
+          [[ "$REQUESTED_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || { echo 'Invalid date' >&2; exit 1; }
+          echo "TARGET_DATE=$REQUESTED_DATE" >> "$GITHUB_ENV"
+      - name: Set up the exact original Python version
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install exact original G3 and G4 libraries
+        run: |
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 \
+            scikit-learn==1.6.1 joblib==1.4.2
+          python -m py_compile scripts/stage112_form_coverage_reconcile.py
+          python scripts/stage112_form_coverage_reconcile.py self-test
+      - name: Verify pinned GitHub research artifacts exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api repos/$GITHUB_REPOSITORY/actions/runs/43089770857/artifacts --jq '.artifacts[].name' | grep -qx 'stage2-historical-staging-database'
+          gh api repos/$GITHUB_REPOSITORY/actions/runs/43422655754/artifacts --jq '.artifacts[].name' | grep -qx 'stage111-g4-specialists-43422655754'
+          gh api repos/$GITHUB_REPOSITORY/actions/runs/43407036838/artifacts --jq '.artifacts[].name' | grep -qx 'stage109-g3-learning-43407036838'
+      - name: Restore exact archived UK IE 2026 runner history (read-only)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage112/source reports/stage112/g3 reports/stage112/g4
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage2-historical-staging-database --dir reports/stage112/source
+          gh run download 43422655754 --repo "$GITHUB_REPOSITORY" \
+            --name stage111-g4-specialists-43422655754 --dir reports/stage112/g4
+          gh run download 43407036838 --repo "$GITHUB_REPOSITORY" \
+            --name stage109-g3-learning-43407036838 --dir reports/stage112/g3
+          test -s reports/stage112/source/historical_ukie_staging.sqlite
+          test -s reports/stage112/g4/stage111-prior-form-state.joblib
+          test -s reports/stage112/g4/stage111-paper-specialists.joblib
+          test -s reports/stage112/g3/stage109-future-form-model.joblib
+          python - <<'PY'
+          import sqlite3
+          conn=sqlite3.connect('file:reports/stage112/source/historical_ukie_staging.sqlite?mode=ro',uri=True)
+          print('Historical last day:',conn.execute('select max(race_date) from historical_races').fetchone()[0])
+          print('DB integrity:',conn.execute('pragma quick_check').fetchone()[0])
+          conn.close()
+          PY
+      - name: Restore original complete HPR ledger (only source AFTER archive cutoff)
+        run: |
+          set -euo pipefail
+          test -s data/hpr/shards/manifest.json
+          python scripts/stage87_hpr_storage.py restore --dir data/hpr/shards --db reports/stage112/recent.sqlite
+      - name: Compare original G3 G4 paper history vs repaired 2026 form state
+        run: |
+          set -euo pipefail
+          python -u scripts/stage112_form_coverage_reconcile.py audit \
+            --state reports/stage112/g4/stage111-prior-form-state.joblib \
+            --db reports/stage112/source/historical_ukie_staging.sqlite \
+            --hpr reports/stage112/recent.sqlite \
+            --cards data/racecards.json --date "$TARGET_DATE" --repo . \
+            --out reports/stage112/output
+          python - <<'PY'
+          import json
+          a=json.load(open('reports/stage112/output/stage112-form-reconciliation-audit.json'))
+          with open('reports/stage112/coverage-summary.md','w') as f:
+            f.write('# Stage112 G3/G4 form reconciliation\n\n')
+            for k in ['race_count','original_state_through','master_archive_through',
+                      'races_under_55pct_before','races_under_55pct_after',
+                      'races_with_unmatched_declared_form_before','races_with_unmatched_declared_form_after',
+                      'runners_with_declared_form_unmatched_before','runners_with_declared_form_unmatched_after']:
+                f.write(f'- {k}: **{a[k]}**\n')
+            f.write('\n**The original models, HPR and live app are untouched.**\n')
+          PY
+          cat reports/stage112/coverage-summary.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Generate future paper selections with repaired state
+        # Do not backdate betting selections. The original immutable history
+        # and original G3/G4 estimates remain available in earlier artifacts.
+        if: ${{ success() }}
+        run: |
+          set -euo pipefail
+          TODAY_UTC=$(date -u +%Y-%m-%d)
+          if [[ "$TARGET_DATE" < "$TODAY_UTC" ]]; then
+            echo 'Past race date: diagnostics only, no retrospective paper rankings' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          python -u scripts/stage111_model_g4.py paper \
+            --model reports/stage112/g4/stage111-paper-specialists.joblib \
+            --state reports/stage112/output/stage112-g4-compatible-archived-form-state.joblib \
+            --g3 reports/stage112/g3/stage109-future-form-model.joblib \
+            --hpr reports/stage112/recent.sqlite \
+            --cards data/racecards.json --date "$TARGET_DATE" --cutoff "$ASOF_UTC" \
+            --out reports/stage112/paper
+      - name: Flag model picks where declared prior form is not reconciled
+        if: ${{ success() }}
+        run: |
+          set -euo pipefail
+          if [ ! -s reports/stage112/paper/stage111-paper-rank1-per-race.csv ]; then
+            echo 'No remaining future races to qualify.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          python - <<'PYCODE'
+          import csv,pathlib
+          src=pathlib.Path('reports/stage112/output/stage112-race-form-reconciliation.csv')
+          picks=pathlib.Path('reports/stage112/paper/stage111-paper-rank1-per-race.csv')
+          out=pathlib.Path('reports/stage112/paper/stage112-quality-labelled-rank1.csv')
+          ok=pathlib.Path('reports/stage112/paper/stage112-reconciled-rank1.csv')
+          with src.open(newline='',encoding='utf-8') as f:
+              audit={r['race_key']:r for r in csv.DictReader(f)}
+          with picks.open(newline='',encoding='utf-8') as f:
+              base=list(csv.DictReader(f))
+              header=list(base[0]) if base else list(csv.DictReader(picks.open(newline='',encoding='utf-8')).fieldnames or [])
+          rows=[]
+          for r in base:
+              audit_row=audit.get(r['race_id'])
+              missing=int(audit_row['reported_prior_form_unmatched']) if audit_row else -1
+              r['prior_form_unmatched_runners']=missing
+              r['coverage_quality_status']='FULL_CARD_FORM_MATCHED' if missing==0 else 'UNVERIFIED_PRIOR_FORM'
+              rows.append(r)
+          fields=header+['prior_form_unmatched_runners','coverage_quality_status']
+          for path,data in [(out,rows),(ok,[r for r in rows if r['coverage_quality_status']=='FULL_CARD_FORM_MATCHED'])]:
+              with path.open('w',newline='',encoding='utf-8') as f:
+                  w=csv.DictWriter(f,fieldnames=fields);w.writeheader();w.writerows(data)
+          print('Paper Rank1:',len(rows),'quality-verified:',sum(r['coverage_quality_status']=='FULL_CARD_FORM_MATCHED' for r in rows))
+          PYCODE
+      - name: Publish audit outputs only as downloadable artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage112-form-audit-${{ github.run_id }}
+          path: |
+            reports/stage112/output/*.csv
+            reports/stage112/output/*.json
+            reports/stage112/coverage-summary.md
+            reports/stage112/paper/*.csv
+            reports/stage112/paper/*.json
+            reports/stage112/paper/*.html
+          retention-days: 90
