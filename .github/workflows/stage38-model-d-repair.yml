@@ -2,6 +2,12 @@ name: Stage 38 - Model D Daily Scoring (UI Independent)
 
 on:
   workflow_dispatch:
+    inputs:
+      day:
+        description: 'Optional racing date YYYY-MM-DD (blank picks next unrun card)'
+        required: false
+        type: string
+        default: ''
   schedule:
     - cron: '25 7,11,15,18 * * *'
 
@@ -15,22 +21,57 @@ concurrency:
 
 jobs:
   score-independent-dz:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 170
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install dependencies
+      - name: Install unchanged frozen model dependencies
         run: python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1 kagglehub
-      - name: Validate unchanged frozen Model D scoring engine
+      - name: Validate frozen Model D and installed Stage116 identity repairs
+        shell: bash
         run: |
           set -euo pipefail
-          for path in scripts/stage30_gap_aware_abcd.py scripts/stage38_model_dz_live.py scripts/stage38_fullfield_bridge.py reports/stage30/stage30-summary.json reports/stage34/stage34-frozen-track-profiles.json data/model-z-strategies.json; do test -s "$path"; done
+          for path in scripts/stage30_gap_aware_abcd.py scripts/stage38_model_dz_live.py scripts/stage38_fullfield_bridge.py scripts/stage116_verified_form_live.py reports/stage30/stage30-summary.json reports/stage34/stage34-frozen-track-profiles.json data/model-z-strategies.json; do test -s "$path"; done
           python scripts/stage30_gap_aware_abcd.py --self-test
           python scripts/stage38_model_dz_live.py self-test
           python scripts/stage38_fullfield_bridge.py --self-test
+          python scripts/stage116_verified_form_live.py --mode self-test
+      - name: Pick next declared PRE-OFF field; never score races already completed
+        shell: bash
+        env:
+          MANUAL_DAY: ${{ inputs.day || '' }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import datetime as dt,json,os,re
+          from pathlib import Path
+          cards=json.loads(Path('data/racecards.json').read_text())['runners']
+          now=dt.datetime.now(dt.timezone.utc)
+          possible=set()
+          for r in cards:
+              if not isinstance(r,dict) or not r.get('horse') or not r.get('course') or not r.get('race_time'):continue
+              if str(r.get('race_status') or '').lower() in ('nr','nonrunner','non-runner','withdrawn','scratched','finished','result','cancelled','abandoned'):continue
+              try:
+                  stamp=dt.datetime.fromisoformat(str(r['race_time']).replace('Z','+00:00'))
+                  if stamp.tzinfo is None:continue
+                  stamp=stamp.astimezone(dt.timezone.utc)
+              except (TypeError,ValueError):continue
+              if stamp>now+dt.timedelta(minutes=4):possible.add(stamp.date().isoformat())
+          requested=os.environ.get('MANUAL_DAY','').strip()
+          if requested and not re.fullmatch(r'\d{4}-\d{2}-\d{2}',requested):raise SystemExit('Invalid manual racing date')
+          day=requested or (min(possible) if possible else None)
+          if not day or day not in possible:raise SystemExit('No future pre-off racecards for '+str(day)+'. Refusing stale forecast.')
+          count=sum(str(z.get('date') or '')==day and z.get('horse') for z in cards)
+          if count<2:raise SystemExit('Target racing date has no complete declared field')
+          print('Scoring future race date:',day,'card runners:',count)
+          with open(os.environ['GITHUB_ENV'],'a') as f:print('STAGE38_TARGET_DATE='+day,file=f)
+          PY
       - name: Retrieve or rebuild historical racing database
         env:
           GH_TOKEN: ${{ github.token }}
@@ -66,13 +107,14 @@ jobs:
           if not db.is_file() or db.stat().st_size<10_000_000:raise SystemExit('No valid historical database')
           with open(os.environ['GITHUB_ENV'],'a') as f:print('STAGE38_DB='+str(db),file=f)
           PY
-      - name: Score frozen Model D and Model Z without modifying app UI
+      - name: Score frozen Model D and Model Z with verified identities
+        shell: bash
         run: |
           set -euo pipefail
-          python -u scripts/stage38_model_dz_live.py live --repo . --db "$STAGE38_DB"
-          python scripts/stage38_fullfield_bridge.py --repo .
+          python -u scripts/stage38_model_dz_live.py live --repo . --db "$STAGE38_DB" --day "$STAGE38_TARGET_DATE"
+          python scripts/stage38_fullfield_bridge.py --repo . --day "$STAGE38_TARGET_DATE"
           python - <<'PY'
-          import json
+          import json,os
           from pathlib import Path
           data=Path('data')
           d=json.loads((data/'strategy-d-probabilities.json').read_text())
@@ -81,33 +123,91 @@ jobs:
           c=json.loads((data/'model-assessment-coverage.json').read_text())
           registry=json.loads((data/'model-z-strategies.json').read_text())
           assert d['model']=='D' and d['version']==1 and d['selection_policy']=='RESEARCH_ONLY_NOT_PROVEN_PROFITABLE'
+          assert d.get('day')==os.environ['STAGE38_TARGET_DATE'] and z.get('day')==d['day']
           assert z['model']=='Z' and z['automatic_paper_only'] is True and not z['live_models_changed']
           assert not registry['active_strategy_ids']
           assert b['model']=='B' and c['version']==1 and len(b['races'])==len(c['races'])
           assert all(set(row['models'])==set('ABCDZ') for row in c['races'])
           assert all(r['selection_status'] in ('PAPER_ONLY','NO_SELECTION') for r in z['races'])
-          print('Independent D:',d['state'],len(d['races']),'Z:',len(z['races']))
+          print('Model D actual target:',d['day'],'forecast races:',len(d['races']),'Model Z:',len(z['races']))
           PY
-      - name: Publish model forecasts without touching app UI
+      - name: Publish model outputs against the latest main without rebasing stale results
+        shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add data/strategy-b-all-races.json data/model-assessment-coverage.json data/strategy-d-probabilities.json data/strategy-d-results.json data/strategy-d-history.json data/strategy-z-probabilities.json data/strategy-z-paper-history.json data/strategy-z-results.json
-          if git diff --cached --quiet; then echo 'No data updates'; exit 0; fi
-          git commit -m 'Stage38: publish frozen D and Z forecasts'
-          for attempt in 1 2 3 4 5; do
-            if git pull --rebase origin main && git push origin HEAD:main; then exit 0; fi
-            git rebase --abort || true
-            sleep "$((attempt*3))"
+          export SAVE_DIR="$(mktemp -d)"
+          python - <<'PY'
+          import os,pathlib,shutil
+          files='strategy-b-all-races.json model-assessment-coverage.json strategy-d-probabilities.json strategy-d-results.json strategy-d-history.json strategy-z-probabilities.json strategy-z-paper-history.json strategy-z-results.json'.split()
+          src=pathlib.Path('data');out=pathlib.Path(os.environ['SAVE_DIR'])
+          for f in files:
+              if not (src/f).is_file():raise SystemExit('Missing required scored output '+f)
+              shutil.copy2(src/f,out/f)
+          print('Saved staged outputs in temporary runner directory:',len(files))
+          PY
+          for attempt in 1 2 3 4 5 6; do
+            git fetch origin main
+            git reset --hard origin/main
+            python - <<'PY'
+          import datetime as dt,json,os,pathlib
+          paths='strategy-b-all-races.json model-assessment-coverage.json strategy-d-probabilities.json strategy-d-results.json strategy-d-history.json strategy-z-probabilities.json strategy-z-paper-history.json strategy-z-results.json'.split()
+          src=pathlib.Path(os.environ['SAVE_DIR']);dst=pathlib.Path('data')
+          def stamp(s):
+              try:
+                  v=dt.datetime.fromisoformat(str(s or '').replace('Z','+00:00'))
+                  return v.astimezone(dt.timezone.utc) if v.tzinfo else None
+              except (ValueError,TypeError):return None
+          def merge_lists(old,new):
+              current={}
+              for r in old:
+                  if isinstance(r,dict):current[(r.get('date'),r.get('course'),r.get('time'),r.get('horse'),r.get('strategy_id'))]=r
+              for r in new:
+                  if not isinstance(r,dict):continue
+                  key=(r.get('date'),r.get('course'),r.get('time'),r.get('horse'),r.get('strategy_id'))
+                  present=current.get(key)
+                  if present is None:current[key]=r;continue
+                  # Settlement evidence takes precedence over a newer unsatisfied forecast.
+                  done=lambda x: str(x.get('status','')).lower() in ('won','lost','placed','settled','void') or bool(x.get('settled_at'))
+                  if done(present) and not done(r):continue
+                  if done(r) and not done(present):current[key]=r;continue
+                  if stamp(r.get('settled_at') or r.get('published_at')) and (stamp(r.get('settled_at') or r.get('published_at')) > (stamp(present.get('settled_at') or present.get('published_at')) or dt.datetime.min.replace(tzinfo=dt.timezone.utc))):current[key]=r
+              return sorted(current.values(),key=lambda z:(str(z.get('date','')),str(z.get('race_time') or z.get('time') or ''),str(z.get('course','')),str(z.get('horse',''))))
+          for f in paths:
+              path=dst/f;candidate=json.loads((src/f).read_text());old=json.loads(path.read_text()) if path.is_file() else {}
+              if 'selections' in candidate and isinstance(candidate['selections'],list):
+                  candidate['selections']=merge_lists(old.get('selections',[]),candidate['selections'])
+              else:
+                  old_t=stamp(old.get('generated_at'));new_t=stamp(candidate.get('generated_at'))
+                  if old_t and new_t and old_t>new_t:
+                      print('Preserving newer upstream output:',f,old_t.isoformat());continue
+                  # Prevent a prior-date target overwriting a newer forecast without generated_at.
+                  if old.get('day') and candidate.get('day') and str(old['day'])>str(candidate['day']):
+                      print('Preserving newer upstream date:',f);continue
+              path.write_text(json.dumps(candidate,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
+              print('Prepared against latest main:',f)
+          PY
+            git add data/strategy-b-all-races.json data/model-assessment-coverage.json data/strategy-d-probabilities.json data/strategy-d-results.json data/strategy-d-history.json data/strategy-z-probabilities.json data/strategy-z-paper-history.json data/strategy-z-results.json
+            if git diff --cached --quiet; then
+              echo 'No newer model updates to publish (already committed or superseded)'
+              exit 0
+            fi
+            git commit -m "Stage38: publish verified D and Z forecasts for $STAGE38_TARGET_DATE"
+            if git push origin HEAD:main; then
+              echo "Published Stage116 repaired D scoring for $STAGE38_TARGET_DATE" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "Concurrent GitHub write on attempt $attempt; rebuilding from latest main"
+            sleep "$((attempt*2))"
           done
-          echo 'Forecast publication failed' >&2
+          echo 'D forecasts computed but latest-main publication could not complete' >&2
           exit 1
-      - name: Save forecast files on failure
+      - name: Save scored outputs and audit even if publication fails
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: stage38-research-dz-and-race-coverage
+          name: stage38-verified-d-and-z-${{ github.run_id }}
           path: |
             data/strategy-d-probabilities.json
             data/strategy-z-probabilities.json
