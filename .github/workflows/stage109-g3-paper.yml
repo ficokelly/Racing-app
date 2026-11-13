@@ -79,9 +79,63 @@ jobs:
           else
             echo 'No recent archived HPR runs: history will be marked incomplete' >&2
           fi
+      - name: Select the next unrun declared racing date for the G paper models
+        shell: bash
+        env:
+          REQUESTED_DATE: ${{ inputs.selection_date }}
+        run: |
+          set -euo pipefail
+          python - <<'PYTARGET'
+          import datetime as dt, json, os, pathlib
+          cards=json.loads(pathlib.Path('data/racecards.json').read_text()).get('runners',[])
+          now=dt.datetime.now(dt.timezone.utc)
+          cutoff=now+dt.timedelta(minutes=6)
+          eligible={}
+          stop={'nr','nonrunner','non-runner','scratched','withdrawn','did not start','dns','cancelled','abandoned'}
+          for row in cards:
+              if not row.get('horse') or str(row.get('race_status') or '').lower() in stop:continue
+              value=str(row.get('race_time') or '')
+              try:
+                  off=dt.datetime.fromisoformat(value.replace('Z','+00:00'))
+                  if off.tzinfo is None:off=off.replace(tzinfo=dt.timezone.utc)
+                  off=off.astimezone(dt.timezone.utc)
+              except ValueError:continue
+              if off<=cutoff:continue
+              d=str(row.get('date') or value)[:10]
+              if not d:continue
+              key=(str(row.get('course') or ''),off.isoformat())
+              eligible.setdefault(d,{}).setdefault(key,[]).append(row['horse'])
+          targets=sorted(d for d,races in eligible.items() if any(len(set(names))>=2 for names in races.values()))
+          asked=str(os.environ.get('REQUESTED_DATE') or '').strip()
+          if asked:
+              dt.date.fromisoformat(asked)
+              if asked not in targets:
+                  raise SystemExit('No unrun eligible full-field races for requested date '+asked+'; do not score finished races')
+              chosen=asked
+          else:
+              if not targets:raise SystemExit('No next unrun racing date in saved racecards; refresh cards first')
+              chosen=targets[0]
+          with open(os.environ['GITHUB_ENV'],'a') as f:f.write('STAGE116_G_TARGET='+chosen+'\n')
+          print('G3/G4 next safe paper race date:',chosen, 'eligible future race groups:',len(eligible[chosen]))
+          PYTARGET
+      - name: Restore verified master 2026 form and preserve HPR observations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET: ${{ env.STAGE116_G_TARGET }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage109/stage116
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage2-historical-staging-database --dir reports/stage109/stage116
+          test -s reports/stage109/stage116/historical_ukie_staging.sqlite
+          args=(--mode prepare-g-state --db reports/stage109/stage116/historical_ukie_staging.sqlite
+            --cards data/racecards.json --target "${TARGET:-$(date -u +%Y-%m-%d)}"
+            --state reports/stage109/restore/stage109-prior-form-state.joblib --prepared reports/stage109/stage116-patched-form-state.joblib --out reports/stage109/stage116)
+          if test -s reports/stage109/recent.sqlite; then args+=(--hpr reports/stage109/recent.sqlite); fi
+          python -u scripts/stage116_verified_form_live.py "${args[@]}"
       - name: Generate all-horse rankings and separate G2/G3 Fancied
         env:
-          SELECTION_DATE: ${{ inputs.selection_date }}
+          SELECTION_DATE: ${{ env.STAGE116_G_TARGET }}
           BOOK: ${{ inputs.bookmaker }}
         shell: bash
         run: |
@@ -89,7 +143,7 @@ jobs:
           TARGET="${SELECTION_DATE:-$(date -u +%Y-%m-%d)}"
           args=(--model reports/stage109/restore/stage109-future-form-model.joblib
             --g2-frozen reports/stage109/restore/stage109-frozen-g2-original.joblib
-            --state reports/stage109/restore/stage109-prior-form-state.joblib
+            --state reports/stage109/stage116-patched-form-state.joblib
             --cards data/racecards.json --odds data/latest-odds.json
             --date "$TARGET" --bookmaker "${BOOK:-williamhill}"
             --cutoff "$STAGE109_CUTOFF" --out reports/stage109/paper)
@@ -114,6 +168,24 @@ jobs:
             print('Download **stage109-paper-mobile-views.html** for four tap-to-switch mobile views.')
           print('All selections are paper only. Predicted win chance is not calibrated proof of value.')
           PY
+      - name: Report G model recovered form coverage
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PYCOVER' >> "$GITHUB_STEP_SUMMARY"
+          import json,pathlib
+          p=pathlib.Path('reports/stage109/stage116/stage116-g-form-summary.json')
+          print('## G3 verified historical-form bridge')
+          if not p.is_file():
+              print('Form recovery report missing; inspect failed preparation step')
+          else:
+              x=json.loads(p.read_text())
+              print('Target date:',x.get('target'))
+              print('Runners with prior runs: original',x.get('prior_match_before'),'corrected',x.get('prior_match_after'))
+              print('Added historical starts:',x.get('merge',{}).get('new_verified_historical_starts_added'))
+              print('No regressions:',x.get('no_history_regressions'))
+              print('Same frozen trained model; improved data only')
+          PYCOVER
       - name: Download phone-friendly all-horses and Fancied comparison
         if: always()
         uses: actions/upload-artifact@v4
@@ -123,5 +195,6 @@ jobs:
             reports/stage109/paper/*.csv
             reports/stage109/paper/*.json
             reports/stage109/paper/*.html
+            reports/stage109/stage116/stage116-g-form-summary.json
           retention-days: 90
           if-no-files-found: warn
