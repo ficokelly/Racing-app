@@ -1,0 +1,169 @@
+name: "Stage115 - D D(c) verified identity paired backtest and HPR proposals"
+
+on:
+  workflow_dispatch:
+    inputs:
+      backtest_start:
+        description: 'Completed historical dates (2026-11-04..2026-11-10); pre-off cards only'
+        type: string
+        required: false
+        default: '2026-11-04'
+      backtest_end:
+        description: 'Completed historical dates; must not exceed immutable archive end'
+        type: string
+        required: false
+        default: '2026-11-10'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage115-research-only
+  cancel-in-progress: false
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 145
+    env:
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      PINNED_CARDS_AND_DC_COMMIT: 'bc31623376bf2d1c7c540b1bdd74290da0af998f'
+    steps:
+      - name: Checkout repository with full commit history for 09:45 preoff snapshots
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Setup pinned Python and model dependencies
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate paper-only identity code and available inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 \
+            scikit-learn==1.6.1 joblib==1.4.2
+          python -m py_compile scripts/stage115_identity_backtest_hpr_recovery.py \
+            scripts/stage114_exact_identity_and_form_research.py \
+            scripts/stage94_dc_probability_replay.py \
+            scripts/stage86_hpr_engine.py
+          python scripts/stage115_identity_backtest_hpr_recovery.py --self-test
+          python scripts/stage114_exact_identity_and_form_research.py --self-test
+          python scripts/stage94_dc_probability_replay.py --self-test
+          test -s reports/stage30/stage30-summary.json
+          test -s data/hpr/shards/manifest.json
+      - name: Restore immutable Stage2 historical results and completed Stage114 identity evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage115/source reports/stage115/previous reports/stage115/input
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage2-historical-staging-database --dir reports/stage115/source
+          gh run download 43495304846 --repo "$GITHUB_REPOSITORY" \
+            --name stage114-exact-identity-43495304846 --dir reports/stage115/previous
+          test -s reports/stage115/source/historical_ukie_staging.sqlite
+          test -s reports/stage115/previous/stage114-D-all-runners-rank-comparison.csv
+          test -s reports/stage115/previous/stage114-all-runners-exact-pedigree-audit.csv
+          git cat-file -e "$PINNED_CARDS_AND_DC_COMMIT^{commit}"
+          git show "$PINNED_CARDS_AND_DC_COMMIT":data/racecards.json \
+            > reports/stage115/input/14nov-pinned-racecards.json
+          git show "$PINNED_CARDS_AND_DC_COMMIT":data/strategy-dc-probabilities.json \
+            > reports/stage115/input/14nov-published-dc.json
+          python - <<'PY'
+          import json,sqlite3,pathlib
+          p=pathlib.Path('reports/stage115/source/historical_ukie_staging.sqlite')
+          with sqlite3.connect('file:'+str(p.resolve())+'?mode=ro',uri=True) as db:
+              assert db.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+              assert db.execute('SELECT MAX(race_date) FROM historical_races').fetchone()[0]=='2026-11-10'
+          cards=json.loads(pathlib.Path('reports/stage115/input/14nov-pinned-racecards.json').read_text())
+          dc=json.loads(pathlib.Path('reports/stage115/input/14nov-published-dc.json').read_text())
+          assert sum(z.get('date')=='2026-11-14' for z in cards['runners'])>=300
+          assert sum(z.get('date')=='2026-11-14' for z in dc['races'])==36
+          print('Verified immutable date-cut source, 36 frozen D(c) race-score fields')
+          PY
+      - name: Restore original HPR ledger to temporary local SQLite (never persist)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/stage87_hpr_storage.py restore \
+            --dir data/hpr/shards --db reports/stage115/source/hpr-readonly.sqlite
+          test -s reports/stage115/source/hpr-readonly.sqlite
+      - name: Pair finished 2026 D backtest, reconstruct isolated D(c) effects, propose HPR corrections
+        env:
+          BACKTEST_START: ${{ inputs.backtest_start }}
+          BACKTEST_END: ${{ inputs.backtest_end }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/stage115_identity_backtest_hpr_recovery.py \
+            --repo . \
+            --db reports/stage115/source/historical_ukie_staging.sqlite \
+            --hpr reports/stage115/source/hpr-readonly.sqlite \
+            --cards reports/stage115/input/14nov-pinned-racecards.json \
+            --stage114 reports/stage115/previous/stage114-all-runners-exact-pedigree-audit.csv \
+            --dc-feed reports/stage115/input/14nov-published-dc.json \
+            --out reports/stage115/output \
+            --backtest-start "${BACKTEST_START:-2026-11-04}" \
+            --backtest-end "${BACKTEST_END:-2026-11-10}"
+      - name: Write human-readable research summary with explicit scope limitations
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,pathlib,csv
+          root=pathlib.Path('reports/stage115/output')
+          x=json.loads((root/'stage115-master-summary.json').read_text())
+          d=x['D_backtest'];dch=d['D_c_historical_pair'];dc=x['D_c_frozen_C'];c=x['D_c_C_alias_coverage'];h=x['HPR_candidacy']
+          lines=['# Stage 115 — Paper research, not live selections',
+                 '## Completed-date D backtest',
+                 '- Matched verified pre-off/result races: {}'.format(d['race_pairs_evaluated']),
+                 '- D Rank 1 changed in {} races; Rank 2 changed in {} races'.format(d['race_rank1_changes'],d['race_rank2_changes']),
+                 '- Paired verified-SP Rank 1 bets: {} / Rank 2 bets: {}'.format(d['paired_sp_rank1_count'],d['paired_sp_rank2_count']),
+                 '## Completed-date D(c) backtest (historical C snapshots where available)',
+                 '- Complete paired D(c) races: {}; matched original to published Rank 1: {}'.format(dch['matched_completed_races'],dch['original_rank1_reconstruction_agrees_published']),
+                 '- Historical D(c) Rank 1 changes: {} (D component only)'.format(dch['rank1_changes_D_component_only']),
+                 '## 14 Nov D(c) isolated D-component correction',
+                 '- Fields compared: {} ; Rank 1 changes: {} ; Rank 2 changes: {}'.format(dc['races_compared'],dc['repaired_rank1_changes'],dc['repaired_rank2_changes']),
+                 '- Matched reconstructed original to published rank1: {}'.format(dc['baseline_rank1_agrees_with_published']),
+                 '- Published C probabilities are fixed: this is NOT a fully repaired original D(c).',
+                 '## D(c) separate C history matching audit',
+                 '- Verified additional C-history aliases: {}'.format(c.get('C_recoverable_newly',0)),
+                 '## HPR candidate archive ratings (NOT inserted)',
+                 '- Verified proposed ratings: {} across {} horses'.format(h['new_proposed_ratings'],h['horses_with_new_proposed_ratings']),
+                 '- Rated horse coverage before: {}; hypothetical after: {}'.format(h['HPR_preoff_available_before'],h['HPR_preoff_available_after_research_only']),
+                 '## Integrity',
+                 '- Historical D card snapshots come from Git before 09:45 UTC on the race date.',
+                 '- Outcomes and starting prices used only for settlement, never to rank runners.',
+                 '- Source/identity conflicts are excluded; name-only joins forbidden.',
+                 '- Frozen D, D(c), E/HPR, G3/G4, and live app inputs remain unmodified.']
+          rows=list(csv.DictReader((root/'stage115-D-historical-strike-ROI.csv').open(newline='')))
+          dcrows=list(csv.DictReader((root/'stage115-Dc-historical-strike-ROI.csv').open(newline='')))
+          lines+=['## Paired D SP ROI (when confirmed prices exist)']
+          for row in rows:
+              if row['group']=='ALL':
+                  lines.append('- {} rank {}: {} / {} wins, {}%, ROI {}%, SP-verified n={}'.format(
+                     row['model'],row['rank'],row['wins'],row['race_picks'],row['strike_rate_pct'],row['roi_pct'] or 'UNAVAILABLE',row['paired_sp_verified_picks']))
+          lines+=['## Historical D(c) paired SP ROI (only archived genuine C score snapshots)']
+          for row in dcrows:
+              if row['group']=='ALL':
+                  lines.append('- {} rank {}: {} / {} wins, {}%, ROI {}%, SP-verified n={}'.format(
+                     row['model'],row['rank'],row['wins'],row['race_picks'],row['strike_rate_pct'],row['roi_pct'] or 'UNAVAILABLE',row['paired_sp_verified_picks']))
+          text='\n\n'.join(lines)+'\n'
+          (root/'stage115-summary.md').write_text(text)
+          with open(__import__('os').environ['GITHUB_STEP_SUMMARY'],'a') as f:f.write(text)
+          PY
+      - name: Upload audit output only; no database, app or production artifact mutation
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage115-identity-paired-research-${{ github.run_id }}
+          retention-days: 90
+          if-no-files-found: warn
+          path: |
+            reports/stage115/output/*.csv
+            reports/stage115/output/*.json
+            reports/stage115/output/*.md
