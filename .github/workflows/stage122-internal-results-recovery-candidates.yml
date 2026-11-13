@@ -1,0 +1,184 @@
+name: Stage 122 - Find Missing Internal Result Starts (READ ONLY)
+
+on:
+  workflow_dispatch:
+    inputs:
+      day:
+        description: 'Audited Model D date; blank = Stage121 target (2026-11-14)'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  candidate-recovery:
+    name: Locate previously completed results with evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore the exact Stage 121 unresolved horse list
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage122/input
+          gh run download 43526992727 \
+            --repo "$GITHUB_REPOSITORY" \
+            --name stage121-final-d-identity-review-43526992727 \
+            --dir reports/stage122/input
+          test -s reports/stage122/input/unresolved-identity-detail.csv
+          test -s reports/stage122/input/summary.json
+      - name: Cross-reference saved dated final results, preserving identity safeguards
+        shell: bash
+        env:
+          REQUESTED_DAY: ${{ inputs.day || '' }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv,datetime as dt,json,os,re,collections
+          from pathlib import Path
+
+          inp=Path('reports/stage122/input');out=Path('reports/stage122')
+          audit=json.loads((inp/'summary.json').read_text())
+          target=os.environ.get('REQUESTED_DAY','').strip() or audit['target_day']
+          dt.date.fromisoformat(target)
+          if target!=audit['target_day']:
+              raise SystemExit('Stage122 requires same-day Stage121 identity list: '+audit['target_day'])
+          if audit['actual_scoring_db_unresolved']!=58:
+              raise SystemExit('Unexpected Stage121 audit; refuse unrelated candidate selection')
+          published=json.loads(Path('data/strategy-d-probabilities.json').read_text())
+          if published['day']!=target:
+              raise SystemExit('Live D date changed; do not compare unmatched racecards')
+          if published['verified_form_recovery']['D_verified']!=audit['published_D_verified']:
+              raise SystemExit('Live D coverage changed since Stage121; refresh diagnosis')
+
+          rows=list(csv.DictReader((inp/'unresolved-identity-detail.csv').open(newline='',encoding='utf-8')))
+          assert len(rows)==audit['actual_scoring_db_unresolved']
+          def horsekey(s):
+              s=re.sub(r'\s*\(([A-Z]{2,3})\)\s*$','',str(s or '').upper())
+              return re.sub(r'[^A-Z0-9]','',s)
+          def parentkey(s):
+              value=re.sub(r'\s*\(([A-Z]{2,3})\)\s*$','',str(s or '').upper())
+              return re.sub(r'[^A-Z0-9]','',value)
+          def date(s):return str(s or '')[:10]
+          def coursekey(s):
+              s=re.sub(r'\s*\((AW|IRE|GB)\)','',str(s or '').upper())
+              return re.sub(r'[^A-Z0-9]','',s)
+
+          candidates=collections.defaultdict(list)
+          for x in rows:candidates[horsekey(x['horse'])].append(x)
+          results=[];seen=set();files=[];races_seen=0;source_horse_rows=0
+          for f in sorted(Path('data/racing-results').glob('*.json')):
+              if date(f.stem)>=target:continue
+              try:doc=json.loads(f.read_text())
+              except (OSError,ValueError):continue
+              files.append(f.name)
+              for race in doc.get('results',[]):
+                  if str(race.get('status','')).lower()!='final':continue
+                  race_day=date(race.get('date') or f.stem)
+                  if not race_day or race_day>=target:continue
+                  races_seen+=1
+                  for runner in race.get('runners',[]):
+                      source_horse_rows+=1
+                      name=runner.get('horse') or runner.get('horse_name') or runner.get('name') or ''
+                      which=candidates.get(horsekey(name),[])
+                      if not which:continue
+                      npos=str(runner.get('position') or runner.get('finish_pos') or '').strip().upper()
+                      rstatus=str(runner.get('status') or '').lower()
+                      if npos in ('NR','DNS') or rstatus in ('nonrunner','non-runner','withdrawn','scratched','did not start'):
+                          continue
+                      race_key=(race_day,coursekey(race.get('course')),str(race.get('off_dt') or race.get('off') or ''),horsekey(name))
+                      if race_key in seen:continue
+                      seen.add(race_key)
+                      for x in which:
+                          sid=str(runner.get('horse_id') or runner.get('horse_source_id') or '').strip()
+                          cid=str(x.get('horse_id') or '').strip()
+                          # No name-only links are promoted to actual recovered runs.
+                          id_match=bool(sid and cid and sid==cid)
+                          sire=runner.get('sire') or '';dam=runner.get('dam') or ''
+                          parents_match=bool(sire and dam and x['sire'] and x['dam'] and
+                              parentkey(sire)==parentkey(x['sire']) and parentkey(dam)==parentkey(x['dam']))
+                          proof='EXACT_PROVIDER_HORSE_ID' if id_match else 'BOTH_PARENTS_EXACT' if parents_match else 'NAME_ONLY_REQUIRES_ADDITIONAL_PROOF'
+                          rec={'horse':x['horse'],'horse_id':cid,'current_course':x['course'],
+                             'current_race_time':x['time'],'stage121_classification':x['classification'],
+                             'source_date':race_day,'source_course':str(race.get('course') or ''),
+                             'source_off':str(race.get('off_dt') or race.get('off') or ''),
+                             'source_race_id':str(race.get('race_id') or ''),
+                             'source_horse':name,'source_horse_id':sid,
+                             'source_sire':str(sire),'source_dam':str(dam),
+                             'finish_position':npos,'outcome_status':rstatus,
+                             'sp':str(runner.get('sp') or ''),
+                             'identity_proof':proof,'strict_identity_match_candidate':int(id_match or parents_match),
+                             'result_source_file':f.as_posix(),
+                             'race_final':1}
+                          results.append(rec)
+          cols=list(results[0]) if results else [
+              'horse','horse_id','current_course','current_race_time','stage121_classification',
+              'source_date','source_course','source_off','source_race_id','source_horse',
+              'source_horse_id','source_sire','source_dam','finish_position','outcome_status',
+              'sp','identity_proof','strict_identity_match_candidate','result_source_file','race_final']
+          with (out/'dated-result-matches.csv').open('w',newline='',encoding='utf-8') as f:
+              w=csv.DictWriter(f,fieldnames=cols);w.writeheader();w.writerows(results)
+          with (out/'strict-identity-candidates.csv').open('w',newline='',encoding='utf-8') as f:
+              w=csv.DictWriter(f,fieldnames=cols);w.writeheader();w.writerows(r for r in results if r['strict_identity_match_candidate'])
+          with (out/'name-only-needs-proof.csv').open('w',newline='',encoding='utf-8') as f:
+              w=csv.DictWriter(f,fieldnames=cols);w.writeheader();w.writerows(r for r in results if not r['strict_identity_match_candidate'])
+          by_horse=collections.defaultdict(list)
+          for r in results:by_horse[(r['horse'],r['horse_id'])].append(r)
+          overview=[]
+          for x in rows:
+              hits=by_horse.get((x['horse'],x['horse_id']),[])
+              strict=[z for z in hits if z['strict_identity_match_candidate']]
+              overview.append({'horse':x['horse'],'course':x['course'],'time':x['time'],
+                'class':x['classification'],'public_form':x['has_public_prior_form'],
+                'strict_identified_pre_off_starts':len(strict),
+                'name_only_completed_results':len(hits)-len(strict),
+                'earliest_source_date':min((z['source_date'] for z in hits),default=''),
+                'latest_source_date':max((z['source_date'] for z in hits),default=''),
+                'next_step':'REPLAY_WITH_ARCHIVE_DEDUP_CHECK' if strict else
+                  'GET_PREOFF_CARD_OR_EXTERNAL_IDENTITY_PROOF' if hits else
+                  'RESEARCH_OLDER_RULES_PTP_OR_FOREIGN_FORM' if x['has_public_prior_form']=='1' else
+                  'VERIFY_FIRST_TIME_RUNNER'})
+          with (out/'all-58-recovery-priorities.csv').open('w',newline='',encoding='utf-8') as f:
+              w=csv.DictWriter(f,fieldnames=list(overview[0]));w.writeheader();w.writerows(overview)
+          proof=collections.Counter(z['identity_proof'] for z in results)
+          rep={'stage':122,'mode':'READ_ONLY','date':target,'unresolved_horses':len(rows),
+               'date_scoped_result_files_checked':len(files),'completed_races_scanned':races_seen,
+               'result_runner_rows_scanned':source_horse_rows,
+               'same_name_final_result_rows':len(results),
+               'distinct_horses_with_any_result':len(by_horse),
+               'distinct_horses_with_strict_id_proof':sum(any(z['strict_identity_match_candidate'] for z in group) for group in by_horse.values()),
+               'identity_evidence':dict(proof),'strict_rows_not_yet_imported':sum(z['strict_identity_match_candidate'] for z in results),
+               'verified_archive_mutated':False,'model_scoring_mutated':False,
+               'limitations':['This checks only dated result files currently in the repository, not all historic results.',
+                  'A horse name alone is insufficient to add a past run to a model.',
+                  'Even strictly identified final starts require race-level duplicate and provenance checks before import.',
+                  'French racing and point-to-points should be kept as a separate evidence class, not inserted as UK/Irish under-rules results.']}
+          (out/'summary.json').write_text(json.dumps(rep,indent=2)+'\n')
+          print('STAGE122 INTERNAL RESULT CANDIDATES:',json.dumps(rep,indent=2),flush=True)
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
+              f.write('## Stage122 — internal missing result candidates (READ ONLY)\n\n')
+              f.write(f"- Checked {len(files)} dated result archives, {races_seen} final races, {source_horse_rows} recorded runners\n")
+              f.write(f"- Found {len(results)} same-name completed result records for {len(by_horse)} of 58 unresolved horses\n")
+              f.write(f"- **{rep['strict_rows_not_yet_imported']}** records have exact horse ID or two-parent proof, still NOT imported\n")
+              f.write('- See artifact for full per-horse evidence and cases needing manual validation\n')
+              f.write('\nNo live model or historical data was edited.\n')
+          PY
+      - name: Upload evidence and horse-by-horse recovery queue
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage122-internal-result-evidence-${{ github.run_id }}
+          path: |
+            reports/stage122/all-58-recovery-priorities.csv
+            reports/stage122/dated-result-matches.csv
+            reports/stage122/strict-identity-candidates.csv
+            reports/stage122/name-only-needs-proof.csv
+            reports/stage122/summary.json
+          retention-days: 30
+          if-no-files-found: warn
