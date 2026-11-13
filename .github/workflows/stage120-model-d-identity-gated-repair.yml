@@ -195,26 +195,49 @@ jobs:
           cp data/strategy-d-probabilities.json reports/stage120/d-before.json
           python -u scripts/stage38_model_dz_live.py live --repo . --db "$STAGE120_DB" --day "$STAGE120_DAY"
           python - <<'PY'
-          import collections,json
+          import importlib.util,json,os,sys
           from pathlib import Path
+          sys.path.insert(0,str(Path('scripts').resolve()))
+          import stage116_verified_form_live as repaired
           before=json.loads(Path('reports/stage120/d-before.json').read_text())
           after=json.loads(Path('data/strategy-d-probabilities.json').read_text())
           first=lambda d:{(r['course'],r['time']):next((x['horse'] for x in r['runners'] if x['rank']==1),None) for r in d['races']}
           b,a=first(before),first(after)
-          assert set(a)==set(b), 'Model D dropped or added a race: stop before commit'
-          assert sum(len(r['runners']) for r in after['races'])==sum(len(r['runners']) for r in before['races']), 'Runner count changed: stop before commit'
-          assert after['model_version']==before['model_version'] and after['weights_pct']==before['weights_pct'],'Frozen scoring changed'
-          delta=[{'course':k[0],'time':k[1],'original_rank1':b[k],'repaired_rank1':a[k]} for k in sorted(b) if b[k]!=a[k]]
+          delta=[{'course':k[0],'time':k[1],'original_rank1':b[k],'repaired_rank1':a[k]} for k in sorted(set(b)&set(a)) if b[k]!=a[k]]
           stats=json.loads(Path('reports/stage120/identity-comparison.json').read_text())
-          assert after.get('verified_form_recovery',{}).get('D_verified',0)>=stats['post_D_verified'],'Updated Model D did not see verified history'
-          result={'day':after['day'],'races':len(a),'runners':sum(len(x['runners']) for x in after['races']),
-                  'D_verified_in_scoring':after['verified_form_recovery']['D_verified'],
+          source=after.get('verified_form_source',{})
+          scoring_db=Path('reports/stage116/latest-verified-result-bridge/backfilled_research_only.sqlite') if source.get('source_updated_by_verified_backfill') else Path(os.environ['STAGE120_DB'])
+          if not scoring_db.is_file():raise SystemExit('Actual scoring DB cannot be found: '+str(scoring_db))
+          spec=importlib.util.spec_from_file_location('stage116_pre120',Path('reports/stage120/original-stage116.py'))
+          old=importlib.util.module_from_spec(spec);spec.loader.exec_module(old)
+          cards=repaired.read_cards(Path('data/racecards.json'),after['day'])
+          old_aliases,old_stats=old.resolve_verified(str(scoring_db),cards,after['day'])
+          new_aliases,new_stats=repaired.resolve_verified(str(scoring_db),cards,after['day'])
+          unchanged_prior=all(not v.get('D_key') or new_aliases.get(k,{}).get('D_key')==v['D_key'] for k,v in old_aliases.items())
+          unchanged_c=all(not v.get('C_key') or new_aliases.get(k,{}).get('C_key')==v['C_key'] for k,v in old_aliases.items())
+          result={'day':after['day'],'scoring_db':str(scoring_db),'scoring_db_backfilled':bool(source.get('source_updated_by_verified_backfill')),
+                  'baseline_db_pre_D_verified':stats['pre_D_verified'],'baseline_db_post_D_verified':stats['post_D_verified'],
+                  'actual_scoring_db_pre_D_verified':old_stats.get('D_verified',0),
+                  'actual_scoring_db_post_D_verified':new_stats.get('D_verified',0),
+                  'D_verified_in_scoring':after.get('verified_form_recovery',{}).get('D_verified',0),
+                  'races_before':len(b),'races_after':len(a),
+                  'runners_before':sum(len(x['runners']) for x in before['races']),
+                  'runners_after':sum(len(x['runners']) for x in after['races']),
+                  'frozen_weights_unchanged':after['model_version']==before['model_version'] and after['weights_pct']==before['weights_pct'],
+                  'prior_D_keys_unchanged':unchanged_prior,'prior_C_keys_unchanged':unchanged_c,
                   'changed_rank1_count':len(delta),'rank1_changes':delta,
-                  'published':False,'note':'This was a local research smoke test; no forecasts published by Stage120.'}
+                  'published':False,'note':'Compare repairs against the SAME scoring database, including verified-result bridge.'}
           Path('reports/stage120/d-rescore-comparison.json').write_text(json.dumps(result,indent=2)+'\n')
-          print('PRE-PUBLICATION LOCAL MODEL D TEST:',json.dumps(result,indent=2))
-          with open(__import__('os').environ['GITHUB_STEP_SUMMARY'],'a') as f:
-              f.write(f"- All {len(a)} races retained; rank-1 horses changed in {len(delta)} races (see artifact)\n")
+          print('PRE-PUBLICATION LOCAL MODEL D TEST:',json.dumps(result,indent=2),flush=True)
+          assert set(a)==set(b), 'Model D dropped or added a race: stop before commit'
+          assert result['runners_after']==result['runners_before'], 'Runner count changed: stop before commit'
+          assert result['frozen_weights_unchanged'], 'Frozen scoring changed'
+          assert unchanged_prior and unchanged_c, 'Previously verified history keys changed'
+          assert result['D_verified_in_scoring']==result['actual_scoring_db_post_D_verified'], 'Scorer did not use the verified identity resolver on actual DB'
+          assert result['actual_scoring_db_post_D_verified']>result['actual_scoring_db_pre_D_verified'], 'No identity coverage improvement on actual scoring DB; do not deploy'
+          assert result['actual_scoring_db_post_D_verified']>=stats['pre_D_verified'], 'Actual scoring DB regressed below existing baseline'
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
+              f.write(f"- All {len(a)} races retained; verified D identities on actual scoring DB: {result['actual_scoring_db_pre_D_verified']} to {result['actual_scoring_db_post_D_verified']}; rank-1 changed in {len(delta)} races.\n")
           PY
       - name: Publish ONLY verified Stage116 source fix (preserve concurrent data updates)
         if: ${{ inputs.deploy_after_tests }}
