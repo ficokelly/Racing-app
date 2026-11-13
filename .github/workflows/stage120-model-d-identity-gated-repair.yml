@@ -1,0 +1,273 @@
+name: Stage 120 - Repair D Identity Rejections (Test Before Live)
+
+on:
+  workflow_dispatch:
+    inputs:
+      day:
+        description: 'Race date YYYY-MM-DD; blank uses published D date'
+        required: false
+        type: string
+        default: ''
+      deploy_after_tests:
+        description: 'Commit the validated identity fix and refresh Model D automatically'
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: stage38-unified-all-models
+  cancel-in-progress: false
+
+jobs:
+  test-then-deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 175
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install unchanged scoring and audit dependencies
+        run: python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1 kagglehub
+      - name: Select tomorrow's published D racecard
+        env:
+          REQUESTED_DAY: ${{ inputs.day || '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import datetime as dt,json,os
+          from pathlib import Path
+          published=json.loads(Path('data/strategy-d-probabilities.json').read_text())
+          date=os.getenv('REQUESTED_DAY','').strip() or published['day']
+          dt.date.fromisoformat(date)
+          if published['day']!=date:
+              raise SystemExit('Stage120 requires the existing published D forecasts for the same racing date')
+          with open(os.environ['GITHUB_ENV'],'a') as f:print('STAGE120_DAY='+date,file=f)
+          print('Stage120 D identity repair target:',date)
+          PY
+      - name: Recover verified historic database, read only
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os,subprocess,sys
+          from pathlib import Path
+          repo=os.environ['GITHUB_REPOSITORY'];winner=None
+          for page in range(1,21):
+              raw=subprocess.check_output(['gh','api','-X','GET',f'repos/{repo}/actions/artifacts','-f','per_page=100','-f',f'page={page}'],text=True)
+              rows=json.loads(raw).get('artifacts',[])
+              for row in rows:
+                  if row.get('name')=='stage2-historical-staging-database' and not row.get('expired'):
+                      if winner is None or row.get('created_at','')>winner.get('created_at',''):winner=row
+              if len(rows)<100:break
+          Path('stage120_db').mkdir(exist_ok=True)
+          matches=[]
+          if winner:
+              print('Reuse existing verified historical artifact:',winner['id'])
+              try:
+                  subprocess.run(['gh','run','download',str(winner['workflow_run']['id']),'--repo',repo,'--name',winner['name'],'--dir','stage120_db'],check=True)
+                  matches=list(Path('stage120_db').rglob('*.sqlite'))
+              except subprocess.CalledProcessError:pass
+          if matches:db=max(matches,key=lambda p:p.stat().st_size).resolve()
+          else:
+              import kagglehub
+              source=kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025')
+              db=Path('stage120_db/historical_ukie_staging.sqlite').resolve()
+              subprocess.run([sys.executable,'import_historical_ukie.py','--mode','import','--input',str(source),'--min-date','1988-01-01','--max-date','2026-10-07','--database',str(db),'--report','stage120_db/import-report.json'],check=True)
+          if not db.is_file() or db.stat().st_size<10_000_000:raise SystemExit('Invalid/absent historical database')
+          with open(os.environ['GITHUB_ENV'],'a') as f:print('STAGE120_DB='+str(db),file=f)
+          PY
+      - name: Apply strict model-specific identity patch only to workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage120
+          python - <<'PY'
+          from pathlib import Path
+          import difflib
+          path=Path('scripts/stage116_verified_form_live.py')
+          src=path.read_text(encoding='utf-8')
+          old="\n".join([
+              "        if len(dkey)>1 or len(ckey)>1:",
+              "            flags['ambiguous_archive_identity']+=1",
+              "            continue",
+              "        d=next(iter(dkey),None);q=next(iter(ckey),None)",
+          ])
+          new="\n".join([
+              "        # Stage120: D and C use independent verified historical keys.",
+              "        # A C suffix variant alone cannot invalidate one unique D key.",
+              "        # Distinct D keys are never automatically merged.",
+              "        if len(dkey)>1:flags['ambiguous_D_archive_identity']+=1",
+              "        if len(ckey)>1:flags['ambiguous_C_archive_identity']+=1",
+              "        d=next(iter(dkey),None) if len(dkey)==1 else None",
+              "        q=next(iter(ckey),None) if len(ckey)==1 else None",
+              "        if (len(dkey)>1 or len(ckey)>1) and d is None and q is None:",
+              "            flags['ambiguous_archive_identity']+=1",
+              "            continue",
+          ])
+          if src.count(old)!=1:
+              raise SystemExit('Expected unique Stage116 code block missing; abort rather than patch another version')
+          changed=src.replace(old,new,1)
+          Path('reports/stage120/original-stage116.py').write_text(src,encoding='utf-8')
+          path.write_text(changed,encoding='utf-8')
+          Path('reports/stage120/identity-fix.patch').write_text(''.join(difflib.unified_diff(src.splitlines(True),changed.splitlines(True),fromfile='original-stage116.py',tofile='patched-stage116.py')))
+          print('Patched exactly ONE model identity guard; frozen model scorer and coefficients untouched')
+          PY
+          python -m py_compile scripts/stage116_verified_form_live.py
+          python scripts/stage116_verified_form_live.py --mode self-test
+          python scripts/stage38_model_dz_live.py self-test
+      - name: Compare all runner identities BEFORE vs AFTER in the same database
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv,importlib.util,json,os,sys
+          from pathlib import Path
+          sys.path.insert(0,str(Path('scripts').resolve()))
+          import stage116_verified_form_live as repaired
+          import stage114_exact_identity_and_form_research as A
+          import stage112_form_coverage_reconcile as S
+          from stage30_gap_aware_abcd import TRACKS,track
+          day=os.environ['STAGE120_DAY'];db=os.environ['STAGE120_DB']
+          cards=repaired.read_cards(Path('data/racecards.json'),day)
+          spec=importlib.util.spec_from_file_location('stage116_original',Path('reports/stage120/original-stage116.py'))
+          old=importlib.util.module_from_spec(spec);spec.loader.exec_module(old)
+          prev,prevstats=old.resolve_verified(db,cards,day)
+          fresh,freshstats=repaired.resolve_verified(db,cards,day)
+          candidates=repaired.historical_candidates_flexible(db,cards,day)
+          expected=0;found=0;export=[]
+          for card in cards:
+              name=A.normname(card.get('horse'));hid=str(card.get('horse_id') or '').strip();key=(name,hid)
+              prior=[h for h in candidates.get(name,[]) if h['date']<day and A.eligible_pedigree_row(card,h) and S.valid_run(h)]
+              dkeys={A.historical_D_key(h) for h in prior if track(h['course']) in TRACKS}
+              ckeys={A.historical_C_key(h) for h in prior if h['date']>='2021-01-01' and h.get('finish_pos') is not None}
+              before=prev.get(key,{})
+              after=fresh.get(key,{})
+              if before.get('D_key'):
+                  assert after.get('D_key')==before['D_key'], 'Previously verified D history key changed'
+              if before.get('C_key'):
+                  assert after.get('C_key')==before['C_key'], 'Previously verified C history key changed'
+              if after.get('D_key'):assert len(dkeys)==1 and after['D_key'] in dkeys, 'Unproven D archive identity'
+              if after.get('C_key'):assert len(ckeys)==1 and after['C_key'] in ckeys, 'Unproven C archive identity'
+              if len(dkeys)==1 and len(ckeys)>1:expected+=1
+              if not before.get('D_key') and after.get('D_key'):found+=1
+              export.append({'course':card.get('course'),'time':card.get('race_time'),'horse':card.get('horse'),
+                             'prior_D_verified':bool(before.get('D_key')),'after_D_verified':bool(after.get('D_key')),
+                             'prior_C_verified':bool(before.get('C_key')),'after_C_verified':bool(after.get('C_key')),
+                             'D_key_variants':len(dkeys),'C_key_variants':len(ckeys),
+                             'verified_prior_runs':len(prior)})
+          assert len(cards)>=2 and expected>0, 'No demonstrated separate-C ambiguity to fix'
+          assert found==expected, f'Gated improvement mismatch: new={found}, expected={expected}'
+          assert freshstats.get('D_verified',0)==prevstats.get('D_verified',0)+expected
+          assert freshstats.get('C_verified',0)==prevstats.get('C_verified',0),'Model C identities unexpectedly changed'
+          report={'date':day,'runners':len(cards),'pre_D_verified':prevstats.get('D_verified',0),
+                  'post_D_verified':freshstats.get('D_verified',0),'restored_D_verified':found,
+                  'C_verified_unchanged':freshstats.get('C_verified',0),
+                  'unresolved_D':len(cards)-freshstats.get('D_verified',0),
+                  'pre_stats':prevstats,'post_stats':freshstats,'patch_scope':'Stage116 identity guard only',
+                  'no_market_odds_used':True,'untouched_model_weights':True}
+          Path('reports/stage120/identity-comparison.json').write_text(json.dumps(report,indent=2)+'\n')
+          with open('reports/stage120/runner-comparison.csv','w',newline='',encoding='utf-8') as f:
+              w=csv.DictWriter(f,fieldnames=list(export[0]));w.writeheader();w.writerows(export)
+          print('STAGE120 VERIFICATION:',json.dumps(report,indent=2))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
+              f.write(f"## Stage120 tested: {found} verified D identities recovered\n\n")
+              f.write(f"- Target: {day}; original verified: {report['pre_D_verified']}/{len(cards)}\n")
+              f.write(f"- Patched verified: {report['post_D_verified']}/{len(cards)}\n")
+              f.write(f"- Model C identity assignments: unchanged ({report['C_verified_unchanged']})\n")
+          PY
+      - name: Re-score Model D locally and check no race or runner was lost
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp data/strategy-d-probabilities.json reports/stage120/d-before.json
+          python -u scripts/stage38_model_dz_live.py live --repo . --db "$STAGE120_DB" --day "$STAGE120_DAY"
+          python - <<'PY'
+          import collections,json
+          from pathlib import Path
+          before=json.loads(Path('reports/stage120/d-before.json').read_text())
+          after=json.loads(Path('data/strategy-d-probabilities.json').read_text())
+          first=lambda d:{(r['course'],r['time']):next((x['horse'] for x in r['runners'] if x['rank']==1),None) for r in d['races']}
+          b,a=first(before),first(after)
+          assert set(a)==set(b), 'Model D dropped or added a race: stop before commit'
+          assert sum(len(r['runners']) for r in after['races'])==sum(len(r['runners']) for r in before['races']), 'Runner count changed: stop before commit'
+          assert after['model_version']==before['model_version'] and after['weights_pct']==before['weights_pct'],'Frozen scoring changed'
+          delta=[{'course':k[0],'time':k[1],'original_rank1':b[k],'repaired_rank1':a[k]} for k in sorted(b) if b[k]!=a[k]]
+          stats=json.loads(Path('reports/stage120/identity-comparison.json').read_text())
+          assert after.get('verified_form_recovery',{}).get('D_verified',0)>=stats['post_D_verified'],'Updated Model D did not see verified history'
+          result={'day':after['day'],'races':len(a),'runners':sum(len(x['runners']) for x in after['races']),
+                  'D_verified_in_scoring':after['verified_form_recovery']['D_verified'],
+                  'changed_rank1_count':len(delta),'rank1_changes':delta,
+                  'published':False,'note':'This was a local research smoke test; no forecasts published by Stage120.'}
+          Path('reports/stage120/d-rescore-comparison.json').write_text(json.dumps(result,indent=2)+'\n')
+          print('PRE-PUBLICATION LOCAL MODEL D TEST:',json.dumps(result,indent=2))
+          with open(__import__('os').environ['GITHUB_STEP_SUMMARY'],'a') as f:
+              f.write(f"- All {len(a)} races retained; rank-1 horses changed in {len(delta)} races (see artifact)\n")
+          PY
+      - name: Publish ONLY verified Stage116 source fix (preserve concurrent data updates)
+        if: ${{ inputs.deploy_after_tests }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          cp scripts/stage116_verified_form_live.py reports/stage120/patched-stage116.py
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            python - <<'PY'
+          from pathlib import Path
+          original=Path('reports/stage120/original-stage116.py').read_bytes()
+          now=Path('scripts/stage116_verified_form_live.py').read_bytes()
+          if now!=original:
+              raise SystemExit('Stage116 was edited by another workflow: refusing stale source replacement')
+          Path('scripts/stage116_verified_form_live.py').write_bytes(Path('reports/stage120/patched-stage116.py').read_bytes())
+          PY
+            git add scripts/stage116_verified_form_live.py
+            git diff --cached --check
+            if [ "$(git diff --cached --name-only)" != 'scripts/stage116_verified_form_live.py' ]; then
+              echo 'Unexpected staged files; refusing commit' >&2;exit 1
+            fi
+            git commit -m "Stage120: recover D identities with unique D keys despite C suffix aliases"
+            if git push origin HEAD:main; then
+              echo 'Validated Stage116 patch committed to main; local research forecasts not published.' >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "Concurrent main update on attempt $attempt; retrying source-only commit"
+            sleep "$((attempt*2))"
+          done
+          echo 'Could not publish safely after five main updates' >&2
+          exit 1
+      - name: Trigger repaired live Model D scoring
+        if: ${{ inputs.deploy_after_tests }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run stage38-model-d-repair.yml --repo "$GITHUB_REPOSITORY" --ref main -f day="$STAGE120_DAY"
+          echo "Repaired Model D scoring triggered for $STAGE120_DAY. Verify the new Stage38 run succeeds." >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload before/after evidence even if tests fail
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage120-verified-D-identities-${{ github.run_id }}
+          path: |
+            reports/stage120/identity-comparison.json
+            reports/stage120/runner-comparison.csv
+            reports/stage120/identity-fix.patch
+            reports/stage120/d-rescore-comparison.json
+          retention-days: 30
+          if-no-files-found: warn
