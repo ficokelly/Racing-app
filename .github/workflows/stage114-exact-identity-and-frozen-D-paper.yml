@@ -1,0 +1,132 @@
+name: Stage114 - Verified form identity recovery, D and D(c) audit (paper only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      audit_dates:
+        description: 'Original verified cohort; do not alter without a new dated baseline'
+        required: false
+        type: string
+        default: '2026-11-13,2026-11-14'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage114-form-identity-research
+  cancel-in-progress: false
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      STAGE113B_RUN: '43489166449'
+      STAGE113B_SNAPSHOT_SHA: 'bc31623376bf2d1c7c540b1bdd74290da0af998f'
+    steps:
+      - name: Checkout latest research files, leave production untouched
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 1
+      - name: Freeze 14 November cards to the exact Stage113b comparison cohort
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage114/input
+          git fetch --no-tags --depth=1 origin "$STAGE113B_SNAPSHOT_SHA"
+          git show "$STAGE113B_SNAPSHOT_SHA":data/racecards.json > reports/stage114/input/racecards.json
+          python - <<'PY'
+          import json,pathlib
+          p=pathlib.Path('reports/stage114/input/racecards.json')
+          d=json.loads(p.read_text())
+          selected=[x for x in d.get('runners',[]) if x.get('date')=='2026-11-14']
+          assert len(selected)>=300, 'Not the complete audited 14 November cohort'
+          print('Pinned source:',d.get('collected_at'),'runners:',len(selected))
+          PY
+      - name: Python 3.11 audited numerical library versions
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compile and run source-safe identity tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 \
+            scikit-learn==1.6.1 joblib==1.4.2
+          python -m py_compile scripts/stage114_exact_identity_and_form_research.py
+          python scripts/stage114_exact_identity_and_form_research.py --self-test
+          python scripts/stage111_model_g4.py self-test
+      - name: Restore verified immutable historical data and Stage113b prior-only audit
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage114/source reports/stage114/prior
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage2-historical-staging-database --dir reports/stage114/source
+          gh run download "$STAGE113B_RUN" --repo "$GITHUB_REPOSITORY" \
+            --name stage113b-lossless-form-43489166449 --dir reports/stage114/prior
+          test -s reports/stage114/source/historical_ukie_staging.sqlite
+          test -s reports/stage114/prior/output/stage113-runners-by-model.csv
+          test -s reports/stage30/stage30-summary.json
+          python - <<'PY'
+          import json,sqlite3,pathlib
+          p='reports/stage114/source/historical_ukie_staging.sqlite'
+          with sqlite3.connect('file:'+str(pathlib.Path(p).resolve())+'?mode=ro',uri=True) as c:
+              assert c.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+              latest=c.execute('SELECT MAX(race_date) FROM historical_races').fetchone()[0]
+              assert latest < '2026-11-13', 'Never permit target-date outcomes into replay'
+              print('Immutable master database through:',latest)
+          s=json.loads(pathlib.Path('reports/stage114/prior/output/stage113-summary.json').read_text())
+          assert s['dates']['2026-11-14']['runners']==351
+          assert s['dates']['2026-11-14']['g3_g4_repaired_runners_with_form_unmatched']==26
+          assert s['safety']['no_target_day_results_used'] is True
+          PY
+      - name: Identify exact historical pedigree and source ID repairs; paired frozen D replay
+        shell: bash
+        env:
+          REQUESTED_DATES: ${{ inputs.audit_dates }}
+        run: |
+          set -euo pipefail
+          python -u scripts/stage114_exact_identity_and_form_research.py \
+            --repo . --cards reports/stage114/input/racecards.json \
+            --db reports/stage114/source/historical_ukie_staging.sqlite \
+            --stage113 reports/stage114/prior/output \
+            --dates "${REQUESTED_DATES:-2026-11-13,2026-11-14}" \
+            --out reports/stage114/output --paired-D
+          python - <<'PY'
+          import json,pathlib
+          folder=pathlib.Path('reports/stage114/output')
+          a=json.loads((folder/'stage114-summary.json').read_text())
+          d=json.loads((folder/'stage114-D-replay-summary.json').read_text())
+          m=a['dates']['2026-11-14']
+          assert m['g3_unmatched']==26, 'Prior baseline changed; review before claiming improvement'
+          print('Stage114 audit 14 November:',json.dumps(m,indent=2))
+          print('Frozen Model D paired ranking changes:',json.dumps(d,indent=2))
+          lines=['## Stage 114 — Exact-identity audit and frozen D comparison',
+               'No production or frozen model files were changed.',
+               'G3/G4 unresolved previous form: '+str(m['g3_unmatched']),
+               'D original archive coverage: '+str(m['D_original_has_form'])+' of '+str(m['reported_form'])+' runners with claimed form.',
+               'D exact-identity recovery candidates: '+str(m['D_exact_pedigree_candidates']),
+               'D(c) C original archive coverage: '+str(m['D_c_C_original_has_form']),
+               'D(c) C exact-identity recovery candidates: '+str(m['D_c_C_exact_pedigree_candidates']),
+               'D rank-1 changes on equivalent 14 Nov frozen comparison: '+str(d['races_with_rank1_change'])+'/'+str(d['races_scored']),
+               'Point-to-point/overseas results remain unresolved unless explicitly verified.']
+          (folder/'stage114-summary.md').write_text('\n\n'.join(lines)+'\n')
+          with open(__import__('os').environ['GITHUB_STEP_SUMMARY'],'a') as f:f.write('\n\n'.join(lines)+'\n')
+          PY
+      - name: Publish full research audit and rank comparison (no app writes)
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage114-exact-identity-${{ github.run_id }}
+          retention-days: 90
+          if-no-files-found: warn
+          path: |
+            reports/stage114/output/*.csv
+            reports/stage114/output/*.json
+            reports/stage114/output/*.md
