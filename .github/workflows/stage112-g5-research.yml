@@ -1,0 +1,105 @@
+name: "Stage112 - G5 Odds-Blind Opponent Network and Form Strength Research"
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage112-g5-research
+  cancel-in-progress: false
+
+jobs:
+  g5-chronological-research:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PYTHONUNBUFFERED: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      DB: reports/stage112/source/stage2/historical_ukie_staging.sqlite
+      REF: reports/stage112/source/stage4/all_races_with_reference_event_ids.csv
+      PRED: reports/stage112/source/g3/stage109-all-horses-historical.csv.gz
+      OUT: reports/stage112/output
+    steps:
+      - name: Checkout - G3 and Racing Hot Pots remain unchanged
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install pinned numerical dependencies
+        run: |
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 \
+            scikit-learn==1.6.1 joblib==1.4.2
+
+      - name: Confirm code present and test temporal / relational rules
+        run: |
+          set -euo pipefail
+          test -s scripts/stage112_g5_relational_form.py
+          test -s scripts/stage108_model_g2.py
+          test -s scripts/stage109_model_g3.py
+          python -m py_compile scripts/stage112_g5_relational_form.py
+          python scripts/stage112_g5_relational_form.py self-test
+
+      - name: Restore verified historical UK and Ireland racing records
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage112/source/{stage2,stage4,g3}
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage2-historical-staging-database \
+            --dir reports/stage112/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage4-reference-named-events-and-winners \
+            --dir reports/stage112/source/stage4
+          gh run download 43407036838 --repo "$GITHUB_REPOSITORY" \
+            --name stage109-g3-learning-43407036838 \
+            --dir reports/stage112/source/g3
+          test -s "$DB" && test -s "$REF" && test -s "$PRED"
+          python - <<'PY'
+          import os, sqlite3
+          db=sqlite3.connect('file:'+os.path.abspath(os.environ['DB'])+'?mode=ro',uri=True)
+          assert db.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+          print('Historic race count:',db.execute('SELECT COUNT(*) FROM historical_races').fetchone()[0])
+          print('Historic runner count:',db.execute('SELECT COUNT(*) FROM historical_runs').fetchone()[0])
+          db.close()
+          PY
+
+      - name: Compare frozen G3 with G5 network, form strength and combined versions
+        run: |
+          set -euo pipefail
+          python -u scripts/stage112_g5_relational_form.py historical \
+            --db "$DB" --reference "$REF" --g3-predictions "$PRED" \
+            --out "$OUT"
+
+      - name: Publish Rank 1 findings to workflow summary
+        if: always()
+        run: |
+          if test -s "$OUT/README.md"; then
+            cat "$OUT/README.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "G5 did not complete: consult workflow logs. No performance claims." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Download Rank 1 comparisons and coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage112-g5-rank1-${{ github.run_id }}
+          path: |
+            reports/stage112/output/*.csv
+            reports/stage112/output/*.csv.gz
+            reports/stage112/output/*.json
+            reports/stage112/output/*.md
+          retention-days: 90
+          if-no-files-found: warn
