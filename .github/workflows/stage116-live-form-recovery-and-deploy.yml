@@ -1,0 +1,253 @@
+name: "Stage116 - Verify, recover and install historical form in LIVE D Dc HPR and G paper"
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Install after checks, or audit without changing live files"
+        type: choice
+        required: true
+        options: [install_live, audit_only]
+        default: install_live
+      target_date:
+        description: "Racecard date YYYY-MM-DD (blank: current day before 16:00 Ireland, otherwise next day)"
+        required: false
+        type: string
+        default: ''
+  schedule:
+    - cron: '15 5 * * *'
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: stage86-hpr-daily-ledger
+  cancel-in-progress: false
+jobs:
+  verify-and-deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PYTHONUNBUFFERED: '1'
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+    steps:
+      - name: Checkout current live app and full historical commits
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Fix Python version and verified modelling libraries
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Self-test identities, historical scoring and existing live entrypoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 \
+            scikit-learn==1.6.1 joblib==1.4.2
+          python -m py_compile scripts/stage116_verified_form_live.py \
+            scripts/stage114_exact_identity_and_form_research.py \
+            scripts/stage113b_lossless_multi_model_form_audit.py
+          python scripts/stage116_verified_form_live.py --mode self-test
+          python scripts/stage114_exact_identity_and_form_research.py --self-test
+          python scripts/stage113b_lossless_multi_model_form_audit.py --self-test
+          python scripts/stage38_model_dz_live.py self-test
+          python scripts/rhp_stage83_dc_integrated.py --self-test
+          python scripts/stage86_hpr_engine.py --mode self-test
+          python scripts/stage87_hpr_storage.py self-test
+          test -s data/hpr/shards/manifest.json
+          test -s data/racecards.json
+      - name: Select the next declared racing field; freeze the pre-race cutoff
+        shell: bash
+        env:
+          REQUESTED_TARGET: ${{ inputs.target_date }}
+          RUN_KIND: ${{ github.event_name }}
+          REQUESTED_MODE: ${{ inputs.mode }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import collections,datetime as dt,json,os,pathlib
+          from zoneinfo import ZoneInfo
+          now=dt.datetime.now(ZoneInfo('Europe/Dublin'))
+          races=json.loads(pathlib.Path('data/racecards.json').read_text())['runners']
+          today=now.date()
+          default=(today+dt.timedelta(days=1) if now.hour>=16 else today).isoformat()
+          target=(os.environ.get('REQUESTED_TARGET') or default).strip()
+          day=dt.date.fromisoformat(target)
+          if day<today:raise SystemExit('Refuse scoring a past racing date with newer history')
+          active=[r for r in races if str(r.get('date'))==target and r.get('horse') and str(r.get('race_status') or '').lower() not in ('nr','nonrunner','withdrawn','scratched')]
+          if len(active)<20:raise SystemExit(f'Only {len(active)} declared runners for {target}; abort without app changes')
+          mode='install_live' if os.environ.get('RUN_KIND')=='schedule' else os.environ.get('REQUESTED_MODE','install_live')
+          assert mode in ('audit_only','install_live')
+          with open(os.environ['GITHUB_ENV'],'a') as f:
+            print('TARGET_DATE='+target,file=f)
+            print('DEPLOY_MODE='+mode,file=f)
+            print('STAGE116_CUTOFF='+now.astimezone(dt.timezone.utc).isoformat(),file=f)
+          print('Target',target,'declared',len(active),'mode',mode)
+          PY
+      - name: Restore read-only verified historical master archive and previous paired test
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage116/source reports/stage116/baseline reports/stage116/output
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage2-historical-staging-database --dir reports/stage116/source
+          gh run download 43502303076 --repo "$GITHUB_REPOSITORY" \
+            --name stage115-identity-paired-research-43502303076 \
+            --dir reports/stage116/baseline
+          test -s reports/stage116/source/historical_ukie_staging.sqlite
+          test -s reports/stage116/baseline/stage115-master-summary.json
+          python - <<'PY'
+          import json,sqlite3,pathlib
+          x=json.loads(pathlib.Path('reports/stage116/baseline/stage115-master-summary.json').read_text())
+          assert x['D_backtest']['race_pairs_evaluated']>=100
+          assert x['D_backtest']['same_day_results_not_used_for_predicting']
+          assert x['HPR_candidacy']['only_exact_pedigree_or_identical_horse_id']
+          src=pathlib.Path('reports/stage116/source/historical_ukie_staging.sqlite')
+          with sqlite3.connect('file:'+str(src.resolve())+'?mode=ro',uri=True) as c:
+            assert c.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+            print('Historical source through',c.execute('SELECT MAX(race_date) FROM historical_races').fetchone()[0])
+          print('Stage115 verified 7-day paired baseline and HPR-source prerequisites')
+          PY
+      - name: Reassemble original persisted HPR ratings; keep baseline untouched
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/stage87_hpr_storage.py restore \
+            --dir data/hpr/shards --db reports/stage116/source/hpr-original.sqlite
+          cp reports/stage116/source/hpr-original.sqlite reports/stage116/source/hpr-working.sqlite
+          python - <<'PY'
+          import sqlite3
+          with sqlite3.connect('reports/stage116/source/hpr-original.sqlite') as c:
+            assert c.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+            print('Original HPR ledger entries:',c.execute('SELECT COUNT(*) FROM hpr_ratings').fetchone()[0])
+          PY
+      - name: Audit true verified identities and HPR before any live code modification
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/stage116_verified_form_live.py --mode audit \
+            --db reports/stage116/source/historical_ukie_staging.sqlite \
+            --cards data/racecards.json --target "$TARGET_DATE" \
+            --out reports/stage116/output
+          python -u scripts/stage116_verified_form_live.py --mode hpr-dry-run \
+            --db reports/stage116/source/historical_ukie_staging.sqlite \
+            --hpr reports/stage116/source/hpr-original.sqlite \
+            --cards data/racecards.json --target "$TARGET_DATE" \
+            --out reports/stage116/output
+          python - <<'PY'
+          import json,pathlib
+          x=json.loads(pathlib.Path('reports/stage116/output/stage116-identity-summary.json').read_text())
+          if x['declared']<20 or x['D_verified']<10 or x['C_verified']<10:
+            raise SystemExit('Insufficient verified horse identities; refuse publishing changes')
+          print('PASS: exact source identity coverage:',x)
+          PY
+      - name: Prepare additive original-code changes; verify patched modules and training versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/stage116_verified_form_live.py --mode install-code
+          python -m py_compile scripts/stage38_model_dz_live.py scripts/rhp_stage83_dc_integrated.py
+          python scripts/stage38_model_dz_live.py self-test
+          python scripts/rhp_stage83_dc_integrated.py --self-test
+          python scripts/stage116_verified_form_live.py --mode self-test
+          git diff --stat
+      - name: Keep optional G3 G4 workflow files separate from core live code commit
+        if: env.DEPLOY_MODE == 'install_live'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage116/optional-workflows
+          cp .github/workflows/stage109-g3-paper.yml reports/stage116/optional-workflows/
+          cp .github/workflows/stage111b-g4-paper-fix.yml reports/stage116/optional-workflows/
+          # GitHub's workflow-write permission can differ from contents-write.
+          # Never let optional G PAPER workflow deployment block live D/Dc/HPR.
+          git restore .github/workflows/stage109-g3-paper.yml \
+            .github/workflows/stage111b-g4-paper-fix.yml
+      - name: Restore any modified production files when running audit-only
+        if: env.DEPLOY_MODE == 'audit_only'
+        run: |
+          git restore scripts/stage38_model_dz_live.py \
+            scripts/rhp_stage83_dc_integrated.py \
+            .github/workflows/stage109-g3-paper.yml \
+            .github/workflows/stage111b-g4-paper-fix.yml
+          echo 'AUDIT ONLY: live scripts left unmodified' >> "$GITHUB_STEP_SUMMARY"
+      - name: Rebuild missing HPR ratings in temporary local ledger and verify all revisions
+        if: env.DEPLOY_MODE == 'install_live'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/stage116_verified_form_live.py --mode hpr-apply \
+            --db reports/stage116/source/historical_ukie_staging.sqlite \
+            --hpr reports/stage116/source/hpr-working.sqlite \
+            --cards data/racecards.json --target "$TARGET_DATE" \
+            --out reports/stage116/output
+          python scripts/stage87_hpr_storage.py archive \
+            --db reports/stage116/source/hpr-working.sqlite --dir data/hpr/shards
+          python scripts/stage87_hpr_storage.py restore \
+            --dir data/hpr/shards --db reports/stage116/source/hpr-verified.sqlite
+          python - <<'PY'
+          import sqlite3
+          a=sqlite3.connect('reports/stage116/source/hpr-working.sqlite')
+          b=sqlite3.connect('reports/stage116/source/hpr-verified.sqlite')
+          try:
+            assert b.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+            assert a.execute('SELECT COUNT(*) FROM hpr_ratings').fetchone()[0] == b.execute('SELECT COUNT(*) FROM hpr_ratings').fetchone()[0]
+            assert b.execute('SELECT COUNT(*) FROM hpr_ratings').fetchone()[0] >= 10000
+          finally:a.close();b.close()
+          print('PASS: staged HPR sharded archive and lossless restore')
+          PY
+      - name: Save dated recovery audit and publish tested code plus HPR shards atomically
+        if: env.DEPLOY_MODE == 'install_live'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p data/form-recovery
+          cp reports/stage116/output/stage116-identity-summary.json data/form-recovery/latest-verified-form-summary.json
+          cp reports/stage116/output/stage116-HPR-summary.json data/form-recovery/latest-hpr-recovery-summary.json
+          cp reports/stage116/output/stage116-runner-identity-audit.csv data/form-recovery/latest-runner-identity-audit.csv
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add scripts/stage38_model_dz_live.py scripts/rhp_stage83_dc_integrated.py \
+            data/hpr/shards data/form-recovery
+          if git diff --cached --quiet; then echo 'Stage116 already installed, no changes to commit'; exit 0; fi
+          git commit -m "Stage116: add verified historical form to live D Dc HPR and G paper engines"
+          for attempt in 1 2 3 4; do
+            if git pull --rebase origin main && git push origin HEAD:main; then
+              echo 'Live model scripts and HPR shards deployed to main' >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            git rebase --abort || true
+            sleep $((attempt*3))
+          done
+          echo 'GitHub deployment unsuccessful; source history and live production state not falsely marked complete' >&2
+          exit 1
+      - name: Audit summary, unresolved runners and deployment status
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json,os,pathlib
+          print('# Stage116 — verified historic-form live repair')
+          print('Target race day:',os.getenv('TARGET_DATE','unknown'),'Requested mode:',os.getenv('DEPLOY_MODE','unknown'))
+          for name in ('stage116-identity-summary.json','stage116-HPR-summary.json'):
+            p=pathlib.Path('reports/stage116/output')/name
+            if p.is_file():print('##',name,'\n```json\n',p.read_text()[:5000],'\n```')
+          print('Unmatched prior form is flagged. Never insert guessed, name-only, foreign or point-to-point runs.')
+          print('Original historical model snapshots preserved in git history; HPR revisions are append-only.')
+          PY
+      - name: Download immutable before-after audit and proof of deploy attempt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage116-verified-live-form-${{ github.run_id }}
+          path: |
+            reports/stage116/output/*.json
+            reports/stage116/output/*.csv
+            reports/stage116/baseline/stage115-master-summary.json
+            reports/stage116/optional-workflows/*.yml
+          retention-days: 90
