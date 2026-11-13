@@ -1,4 +1,5 @@
 name: Stage 38 - Model D Daily Scoring (UI Independent)
+# Stage118c: runner-count bug fixed, re-upload verification 2026-11-13
 
 on:
   workflow_dispatch:
@@ -67,7 +68,7 @@ jobs:
           if requested and not re.fullmatch(r'\d{4}-\d{2}-\d{2}',requested):raise SystemExit('Invalid manual racing date')
           day=requested or (min(possible) if possible else None)
           if not day or day not in possible:raise SystemExit('No future pre-off racecards for '+str(day)+'. Refusing stale forecast.')
-          count=sum(str(z.get('date') or '')==day and z.get('horse') for z in cards)
+          count=sum(1 for z in cards if isinstance(z,dict) and str(z.get('date') or '')==day and bool(z.get('horse')))
           if count<2:raise SystemExit('Target racing date has no complete declared field')
           print('Scoring future race date:',day,'card runners:',count)
           with open(os.environ['GITHUB_ENV'],'a') as f:print('STAGE38_TARGET_DATE='+day,file=f)
