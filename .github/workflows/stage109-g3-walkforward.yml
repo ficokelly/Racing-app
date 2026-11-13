@@ -1,0 +1,113 @@
+name: "Stage109 - G3 2024 missed-winner learning and 2025 walk-forward"
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage109-g3-research
+  cancel-in-progress: false
+jobs:
+  walk-forward:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PYTHONUNBUFFERED: '1'
+      DB: reports/stage109/source/stage2/historical_ukie_staging.sqlite
+      REFERENCE: reports/stage109/source/stage4/all_races_with_reference_event_ids.csv
+      OUT: reports/stage109/research
+    steps:
+      - name: Checkout existing unchanged live app
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install reproducible statistical libraries
+        run: |
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 \
+            scikit-learn==1.6.1 joblib==1.4.2
+      - name: Assert independent G2 features and temporal integrity
+        run: |
+          set -euo pipefail
+          test -s scripts/stage108_model_g2.py
+          test -s scripts/stage109_model_g3.py
+          python -m py_compile scripts/stage108_model_g2.py scripts/stage109_model_g3.py
+          python scripts/stage109_model_g3.py self-test
+      - name: Retrieve already verified historical UK Ireland form and names
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage109/source/stage2 reports/stage109/source/stage4 reports/stage109/restore
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage2-historical-staging-database --dir reports/stage109/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage4-reference-named-events-and-winners --dir reports/stage109/source/stage4
+          # Pin the EXACT G2 model already tested. Never silently replace it with
+          # another approximation of the old model.
+          gh run download 43309108657 --repo "$GITHUB_REPOSITORY" \
+            --name stage108-model-g2-43309108657 --dir reports/stage109/restore
+          for file in "$DB" "$REFERENCE" reports/stage109/restore/stage108-frozen-form-model.joblib; do
+            test -s "$file" || { echo "Missing immutable source $file"; exit 1; }
+          done
+          python - <<'PY'
+          import sqlite3,os
+          c=sqlite3.connect(f"file:{os.path.abspath(os.environ['DB'])}?mode=ro",uri=True)
+          assert c.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+          print('Historical races',c.execute('SELECT COUNT(*) FROM historical_races').fetchone()[0])
+          print('Prior completed runs',c.execute('SELECT COUNT(*) FROM historical_runs').fetchone()[0])
+          c.close()
+          PY
+      - name: Generate 2024 OOS selections then update at exact 2025 checkpoints
+        run: |
+          set -euo pipefail
+          python -u scripts/stage109_model_g3.py walk-forward \
+            --db "$DB" --reference "$REFERENCE" \
+            --frozen reports/stage109/restore/stage108-frozen-form-model.joblib \
+            --out "$OUT"
+          python - <<'PY'
+          import os,json
+          from pathlib import Path
+          p=Path(os.environ['OUT']);a=json.loads((p/'stage109-walkforward-audit.json').read_text())
+          assert a['2024_selections'].startswith('Out-of-time 2024')
+          assert len(a['feature_coverage_pct'])>30
+          for period in ('2024_PREQUENTIAL','2025_JAN_APR','2025_MAY_AUG','2025_SEP_DEC'):
+            o=a['periods'][period]
+            assert 'SEED_2023' in o if period=='2024_PREQUENTIAL' else 'FROZEN_G2_2024' in o
+            assert (o['SEED_2023']['races'] if period=='2024_PREQUENTIAL' else o['ROLLING_MISSED_WINNER']['races'])>500
+          for file in ['stage109-future-form-model.joblib','stage109-prior-form-state.joblib',
+                       'stage109-frozen-g2-original.joblib','stage109-paper-mobile-views.html']:
+            # Mobile paper HTML created by paper workflow, not historical replay.
+            if file.endswith('mobile-views.html'):continue
+            assert (p/file).is_file(),file
+          print('CHECKS PASSED: actual historical OOS learning. No claim of prospective profitability.')
+          PY
+      - name: Show comparable frozen vs retrained outcomes
+        if: always()
+        shell: bash
+        run: |
+          if test -s "$OUT/README.md"; then
+            cat "$OUT/README.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Historical test did not finish. No ROI claim. See preceding errors.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Download complete historical audit and future paper model
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage109-g3-learning-${{ github.run_id }}
+          path: |
+            reports/stage109/research/*.json
+            reports/stage109/research/*.csv
+            reports/stage109/research/*.csv.gz
+            reports/stage109/research/*.joblib
+            reports/stage109/research/*.html
+            reports/stage109/research/*.md
+          compression-level: 6
+          retention-days: 90
+          if-no-files-found: warn
