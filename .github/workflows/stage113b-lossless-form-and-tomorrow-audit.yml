@@ -1,0 +1,148 @@
+name: Stage113b - Corrected lossless 14 Nov multi-model form audit (paper only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      audit_dates:
+        description: 'Comma-separated dates YYYY-MM-DD (default 13 and 14 November 2026)'
+        required: false
+        type: string
+        default: '2026-11-13,2026-11-14'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage113b-form-audit
+  cancel-in-progress: false
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    env:
+      PYTHONUNBUFFERED: '1'
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+    steps:
+      - name: Check out current racecards without write access
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Freeze the pre-off decision clock
+        shell: bash
+        env:
+          REQUESTED_DATES: ${{ inputs.audit_dates }}
+        run: |
+          set -euo pipefail
+          echo "STAGE113_CUTOFF=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+          echo "AUDIT_DATES=${REQUESTED_DATES:-2026-11-13,2026-11-14}" >> "$GITHUB_ENV"
+      - name: Use original G3/G4 dependency versions and test lossless gate
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install and test
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 \
+            scikit-learn==1.6.1 joblib==1.4.2
+          python -m py_compile scripts/stage112_form_coverage_reconcile.py scripts/stage113b_lossless_multi_model_form_audit.py
+          python scripts/stage113b_lossless_multi_model_form_audit.py --self-test
+          python scripts/stage111_model_g4.py self-test
+      - name: Restore immutable original historical database and frozen model states
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage113b/source reports/stage113b/g3 reports/stage113b/g4
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage2-historical-staging-database --dir reports/stage113b/source
+          gh run download 43422655754 --repo "$GITHUB_REPOSITORY" \
+            --name stage111-g4-specialists-43422655754 --dir reports/stage113b/g4
+          gh run download 43407036838 --repo "$GITHUB_REPOSITORY" \
+            --name stage109-g3-learning-43407036838 --dir reports/stage113b/g3
+          test -s reports/stage113b/source/historical_ukie_staging.sqlite
+          test -s reports/stage113b/g4/stage111-prior-form-state.joblib
+          test -s reports/stage113b/g4/stage111-paper-specialists.joblib
+          test -s reports/stage113b/g3/stage109-future-form-model.joblib
+          python - <<'PY'
+          import sqlite3
+          db=sqlite3.connect('file:reports/stage113b/source/historical_ukie_staging.sqlite?mode=ro',uri=True)
+          assert db.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+          assert db.execute('SELECT MAX(race_date) FROM historical_races').fetchone()[0]<'2026-11-13'
+          print('Archive validated through:',db.execute('SELECT MAX(race_date) FROM historical_races').fetchone()[0])
+          PY
+      - name: Restore immutable HPR revisions for historical form (read-only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/stage87_hpr_storage.py restore \
+            --dir data/hpr/shards --db reports/stage113b/hpr.sqlite
+      - name: Measure lossless G3 G4 and independent D D-c E prior-form coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/stage113b_lossless_multi_model_form_audit.py \
+            --state reports/stage113b/g4/stage111-prior-form-state.joblib \
+            --db reports/stage113b/source/historical_ukie_staging.sqlite \
+            --hpr reports/stage113b/hpr.sqlite --cards data/racecards.json \
+            --dates "$AUDIT_DATES" --out reports/stage113b/output --paper-state
+          python - <<'PY'
+          import json,pathlib
+          d=json.loads(pathlib.Path('reports/stage113b/output/stage113-summary.json').read_text())
+          s=['## Stage 113 — lossless form audit']
+          for day,m in d['dates'].items():
+            s += [f'### {day}',f"- Races: {m['races']}; declared: {m['runners']}; show previous form: {m['racecard_runners_with_previous_form']}",
+                  f"- G3/G4 missing runner form: {m['g3_g4_original_runners_with_form_unmatched']} → {m['g3_g4_repaired_runners_with_form_unmatched']}",
+                  f"- Races with unmatched form: {m['g3_g4_original_races_with_form_unmatched']} → {m['g3_g4_repaired_races_with_form_unmatched']}",
+                  f"- Original-D archive match for experienced runners: {m['d_archived_priors_found']}; unmatched known form: {m['d_declared_form_but_archive_prior_unmatched']}",
+                  f"- D(c) C category-form prior matches: {m['d_c_C_original_runners_with_historical_form']}; safe unique-country recoverable: {m['d_c_C_recoverable_via_unique_country']}",
+                  f"- E/HPR prior rating present: {m['e_hpr_runners_with_prior_rating']}; known-form runners without HPR: {m['e_declared_form_but_no_prior_hpr_rating']}"]
+          s += ["No frozen D, D(c), G3, G4, E, HPR or live app modifications. D(c) country fallback is audited, not deployed."]
+          pathlib.Path('reports/stage113b/summary.md').write_text('\n\n'.join(s)+'\n')
+          PY
+          cat reports/stage113b/summary.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Optional 14 November future-only odds-blind G3 G4 paper comparison
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$(date -u +%Y-%m-%d)" > '2026-11-14' ]]; then
+            echo '14 November is already over: no retrospective picks' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          python -u scripts/stage111_model_g4.py paper \
+            --model reports/stage113b/g4/stage111-paper-specialists.joblib \
+            --state reports/stage113b/output/stage113-paper-form-state.joblib \
+            --g3 reports/stage113b/g3/stage109-future-form-model.joblib \
+            --hpr reports/stage113b/hpr.sqlite --cards data/racecards.json \
+            --date 2026-11-14 --cutoff "$STAGE113_CUTOFF" \
+            --out reports/stage113b/paper
+          python - <<'PY'
+          import csv,pathlib
+          races=pathlib.Path('reports/stage113b/output/stage113-races-coverage.csv')
+          ranked=pathlib.Path('reports/stage113b/paper/stage111-paper-rank1-per-race.csv')
+          if not ranked.exists():exit(0)
+          with races.open(newline='') as f:quality={r['race_key']:r for r in csv.DictReader(f)}
+          with ranked.open(newline='') as f:reader=csv.DictReader(f); rows=list(reader);fields=reader.fieldnames or []
+          for r in rows:
+            q=quality.get(r['race_id'])
+            r['form_quality']='RECONCILED' if q and q['reported_prior_form_unmatched']=='0' else 'HISTORICAL_FORM_UNRESOLVED'
+            r['prior_form_unmatched']=q['reported_prior_form_unmatched'] if q else 'UNKNOWN'
+          cols=fields+['form_quality','prior_form_unmatched']
+          for suffix,part in [('all',rows),('verified-only',[r for r in rows if r['form_quality']=='RECONCILED'])]:
+            p=pathlib.Path('reports/stage113b/paper/stage113b-paper-'+suffix+'.csv')
+            with p.open('w',newline='') as f:w=csv.DictWriter(f,fieldnames=cols);w.writeheader();w.writerows(part)
+          print('Rank1 paper predictions:',len(rows),'reconciled:',sum(r['form_quality']=='RECONCILED' for r in rows))
+          PY
+      - name: Publish research audit files (do not write to app or models)
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage113b-lossless-form-${{ github.run_id }}
+          retention-days: 90
+          path: |
+            reports/stage113b/summary.md
+            reports/stage113b/output/*.csv
+            reports/stage113b/output/*.json
+            reports/stage113b/paper/*.csv
+            reports/stage113b/paper/*.json
