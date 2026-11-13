@@ -187,7 +187,13 @@ def make_forecast(repo,db,day=None):
         write_json(data/'strategy-z-probabilities.json',zoutput)
         archive_and_settle_z(data,zoutput)
         return output
+    from stage116_verified_form_live import ensure_fresh_result_db,resolve_verified,apply_d_row
+    db,_stage116_source=ensure_fresh_result_db(db,day,base)
     history=LivePast({});history_info=history.scan_until(db,day)
+    _stage116_cards=[z for _group in fields.values() for z in _group]
+    _stage116_aliases,_stage116_audit=resolve_verified(db,_stage116_cards,day)
+    output["verified_form_recovery"]=_stage116_audit
+    output["verified_form_source"]=_stage116_source
     output.update(historical_data_through=history_info['last_result_date'],historical_races_scanned=history_info['historical_uk_ie_races'])
     unique_history_country={}
     for historic_name,historic_country in history.last:
@@ -197,7 +203,7 @@ def make_forecast(repo,db,day=None):
         off=time_utc(rs[0]['race_time'])
         if not off or off<=now+dt.timedelta(minutes=2):continue
         rid='MODEL-D-LIVE|'+day+'|'+str(rs[0]['course'])+'|'+t
-        rows=[live_row(r,day,rid,unique_history_country) for r in rs]
+        rows=[apply_d_row(live_row(r,day,rid,unique_history_country),r,_stage116_aliases) for r in rs]
         race=history.score(rows,live=True)
         if race is None:continue
         scores,order,gap=prediction_rows(race,weights)

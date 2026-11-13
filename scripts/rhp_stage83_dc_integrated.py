@@ -325,9 +325,12 @@ def run(a):
  audit=integrate(a.db,a.stage81,a.out)
  C.rows=corrected_rows  # only the current Python process uses the amended history
  D.c_classifier=lambda db:patched_classifier(D,C,db)
+ import stage116_verified_form_live as _stage116_form
+ _stage116_form_stats=_stage116_form.patch_dc_runtime(D,C,a.db,a.day)
  orig_write=D.write
  def write_with_version(path,obj):
   if pathlib.Path(path)==D.FEED:
+   obj["verified_form_recovery"]=_stage116_form_stats
    for r in obj.get('races',[]):
     if r.get('date')==a.day and r.get('published_at')==obj.get('generated_at'):
      r['model_version']=VERSION;r['historical_categories']='Stage81 UK/IE exact-race verified'
