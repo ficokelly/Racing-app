@@ -353,7 +353,17 @@ def backtest(root,db,start,end,out):
 
 def tomorrow_dc(root,source_db,stage114_csv,feed,out):
     """Frozen C probabilities, paired Stage114 D scores. D(c) full C repair is NOT implied."""
-    source=list(csv.DictReader(open(stage114_csv,newline='',encoding='utf-8')))
+    # Stage114 publishes TWO distinct reports: exact pedigree evidence and paired
+    # original/reconciled D scores.  The supplied --stage114 file is the pedigree
+    # audit used by the other Stage115 checks.  Never look for D scores there.
+    scores_csv=pathlib.Path(stage114_csv).with_name('stage114-D-all-runners-rank-comparison.csv')
+    if not scores_csv.is_file():
+        raise FileNotFoundError('Stage114 paired D scores missing: '+str(scores_csv))
+    with scores_csv.open(newline='',encoding='utf-8') as fp:
+        source=list(csv.DictReader(fp))
+    required={'date','course','time','horse','original_score','reconciled_score','identity_repaired'}
+    if source and not required.issubset(source[0]):
+        raise ValueError('Stage114 paired D score schema changed: '+str(required-set(source[0])))
     feed=json.loads(pathlib.Path(feed).read_text())
     bykey=collections.defaultdict(dict)
     for z in source:
@@ -570,6 +580,17 @@ def main():
     if args.self_test:self_test();return
     if any(not getattr(args,x) for x in ('db','hpr','cards','stage114','dc_feed','out')):p.error('Required --db --hpr --cards --stage114 --dc-feed --out')
     out=pathlib.Path(args.out);out.mkdir(parents=True,exist_ok=True)
+    # Fail immediately if the Stage114 research artifact is incomplete or the
+    # wrong CSV was supplied.  Prevent repeated five-million-row archive scans.
+    scores=pathlib.Path(args.stage114).with_name('stage114-D-all-runners-rank-comparison.csv')
+    if not scores.is_file():
+        raise FileNotFoundError('Expected Stage114 paired D scores beside pedigree audit: '+str(scores))
+    with scores.open(newline='',encoding='utf-8') as fh:
+        columns=set((csv.DictReader(fh).fieldnames or []))
+    expected={'date','course','time','horse','original_score','reconciled_score','identity_repaired'}
+    if not expected.issubset(columns):
+        raise ValueError('Stage114 D-score CSV missing required columns: '+str(sorted(expected-columns)))
+    print('Stage115 preflight OK: verified separate Stage114 D rank-score artifact',flush=True)
     summ={}
     summ['D_backtest']=backtest(args.repo,args.db,args.backtest_start,args.backtest_end,out)
     summ['D_c_frozen_C']=tomorrow_dc(args.repo,args.db,args.stage114,args.dc_feed,out)
