@@ -1,0 +1,188 @@
+name: Stage 121 - Final D Unresolved Identity and History Audit (Read Only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      day:
+        description: 'Target racing date YYYY-MM-DD; blank uses latest published Model D date'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage121-final-identity-readonly
+  cancel-in-progress: false
+
+jobs:
+  audit-final-unresolved:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 145
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install existing history-reader dependencies
+        run: python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1 kagglehub
+      - name: Choose published D date and confirm Stage120 is installed
+        shell: bash
+        env:
+          REQUESTED_DAY: ${{ inputs.day || '' }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import datetime as dt,json,os
+          from pathlib import Path
+          p=Path('data/strategy-d-probabilities.json')
+          obj=json.loads(p.read_text());day=os.environ.get('REQUESTED_DAY','').strip() or obj['day']
+          dt.date.fromisoformat(day)
+          if obj.get('day')!=day:raise SystemExit('Requested day must match published D forecast date for apples-to-apples comparison')
+          source=Path('scripts/stage116_verified_form_live.py').read_text()
+          if 'Stage120: D and C use independent verified historical keys' not in source:raise SystemExit('Stage120 repair absent on this branch')
+          with open(os.environ['GITHUB_ENV'],'a') as f:print('STAGE121_DAY='+day,file=f)
+          print('Stage121 read-only audit date:',day,'published D identities:',obj.get('verified_form_recovery',{}).get('D_verified'))
+          PY
+      - name: Restore historical staging database, without changing master
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os,subprocess,sys
+          from pathlib import Path
+          repo=os.environ['GITHUB_REPOSITORY'];winner=None
+          for page in range(1,21):
+              raw=subprocess.check_output(['gh','api','-X','GET',f'repos/{repo}/actions/artifacts','-f','per_page=100','-f',f'page={page}'],text=True)
+              rows=json.loads(raw).get('artifacts',[])
+              for r in rows:
+                  if r.get('name')=='stage2-historical-staging-database' and not r.get('expired'):
+                      if not winner or r.get('created_at','')>winner.get('created_at',''):winner=r
+              if len(rows)<100:break
+          Path('stage121_db').mkdir(exist_ok=True)
+          matches=[]
+          if winner:
+              print('Restoring Stage2 historical artifact',winner['id'])
+              try:
+                  subprocess.run(['gh','run','download',str(winner['workflow_run']['id']),'--repo',repo,'--name',winner['name'],'--dir','stage121_db'],check=True)
+                  matches=list(Path('stage121_db').rglob('*.sqlite'))
+              except subprocess.CalledProcessError as e:print('Artifact restore error:',e)
+          if matches:db=max(matches,key=lambda p:p.stat().st_size).resolve()
+          else:
+              print('No Stage2 artifact available, rebuilding archive from verified source')
+              import kagglehub
+              source=kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025')
+              db=Path('stage121_db/history.sqlite').resolve()
+              subprocess.run([sys.executable,'import_historical_ukie.py','--mode','import','--input',str(source),'--min-date','1988-01-01','--max-date','2026-10-07','--database',str(db),'--report','stage121_db/import-report.json'],check=True)
+          if not db.is_file() or db.stat().st_size<10_000_000:raise SystemExit('No valid historical source; refuse incomplete audit')
+          with open(os.environ['GITHUB_ENV'],'a') as f:print('STAGE121_MASTER_DB='+str(db),file=f)
+          PY
+      - name: Reconstruct exact live scoring database and identify remaining unresolved horses
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import collections,csv,datetime as dt,json,os,sys
+          from pathlib import Path
+          sys.path.insert(0,str(Path('scripts').resolve()))
+          import stage116_verified_form_live as V
+          import stage114_exact_identity_and_form_research as A
+          import stage112_form_coverage_reconcile as F
+          from stage30_gap_aware_abcd import TRACKS,track
+          day=os.environ['STAGE121_DAY'];base_db=os.environ['STAGE121_MASTER_DB']
+          root=Path('.').resolve();out=Path('reports/stage121');out.mkdir(parents=True,exist_ok=True)
+          db,meta=V.ensure_fresh_result_db(base_db,day,root)
+          # Both resolver passes use exactly the same input fields and date cutoff as Stage38.
+          cards=V.read_cards(root/'data/racecards.json',day)
+          baseline,baseline_meta=V.resolve_verified(base_db,cards,day)
+          live,live_meta=V.resolve_verified(db,cards,day)
+          byname=V.historical_candidates_flexible(db,cards,day)
+          published=json.loads((root/'data/strategy-d-probabilities.json').read_text())
+          original=published.get('verified_form_recovery',{}).get('D_verified')
+          if original is None:raise SystemExit('Published D forecast has no verified-form audit')
+          if original!=live_meta.get('D_verified'):
+              raise SystemExit(f'Live identity total does not reproduce published D {original} vs {live_meta.get("D_verified")}; investigate source drift before making recommendations')
+          cols=['course','time','horse','horse_id','form','last_run','age','sire','dam','trainer','race_name','classification','recommended_review',
+                'has_public_prior_form','historical_name_candidate_rows','exact_id_or_pedigree_rows','valid_prior_rows',
+                'prior_races','D_key_variants','C_key_variants','matching_archive_name_variants',
+                'historical_sire_dam_candidates','baseline_D_verified','live_D_verified','first_verified_date','last_verified_date']
+          rows=[];deltas=[];statuses=collections.Counter();meetings=collections.Counter();hint=collections.Counter()
+          for c in sorted(cards,key=lambda x:(str(x.get('course')),str(x.get('race_time')),str(x.get('horse')))):
+              name=A.normname(c.get('horse'));source_id=str(c.get('horse_id') or '').strip();key=(name,source_id)
+              historic=byname.get(name,[])
+              matched=[h for h in historic if h['date']<day and A.eligible_pedigree_row(c,h)]
+              valid=[h for h in matched if F.valid_run(h)]
+              dkeys={A.historical_D_key(h) for h in valid if track(h['course']) in TRACKS}
+              ckeys={A.historical_C_key(h) for h in valid if h['date']>='2021-01-01' and h.get('finish_pos') is not None}
+              before=bool(baseline.get(key,{}).get('D_key'))
+              after=bool(live.get(key,{}).get('D_key'))
+              if before!=after:deltas.append({'course':c['course'],'time':str(c.get('race_time'))[11:16],'horse':c['horse'],'baseline_verified':before,'live_verified':after})
+              if after:continue
+              form=F.has_public_form(c)
+              if len(dkeys)>1:
+                  status='CONFLICTING_D_HISTORY_KEYS';priority='P1: investigate normalisation + evidence for each distinct archive key; do not merge automatically'
+              elif not historic:
+                  if form:status='NO_ARCHIVE_NAME_WITH_PRIOR_FORM';priority='P1: verify missing previous starts via official results using name and pedigree'
+                  else:status='NO_ARCHIVE_NAME_NO_PRIOR_FORM';priority='P3: confirm debutant status or point-to-point/foreign records'
+              elif not matched:
+                  status='NAME_FOUND_BUT_ID_AND_PEDIGREE_UNVERIFIED';priority='P1: compare historic source IDs and both parents; reject name-only matches'
+              elif not valid:
+                  status='IDENTITY_FOUND_NO_VALID_PRIOR_START';priority='P2: check NR/nonfinisher status and source records'
+              elif not dkeys:
+                  status='IDENTITY_VERIFIED_NO_ELIGIBLE_D_HISTORY';priority='P2: confirm course coverage and permitted discipline; do not invent UK/IE starts'
+              else:
+                  status='UNEXPECTED_VERIFIED_KEY_NOT_USED';priority='P0: investigate identity resolver divergence before repairs'
+              statuses[status]+=1;meetings[c['course']]+=1;hint['with_public_prior_form' if form else 'without_public_prior_form']+=1
+              candidate_pedigrees=sorted({str(h.get('sire') or '')+' / '+str(h.get('dam') or '') for h in historic})
+              rows.append({'course':c['course'],'time':str(c.get('race_time') or '')[11:16],'horse':c['horse'],'horse_id':source_id,'form':c.get('form'),'last_run':c.get('last_run'),
+                'age':c.get('age'),'sire':c.get('sire'),'dam':c.get('dam'),'trainer':c.get('trainer'),'race_name':c.get('race_name'),
+                'classification':status,'recommended_review':priority,'has_public_prior_form':int(form),
+                'historical_name_candidate_rows':len(historic),'exact_id_or_pedigree_rows':len(matched),
+                'valid_prior_rows':len(valid),'prior_races':len({(h['date'],h['race_id']) for h in valid}),
+                'D_key_variants':len(dkeys),'C_key_variants':len(ckeys),
+                'matching_archive_name_variants':' | '.join(sorted({str(h.get('horse_name_norm')) for h in valid})),
+                'historical_sire_dam_candidates':' | '.join(candidate_pedigrees[:7]),
+                'baseline_D_verified':int(before),'live_D_verified':int(after),
+                'first_verified_date':min((h['date'] for h in valid),default=''),
+                'last_verified_date':max((h['date'] for h in valid),default='')})
+          with (out/'unresolved-identity-detail.csv').open('w',newline='',encoding='utf-8') as f:
+              w=csv.DictWriter(f,fieldnames=cols);w.writeheader();w.writerows(rows)
+          with (out/'live-vs-base-identity-changes.csv').open('w',newline='',encoding='utf-8') as f:
+              w=csv.DictWriter(f,fieldnames=['course','time','horse','baseline_verified','live_verified']);w.writeheader();w.writerows(deltas)
+          with (out/'priority-history-recovery.csv').open('w',newline='',encoding='utf-8') as f:
+              priority=sorted(rows,key=lambda x:(not x['has_public_prior_form'], x['classification'] not in ('CONFLICTING_D_HISTORY_KEYS','NAME_FOUND_BUT_ID_AND_PEDIGREE_UNVERIFIED'),x['course'],x['time']))
+              w=csv.DictWriter(f,fieldnames=cols);w.writeheader();w.writerows(priority)
+          report={'stage':121,'mode':'READ_ONLY','target_day':day,'live_source':meta,
+                  'runner_count':len(cards),'published_D_verified':original,
+                  'baseline_D_verified':baseline_meta['D_verified'],'actual_scoring_db_D_verified':live_meta['D_verified'],
+                  'actual_scoring_db_unresolved':len(rows),'classification_counts':dict(statuses),
+                  'per_course_unresolved':dict(meetings),'previous_form_evidence':dict(hint),
+                  'baseline_to_live_identity_changes':deltas,'model_weights_changed':False,
+                  'latest_forecast_modified':False,'source_date_exclusive':day,
+                  'warning':'A racecard form string or last_run field is a research lead, NOT verified historical start. Never insert starts without a trustworthy source and matching horse identity.'}
+          (out/'summary.json').write_text(json.dumps(report,indent=2,ensure_ascii=False)+'\n')
+          print('STAGE121 LIVE MATCHING REPORT:',json.dumps(report,indent=2),flush=True)
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
+              f.write(f'## Stage121 exact Model D unresolved audit for {day}\n\n')
+              f.write(f"- Published and reproduced: **{original}/{len(cards)}** strict D identities; unresolved **{len(rows)}**\n")
+              f.write(f"- Baseline Stage2: **{baseline_meta['D_verified']}**; live backfill: **{live_meta['D_verified']}**\n")
+              f.write(f"- Baseline-to-live identity changes: **{len(deltas)}**\n\n")
+              for k,n in sorted(statuses.items(),key=lambda x:-x[1]):f.write(f'- {k}: {n}\n')
+              f.write('\nRead-only: no horse historical starts, predictions, model weights, or source files altered. Download CSV artifact for every unresolved runner.\n')
+          PY
+      - name: Publish only audit files as downloadable artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage121-final-d-identity-review-${{ github.run_id }}
+          path: reports/stage121/
+          retention-days: 30
+          if-no-files-found: warn
