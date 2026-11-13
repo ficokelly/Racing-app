@@ -81,10 +81,16 @@ def resolve_verified(db,cards,target):
             continue
         dkey={A.historical_D_key(h) for h in matches if track(h['course']) in TRACKS}
         ckey={A.historical_C_key(h) for h in matches if h['date']>='2021-01-01' and h.get('finish_pos') is not None}
-        if len(dkey)>1 or len(ckey)>1:
+        # Stage120: D and C use independent verified historical keys.
+        # A C suffix variant alone cannot invalidate one unique D key.
+        # Distinct D keys are never automatically merged.
+        if len(dkey)>1:flags['ambiguous_D_archive_identity']+=1
+        if len(ckey)>1:flags['ambiguous_C_archive_identity']+=1
+        d=next(iter(dkey),None) if len(dkey)==1 else None
+        q=next(iter(ckey),None) if len(ckey)==1 else None
+        if (len(dkey)>1 or len(ckey)>1) and d is None and q is None:
             flags['ambiguous_archive_identity']+=1
             continue
-        d=next(iter(dkey),None);q=next(iter(ckey),None)
         if d:flags['D_verified']+=1
         if q:flags['C_verified']+=1
         flags['HPR_candidates']+=1
