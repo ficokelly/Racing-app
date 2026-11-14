@@ -473,4 +473,16 @@ def ensure_fresh_result_db(db, target, repo):
     meta['stage125_verified_history'] = audit
     return patched, meta
 
+
+# Stage126: additional verified, completed UK/Irish race evidence on a disposable DB only.
+_stage126_original_ensure_fresh_result_db = ensure_fresh_result_db
+
+def ensure_fresh_result_db(db,target,repo):
+    original,metadata = _stage126_original_ensure_fresh_result_db(db,target,repo)
+    from stage126_research_runtime import apply_installed_verified_history
+    candidate,audit = apply_installed_verified_history(original,target,repo)
+    metadata=dict(metadata)
+    metadata['stage126_verified_history']=audit
+    return candidate,metadata
+
 if __name__=='__main__':main()
