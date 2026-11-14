@@ -1,0 +1,308 @@
+name: Stage 124c - Full-SHA Pinned Nov 14 History Dry Run
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage124c-fullsha-pinned-research-only
+  cancel-in-progress: false
+
+jobs:
+  research-verified-form:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 130
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Known-good, pre-off 14 Nov racecard and published Model D: 283/341 identities.
+          # This prevents an unrelated scheduled workflow changing the research baseline.
+          ref: 93f8e09e2b60b447a6285d85aab29c783d0076f0
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install existing frozen scoring dependencies
+        run: python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1 kagglehub
+      - name: Restore the successful Stage 122 strict-ID evidence
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage124/input
+          gh run download 43528549692 --repo "$GITHUB_REPOSITORY" --name stage122-internal-result-evidence-43528549692 --dir reports/stage124/input
+          test -s reports/stage124/input/strict-identity-candidates.csv
+          python - <<'PY'
+          import json,os,datetime as dt
+          from pathlib import Path
+          published=json.loads(Path('data/strategy-d-probabilities.json').read_text())
+          assert published['day']=='2026-11-14' and published['state']=='READY' and len(published['races'])==36 and published.get('verified_form_recovery',{}).get('D_verified')==283, 'Pinned 14 Nov Model D baseline does not match successful Stage120 publication'
+          with open(os.environ['GITHUB_ENV'],'a') as f:print('STAGE124_DAY='+published['day'],file=f)
+          print('Testing frozen GitHub commit 93f8e09 for',published['day'],'without modifying production')
+          PY
+      - name: Recover original historic archive read-only
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os,subprocess,sys
+          from pathlib import Path
+          repo=os.environ['GITHUB_REPOSITORY'];latest=None
+          for page in range(1,21):
+              doc=json.loads(subprocess.check_output(['gh','api','-X','GET',f'repos/{repo}/actions/artifacts','-f','per_page=100','-f',f'page={page}'],text=True))
+              rows=doc.get('artifacts',[])
+              for a in rows:
+                  if a.get('name')=='stage2-historical-staging-database' and not a.get('expired'):
+                      if latest is None or a.get('created_at','')>latest.get('created_at',''):latest=a
+              if len(rows)<100:break
+          Path('reports/stage124/history').mkdir(parents=True,exist_ok=True)
+          paths=[]
+          if latest:
+              print('Restoring staged historical source:',latest['id'])
+              try:
+                  subprocess.run(['gh','run','download',str(latest['workflow_run']['id']),'--repo',repo,'--name',latest['name'],'--dir','reports/stage124/history'],check=True)
+                  paths=list(Path('reports/stage124/history').rglob('*.sqlite'))
+              except subprocess.CalledProcessError:pass
+          if paths:db=max(paths,key=lambda p:p.stat().st_size).resolve()
+          else:
+              import kagglehub
+              loc=kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025')
+              db=Path('reports/stage124/history/historical_ukie_staging.sqlite').resolve()
+              subprocess.run([sys.executable,'import_historical_ukie.py','--mode','import','--input',str(loc),'--min-date','1988-01-01','--max-date','2026-10-07','--database',str(db),'--report','reports/stage124/history/import-report.json'],check=True)
+          if db.stat().st_size<10_000_000:raise SystemExit('Cannot reconstruct original archive safely')
+          with open(os.environ['GITHUB_ENV'],'a') as f:print('STAGE124_DB='+str(db),file=f)
+          PY
+      - name: Audit complete pre-off race fields and dry-run full-race recovery and frozen D rescore
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import collections, csv, datetime as dt, json, os, pathlib, re, shutil, sqlite3, sys, traceback
+          from pathlib import Path
+          sys.path.insert(0, str(Path('scripts').resolve()))
+          import stage116_verified_form_live as V
+          import stage65m_backfill as B
+          import stage65k_two_day_replay as K
+          import stage38_model_dz_live as D
+          import stage114_exact_identity_and_form_research as A
+
+          DAY=os.environ['STAGE124_DAY']
+          OUT=Path('reports/stage124'); OUT.mkdir(parents=True,exist_ok=True)
+          ROOT=Path('.').resolve()
+          BASE=Path(os.environ['STAGE124_DB'])
+          PUBLISHED=json.loads(Path('data/strategy-d-probabilities.json').read_text())
+          assert PUBLISHED['day']==DAY
+          assert PUBLISHED['verified_form_recovery']['D_verified']==283, 'Published D changed since exact 58-horse audit; stop and re-audit'
+
+          # First reproduce the database that produced published Model D, using existing vetted bridge.
+          # No database or live file is committed by this research-only workflow.
+          DB, bridge_meta=V.ensure_fresh_result_db(str(BASE),DAY,ROOT)
+          CARDS=V.read_cards('data/racecards.json', DAY)
+          prior, before=V.resolve_verified(DB,CARDS,DAY)
+          assert before.get('D_verified')==PUBLISHED['verified_form_recovery']['D_verified'], 'Scoring data drift; halt'
+          CAND=OUT/'stage124-research-only.sqlite'
+          shutil.copyfile(DB,CAND)
+          assert CAND.stat().st_size>10_000_000
+
+          sources=list(csv.DictReader((Path('reports/stage124/input')/'strict-identity-candidates.csv').open()))
+          assert len(sources)==12 and len({x['horse'] for x in sources})==12, 'Unexpected Stage122 candidate set; halt'
+
+          bykey={ (str(x.get('horse_id') or ''),A.normname(x.get('horse'))):x for x in CARDS }
+          shas=K.snapshots(); cache={};report=[];accepted=0;scanned=0
+
+          # Verified provider ID remains mandatory; strip only display-country suffixes.
+          assert A.normname('Iconic Elsa (GB)')==A.normname('Iconic Elsa')
+          assert A.normname('Velvet Outlaw (IRE)')==A.normname('Velvet Outlaw')
+          assert A.normname('Folie Golith (FR)')==A.normname('Folie Golith')
+          assert D.OLD.track('Punchestown (IRE)')==D.OLD.track('Punchestown')
+          def normal(s):return D.name(s)
+          def parent(s):return A.normname(s)
+          def npos(s):
+              z=str(s or '').strip().upper();return int(z) if z.isdigit() and int(z)>0 else None
+
+          def emit(c,status,detail='',**kw):
+              report.append({'horse':c['horse'],'horse_id':c['horse_id'],'date':c['source_date'],
+                   'course':c['source_course'],'source_race_id':c['source_race_id'],
+                   'status':status,'detail':detail,**kw})
+
+          def get_source(c):
+              path=Path(c['result_source_file'])
+              doc=json.loads(path.read_text())
+              return next((r for r in doc.get('results',[]) if str(r.get('race_id') or '')==c['source_race_id'] and str(r.get('date') or '')[:10]==c['source_date']),None)
+
+          cx=sqlite3.connect(CAND)
+          cx.execute('PRAGMA foreign_keys=ON')
+          try:
+            for c in sources:
+              x=bykey.get((c['horse_id'],A.normname(c['horse'])))
+              if not x or x['horse_id']!=c['source_horse_id']:
+                emit(c,'NO_EXACT_CURRENT_PROVIDER_ID');continue
+              if c['stage121_classification']=='CONFLICTING_D_HISTORY_KEYS':
+                emit(c,'HELD_AMBIGUOUS_D_IDENTITY','Historical identity conflict must be repaired independently');continue
+              src=get_source(c)
+              if not src or str(src.get('status','')).lower()!='final':
+                emit(c,'SOURCE_RACE_NOT_FINAL');continue
+              if D.OLD.track(src.get('course')) not in D.OLD.TRACKS:
+                emit(c,'NOT_UK_IRE_ELIGIBLE_COURSE');continue
+              if not src.get('race_id') or not src.get('off_dt') or not src.get('date') or not src.get('course'):
+                emit(c,'SOURCE_RACE_METADATA_INCOMPLETE');continue
+              if str(src.get('date') or '')[:10]>=DAY:
+                emit(c,'POST_CUTOFF_RACE_FORBIDDEN');continue
+              off=D.time_utc(src['off_dt'])
+              if not off:
+                emit(c,'INVALID_OFF_TIME');continue
+              allsrc=[u for u in src.get('runners',[]) if str(u.get('status') or '').lower() not in ('nr','nonrunner','non-runner','withdrawn','scratched') and str(u.get('position') or '').upper() not in ('NR','DNS')]
+              if len(allsrc)<2 or len({A.normname(u.get('horse')) for u in allsrc})!=len(allsrc):
+                emit(c,'SOURCE_FIELD_INCOMPLETE_OR_AMBIGUOUS');continue
+              if sum(npos(u.get('position'))==1 for u in allsrc)!=1:
+                emit(c,'SOURCE_WINNER_NOT_UNIQUE');continue
+              if any(not str(u.get('horse_id') or '') or not str(u.get('horse') or '') for u in allsrc):
+                emit(c,'SOURCE_RUNNER_ID_MISSING');continue
+              t=[u for u in allsrc if str(u.get('horse_id') or '')==c['source_horse_id']]
+              if len(t)!=1 or A.normname(t[0].get('horse'))!=A.normname(c['horse']):
+                emit(c,'SOURCE_ID_HORSE_CONFLICT');continue
+              if (t[0].get('sire') and t[0].get('dam') and x.get('sire') and x.get('dam') and
+                  (parent(t[0]['sire'])!=parent(x['sire']) or parent(t[0]['dam'])!=parent(x['dam']))):
+                emit(c,'PROVIDER_ID_PARENT_CONFLICT');continue
+              # Look for the target's race in the actual historical DB first, including other provider names.
+              existing=cx.execute('''SELECT r.id,r.course,u.horse_source_id,u.horse_name
+                        FROM historical_races r JOIN historical_runs u ON r.id=u.race_id
+                        WHERE r.race_date=? AND u.horse_source_id=?''',(c['source_date'],c['source_horse_id'])).fetchall()
+              if existing:
+                emit(c,'IDENTICAL_ID_ALREADY_IN_DB',str(existing[:3]));continue
+              # Never duplicate a race with alternate source identifiers.
+              courses=cx.execute('SELECT id,course FROM historical_races WHERE race_date=?',(c['source_date'],)).fetchall()
+              same=[rid for rid,co in courses if D.OLD.track(co)==D.OLD.track(src['course'])]
+              source_names={A.normname(u['horse']) for u in allsrc}
+              dupe=False;partial=False
+              for rid in same:
+                hist_names={A.normname(n) for (n,) in cx.execute('SELECT horse_name FROM historical_runs WHERE race_id=?',(rid,))}
+                if hist_names==source_names:dupe=True
+                if hist_names & source_names:partial=True
+              if dupe:
+                emit(c,'WHOLE_RACE_ALREADY_IN_DB');continue
+              if partial:
+                emit(c,'PARTIAL_SAME_DAY_COURSE_RACE_OVERLAP','Needs detailed same-race matching before replay');continue
+              pre,sha=B.get_card_at(shas,cache,int(off.timestamp()))
+              if not pre:
+                emit(c,'NO_PREOFF_CARD_SNAPSHOT');continue
+              pre_list=[u for u in pre.get('runners',[]) if str(u.get('date') or u.get('race_time') or '')[:10]==c['source_date']
+                  and D.OLD.track(u.get('course'))==D.OLD.track(src['course'])
+                  and B.normtime(u.get('race_time'))==off.strftime('%H:%M') and not D.nonrunner(u)]
+              if len(pre_list)!=len(allsrc) or {A.normname(u['horse']) for u in pre_list}!=source_names:
+                emit(c,'PREOFF_FIELD_MISMATCH',f'pre={len(pre_list)}, final={len(allsrc)}',source_commit=sha);continue
+              if {str(u.get('horse_id') or '') for u in pre_list}!={str(u.get('horse_id') or '') for u in allsrc}:
+                emit(c,'PREOFF_PROVIDER_ID_MISMATCH',f'pre={len(pre_list)}, final={len(allsrc)}',source_commit=sha);continue
+              if any(not u.get('trainer') or not u.get('jockey') or not u.get('distance_f') or not (u.get('type') or u.get('race_name')) for u in pre_list):
+                emit(c,'PREOFF_METADATA_INCOMPLETE',source_commit=sha);continue
+              if any(npos(u.get('position')) is None and str(u.get('position') or '').upper() not in ('PU','F','UR','BD','RO','RR','REF','DSQ','DNF') for u in allsrc):
+                emit(c,'UNKNOWN_RESULT_OUTCOME',source_commit=sha);continue
+              # Candidate race insertion is TEMPORARY ONLY, and always inserts an entire verified race.
+              rid='STAGE124|'+c['source_date']+'|'+normal(src['course']).replace(' ','')+'|'+src['race_id']
+              if cx.execute('SELECT 1 FROM historical_races WHERE id=?',(rid,)).fetchone():
+                emit(c,'ALREADY_STAGED_IN_CANDIDATE');continue
+              sample=pre_list[0]
+              try:
+                with cx:
+                  cx.execute('''INSERT INTO historical_races (id,race_date,course,race_type,surface,distance_f,going,race_class,source)
+                                VALUES (?,?,?,?,?,?,?,?,?)''',(rid,c['source_date'],src['course'],sample.get('type') or sample.get('race_name'),
+                               sample.get('surface'),float(sample['distance_f']),sample.get('going'),sample.get('race_class'),'STAGE124-RESEARCH-PREOFF-PROVIDER-ID'))
+                  final_ids={str(u['horse_id']):u for u in allsrc}
+                  for i,u in enumerate(pre_list):
+                    res=final_ids[str(u['horse_id'])]; pos=npos(res.get('position'))
+                    outcome='FINISHED' if pos else str(res.get('position') or '').upper()
+                    sp=D.fractional(res.get('sp')) if res.get('sp') else None
+                    horse=re.sub(r'\s*\((?:IRE|GB|FR|USA|GER|AUS|NZ|IT|JPN)\)\s*$','',str(u['horse']),flags=re.I).strip(); country=str(u.get('horse_country') or '').strip()
+                    if not country:
+                      m=re.search(r'\(([A-Z]{2,3})\)\s*$',str(u['horse'])) or re.search(r'\(([A-Z]{2,3})\)\s*$',str(res.get('horse') or ''));country=m.group(1).lower() if m else ''
+                    cx.execute('''INSERT INTO historical_runs (race_id,runner_key,horse_source_id,horse_name,horse_name_norm,
+                       horse_country,finish_pos,outcome,trainer,jockey,official_rating,sp_decimal,draw,age,sire,dam)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',(rid,str(i),str(u['horse_id']),horse,A.normname(horse),country,
+                              pos,outcome,u.get('trainer'),u.get('jockey'),D.OLD.number(u.get('official_rating') or u.get('ofr') or u.get('or')),
+                              sp, int(u['draw']) if str(u.get('draw') or '').isdigit() else None,
+                              int(u['age']) if str(u.get('age') or '').isdigit() else None,u.get('sire'),u.get('dam')))
+                accepted+=1
+                emit(c,'STAGED_TEMP_FULL_RACE',f'Runners {len(pre_list)}',source_commit=sha)
+              except Exception as ex:
+                emit(c,'RESEARCH_REPLAY_EXCEPTION',str(ex)[:250],source_commit=sha)
+              scanned+=1
+          finally:
+            cx.close()
+
+          post,after=V.resolve_verified(str(CAND),CARDS,DAY)
+          changed=[];regressed=[]
+          for card in CARDS:
+            k=(A.normname(card['horse']),str(card.get('horse_id') or '').strip())
+            b=prior.get(k,{})
+            a=post.get(k,{})
+            if b.get('D_key') and b['D_key']!=a.get('D_key'):regressed.append({'horse':card['horse'],'reason':'PREVIOUS_D_KEY_CHANGED','previous':str(b['D_key']),'after':str(a.get('D_key'))})
+            if b.get('C_key') and b['C_key']!=a.get('C_key'):regressed.append({'horse':card['horse'],'reason':'PREVIOUS_C_KEY_CHANGED'})
+            if bool(b.get('D_key'))!=bool(a.get('D_key')):changed.append({'horse':card['horse'],'course':card['course'],'before':bool(b.get('D_key')),'after':bool(a.get('D_key'))})
+
+          cols=['horse','horse_id','date','course','source_race_id','status','detail','source_commit']
+          with (OUT/'candidate-race-dedup-and-proof.csv').open('w',newline='',encoding='utf-8') as f:
+            writer=csv.DictWriter(f,fieldnames=cols,extrasaction='ignore');writer.writeheader();writer.writerows(report)
+          with (OUT/'identity-changes-after-temporary-replay.csv').open('w',newline='',encoding='utf-8') as f:
+            writer=csv.DictWriter(f,fieldnames=['horse','course','before','after']);writer.writeheader();writer.writerows(changed)
+          summary={'stage':'124c','mode':'READ_ONLY_TEMPORARY_RESEARCH','day':DAY,'published_runners':len(CARDS),
+             'original_verified_D':before.get('D_verified'),'candidate_verified_D':after.get('D_verified'),
+             'original_verified_C':before.get('C_verified'),'candidate_verified_C':after.get('C_verified'),
+             'candidate_full_races_staged_only_in_temp_db':accepted,'statuses':dict(collections.Counter(z['status'] for z in report)),
+             'D_identity_changes':changed,'prior_identity_regressions':regressed,
+             'baseline_master_untouched':True,'production_model_not_changed':True,'no_result_after_selection_date':True,
+             'note':'Any stage result is subject to full scoring and ongoing duplicate protection before production inclusion.'}
+          (OUT/'summary.json').write_text(json.dumps(summary,indent=2)+'\n')
+          print('STAGE124 TEMPORARY REPLAY AUDIT:',json.dumps(summary,indent=2),flush=True)
+          assert not regressed, 'Previously verified D or C identity changed: hold all new starts'
+          assert after.get('D_verified',0)>=before.get('D_verified',0),'D verified coverage regressed'
+          assert after.get('C_verified',0)>=before.get('C_verified',0),'C verified coverage regressed'
+
+          # Validate the original frozen D selections against the same local temporary history,
+          # without publishing to main or updating weights.
+          if accepted>0:
+            import subprocess
+            subprocess.run([sys.executable,'scripts/stage38_model_dz_live.py','live','--repo','.','--db',str(CAND),'--day',DAY],check=True)
+            candidate=json.loads(Path('data/strategy-d-probabilities.json').read_text())
+            count=lambda d:sum(len(x.get('runners',[])) for x in d['races'])
+            first=lambda d:{(r['course'],r['time']):next((x['horse'] for x in r['runners'] if x['rank']==1),None) for r in d['races']}
+            b,a=first(PUBLISHED),first(candidate)
+            delta=[{'course':k[0],'time':k[1],'before':b[k],'after':a[k]} for k in sorted(set(b)&set(a)) if b[k]!=a[k]]
+            scoring={'race_count_before':len(PUBLISHED['races']),'race_count_candidate':len(candidate['races']),
+              'runner_count_before':count(PUBLISHED),'runner_count_candidate':count(candidate),
+              'model_version_unchanged':PUBLISHED['model_version']==candidate['model_version'],
+              'weights_pct_unchanged':PUBLISHED['weights_pct']==candidate['weights_pct'],
+              'scorer_verified_D':candidate.get('verified_form_recovery',{}).get('D_verified'),
+              'local_rank1_changes':delta,'published':False}
+            (OUT/'model-d-local-rescore.json').write_text(json.dumps(scoring,indent=2)+'\n')
+            print('STAGE124 FROZEN D SMOKE TEST:',json.dumps(scoring,indent=2),flush=True)
+            assert len(b)==len(a)==36 and count(PUBLISHED)==count(candidate)==341,'Race/runner count changed'
+            assert scoring['model_version_unchanged'] and scoring['weights_pct_unchanged'],'Frozen D weights or version changed'
+            assert scoring['scorer_verified_D']==after['D_verified'],'Scorer did not use candidate database'
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
+            f.write(f"## Stage124 temporary history reconstruction — {DAY}\n\n")
+            f.write(f"- Original verified D: {before['D_verified']}/{len(CARDS)}\n")
+            f.write(f"- Temporary candidate verified D: {after['D_verified']}/{len(CARDS)}\n")
+            f.write(f"- Fully validated source races staged ONLY in disposable database: {accepted}\n")
+            f.write(f"- Existing D/C identity regressions: {len(regressed)}\n")
+            f.write('\nNO live data, source weights, or predictions committed. See audit artifact.\n')
+          PY
+      - name: Upload research only evidence (no database snapshots)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage124c-fullsha-preoff-replay-${{ github.run_id }}
+          path: |
+            reports/stage124/summary.json
+            reports/stage124/candidate-race-dedup-and-proof.csv
+            reports/stage124/identity-changes-after-temporary-replay.csv
+            reports/stage124/model-d-local-rescore.json
+          retention-days: 30
+          if-no-files-found: warn
