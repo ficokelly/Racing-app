@@ -1,0 +1,331 @@
+name: Stage 127b - Publish Five Verified Races With Clean Checkout
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_after_tests:
+        description: 'Install verified five-race recovery on live source only after all replay checks pass'
+        type: boolean
+        required: true
+        default: true
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: stage38-unified-all-models
+  cancel-in-progress: false
+
+jobs:
+  replay-verify-and-promote-five:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install unchanged frozen scoring dependencies
+        run: python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1 kagglehub
+      - name: Restore immutable Stage126b research and prior 58-runner identity evidence without artifact collisions
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage127/stage126_verified reports/stage126/input reports/stage126/121 reports/stage126/122
+          gh run download 43538714859 --repo "$GITHUB_REPOSITORY" --name stage126b-all-remaining-form-audit-43538714859 --dir reports/stage127/stage126_verified
+          gh run download 43526992727 --repo "$GITHUB_REPOSITORY" --name stage121-final-d-identity-review-43526992727 --dir reports/stage126/121
+          gh run download 43528549692 --repo "$GITHUB_REPOSITORY" --name stage122-internal-result-evidence-43528549692 --dir reports/stage126/122
+          cp reports/stage126/121/unresolved-identity-detail.csv reports/stage126/input/unresolved-identity-detail.csv
+          cp reports/stage126/122/strict-identity-candidates.csv reports/stage126/input/strict-identity-candidates.csv
+          for p in summary.json verified-recovery-fixtures.json each-strict-source-proof.csv model-d-frozen-rank-comparison.json; do
+            test -s "reports/stage127/stage126_verified/$p"
+          done
+          test -s reports/stage126/input/unresolved-identity-detail.csv
+          test -s reports/stage126/input/strict-identity-candidates.csv
+          git cat-file -e 93f8e09e2b60b447a6285d85aab29c783d0076f0^{commit}
+          python scripts/stage125_verified_history.py
+          python scripts/stage116_verified_form_live.py --mode self-test
+          python scripts/stage38_model_dz_live.py self-test
+      - name: Restore immutable historical source (no writes to master)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+        run: |
+          set -euo pipefail
+          python - <<'PY_ARCHIVE'
+          import json,os,subprocess,sys
+          from pathlib import Path
+          repo=os.environ['GITHUB_REPOSITORY'];latest=None
+          for page in range(1,21):
+              doc=json.loads(subprocess.check_output(['gh','api','-X','GET',f'repos/{repo}/actions/artifacts','-f','per_page=100','-f',f'page={page}'],text=True))
+              rows=doc.get('artifacts',[])
+              for a in rows:
+                  if a.get('name')=='stage2-historical-staging-database' and not a.get('expired'):
+                      if latest is None or a.get('created_at','')>latest.get('created_at',''):latest=a
+              if len(rows)<100:break
+          Path('reports/stage126/history').mkdir(parents=True,exist_ok=True)
+          paths=[]
+          if latest:
+              print('Restoring historical master source:',latest['id'],flush=True)
+              try:
+                  subprocess.run(['gh','run','download',str(latest['workflow_run']['id']),'--repo',repo,'--name',latest['name'],'--dir','reports/stage126/history'],check=True)
+                  paths=list(Path('reports/stage126/history').rglob('*.sqlite'))
+              except subprocess.CalledProcessError:pass
+          if paths:db=max(paths,key=lambda p:p.stat().st_size).resolve()
+          else:
+              import kagglehub
+              loc=kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025')
+              db=Path('reports/stage126/history/historical_ukie_staging.sqlite').resolve()
+              subprocess.run([sys.executable,'import_historical_ukie.py','--mode','import','--input',str(loc),'--min-date','1988-01-01','--max-date','2026-10-07','--database',str(db),'--report','reports/stage126/history/import-report.json'],check=True)
+          if not db.is_file() or db.stat().st_size<10_000_000:raise SystemExit('Safe historical source unavailable')
+          with open(os.environ['GITHUB_ENV'],'a') as f:print('STAGE126_DB='+str(db),file=f)
+          PY_ARCHIVE
+      - name: Independently replay five proven histories and validate all frozen-model identity and rank checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/stage127_promote.py <<'PY_STAGE127_PROMOTE'
+          #!/usr/bin/env python3
+          """Stage127 controlled promotion of the independently successful Stage126 proof bundle."""
+          import ast,csv,datetime as dt,hashlib,json,os,pathlib,re,subprocess,sys,shutil
+          import yaml
+          from pathlib import Path
+          ROOT=Path('.').resolve();SRC=Path('reports/stage127/stage126_verified')
+          OUT=Path('reports/stage127');OUT.mkdir(parents=True,exist_ok=True)
+          WORKFLOW=Path('.github/workflows/stage126b-collision-safe-form-audit.yml')
+          if not WORKFLOW.is_file():raise SystemExit('Stage126 research source workflow missing')
+          # Extract identical, validated research code; no drift between research and production verifier.
+          doc=yaml.safe_load(WORKFLOW.read_text())
+          steps=doc['jobs']['check-all-remaining-form']['steps']
+          command=next(z['run'] for z in steps if z.get('name','').startswith('Strict external metadata reconciliation'))
+          assert command.count("cat > /tmp/stage126_research.py <<'STAGE126_SCRIPT'")==1
+          source=command.split("cat > /tmp/stage126_research.py <<'STAGE126_SCRIPT'\n",1)[1].split('\nSTAGE126_SCRIPT\n',1)[0]
+          ast.parse(source)
+          research=Path('/tmp/stage126_research.py');research.write_text(source+'\n')
+          # Before anything is installed, re-run the successful Stage126 test *in this runner*.
+          subprocess.run([sys.executable,'-u',str(research)],check=True)
+          expected=json.loads((SRC/'summary.json').read_text())
+          actual=json.loads(Path('reports/stage126/summary.json').read_text())
+          critical=('stage','day','baseline_D','tested_D','baseline_C','tested_C','verified_D_gains','verified_C_gains','newly_safe_horses','newly_safe_complete_races','original_D_C_identity_regressions')
+          for key in critical:
+              if expected.get(key)!=actual.get(key):raise SystemExit(f'Stage126b result drift: {key}: {expected.get(key)} vs {actual.get(key)}')
+          if (actual['stage']!='126b' or actual['baseline_D']!=285 or actual['tested_D']!=290
+              or actual['baseline_C']!=160 or actual['tested_C']!=165 or actual['original_D_C_identity_regressions']):
+              raise SystemExit('Stage126 baseline, safety or evidence validation failed')
+          for file in ('verified-recovery-fixtures.json','model-d-frozen-rank-comparison.json','each-strict-source-proof.csv'):
+              if hashlib.sha256((SRC/file).read_bytes()).digest()!=hashlib.sha256((Path('reports/stage126')/file).read_bytes()).digest():
+                  raise SystemExit('Stage126 independent rerun did not reproduce exact evidence '+file)
+          fixture=json.loads((OUT.parent/'stage126/verified-recovery-fixtures.json').read_text())
+          assert fixture['version']=='stage126-verified-research-v1'
+          assert len(fixture['evidence'])==actual['newly_safe_complete_races']==5
+          assert len(fixture['evidence'])==len({z['target_horse_id'] for z in fixture['evidence']})
+          assert all(x['before_rank1']==x['after_rank1'] for x in actual['ranking_smoke']['local_rank1_rank2_changes']), 'Unexpected model D Rank 1 change'
+          assert actual['ranking_smoke']['same_frozen_model_version'] and actual['ranking_smoke']['same_weights']
+          assert set(z['target_horse'] for z in fixture['evidence'])==set(actual['newly_safe_horses'])=={'Iconic Elsa','Eastern Whisper','Velvet Outlaw','Bateleur','Tunisya'}
+          assert len(fixture['evidence'])==5, 'Expected exactly the five proven Stage126b complete races'
+
+          # Append narrowly scoped source function; Stage125 is invoked by Stage116 before this bridge.
+          # It must always create its own copy and never modify any original archive.
+          runtime_tail='''
+
+          def apply_installed_verified_history(db,target,repo):
+              """Merge only pre-cutoff, Stage126-proven full races into a DISPOSABLE SQLite copy."""
+              import tempfile
+              root=pathlib.Path(repo).resolve();fixture_path=root/'data/stage126-verified-prior-races.json'
+              if not fixture_path.is_file():return db,{'status':'NOT_INSTALLED','added_races':0}
+              bundle=json.loads(fixture_path.read_text())
+              if bundle.get('version')!='stage126-verified-research-v1':raise RuntimeError('Unrecognized installed Stage126 bundle')
+              events=bundle.get('evidence',[])
+              if len(events)!=len({(str(e['results']['date']),str(e['results']['race_id'])) for e in events}):
+                  raise RuntimeError('Duplicate/ambiguous race in Stage126 live bundle')
+              assert all(e['target_horse'] in TRY and e['target_horse'] not in LIMITED for e in events)
+              assert all(e['target_horse_id'] and re.fullmatch(r'[a-f0-9]{40}',e['preoff_commit']) for e in events)
+              live=[e for e in events if dt.date.fromisoformat(str(e['results']['date']))<dt.date.fromisoformat(target)]
+              if not live:return db,{'status':'ALL_PRE_CUTOFF_HOLD','added_races':0}
+              # Validate complete, exact-ID/whole-field fixture against the immutable final evidence.
+              for e in live:
+                  s=e['results'];ps=e['preoff_runners'];en=e['enriched_preoff_runners']
+                  r=starters(s);ids={str(z['horse_id']) for z in r}
+                  if not(s['status']=='final' and len(r)>=2 and len(ids)==len(r)==len(ps)==len(en)):
+                      raise RuntimeError('Stage126 fixture race has inconsistent starters')
+                  if ids!={str(z.get('horse_id') or '') for z in ps}:raise RuntimeError('Preoff source provider IDs differ')
+                  if sum(npos(z.get('position'))==1 for z in r)!=1:raise RuntimeError('Source has no unique winner')
+                  if not any(z['horse_id']==e['target_horse_id'] and identity(z['horse'])==identity(e['target_horse']) for z in r):
+                      raise RuntimeError('Target exact provider ID or horse name differs')
+                  rids={str(z['horse_id']):z for z in r}
+                  for p in en:
+                      f=rids[str(p['horse_id'])]
+                      if identity(p['horse'])!=identity(f['horse']):raise RuntimeError('Historical runner name differs')
+                      if not p.get('trainer') or not p.get('jockey') or not length_f(p.get('distance_f'),s.get('dist_f')):
+                          raise RuntimeError('Verified historical event metadata incomplete')
+                      if not(p.get('type') or p.get('race_name')):raise RuntimeError('Verified historical race type missing')
+                      for z in ('sire','dam'):
+                          if identity(p.get(z)) and identity(f.get(z)) and identity(p[z])!=identity(f[z]):
+                              raise RuntimeError('Verified runner pedigree disagreement')
+              src=pathlib.Path(db).resolve()
+              todo=[];skips=[]
+              for e in live:
+                  reason=duplicate_check(src,e)
+                  if reason=='FULL_HISTORICAL_RACE_ALREADY_PRESENT':skips.append(e['results']['race_id']);continue
+                  if reason:raise RuntimeError('Unsafe Stage126 duplicate/overlap: '+reason)
+                  todo.append(e)
+              if not todo:return str(src),{'status':'ALREADY_PRESENT','added_races':0,'skipped':skips}
+              folder=pathlib.Path(tempfile.mkdtemp(prefix='stage126-added-precutoff-'))
+              dest=folder/'history.sqlite';shutil.copy2(src,dest)
+              inserted=[]
+              for e in todo:
+                  reason=duplicate_check(dest,e)
+                  if reason:raise RuntimeError('Unsafe multi-event overlap in Stage126 live bridge: '+reason)
+                  inserted.append(add_event_to_temp(dest,e))
+              return str(dest),{'status':'ADDED_PROVEN_HISTORICAL_FULL_RACES','added_races':len(inserted),
+                  'race_ids':inserted,'source':'data/stage126-verified-prior-races.json','original_master_untouched':True}
+          '''
+          ast.parse(source+'\n'+runtime_tail)
+          module=Path('scripts/stage126_research_runtime.py')
+          if module.exists():raise SystemExit('Stage126 installed already; refuse duplicate promotion')
+          module.write_text(source.rstrip()+'\n'+runtime_tail)
+          Path('data/stage126-verified-prior-races.json').write_text(json.dumps(fixture,indent=2,ensure_ascii=False)+'\n')
+          # Add wrapper after Stage125 without changing frozen D/C/HPR/G score code.
+          path=Path('scripts/stage116_verified_form_live.py');text=path.read_text()
+          anchor="\nif __name__=='__main__':main()"
+          assert text.count(anchor)==1 and text.count('def ensure_fresh_result_db(')==2
+          assert '_stage125_original_ensure_fresh_result_db' in text and '_stage126_original_ensure_fresh_result_db' not in text
+          new='''
+
+          # Stage126: additional verified, completed UK/Irish race evidence on a disposable DB only.
+          _stage126_original_ensure_fresh_result_db = ensure_fresh_result_db
+
+          def ensure_fresh_result_db(db,target,repo):
+              original,metadata = _stage126_original_ensure_fresh_result_db(db,target,repo)
+              from stage126_research_runtime import apply_installed_verified_history
+              candidate,audit = apply_installed_verified_history(original,target,repo)
+              metadata=dict(metadata)
+              metadata['stage126_verified_history']=audit
+              return candidate,metadata
+          '''
+          path.write_text(text.replace(anchor,new+anchor))
+          ast.parse(path.read_text())
+          subprocess.run([sys.executable,'-m','py_compile',str(module),str(path)],check=True)
+
+          # Reproduce old-vs-new identity coverage on pinned 341 runners.
+          sys.path.insert(0,str(ROOT/'scripts'))
+          import stage116_verified_form_live as V
+          import stage114_exact_identity_and_form_research as A
+          from stage126_research_runtime import apply_installed_verified_history
+          cards=V.read_cards('reports/stage126/pinned-nov14-racecards.json','2026-11-14')
+          assert len(cards)==341
+          base=os.environ['STAGE126_DB']
+          orig,m=V._stage126_original_ensure_fresh_result_db(base,'2026-11-14',ROOT)
+          pre,s1=V.resolve_verified(orig,cards,'2026-11-14')
+          updated,meta=V.ensure_fresh_result_db(base,'2026-11-14',ROOT)
+          post,s2=V.resolve_verified(updated,cards,'2026-11-14')
+          assert s1['D_verified']==actual['baseline_D'] and s1['C_verified']==actual['baseline_C']
+          assert s2['D_verified']==actual['tested_D'] and s2['C_verified']==actual['tested_C'],(s2,actual)
+          for c in cards:
+              k=(A.normname(c['horse']),str(c.get('horse_id') or '').strip())
+              before=pre.get(k,{}) or {};after=post.get(k,{}) or {}
+              for model in ('D','C'):
+                  key=model+'_key'
+                  assert not before.get(key) or before[key]==after.get(key),f'Pre-existing {model} identity regressed: {c["horse"]}'
+          again, second=apply_installed_verified_history(updated,'2026-11-14',ROOT)
+          assert second['added_races']==0,second
+          assert meta['stage126_verified_history']['added_races']==len(fixture['evidence'])
+          # No future leakage: new results never apply to earlier race target dates.
+          old,older=apply_installed_verified_history(orig,'2026-10-01',ROOT)
+          assert older['added_races']==0
+          assert Path(base).is_file() and Path(updated).is_file()
+          report={'stage':127,'status':'VALIDATED_FOR_PROMOTION','new_verified_races':len(fixture['evidence']),
+                  'D_coverage_before':s1['D_verified'],'D_coverage_after':s2['D_verified'],
+                  'C_coverage_before':s1['C_verified'],'C_coverage_after':s2['C_verified'],
+                  'additional_horses':actual['newly_safe_horses'],'idempotent':True,
+                  'future_leakage_prevented':True,'source_master_untouched':True,
+                  'frozen_model_source_not_changed':True,'stage126b_artifact_reverified_byte_for_byte':True}
+          (OUT/'summary.json').write_text(json.dumps(report,indent=2)+'\n')
+          print('STAGE127 LIVE PROMOTION GATES PASSED:',json.dumps(report,indent=2),flush=True)
+          PY_STAGE127_PROMOTE
+          python -u /tmp/stage127_promote.py
+      - name: Install three verified source files permanently, after all tests only
+        if: ${{ inputs.deploy_after_tests }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch origin main
+          # A concurrent model source change requires fresh research, not a blind rebase.
+          git diff --quiet HEAD origin/main -- scripts/stage116_verified_form_live.py scripts/stage125_verified_history.py data/stage125-verified-prior-races.json scripts/stage38_model_dz_live.py scripts/stage30_gap_aware_abcd.py
+          git add scripts/stage116_verified_form_live.py scripts/stage126_research_runtime.py data/stage126-verified-prior-races.json
+          test "$(git diff --cached --name-only | wc -l)" -eq 3 || { echo 'Source file count differs; fail closed'; exit 1; }
+          git commit -m "Stage127b: install five independently verified pre-off full race fields"
+          # The complete Stage126b replay and frozen D scorer modify TRACKED files
+          # (e.g. data/racecards.json, strategy forecast outputs) in this temporary
+          # GitHub runner. Those are TEST OUTPUTS, never part of this publication.
+          # The validated three source files are already safely COMMITTED above.
+          # Discard ONLY uncommitted checkout edits before rebasing; this does
+          # not change the commit or any file on the live remote repository.
+          echo 'Checkout status before discarding disposable replay output:'
+          git status --short --untracked-files=no
+          git reset --hard HEAD
+          test -z "$(git status --porcelain --untracked-files=no)" || {
+            echo 'Tracked replay outputs remain after cleanup; refusing publish'; exit 1;
+          }
+          # Refuse any conflicts if source code changed on main after validation.
+          git pull --rebase origin main
+          # Prove publication still only contains our approved three source files.
+          test "$(git diff-tree --no-commit-id --name-only -r HEAD | sort | tr '\n' ' ')" =             "$(printf '%s\n' scripts/stage116_verified_form_live.py scripts/stage126_research_runtime.py data/stage126-verified-prior-races.json | sort | tr '\n' ' ')" || {
+            echo 'Rebased source commit changed; refusing publication'; exit 1;
+          }
+          git push origin HEAD:main
+          echo 'Stage127b: five verified complete historical races now sourced in live Stage116 bridge.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Request guarded Stage38 Model D rescore for the next unstarted race day
+        if: ${{ inputs.deploy_after_tests }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          python - <<'PY_DISPATCH'
+          import datetime as dt,json,subprocess
+          from pathlib import Path
+          doc=json.loads(subprocess.check_output(['git','show','origin/main:data/racecards.json'],text=True))
+          now=dt.datetime.now(dt.timezone.utc)
+          future=[]
+          for r in doc.get('runners',[]):
+              try:
+                  off=dt.datetime.fromisoformat(str(r.get('race_time') or '').replace('Z','+00:00'))
+                  if off.tzinfo and off.astimezone(dt.timezone.utc)>now+dt.timedelta(minutes=10):
+                      future.append(off.date().isoformat())
+              except (ValueError,TypeError):pass
+          day=min(future) if future else None
+          if day:
+              Path('reports/stage127/dispatch-date.txt').write_text(day)
+              print('Guarded scorer future target',day)
+          else:print('No future race; next Stage38 scheduled job uses installed source')
+          PY_DISPATCH
+          if test -s reports/stage127/dispatch-date.txt; then
+            day="$(cat reports/stage127/dispatch-date.txt)"
+            gh workflow run stage38-model-d-repair.yml --repo "$GITHUB_REPOSITORY" --ref main -f day="$day"
+            echo "Dispatched guarded Stage38 for $day" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload exact five-race install verification and no-regression evidence (no SQLite files)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage127b-five-verified-history-${{ github.run_id }}
+          path: |
+            reports/stage127/summary.json
+            reports/stage126/summary.json
+            reports/stage126/each-strict-source-proof.csv
+            reports/stage126/model-d-frozen-rank-comparison.json
+            data/stage126-verified-prior-races.json
+          retention-days: 30
+          if-no-files-found: warn
