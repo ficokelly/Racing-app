@@ -460,4 +460,17 @@ def main():
         print(json.dumps(prepare_g_state(a.db,a.hpr,cards,a.target,a.state,a.prepared,a.out),indent=2));return
     if not a.hpr:p.error('HPR mode requires --hpr')
     print(json.dumps(recover_hpr(a.db,a.hpr,cards,a.target,a.out,apply=a.mode=='hpr-apply'),indent=2))
+
+# Stage125: strictly verified, additive completed-race source bridge.
+# Never modifies the shared master DB; the source is immutable pre-off + final evidence.
+_stage125_original_ensure_fresh_result_db = ensure_fresh_result_db
+
+def ensure_fresh_result_db(db, target, repo):
+    base, meta = _stage125_original_ensure_fresh_result_db(db, target, repo)
+    from stage125_verified_history import apply_verified_history
+    patched, audit = apply_verified_history(base, target, repo)
+    meta = dict(meta)
+    meta['stage125_verified_history'] = audit
+    return patched, meta
+
 if __name__=='__main__':main()
