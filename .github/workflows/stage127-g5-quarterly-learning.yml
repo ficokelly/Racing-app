@@ -1,0 +1,124 @@
+name: "Stage127 - G5 2023 Seed, 2024 Holdout and 2025 Quarterly Learning"
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage127-g5-quarterly
+  cancel-in-progress: false
+
+jobs:
+  quarterly-odds-blind-learning:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      DB: reports/stage127/source/stage2/historical_ukie_staging.sqlite
+      REFERENCE: reports/stage127/source/stage4/all_races_with_reference_event_ids.csv
+      G3_PRED: reports/stage127/source/g3/stage109-all-horses-historical.csv.gz
+      OUT: reports/stage127/output
+
+    steps:
+      - name: Checkout - preserve existing G3, G5 and live models
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install reproducible ML dependencies
+        run: |
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 \
+            scikit-learn==1.6.1 joblib==1.4.2
+
+      - name: Assert scripts present, compile and test date/no-leak guards
+        run: |
+          set -euo pipefail
+          test -s scripts/stage108_model_g2.py
+          test -s scripts/stage109_model_g3.py
+          test -s scripts/stage112_g5_relational_form.py
+          test -s scripts/stage127_g5_quarterly_learning.py
+          python -m py_compile \
+            scripts/stage108_model_g2.py \
+            scripts/stage109_model_g3.py \
+            scripts/stage112_g5_relational_form.py \
+            scripts/stage127_g5_quarterly_learning.py
+          python scripts/stage112_g5_relational_form.py self-test
+          python scripts/stage127_g5_quarterly_learning.py self-test
+
+      - name: Restore exact UK Ireland source and frozen G3 predictions
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage127/source/{stage2,stage4,g3}
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage2-historical-staging-database \
+            --dir reports/stage127/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage4-reference-named-events-and-winners \
+            --dir reports/stage127/source/stage4
+          gh run download 43407036838 --repo "$GITHUB_REPOSITORY" \
+            --name stage109-g3-learning-43407036838 \
+            --dir reports/stage127/source/g3
+          for file in "$DB" "$REFERENCE" "$G3_PRED"; do
+            test -s "$file" || { echo "Missing immutable source $file" >&2; exit 1; }
+          done
+          python - <<'PY'
+          import os, sqlite3
+          c=sqlite3.connect('file:'+os.path.abspath(os.environ['DB'])+'?mode=ro',uri=True)
+          assert c.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+          print('Source races:', c.execute('SELECT COUNT(*) FROM historical_races').fetchone()[0])
+          print('Source horses:', c.execute('SELECT COUNT(*) FROM historical_runs').fetchone()[0])
+          c.close()
+          PY
+
+      - name: Train 2023, lock 2024 predictions, learn quarterly 2025
+        run: |
+          set -euo pipefail
+          python -u scripts/stage127_g5_quarterly_learning.py historical \
+            --db "$DB" --reference "$REFERENCE" \
+            --g3-predictions "$G3_PRED" --out "$OUT"
+          test -s "$OUT/README.md"
+          test -s "$OUT/g5-quarterly-full-period.csv"
+          test -s "$OUT/g5-quarterly-matched-discipline.csv"
+          test -s "$OUT/g5-quarterly-learning-checkpoints.json"
+          test -s "$OUT/g5-quarterly-integrity.json"
+          test -s "$OUT/g5-quarterly-feature-reliance.csv"
+          test -s "$OUT/stage127-g5_adaptive_quarterly-2025-final.joblib"
+
+      - name: Publish Rank 1 quarterly performance
+        if: always()
+        shell: bash
+        run: |
+          if test -s "$OUT/README.md"; then
+            cat "$OUT/README.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'G5 quarterly test not complete. No performance conclusions: review failed step.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Download quarterly results and specific race-type analyses
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage127-g5-quarterly-${{ github.run_id }}
+          path: |
+            reports/stage127/output/*.csv
+            reports/stage127/output/*.csv.gz
+            reports/stage127/output/*.json
+            reports/stage127/output/*.md
+            reports/stage127/output/*.joblib
+          retention-days: 90
+          if-no-files-found: warn
