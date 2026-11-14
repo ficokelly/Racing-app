@@ -1,0 +1,680 @@
+name: 'Stage129 - Fix Tomorrow Runner Gaps and Rerun D, G, HPR Audits'
+
+on:
+  push:
+    paths:
+      - '.github/workflows/stage129-tomorrow-data-repair.yml'
+  workflow_dispatch:
+    inputs:
+      race_date:
+        description: 'UK/Irish target race day YYYY-MM-DD (default 2026-11-15)'
+        required: false
+        type: string
+        default: '2026-11-15'
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: rhp-stage129-tomorrow-gap-repair
+  cancel-in-progress: false
+
+jobs:
+  audit-and-fix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 165
+    env:
+      STAGE129_TARGET: ${{ inputs.race_date || '2026-11-15' }}
+      PYTHONDONTWRITEBYTECODE: '1'
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - name: Check out the latest main branch safely
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Use Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Prepare standalone safe installer and test fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/stage129_install.py <<'STAGE129_INSTALLER_CODE'
+          #!/usr/bin/env python3
+          """Stage129: safe UK/Irish pre-off field fixes, no model weight changes.
+
+          Run from repository root: python /tmp/stage129_install.py [self-test|install]
+          Only modifies lightweight source adapters, current racecards and a QA report.
+          Historical databases, HPR shards and frozen model files remain untouched.
+          """
+          from __future__ import annotations
+          import collections
+          import datetime as dt
+          import json
+          import os
+          import pathlib
+          import re
+          import sys
+          from zoneinfo import ZoneInfo
+
+          ROOT = pathlib.Path('.').resolve()
+          TARGET = os.environ.get('STAGE129_TARGET', '2026-11-15')
+          ELIGIBILITY_CODE = r'''#!/usr/bin/env python3
+          """Shared pre-off eligibility for declared UK/Irish runner rows.
+
+          A missing jockey, odds, OR or recent-form string is NOT evidence of a withdrawal.
+          In Ireland, an unactivated reserve is identified by an explicit R-number
+          (e.g. R27); a reserve that is officially promoted must lose that designation
+          in an updated provider card before it becomes selectable.
+          """
+          from __future__ import annotations
+          from collections import defaultdict
+          import re
+
+          NONRUNNER = {'nr','nonrunner','nonstarter','withdrawn','scratched','didnotstart','dns','wd','notrunning'}
+          RESERVE = {'reserve','res','reserved','standby','reservepending'}
+          CANCELLED_RACE = {'abandoned','cancelled','canceled','void','result','finished'}
+          TRUTHY = {'yes','true','1','y'}
+
+          def normal(x):
+              return re.sub('[^a-z0-9]', '', str(x or '').casefold())
+
+          def positive(x):
+              return x is True or (not isinstance(x,bool) and normal(x) in TRUTHY)
+
+          def eligibility(row):
+              if not isinstance(row,dict):return 'NON_RUNNER'
+              number=str(row.get('number') or '').strip().upper()
+              if normal(row.get('race_status')) in CANCELLED_RACE:return 'RACE_NOT_RUNNING'
+              for k in ('is_non_runner','non_runner','is_withdrawn','withdrawn','scratched',
+                        'isNonRunner','nonRunner','isWithdrawn','isScratched'):
+                  if positive(row.get(k)):return 'NON_RUNNER'
+              if number in ('NR','N/R','WD','DNS'):return 'NON_RUNNER'
+              for k in ('runner_status','status','horse_status','result_status','runnerStatus','horseStatus'):
+                  if normal(row.get(k)) in NONRUNNER:return 'NON_RUNNER'
+              if re.fullmatch(r'R\d+',number) or number in ('R','RES','RESERVE'):
+                  return 'RESERVE'
+              for k in ('is_reserve','reserve_pending','isReserve','is_reserve_runner'):
+                  if positive(row.get(k)):return 'RESERVE'
+              for k in ('reserve_status','runner_status','status','horse_status','runnerStatus','horseStatus'):
+                  if normal(row.get(k)) in RESERVE:return 'RESERVE'
+              if normal(row.get('jockey')) in RESERVE:return 'RESERVE'
+              return 'ACTIVE'
+
+          def active_runner(row):return eligibility(row)=='ACTIVE'
+
+          def _race_key(row):
+              return (str(row.get('date') or '')[:10],normal(row.get('course')),
+                      str(row.get('race_time') or '')[:19],str(row.get('race_id') or ''))
+
+          def apply_to_racecards(payload):
+              rows=payload.get('runners',[]) if isinstance(payload,dict) else []
+              groups=defaultdict(list); counts=defaultdict(int)
+              for r in rows:
+                  if isinstance(r,dict):groups[_race_key(r)].append(r)
+              for race_rows in groups.values():
+                  active=sum(active_runner(r) for r in race_rows)
+                  completed=all(eligibility(r)=='RACE_NOT_RUNNING' for r in race_rows)
+                  for r in race_rows:
+                      kind=eligibility(r)
+                      if kind=='NON_RUNNER':
+                          r['non_runner']=True
+                          r['runner_status']='NR'
+                      elif kind=='RESERVE':
+                          r['reserve_pending']=True
+                          r['runner_status']='RESERVE'
+                      # Preserve original field_size in completed historical races.
+                      if not completed:r['field_size']=str(active)
+                      counts[kind]+=1
+              payload['eligibility_audit']={
+                  'source':'explicit_provider_status_or_runner_number',
+                  'active':counts['ACTIVE'],'non_runner':counts['NON_RUNNER'],
+                  'unconfirmed_reserves':counts['RESERVE'],
+                  'race_not_running':counts['RACE_NOT_RUNNING'],
+                  'races_checked':len(groups),
+              }
+              return payload
+
+          def self_test():
+              assert eligibility({'number':'NR','race_status':'declared'})=='NON_RUNNER'
+              assert eligibility({'number':'R27','race_status':'declared'})=='RESERVE'
+              assert eligibility({'number':'R28','race_status':'declared'})=='RESERVE'
+              assert eligibility({'runner_status':'withdrawn'})=='NON_RUNNER'
+              assert eligibility({'is_reserve':True})=='RESERVE'
+              assert eligibility({'race_status':'cancelled'})=='RACE_NOT_RUNNING'
+              assert eligibility({'number':'12','race_status':'declared','jockey':''})=='ACTIVE'
+              assert eligibility({'number':'12','race_status':'declared','form':''})=='ACTIVE'
+              x={'runners':[dict(date='2026-11-15',race_id='r',course='Navan',race_time='2026-11-15T12:40:00Z',horse='A',number='1'),
+                            dict(date='2026-11-15',race_id='r',course='Navan',race_time='2026-11-15T12:40:00Z',horse='B',number='R27'),
+                            dict(date='2026-11-15',race_id='r',course='Navan',race_time='2026-11-15T12:40:00Z',horse='C',number='NR')]}
+              apply_to_racecards(x)
+              assert x['eligibility_audit']['active']==1
+              assert [r['field_size'] for r in x['runners']]==['1','1','1']
+              assert x['runners'][1]['reserve_pending'] and x['runners'][2]['non_runner']
+              return True
+
+          if __name__=='__main__':
+              self_test()
+              print('Stage129 shared eligibility tests passed')
+          '''
+
+
+          def checked_replace(s, old, new, path, label):
+              if old == new:raise RuntimeError('Identical patch '+label)
+              if new in s:return s  # already applied; safe on workflow retries
+              if s.count(old) == 1:return s.replace(old,new,1)
+              raise RuntimeError(f'Source changed; refuse unsafe patch {path}: {label} (found {s.count(old)})')
+
+
+          def patch_sources(sources):
+              out=dict(sources)
+              path='collect-racecards.py';s=sources[path]
+              s=checked_replace(s,
+                '    "comment", "spotlight", "performance_rating", "speed_rating",\n)',
+                '    "comment", "spotlight", "performance_rating", "speed_rating",\n'
+                '    "runner_status", "status", "is_non_runner", "is_withdrawn",\n'
+                '    "is_reserve", "reserve_pending", "reserve_status", "reserve_number",\n)',path,'preserve provider statuses')
+              s=checked_replace(s,
+                'Path("data/racecards.json").write_text(json.dumps(output, indent=2), encoding="utf-8")',
+                'from scripts.rhp_runner_eligibility import apply_to_racecards\n'
+                'apply_to_racecards(output)\n'
+                'Path("data/racecards.json").write_text(json.dumps(output, indent=2), encoding="utf-8")',path,'normalize fresh racecards')
+              out[path]=s
+
+              path='scripts/stage26_feed_capture.py';s=sources[path]
+              s=checked_replace(s,
+                '    dest.write_text(json.dumps(payload,indent=2,ensure_ascii=False)+\'\\n\')',
+                '    if mode==\'racecards\':\n'
+                '        from rhp_runner_eligibility import apply_to_racecards\n'
+                '        apply_to_racecards(payload)\n'
+                '    dest.write_text(json.dumps(payload,indent=2,ensure_ascii=False)+\'\\n\')',path,'status after upstream capture')
+              out[path]=s
+
+              path='scripts/stage38_model_dz_live.py';s=sources[path]
+              old=("def nonrunner(r):\n"
+                   "    status=re.sub('[^a-z]','',str(r.get('runner_status') or r.get('status') or '').lower())\n"
+                   "    return bool(r.get('non_runner') is True or r.get('is_non_runner') is True or\n"
+                   "                str(r.get('number') or '').upper()=='NR' or status in ('nr','nonrunner','withdrawn','scratched'))")
+              new=("def nonrunner(r):\n"
+                   "    # Central guard excludes unactivated reserves as well as non-runners.\n"
+                   "    from rhp_runner_eligibility import active_runner\n"
+                   "    return not active_runner(r)")
+              s=checked_replace(s,old,new,path,'frozen D / D(c) field eligibility')
+              out[path]=s
+
+              path='scripts/stage108_model_g2.py';s=sources[path]
+              s=checked_replace(s,
+                'def score_card_rows(state,model,temperature,cards,cutoff):\n    grouped=defaultdict(list)',
+                'def score_card_rows(state,model,temperature,cards,cutoff):\n'
+                '    from rhp_runner_eligibility import active_runner\n'
+                '    grouped=defaultdict(list)',path,'G2 G3 G4 G5 shared scorer import')
+              s=checked_replace(s,
+                "        if str(x.get('race_status') or '').lower() in ('result','finished','cancelled','abandoned'):continue",
+                '        if not active_runner(x):continue',path,'G family excludes reserve before grouping')
+              s=checked_replace(s,
+                "        starters=[r for r in entries if str(r.get('number') or '').upper()!='NR' and\n"
+                "                   str(r.get('race_status') or '').lower() not in ('nr','non-runner','scratched')]",
+                '        starters=[r for r in entries if active_runner(r)]',path,'G family active starters only')
+              out[path]=s
+
+              path='scripts/stage107_model_g.py';s=sources[path]
+              s=checked_replace(s,
+                'def score_card_rows(state,model,temperature,cards,cutoff):\n    grouped=defaultdict(list)',
+                'def score_card_rows(state,model,temperature,cards,cutoff):\n'
+                '    from rhp_runner_eligibility import active_runner\n'
+                '    grouped=defaultdict(list)',path,'original G model field guard')
+              s=checked_replace(s,
+                "        if str(x.get('race_status') or '').lower() in ('result','finished','cancelled','abandoned'):continue",
+                '        if not active_runner(x):continue',path,'original G excludes inactive cards')
+              s=checked_replace(s,
+                "            if str(r.get('number') or '').upper()=='NR' or str(r.get('race_status') or '').lower() in ('nr','non-runner','scratched'):\n                continue",
+                '            if not active_runner(r):\n                continue',path,'original G no reserve scoring')
+              out[path]=s
+
+              path='scripts/stage112_form_coverage_reconcile.py';s=sources[path]
+              s=checked_replace(s,
+                "def is_starter(row):\n    return str(row.get('number') or '').upper()!='NR' and str(row.get('race_status') or '').lower() not in NONRUN",
+                "def is_starter(row):\n"
+                "    # Keep historical completed rows eligible for verified-results parsing,\n"
+                "    # while refusing NR and R-number reserves from declared fields.\n"
+                "    from rhp_runner_eligibility import eligibility\n"
+                "    return eligibility({**row,'race_status':'declared'})=='ACTIVE'",path,'shared prior form audit excludes reserves')
+              out[path]=s
+
+              path='scripts/stage128_g5_today_paper.py';s=sources[path]
+              s=checked_replace(s,
+                'import stage112_form_coverage_reconcile as Cover',
+                'import stage112_form_coverage_reconcile as Cover\n'
+                'from rhp_runner_eligibility import active_runner',path,'G5 active import')
+              before='''    return bool(day == target and when and when > cutoff + dt.timedelta(minutes=10)
+                          and str(r.get('race_status') or '').lower() not in
+                          ('result','finished','cancelled','abandoned','nr','non-runner','nonrunner','scratched','withdrawn')
+                          and str(r.get('number') or '').upper() != 'NR')'''
+              after='''    return bool(day == target and when and when > cutoff + dt.timedelta(minutes=10)
+                          and active_runner(r))'''
+              s=checked_replace(s,before,after,path,'G5 source card eligibility')
+              out[path]=s
+
+              path='scripts/stage116_verified_form_live.py';s=sources[path]
+              s=checked_replace(s,
+                'def is_declared(c,target):',
+                'def is_declared(c,target):\n    from rhp_runner_eligibility import active_runner',path,'form audit eligibility import')
+              s=checked_replace(s,'and S.is_starter(c)','and S.is_starter(c) and active_runner(c)',path,'verified form excludes reserves')
+              out[path]=s
+
+              path='scripts/stage26_nonrunner_monitor.py';s=sources[path]
+              # Stage13 imports withdrawn() for *eligibility*, while Stage26 must only
+              # mark an actual non-runner as NR. Keep these distinct to avoid inventing NR
+              # declarations for unactivated Irish reserves.
+              first=s.index('def withdrawn(row):\n')
+              second=s.index('\ndef load(path,default):',first)
+              old=s[first:second]
+              replacement=("def withdrawn(row):\n"
+                           "    # Active-field test used by Stage13 model A and dependent B.\n"
+                           "    from rhp_runner_eligibility import active_runner\n"
+                           "    return not active_runner(row)\n\n"
+                           "def confirmed_nonrunner(row):\n"
+                           "    # Reserve != non-runner: Stage26 never hard-marks a reserve NR.\n"
+                           "    from rhp_runner_eligibility import eligibility\n"
+                           "    return eligibility(row)=='NON_RUNNER'\n")
+              if 'def confirmed_nonrunner(row):' in s:
+                  pass  # repeated run - helper and the matching monitor calls already patched
+              else:
+                  s=s[:first]+replacement+s[second:]
+              s=checked_replace(s,
+                'return bool(ts and ts.astimezone(UTC)>now+dt.timedelta(minutes=2) and ts.date().isoformat()==day)',
+                'return bool(ts and ts.astimezone(UTC)>now+dt.timedelta(minutes=2))',path,'watch tomorrow nonrunners')
+              s=checked_replace(s,
+                "        if not rk.startswith(day+'|') or not horsemap:continue",
+                "        if not horsemap:continue",path,'monitor next day racecard')
+              future_old="        if rk not in by_race or not rk.startswith(day+'|'):continue"
+              future_new="        if rk not in by_race:continue"
+              if s.count(future_old)==2:
+                  s=s.replace(future_old,future_new)
+              elif not (s.count(future_old)==0 and s.count(future_new)>=2):
+                  raise RuntimeError('Unexpected monitor future-day guards')
+              s=checked_replace(s,
+                "            if withdrawn(r):mark(rk,h,'EXPLICIT_RACECARD_STATUS')",
+                "            if confirmed_nonrunner(r):mark(rk,h,'EXPLICIT_RACECARD_STATUS')",path,'reserve not marked NR')
+              s=checked_replace(s,
+                "            if not isinstance(r,dict) or not withdrawn(r):continue",
+                "            if not isinstance(r,dict) or not confirmed_nonrunner(r):continue",path,'odds reserve not NR')
+              old_missing = """            label=rk+'|'+h
+                      if h in by_race[rk]:missing_seen.pop(label,None);continue"""
+              new_missing = """            label=rk+'|'+h
+                      from rhp_runner_eligibility import eligibility
+                      if eligibility(old)=='RESERVE':continue
+                      if h in by_race[rk]:missing_seen.pop(label,None);continue"""
+              s=checked_replace(s,old_missing,new_missing,path,'reserve absence not proof of NR')
+              s=checked_replace(s,
+                '        if row is not None and not withdrawn(row):',
+                '        if row is not None and not confirmed_nonrunner(row):',path,'monitor explicit nonrunner only')
+              s=checked_replace(s,
+                '        starters=sum(1 for rr in by_race[rk].values() if not withdrawn(rr))',
+                '        from rhp_runner_eligibility import active_runner\n'
+                '        starters=sum(1 for rr in by_race[rk].values() if active_runner(rr))',path,'field size excludes inactive reserves')
+              out[path]=s
+              return out
+
+
+          def category(name):
+              text=str(name or '').casefold()
+              if 'handicap' in text:return 'handicap'
+              if 'maiden' in text:return 'maiden'
+              if 'beginners' in text or 'novice' in text:return 'novice_or_beginners'
+              if 'national hunt flat' in text or 'bumper' in text:return 'national_hunt_flat'
+              if 'stakes' in text or 'listed' in text or 'grade ' in text:return 'stakes_or_pattern'
+              return 'other_or_unknown'
+
+
+          def audit_cards(payload, module, target):
+              target_rows=[r for r in payload.get('runners',[]) if str(r.get('date') or '')[:10]==target]
+              grouped=collections.defaultdict(list)
+              for r in target_rows:grouped[(r.get('course'),str(r.get('race_time') or '')[11:16])].append(r)
+              results=[]
+              for (course,time),rows in sorted(grouped.items()):
+                  eligible=[r for r in rows if module.active_runner(r)]
+                  results.append({
+                      'course':course,'time':time,'race_name':rows[0].get('race_name'),
+                      'raw_runner_rows':len(rows),'active_runners':len(eligible),
+                      'non_runners':[r['horse'] for r in rows if module.eligibility(r)=='NON_RUNNER'],
+                      'pending_reserves':[r['horse'] for r in rows if module.eligibility(r)=='RESERVE'],
+                      'blank_recent_form_active':sum(not str(r.get('form') or '').strip(' -–') for r in eligible),
+                      'blank_form_but_last_run_present':sum(not str(r.get('form') or '').strip(' -–') and bool(str(r.get('last_run') or '').strip()) for r in eligible),
+                      'missing_jockey_ids_active':sum(not r.get('jockey_id') for r in eligible),
+                      'irish_class_not_supplied':sum(course=='Navan' and not r.get('race_class') for r in eligible),
+                      'race_category_from_name':category(rows[0].get('race_name')),
+                  })
+              return {
+                  'version':'stage129-preoff-field-guards-v1', 'day':target,
+                  'generated_at_utc':dt.datetime.now(dt.timezone.utc).isoformat(),
+                  'scope':'Saved card field health, NOT verified historical-run completeness',
+                  'confirmed_source':'The Racing API declared runner status/number',
+                  'source_collected_at':payload.get('collected_at'),
+                  'races':len(results),'declared_rows':len(target_rows),
+                  'active_runners':sum(r['active_runners'] for r in results),
+                  'non_runners':sum(len(r['non_runners']) for r in results),
+                  'unconfirmed_reserves':sum(len(r['pending_reserves']) for r in results),
+                  'blank_recent_form_active':sum(r['blank_recent_form_active'] for r in results),
+                  'blank_form_but_last_run_present':sum(r['blank_form_but_last_run_present'] for r in results),
+                  'missing_jockey_ids_active':sum(r['missing_jockey_ids_active'] for r in results),
+                  'irish_class_not_supplied':sum(r['irish_class_not_supplied'] for r in results),
+                  'explanation':'Irish race class is not a UK BHA class; never invent it. Race category is inferred from race name. Missing form strings need an exact-ID verified historical audit before any backfill.',
+                  'historical_form_verified':False,
+                  'races_detail':results,
+              }
+
+
+          def model_snapshot_audit(root, target, eligible_cards):
+              registry=collections.defaultdict(dict)
+              for r in eligible_cards:
+                  if str(r.get('date'))[:10]!=target:continue
+                  key=(re.sub('[^a-z0-9]','',str(r.get('course') or '').casefold()),
+                       str(r.get('race_time') or '')[11:16])
+                  registry[key][re.sub('[^a-z0-9]','',str(r.get('horse') or '').casefold())]=r
+              files={
+                  'A':'strategy-probabilities.json',
+                  'B':'strategy-b-probabilities.json',
+                  'C':'strategy-c-probabilities.json',
+                  'D':'strategy-d-probabilities.json',
+                  'D(c)':'strategy-dc-probabilities.json',
+              }
+              result={}
+              for model,file in files.items():
+                  path=root/'data'/file
+                  if not path.exists():
+                      result[model]={'status':'FILE_MISSING'}
+                      continue
+                  try:doc=json.loads(path.read_text())
+                  except (ValueError,OSError):
+                      result[model]={'status':'UNREADABLE'}
+                      continue
+                  rows=[r for r in doc.get('races',[]) if isinstance(r,dict) and str(r.get('date') or '')[:10]==target]
+                  excluded=[];unknown=[];ranked=0
+                  for race in rows:
+                      key=(re.sub('[^a-z0-9]','',str(race.get('course') or '').casefold()),
+                           str(race.get('race_time') or '')[11:16])
+                      for horse in (race.get('runners') or []):
+                          if not isinstance(horse,dict) or not horse.get('horse'):continue
+                          ranked+=1
+                          h=re.sub('[^a-z0-9]','',str(horse['horse']).casefold())
+                          card=registry.get(key,{}).get(h)
+                          if card is None:
+                              unknown.append({'race':str(key),'horse':horse['horse']})
+                          elif not eligible_cards_module.active_runner(card):
+                              excluded.append({'race':str(key),'horse':horse['horse'],
+                                               'reason':eligible_cards_module.eligibility(card),
+                                               'rank':horse.get('rank')})
+                  result[model]={'status':'NEEDS_RERUN' if excluded else 'SNAPSHOT_PRESENT' if rows else 'NO_TARGET_DAY_SNAPSHOT',
+                                 'target_day_races':len(rows),'ranked_horses':ranked,
+                                 'ineligible_horses_still_in_saved_ranks':excluded,
+                                 'saved_runners_not_in_current_card':unknown[:25],
+                                 'saved_snapshot_generated_at':doc.get('generated_at')}
+              for model in ('G3','G4','G5','E/HPR'):
+                  result[model]={'status':'SEPARATE_RESEARCH_ARTIFACT_REQUIRES_FRESH_15_NOV_AUDIT'}
+              return result
+
+
+          def self_test():
+              import ast, tempfile
+              ast.parse(ELIGIBILITY_CODE)
+              exec(compile(ELIGIBILITY_CODE,'eligibility.py','exec'),{'__name__':'stage129_eligibility_test'})
+              namespace={'__name__':'safe_stage129_test'}
+              exec(compile(ELIGIBILITY_CODE,'eligibility.py','exec'),namespace)
+              namespace['self_test']()
+              sample={'runners':[{'date':'2026-11-15','race_id':'x','course':'Navan','race_time':'2026-11-15T12:40:00Z','horse':'Llems','number':'R27'},
+                                {'date':'2026-11-15','race_id':'x','course':'Navan','race_time':'2026-11-15T12:40:00Z','horse':'Dunmore','number':'R28'},
+                                {'date':'2026-11-15','race_id':'x','course':'Navan','race_time':'2026-11-15T12:40:00Z','horse':'Some Runner','number':'5','form':''},
+                                {'date':'2026-11-15','race_id':'x','course':'Navan','race_time':'2026-11-15T12:40:00Z','horse':'NR','number':'NR'}]}
+              from types import SimpleNamespace
+              namespace['apply_to_racecards'](sample)
+              audit=audit_cards(sample,SimpleNamespace(**namespace),'2026-11-15')
+              assert audit['active_runners']==1 and audit['unconfirmed_reserves']==2 and audit['non_runners']==1
+              assert audit['blank_recent_form_active']==1
+              print('Stage129 standalone safety tests passed; no write')
+
+
+          def install():
+              files=['collect-racecards.py','scripts/stage26_feed_capture.py',
+                     'scripts/stage38_model_dz_live.py','scripts/stage108_model_g2.py',
+                     'scripts/stage107_model_g.py','scripts/stage112_form_coverage_reconcile.py',
+                     'scripts/stage128_g5_today_paper.py','scripts/stage116_verified_form_live.py',
+                     'scripts/stage26_nonrunner_monitor.py']
+              originals={p:(ROOT/p).read_text(encoding='utf-8') for p in files}
+              updates=patch_sources(originals)
+              import ast
+              for p,src in updates.items():ast.parse(src,filename=p)
+              ast.parse(ELIGIBILITY_CODE,filename='scripts/rhp_runner_eligibility.py')
+              namespace={'__name__':'stage129_selftest'}
+              exec(compile(ELIGIBILITY_CODE,'rhp_runner_eligibility.py','exec'),namespace)
+              namespace['self_test']()
+              from types import SimpleNamespace
+              elig=SimpleNamespace(**namespace)
+              cards_path=ROOT/'data/racecards.json'
+              original_card=json.loads(cards_path.read_text())
+              if len(original_card.get('runners',[]))<50:raise RuntimeError('Refuse incomplete published racecards')
+              if not any(str(r.get('date'))[:10]==TARGET for r in original_card['runners']):
+                  raise RuntimeError('Target race date not in card feed; refresh first')
+              corrected=json.loads(json.dumps(original_card))
+              elig.apply_to_racecards(corrected)
+              report=audit_cards(corrected,elig,TARGET)
+              global eligible_cards_module
+              eligible_cards_module=elig
+              report['model_snapshot_audit']=model_snapshot_audit(ROOT,TARGET,corrected['runners'])
+              if report['races']<5 or report['active_runners']<40:
+                  raise RuntimeError('Suspiciously incomplete target card; refusing publication')
+              # A date-specific QA invariant, never a hardcoded selection override.
+              if TARGET=='2026-11-15':
+                  expected_nr={'Made In Reugny','Kap Ouest','Idaho Sun','Micky Haller','Rescheduled','Microscope'}
+                  expected_reserve={"Llem's",'Dunmore',"Hob's Angel"}
+                  actual_nr={r['horse'] for r in corrected['runners'] if str(r.get('date'))[:10]==TARGET and elig.eligibility(r)=='NON_RUNNER'}
+                  actual_reserve={r['horse'] for r in corrected['runners'] if str(r.get('date'))[:10]==TARGET and elig.eligibility(r)=='RESERVE'}
+                  missing_nr=expected_nr-actual_nr
+                  if missing_nr:raise RuntimeError('Provider no longer confirms NR flags; check manually: '+str(missing_nr))
+                  # Reserves can legitimately be promoted; inspect all not-yet-promoted R-number records.
+                  not_reserved=expected_reserve-actual_reserve
+                  if not_reserved:
+                      print('NOTE: reserves may have been activated since previous snapshot:',sorted(not_reserved))
+              archive_path=ROOT/'data/racecards-archive.json'
+              archive=json.loads(archive_path.read_text()) if archive_path.is_file() else None
+              if isinstance(archive,dict) and isinstance(archive.get('runners'),list):
+                  subset=[dict(r) for r in archive['runners'] if str(r.get('date') or '')[:10]==TARGET]
+                  if subset:
+                      patch={'runners':subset};elig.apply_to_racecards(patch)
+                      for r in archive['runners']:
+                          if str(r.get('date') or '')[:10]!=TARGET:continue
+                          new=next((a for a in subset if a.get('race_id')==r.get('race_id') and a.get('horse_id')==r.get('horse_id')),None)
+                          if new:
+                              for field in ('runner_status','non_runner','reserve_pending','field_size'):
+                                  if field in new:r[field]=new[field]
+              # All validation complete: write only after every patch and invariant passes.
+              for p,src in updates.items():
+                  if src!=originals[p]:(ROOT/p).write_text(src,encoding='utf-8')
+              (ROOT/'scripts/rhp_runner_eligibility.py').write_text(ELIGIBILITY_CODE,encoding='utf-8')
+              cards_path.write_text(json.dumps(corrected,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
+              if archive is not None:archive_path.write_text(json.dumps(archive,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
+              audit_path=ROOT/'data/rhp-stage129-preoff-coverage.json'
+              audit_path.write_text(json.dumps(report,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
+              print('Installed guarded eligibility filters; unchanged model weights; audit:',audit_path)
+              print(json.dumps({k:report[k] for k in ('day','races','declared_rows','active_runners','non_runners','unconfirmed_reserves','blank_recent_form_active','blank_form_but_last_run_present','missing_jockey_ids_active','irish_class_not_supplied')},indent=2))
+
+
+          if __name__=='__main__':
+              if len(sys.argv)!=2 or sys.argv[1] not in ('install','self-test'):
+                  raise SystemExit('Usage: stage129_install.py [install|self-test]')
+              if sys.argv[1]=='self-test':self_test()
+              else:
+                  self_test()
+                  install()
+          STAGE129_INSTALLER_CODE
+          python -m py_compile /tmp/stage129_install.py
+          python /tmp/stage129_install.py self-test
+
+      - name: Verify source guards then fix cards and model eligibility together
+        run: |
+          set -euo pipefail
+          python /tmp/stage129_install.py install
+          python scripts/rhp_runner_eligibility.py
+          python -m py_compile \
+            collect-racecards.py \
+            scripts/stage26_feed_capture.py \
+            scripts/stage26_nonrunner_monitor.py \
+            scripts/stage38_model_dz_live.py \
+            scripts/stage108_model_g2.py \
+            scripts/stage107_model_g.py \
+            scripts/stage112_form_coverage_reconcile.py \
+            scripts/stage128_g5_today_paper.py \
+            scripts/stage116_verified_form_live.py
+          python - <<'PY_VERIFY'
+          import json, os, pathlib, sys
+          sys.path.insert(0,'scripts')
+          from rhp_runner_eligibility import eligibility
+          target=os.environ['STAGE129_TARGET']
+          cards=json.load(open('data/racecards.json'))
+          rows=[r for r in cards['runners'] if r['date']==target]
+          from collections import Counter
+          counts=Counter(eligibility(r) for r in rows)
+          report=json.load(open('data/rhp-stage129-preoff-coverage.json'))
+          assert sum(counts.values())==len(rows)
+          assert len(rows)>=40 and report['races']>=5
+          assert report['active_runners']==counts['ACTIVE']
+          print('Verified target card counts:',target,len(rows),dict(counts))
+          print('No fabricated historic runs, classes, speed scores or model weights')
+          PY_VERIFY
+          git diff --check
+
+      - name: Validate frozen D and G paper model self-tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 \
+            scikit-learn==1.6.1 joblib==1.4.2
+          python scripts/stage38_model_dz_live.py self-test
+          python scripts/stage111_model_g4.py self-test
+          python scripts/stage128_g5_today_paper.py self-test
+          python scripts/stage116_verified_form_live.py --mode self-test
+
+      - name: Commit safe code and visible 15-Nov coverage report
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add collect-racecards.py \
+            scripts/rhp_runner_eligibility.py \
+            scripts/stage26_feed_capture.py \
+            scripts/stage26_nonrunner_monitor.py \
+            scripts/stage38_model_dz_live.py \
+            scripts/stage108_model_g2.py \
+            scripts/stage107_model_g.py \
+            scripts/stage112_form_coverage_reconcile.py \
+            scripts/stage128_g5_today_paper.py \
+            scripts/stage116_verified_form_live.py \
+            data/racecards.json data/racecards-archive.json \
+            data/rhp-stage129-preoff-coverage.json
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo 'All changes already applied; no new commit necessary.'
+            exit 0
+          fi
+          git diff --cached --stat
+          git commit -m 'Stage129: exclude non-runners and unactivated reserves in all D and G scoring paths'
+          for attempt in 1 2 3 4 5; do
+            if git pull --rebase origin main && git push origin HEAD:main; then
+              echo 'Stage129 guard fixes published to main.'
+              exit 0
+            fi
+            git rebase --abort || true
+            sleep $((attempt * 5))
+          done
+          echo 'Could not publish fixed racecards; stop before running models.' >&2
+          exit 1
+
+      - name: Add dated audit summary to GitHub Actions
+        shell: bash
+        run: |
+          python - <<'PY_SUMMARY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          a=json.load(open('data/rhp-stage129-preoff-coverage.json'))
+          print('# Stage129 runner, race and saved model audit')
+          print('Date:',a['day'],' | Races:',a['races'])
+          print('Published card rows:',a['declared_rows'],' | Active runners:',a['active_runners'])
+          print('Non-runners:',a['non_runners'],' | Inactive reserves:',a['unconfirmed_reserves'])
+          print('Active blank form:',a['blank_recent_form_active'],
+                ' | Previously raced but blank form:',a['blank_form_but_last_run_present'])
+          print('Missing active jockey IDs:',a['missing_jockey_ids_active'],
+                ' | Irish class blanks (leave official UK class unfilled):',a['irish_class_not_supplied'])
+          print('**Historical-form completeness is not yet certified:** subsequent Stage113b/116 audits determine gaps.')
+          print('## Original saved model snapshots (pre-rerun)')
+          for k,m in a['model_snapshot_audit'].items():
+            print('-',k,m['status'],'races:',m.get('target_day_races',0),
+                  'ineligible saved ranks:',len(m.get('ineligible_horses_still_in_saved_ranks',[])))
+          print('## Every race')
+          for x in a['races_detail']:
+            print('-',x['course'],x['time'],':',x['active_runners'],'active;',
+                  len(x['non_runners']),'NR;',len(x['pending_reserves']),'reserve;',
+                  x['blank_recent_form_active'],'blank form')
+          PY_SUMMARY
+
+      - name: Run tomorrow verified history recovery and all model scorers
+        id: trigger
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY_TIME'
+          import datetime as dt,os
+          from zoneinfo import ZoneInfo
+          target=dt.date.fromisoformat(os.environ['STAGE129_TARGET'])
+          today=dt.datetime.now(ZoneInfo('Europe/Dublin')).date()
+          if target<today:
+            raise SystemExit('Historical date: refuse backdated model predictions or repaired selection publication')
+          print('Safe future/pre-off scoring target:',target)
+          PY_TIME
+          TARGET="$STAGE129_TARGET"
+          echo 'Requesting Stage116 verified form install before updated score runs.'
+          AFTER=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          gh workflow run stage116-live-form-recovery-and-deploy.yml --ref main \
+            -f mode=install_live -f target_date="$TARGET"
+          echo 'Next workflows are only started when Stage116 has finished successfully.'
+          RUN_ID=''
+          for attempt in $(seq 1 24); do
+            RUN_ID=$(gh run list --repo "$GITHUB_REPOSITORY" \
+              --workflow stage116-live-form-recovery-and-deploy.yml \
+              --event workflow_dispatch --limit 10 \
+              --json databaseId,createdAt \
+              --jq ".[] | select(.createdAt >= "$AFTER") | .databaseId" | head -1)
+            if [ -n "$RUN_ID" ]; then break; fi
+            sleep 10
+          done
+          if [ -z "$RUN_ID" ]; then
+            echo 'Stage116 queued but run ID not yet available. Subsequent audits can be run manually.'
+            exit 1
+          fi
+          echo "Monitoring Stage116 run $RUN_ID for verified historical-form recovery"
+          gh run watch "$RUN_ID" --repo "$GITHUB_REPOSITORY" --exit-status
+          echo 'Verified historical-form recovery completed. Dispatching model scoring and independent audit.'
+          failed=0
+          dispatch() {
+            echo "Starting $1"
+            if ! gh workflow run "$1" --ref main "${@:2}"; then
+              echo "FAILED to dispatch $1" >&2
+              failed=1
+            fi
+          }
+          dispatch rhp-stage69-dc-live.yml -f day="$TARGET"
+          dispatch stage38-model-d-repair.yml -f day="$TARGET"
+          dispatch stage109-g3-paper.yml -f selection_date="$TARGET"
+          dispatch stage111b-g4-paper-fix.yml -f selection_date="$TARGET"
+          dispatch stage128-g5-paper.yml -f selection_date="$TARGET"
+          dispatch stage113b-lossless-form-and-tomorrow-audit.yml -f audit_dates="$TARGET"
+          echo 'Each run publishes its own result and historical-form evidence; not declaring coverage clean in advance.'
+          exit "$failed"
