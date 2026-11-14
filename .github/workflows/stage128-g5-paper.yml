@@ -1,0 +1,126 @@
+name: "Stage128 - G5 Quarterly Models Daily Rank1 Paper Selections"
+
+on:
+  workflow_dispatch:
+    inputs:
+      selection_date:
+        description: "Race date YYYY-MM-DD (blank means today). Future or current day only."
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage128-g5-paper
+  cancel-in-progress: false
+
+jobs:
+  g5-paper:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 160
+    env:
+      PYTHONUNBUFFERED: '1'
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OUT: reports/stage128/output
+    steps:
+      - name: Checkout without modifying the live app
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Capture pre-race as-of timestamp and requested target
+        env:
+          REQUESTED_DATE: ${{ inputs.selection_date }}
+        run: |
+          echo "G5_CUTOFF=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+          echo "G5_TARGET=${REQUESTED_DATE:-$(date -u +%Y-%m-%d)}" >> "$GITHUB_ENV"
+
+      - name: Python 3.11 and exact model dependencies
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 \
+            scikit-learn==1.6.1 joblib==1.4.2
+
+      - name: Verify standalone G5 paper and form-graph guard tests
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/stage108_model_g2.py \
+            scripts/stage109_model_g3.py \
+            scripts/stage112_g5_relational_form.py \
+            scripts/stage112_form_coverage_reconcile.py \
+            scripts/stage128_g5_today_paper.py
+          python scripts/stage112_g5_relational_form.py self-test
+          python scripts/stage128_g5_today_paper.py self-test
+          test -s data/racecards.json
+
+      - name: Restore pinned UK Ireland archive, exact race reference and frozen G3 state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage128/source/{stage2,stage4,g3,models}
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage2-historical-staging-database --dir reports/stage128/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage4-reference-named-events-and-winners --dir reports/stage128/source/stage4
+          gh run download 43407036838 --repo "$GITHUB_REPOSITORY" \
+            --name stage109-g3-learning-43407036838 --dir reports/stage128/source/g3
+          gh run download 43539599590 --repo "$GITHUB_REPOSITORY" \
+            --name stage127-g5-quarterly-43539599590 --dir reports/stage128/source/models
+          test -s reports/stage128/source/stage2/historical_ukie_staging.sqlite
+          test -s reports/stage128/source/stage4/all_races_with_reference_event_ids.csv
+          test -s reports/stage128/source/g3/stage109-future-form-model.joblib
+          test -s reports/stage128/source/g3/stage109-prior-form-state.joblib
+          test -s reports/stage128/source/models/stage127-g5_adaptive_quarterly-2025-final.joblib
+
+      - name: Restore lossless prior-result HPR database (read only)
+        run: |
+          set -euo pipefail
+          test -s data/hpr/shards/manifest.json
+          python scripts/stage87_hpr_storage.py restore \
+            --dir data/hpr/shards --db reports/stage128/source/hpr.sqlite
+
+      - name: Reconstruct 2026 graph, select one Rank 1 per eligible race for four G5s
+        run: |
+          set -euo pipefail
+          python -u scripts/stage128_g5_today_paper.py paper \
+            --date "$G5_TARGET" --cutoff "$G5_CUTOFF" \
+            --state reports/stage128/source/g3/stage109-prior-form-state.joblib \
+            --g3 reports/stage128/source/g3/stage109-future-form-model.joblib \
+            --models reports/stage128/source/models \
+            --db reports/stage128/source/stage2/historical_ukie_staging.sqlite \
+            --reference reports/stage128/source/stage4/all_races_with_reference_event_ids.csv \
+            --hpr reports/stage128/source/hpr.sqlite \
+            --cards data/racecards.json --out "$OUT"
+          test -s "$OUT/stage128-g5-rank1.csv"
+          test -s "$OUT/stage128-g5-paper-audit.json"
+
+      - name: Publish G5 Rank1 predictions to the run summary
+        if: always()
+        run: |
+          if test -s "$OUT/README.md"; then
+            cat "$OUT/README.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'G5 paper scoring did not complete; no verified G5 predictions.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Download complete G5 Rank1, all runners and form coverage audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage128-g5-paper-${{ github.run_id }}
+          path: |
+            reports/stage128/output/*.csv
+            reports/stage128/output/*.json
+            reports/stage128/output/*.md
+          retention-days: 90
+          if-no-files-found: warn
