@@ -55,6 +55,9 @@ def capture(mode,root):
             for k in (*FLAG_KEYS,*STATUS_KEYS):
                 if k in info:r[k]=info[k];count+=1
         print('Stage26 upstream racecard status keys preserved:',count)
+    if mode=='racecards':
+        from rhp_runner_eligibility import apply_to_racecards
+        apply_to_racecards(payload)
     dest.write_text(json.dumps(payload,indent=2,ensure_ascii=False)+'\n')
     print('Stage26 explicit runner status snapshots:',len(observations),'mode:',mode)
 

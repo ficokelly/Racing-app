@@ -57,9 +57,9 @@ def clock(s):
 
 
 def nonrunner(r):
-    status=re.sub('[^a-z]','',str(r.get('runner_status') or r.get('status') or '').lower())
-    return bool(r.get('non_runner') is True or r.get('is_non_runner') is True or
-                str(r.get('number') or '').upper()=='NR' or status in ('nr','nonrunner','withdrawn','scratched'))
+    # Central guard excludes unactivated reserves as well as non-runners.
+    from rhp_runner_eligibility import active_runner
+    return not active_runner(r)
 
 
 def source_score():

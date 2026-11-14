@@ -30,12 +30,14 @@ def key(row):
     return '|'.join([str(row.get('date') or (race.date().isoformat() if race else '')),venue(row.get('course') or row.get('venue')),race.strftime('%H:%M') if race else ''])
 def horsekey(row):return norm(row.get('horse') or row.get('name'))
 def withdrawn(row):
-    for k in ('is_non_runner','non_runner','is_withdrawn','withdrawn','scratched','isNonRunner','nonRunner','isWithdrawn','isScratched'):
-        val=row.get(k)
-        if val is True or str(val).casefold().strip() in TRUE:return True
-    for k in ('runner_status','status','outcome','result_status','horse_status','runnerStatus','horseStatus'):
-        if norm(row.get(k)) in BAD:return True
-    return False
+    # Active-field test used by Stage13 model A and dependent B.
+    from rhp_runner_eligibility import active_runner
+    return not active_runner(row)
+
+def confirmed_nonrunner(row):
+    # Reserve != non-runner: Stage26 never hard-marks a reserve NR.
+    from rhp_runner_eligibility import eligibility
+    return eligibility(row)=='NON_RUNNER'
 
 def load(path,default):
     try:return json.loads(path.read_text(encoding='utf8'))
@@ -87,7 +89,7 @@ def run(root,now=None):
     day=now.astimezone(TZ).date().isoformat();newly={};changed=set()
     def race_future(r):
         ts=localtime(r.get('race_time'))
-        return bool(ts and ts.astimezone(UTC)>now+dt.timedelta(minutes=2) and ts.date().isoformat()==day)
+        return bool(ts and ts.astimezone(UTC)>now+dt.timedelta(minutes=2))
     def mark(rk,h,source):
         label=rk+'|'+h
         if label not in known:
@@ -95,24 +97,26 @@ def run(root,now=None):
             changed.add(rk)
         known[label]=known.get(label,newly.get(label,{}))
     for rk,horsemap in by_race.items():
-        if not rk.startswith(day+'|') or not horsemap:continue
+        if not horsemap:continue
         if not race_future(next(iter(horsemap.values()))):continue
         for h,r in horsemap.items():
-            if withdrawn(r):mark(rk,h,'EXPLICIT_RACECARD_STATUS')
+            if confirmed_nonrunner(r):mark(rk,h,'EXPLICIT_RACECARD_STATUS')
     # Price feeds contain an explicit status channel even for runners with no quotes.
     if isinstance(status,list):
         for r in status:
-            if not isinstance(r,dict) or not withdrawn(r):continue
+            if not isinstance(r,dict) or not confirmed_nonrunner(r):continue
             rk=key(r);h=horsekey(r)
             if rk in by_race and h in by_race[rk] and race_future(by_race[rk][h]):mark(rk,h,'EXPLICIT_ODDS_RUNNER_STATUS')
     # A horse omitted from a racecard isn't assumed NR until separate collection
     # timestamps independently report it absent while the race itself is present.
     stamp=str(cards.get('collected_at') or '')
     for rk,horses in older.items():
-        if rk not in by_race or not rk.startswith(day+'|'):continue
+        if rk not in by_race:continue
         if not race_future(next(iter(by_race[rk].values()))):continue
         for h,old in horses.items():
             label=rk+'|'+h
+            from rhp_runner_eligibility import eligibility
+            if eligibility(old)=='RESERVE':continue
             if h in by_race[rk]:missing_seen.pop(label,None);continue
             observation=missing_seen.setdefault(label,{'distinct_snapshots':[]})
             ss=observation.setdefault('distinct_snapshots',[])
@@ -123,19 +127,20 @@ def run(root,now=None):
     modified=0
     for label,info in known.items():
         rk,h=info.get('race'),label.split('|')[-1]
-        if rk not in by_race or not rk.startswith(day+'|'):continue
+        if rk not in by_race:continue
         row=by_race[rk].get(h)
         if row is None:
             historic=older.get(rk,{}).get(h)
             if historic:
                 row=dict(historic);rows.append(row);by_race[rk][h]=row
-        if row is not None and not withdrawn(row):
+        if row is not None and not confirmed_nonrunner(row):
             row['non_runner']=True;row['runner_status']='NR';row['non_runner_source']=info.get('source');modified+=1
     # Field-size metadata used by historical comparisons must describe starters,
     # not the original declared field. Preserve the raw NR row for audit/UI.
     affected={item.get('race') for item in known.values() if item.get('race') in by_race}
     for rk in affected:
-        starters=sum(1 for rr in by_race[rk].values() if not withdrawn(rr))
+        from rhp_runner_eligibility import active_runner
+        starters=sum(1 for rr in by_race[rk].values() if active_runner(rr))
         for rr in by_race[rk].values():
             if str(rr.get('field_size') or '')!=str(starters):
                 rr['field_size']=str(starters);modified+=1

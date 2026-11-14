@@ -21,7 +21,8 @@ VERSION='stage116-verified-form-live-v1'
 def canonical(s):return A.normname(s)
 
 def is_declared(c,target):
-    return str(c.get('date') or c.get('race_time') or '')[:10]==str(target) and bool(c.get('horse')) and S.is_starter(c)
+    from rhp_runner_eligibility import active_runner
+    return str(c.get('date') or c.get('race_time') or '')[:10]==str(target) and bool(c.get('horse')) and S.is_starter(c) and active_runner(c)
 
 def read_cards(path,target):
     cards=json.loads(pathlib.Path(path).read_text(encoding='utf-8')).get('runners',[])

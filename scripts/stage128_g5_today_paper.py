@@ -24,6 +24,7 @@ import stage108_model_g2 as G
 import stage109_model_g3 as G3
 import stage112_g5_relational_form as G5
 import stage112_form_coverage_reconcile as Cover
+from rhp_runner_eligibility import active_runner
 
 UTC = dt.timezone.utc
 VERSIONS = ('G5_NETWORK_QUARTERLY', 'G5_STRENGTH_QUARTERLY',
@@ -46,9 +47,7 @@ def valid_card(r, target, cutoff):
     day = G.day(r.get('date') or r.get('race_time'))
     when = G.stamp(r.get('race_time'))
     return bool(day == target and when and when > cutoff + dt.timedelta(minutes=10)
-                and str(r.get('race_status') or '').lower() not in
-                ('result','finished','cancelled','abandoned','nr','non-runner','nonrunner','scratched','withdrawn')
-                and str(r.get('number') or '').upper() != 'NR')
+                and active_runner(r))
 
 
 def race_key(row):

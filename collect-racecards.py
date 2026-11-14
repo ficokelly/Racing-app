@@ -30,6 +30,8 @@ RUNNER_FIELDS = (
     "form", "age", "lbs", "draw", "number", "ofr", "headgear",
     "owner", "sex", "last_run", "sire", "dam", "silk_url", "silks",
     "comment", "spotlight", "performance_rating", "speed_rating",
+    "runner_status", "status", "is_non_runner", "is_withdrawn",
+    "is_reserve", "reserve_pending", "reserve_status", "reserve_number",
 )
 
 for day in ("today", "tomorrow"):
@@ -80,6 +82,8 @@ output = {
     "runners": all_runners,
 }
 Path("data").mkdir(exist_ok=True)
+from scripts.rhp_runner_eligibility import apply_to_racecards
+apply_to_racecards(output)
 Path("data/racecards.json").write_text(json.dumps(output, indent=2), encoding="utf-8")
 print(f"Saved {len(all_runners)} UK/Ireland racecard runners with race metadata")
 print(f"API written comments: {comment_count} runners; race verdicts: {len(verdict_races)} races (availability depends on endpoint/plan)")

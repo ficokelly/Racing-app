@@ -537,13 +537,14 @@ def get_target_state(history_db,hpr_db,target,state_path=None):
 
 
 def score_card_rows(state,model,temperature,cards,cutoff):
+    from rhp_runner_eligibility import active_runner
     grouped=defaultdict(list)
     for x in flat_cards(cards):
         date=day(x.get('date') or x.get('race_time'))
         if not date or date<cutoff.date():continue
         race_time=stamp(x.get('race_time'))
         if race_time is None or race_time<=max(cutoff+dt.timedelta(minutes=MIN_PREOFF_MIN),dt.datetime.now(UTC)+dt.timedelta(minutes=5)):continue
-        if str(x.get('race_status') or '').lower() in ('result','finished','cancelled','abandoned'):continue
+        if not active_runner(x):continue
         k=f'{date}|{course_key(x.get("course"))}|{race_time.strftime("%H:%M")}'
         grouped[k].append(x)
     scored=[];rejected=[]
@@ -552,7 +553,7 @@ def score_card_rows(state,model,temperature,cards,cutoff):
         if n<4:rejected.append({'race':k,'reason':'FIELD_TOO_SMALL'});continue
         hh=[]
         for r in entries:
-            if str(r.get('number') or '').upper()=='NR' or str(r.get('race_status') or '').lower() in ('nr','non-runner','scratched'):
+            if not active_runner(r):
                 continue
             feat,prior=state.features(r,day(r.get('date') or r.get('race_time')),n)
             hh.append({**feat,'date':str(day(r.get('date') or r.get('race_time'))),

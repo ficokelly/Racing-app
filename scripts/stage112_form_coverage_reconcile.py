@@ -43,7 +43,10 @@ def has_public_form(row):
 
 
 def is_starter(row):
-    return str(row.get('number') or '').upper()!='NR' and str(row.get('race_status') or '').lower() not in NONRUN
+    # Keep historical completed rows eligible for verified-results parsing,
+    # while refusing NR and R-number reserves from declared fields.
+    from rhp_runner_eligibility import eligibility
+    return eligibility({**row,'race_status':'declared'})=='ACTIVE'
 
 
 def race_key(row):
