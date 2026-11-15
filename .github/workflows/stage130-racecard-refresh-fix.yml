@@ -1,0 +1,119 @@
+name: 'Stage130 - Restore 15 Nov Live Racecard Refresh After Stage129'
+
+on:
+  push:
+    paths:
+      - '.github/workflows/stage130-racecard-refresh-fix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: stage130-racecard-import-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout main (no model rebuild or frozen-weight change)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Fix collector import for both standalone and runpy feed-capture execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          source = Path('collect-racecards.py')
+          before = source.read_text(encoding='utf-8')
+          exact = 'from scripts.rhp_runner_eligibility import apply_to_racecards'
+          replacement = ('# Stage130: runpy.run_path() starts with scripts/ as sys.path[0].\n'
+                         '# Restore the repository root so the shared package imports.\n'
+                         'import sys as _rhp_stage130_sys\n'
+                         '_rhp_stage130_sys.path.insert(0, str(Path(__file__).resolve().parent))\n'
+                         + exact)
+          if before.count('Stage130: runpy.run_path()') == 1:
+              print('Stage130 collector import patch already present; idempotent.')
+          else:
+              if before.count(exact) != 1:
+                  raise SystemExit('Unexpected collector source; refusing unsafe edit')
+              if 'from pathlib import Path' not in before:
+                  raise SystemExit('Required Path import absent; refusing unsafe edit')
+              candidate = before.replace(exact, replacement, 1)
+              ast.parse(candidate, filename=str(source))
+              source.write_text(candidate, encoding='utf-8')
+              print('Stage130 collector import path repaired safely.')
+
+          assert Path('scripts/rhp_runner_eligibility.py').is_file()
+          ast.parse(source.read_text(encoding='utf-8'), filename=str(source))
+          print('Frozen model weights and scoring rules are untouched.')
+          PY
+          python scripts/rhp_runner_eligibility.py
+          # Check package resolution under the same sys.path shape that caused
+          # the Stage129 02:10 live collection to fail.
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          root = Path.cwd()
+          sys.path[:] = [str(root/'scripts'), *[p for p in sys.path if p != str(root)]]
+          namespace = {'__file__':str(root/'collect-racecards.py'),'Path':Path}
+          exec("import sys as _rhp_stage130_sys\n_rhp_stage130_sys.path.insert(0, str(Path(__file__).resolve().parent))\nfrom scripts.rhp_runner_eligibility import apply_to_racecards",namespace)
+          assert callable(namespace['apply_to_racecards'])
+          print('PASS: scripts package imports correctly from feed-capture runpy context')
+          PY
+          git diff --check
+
+      - name: Commit the single collector fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add collect-racecards.py
+          if git diff --cached --quiet; then
+            echo 'Already fixed.'
+            exit 0
+          fi
+          git commit -m 'Stage130: repair racecard import for runpy capture workflow'
+          for attempt in 1 2 3 4 5; do
+            if git pull --rebase origin main && git push origin HEAD:main; then
+              echo 'Collector fix published to main.'
+              exit 0
+            fi
+            git rebase --abort || true
+            sleep $((attempt * 3))
+          done
+          echo 'Could not publish import fix safely.' >&2
+          exit 1
+
+      - name: Request fresh live odds, racecards, results and NR check once
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run racing-hot-pots-five-minute.yml --ref main
+          echo 'Requested one full five-minute data update after repaired collector commit.'
+          echo 'Check its own GitHub Actions result before considering feeds fresh.'
+
+      - name: Record follow-up verification link
+        if: always()
+        run: |
+          echo 'Stage130 repair does not alter D, D(c), G3/G4/G5 or HPR weights.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Confirm the separately triggered Racing Hot Pots - Five Minute Data Updates workflow succeeds.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Stage129 Stage116 verified historical form remains installed; outstanding exact-ID and provider-field gaps remain for later reconciliation.' >> "$GITHUB_STEP_SUMMARY"
