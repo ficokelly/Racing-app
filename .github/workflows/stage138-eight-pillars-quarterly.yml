@@ -1,0 +1,155 @@
+name: 'Stage138 - ONE integrated eight-pillar D with season, fresh form and incident NLP (quarterly)'
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage138-integrated-eight-pillars-quarterly
+  cancel-in-progress: false
+jobs:
+  paper-walk-forward:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    env:
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      DB: reports/stage138/source/stage2/historical_ukie_staging.sqlite
+      REF: reports/stage138/source/stage4/all_races_with_reference_event_ids.csv
+      STAGE137: reports/stage138/source/stage137/stage137-quarterly-predictions.csv.gz
+      OUT: reports/stage138/research
+    steps:
+      - name: Checkout unchanged frozen D, Stage137, classifications and new Stage138 code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned training dependencies
+        run: |
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 \
+            scikit-learn==1.6.1 joblib==1.4.2
+      - name: Test all eight pillars, incident awareness, fresh returns, seasonal form and NLP assignment
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/stage138_integrated_eight_pillars.py \
+            scripts/stage137_frozen_d_race_type_walkforward.py \
+            scripts/stage30_gap_aware_abcd.py \
+            scripts/stage108_model_g2.py \
+            scripts/stage136_race_type_strength.py \
+            scripts/race_strength_lookup.py
+          python scripts/stage138_integrated_eight_pillars.py self-test
+          python scripts/stage137_frozen_d_race_type_walkforward.py self-test
+          python scripts/stage30_gap_aware_abcd.py --self-test
+          test -s reports/stage30/stage30-summary.json
+      - name: Restore exact immutable historical sources 2015-2025 and Stage137 frozen decisions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage138/source/{stage2,stage4,stage137} "$OUT"
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage2-historical-staging-database \
+            --dir reports/stage138/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage4-reference-named-events-and-winners \
+            --dir reports/stage138/source/stage4
+          gh run download 43756586012 --repo "$GITHUB_REPOSITORY" \
+            --name stage137-frozen-d-specialist-nlp-43756586012 \
+            --dir reports/stage138/source/stage137
+          test -s "$DB" && test -s "$REF" && test -s "$STAGE137"
+          python - <<'PY'
+          import os,csv,sqlite3,gzip,pandas as pd
+          con=sqlite3.connect('file:'+os.path.abspath(os.environ['DB'])+'?mode=ro',uri=True)
+          assert con.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+          assert con.execute("SELECT COUNT(*) FROM historical_races WHERE race_date BETWEEN '2015-01-01' AND '2021-12-31'").fetchone()[0]>10000
+          con.close()
+          with open(os.environ['REF'],encoding='utf-8-sig') as f:
+            c=sum(1 for x in csv.DictReader(f) if '2015-01-01'<=x['date']<='2021-12-31' and x['region_scope'] in ('GB','IRELAND'))
+            assert c>10000,c
+          x=pd.read_csv(os.environ['STAGE137'],compression='gzip',usecols=['period','race_id','model'])
+          assert {'FROZEN_D','D_RACETYPE_NLP'}<=set(x['model'])
+          assert len(x[x.model=='FROZEN_D'])>20000
+          print('Verified historical extended form, frozen D baseline and Stage137 immutable selections')
+          PY
+      - name: Train 2023, walk forward eight quarters and check exact frozen-D identity
+        run: |
+          set -euo pipefail
+          python -u scripts/stage138_integrated_eight_pillars.py walkforward \
+            --db "$DB" --reference "$REF" --stage137 "$STAGE137" --out "$OUT"
+          python - <<'PY'
+          import json,os,pathlib
+          out=pathlib.Path(os.environ['OUT'])
+          x=json.loads((out/'stage138-summary.json').read_text())
+          assert x['paper_only'] and not x['writes_to_live_app']
+          assert x['original_frozen_d_weight_id']=='D-064-gap14' and x['frozen_d_unchanged']
+          assert x['final_scoring_dimension_count']==8
+          assert not x['independent_nlp_ninth_pillar']
+          assert not x['raw_beaten_distance_predictor']
+          assert not x['market_prices_used_to_choose_model_weights']
+          assert x['baseline_guard']['frozen_baseline_exact_match']
+          assert len(x['test_quarters'])==8 and x['identical_evaluated_races']>20000
+          assert x['baseline_guard']['stage137_paired_races']==x['identical_evaluated_races']
+          for f in ('stage138-full-quarters-rank1-rank2.csv.gz',
+            'stage138-paired-versus-stage137.csv.gz',
+            'stage138-period-discipline-racetype.csv',
+            'stage138-quarterly-eight-pillar-weights.csv',
+            'stage138-feature-coverage.csv'):
+            assert (out/f).stat().st_size>1000,f
+          print('Verified 8 held-out quarters, exact frozen baseline and ALL eight-pillar controls')
+          PY
+      - name: Present historical results and source coverage without profit claims
+        if: always()
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import os,json,pathlib,csv
+          path=pathlib.Path(os.environ['OUT'])
+          print('# Stage138: ONE integrated D eight-pillar challenger')
+          print('**PAPER RESEARCH ONLY. No live models, app, bets or HPR records modified.**')
+          s=path/'stage138-summary.json'
+          if not s.exists():
+            print('Research unsuccessful/incomplete. See the failed step and any uploaded diagnostics.');raise SystemExit(0)
+          x=json.loads(s.read_text())
+          print('Training 2023:',x['training_2023_races'],'races; paired quarters:',x['identical_evaluated_races'])
+          print('Frozen D exact match:',x['baseline_guard']['frozen_baseline_exact_match'])
+          print('| Model | Races | Winners | Strike % | SP ROI % | Capped SP ROI % |')
+          print('|---|---:|---:|---:|---:|---:|')
+          for name,o in x['overall'].items():
+            print('|',name,'|',o['races'],'|',o['winners'],'|',o['strike_pct'],'|',o['roi_sp_pct'],'|',o['roi_sp_capped20to1_pct'],'|')
+          f=path/'stage138-period-discipline-racetype.csv'
+          if f.exists():
+            rows=list(csv.DictReader(f.open()))
+            for label in ('QUARTER','BROAD','DISCIPLINE'):
+              print('\n##',label)
+              print('| Model | Group | Races | Wins | SR% | SP ROI% |')
+              print('|---|---|---:|---:|---:|---:|')
+              for r in rows:
+                if r['breakdown']==label:
+                  print('|',r['model'],'|',r['group'],'|',r['races'],'|',r['winners'],'|',r['strike_pct'],'|',r['roi_sp_pct'],'|')
+          print('\n## Evidence coverage')
+          cov=x['feature_coverage']
+          print('Returning runners:',cov['returning_runners'])
+          print('With comparable first-after-break evidence:',cov['returning_with_comparable_break'])
+          for k,v in cov['global_feature_coverage_pct'].items():print('-',k+':',str(v)+'%')
+          print('\nNLP is incident-aware phrase parsing plus trained word/bigram regression, NOT a general-purpose LLM.')
+          print('Historic SP ROI is a retrospective benchmark, not available pre-race odds.')
+          print('The frozen D recipe was originally selected using 2024 outcomes; 2024 baseline comparison is not pristine.')
+          PY
+      - name: Upload selections, eight pillar weights, comparisons and reliability audits
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage138-integrated-eight-pillars-${{ github.run_id }}
+          path: |
+            reports/stage138/research/*.json
+            reports/stage138/research/*.csv
+            reports/stage138/research/*.csv.gz
+          retention-days: 90
+          compression-level: 6
+          if-no-files-found: warn
