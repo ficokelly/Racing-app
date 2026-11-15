@@ -1,0 +1,190 @@
+name: "Stage136 - Maiden/novice race-strength types, G4 and HPR historical ablations"
+on:
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: "Select the research components to run"
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - taxonomy-only
+          - g4-only
+          - hpr-only
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage136-maiden-novice-classification-research
+  cancel-in-progress: false
+jobs:
+  race-experience-research:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      SCOPE: ${{ inputs.scope }}
+      DB: reports/stage136/source/stage2/historical_ukie_staging.sqlite
+      REF: reports/stage136/source/stage4/all_races_with_reference_event_ids.csv
+      G3: reports/stage136/source/g3/stage109-all-horses-historical.csv.gz
+      ORIGINAL_G4: reports/stage136/source/g4/stage111-ranked1-and2.csv.gz
+      STAGE131_G4: reports/stage136/source/stage131/stage131-g4-class-weight-rank1.csv.gz
+      STAGE134C_BASE: reports/stage136/source/stage134c
+      OUT: reports/stage136/output
+    steps:
+      - name: Checkout original, unchanged model code and Stage135 classification reference
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Install Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install exact historical model dependencies
+        run: |
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 \
+            scikit-learn==1.6.1 joblib==1.4.2
+      - name: Run independent classification, experience and HPR self-tests
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/stage136_race_type_strength.py scripts/stage136_g4_race_type_challenger.py scripts/stage136_hpr_type_ablation.py
+          python -m py_compile scripts/race_strength_lookup.py scripts/stage131_class_weight_hpr.py scripts/stage134c_full_field_hpr_replay.py
+          python scripts/test_race_strength_lookup.py
+          python scripts/stage136_race_type_strength.py --out "$OUT"
+          python scripts/stage136_g4_race_type_challenger.py self-test
+          python scripts/stage136_hpr_type_ablation.py self-test
+          python scripts/stage111_model_g4.py self-test
+          test -s scripts/race_strength_reference_v1.json
+          test -s "$OUT/stage136-experience-type-reference.json"
+          test -s "$OUT/stage136-experience-type-points.csv"
+      - name: Restore frozen Kaggle results and exact race identities
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage136/source/{stage2,stage4,g3,g4,stage131,stage134c} "$OUT"
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage2-historical-staging-database --dir reports/stage136/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage4-reference-named-events-and-winners --dir reports/stage136/source/stage4
+          test -s "$DB" && test -s "$REF"
+      - name: Audit Kaggle race type versus separately verified official tier
+        run: |
+          set -euo pipefail
+          python scripts/stage136_race_type_strength.py \
+            --audit-db "$DB" --reference "$REF" --out "$OUT" \
+            --start 2022-01-01 --end 2025-12-31
+          python - <<'PY'
+          import json,os,pathlib
+          p=pathlib.Path(os.environ['OUT'])
+          a=json.loads((p/'stage136-class-experience-coverage.json').read_text())
+          assert a['counts']['verified_races']>50000,a
+          assert a['counts']['race_type_known']>15000,a
+          assert a['no_live_updates'] is True
+          print('Verified type labels:',a['counts']['race_type_known'])
+          print('True official grade/class:',a['counts']['official_tier_known'])
+          PY
+      - name: Restore frozen original and Stage131 challenger G4 selections
+        if: inputs.scope == 'all' || inputs.scope == 'g4-only'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run download 43407036838 --repo "$GITHUB_REPOSITORY" \
+            --name stage109-g3-learning-43407036838 --dir reports/stage136/source/g3
+          G4_RUN=$(gh run list --repo "$GITHUB_REPOSITORY" \
+            --workflow stage111-g4-specialists.yml --status success --limit 10 \
+            --json databaseId --jq '.[0].databaseId')
+          test -n "$G4_RUN" && test "$G4_RUN" != null
+          gh run download "$G4_RUN" --repo "$GITHUB_REPOSITORY" \
+            --name "stage111-g4-specialists-${G4_RUN}" --dir reports/stage136/source/g4
+          gh run download 43709519173 --repo "$GITHUB_REPOSITORY" \
+            --name stage131-class-weight-hpr-43709519173 --dir reports/stage136/source/stage131
+          for f in "$G3" "$ORIGINAL_G4" "$STAGE131_G4"; do
+            test -s "$f" || { echo "Frozen G4 reference not found: $f" >&2;exit 1; }
+          done
+      - name: Train chronological G4 subtype and strength challenger (no odds)
+        if: inputs.scope == 'all' || inputs.scope == 'g4-only'
+        run: |
+          set -euo pipefail
+          python -u scripts/stage136_g4_race_type_challenger.py historical \
+            --db "$DB" --reference "$REF" --g3 "$G3" \
+            --original-g4 "$ORIGINAL_G4" --stage131-picks "$STAGE131_G4" \
+            --out "$OUT"
+          python - <<'PY'
+          import os,json,pathlib
+          p=pathlib.Path(os.environ['OUT'])
+          x=json.loads((p/'stage136-g4-audit.json').read_text())
+          assert x['paired_selections']>50000 and x['stage131_present'],x
+          assert x['no_live_updates'] and not x['odds_as_model_input']
+          print('Same-race original G4, Stage131 and Stage136 paired selections:',x['paired_selections'])
+          PY
+      - name: Restore original fully tested Stage134C HPR decisions
+        if: inputs.scope == 'all' || inputs.scope == 'hpr-only'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run download 43746009151 --repo "$GITHUB_REPOSITORY" \
+            --name stage134c-kaggle-class-full-field-replay-43746009151 \
+            --dir "$STAGE134C_BASE"
+          test -s "$STAGE134C_BASE/stage134-hpr-paired-races.csv"
+      - name: Backtest the deliberately tiny maiden/novice HPR points on IDENTICAL races
+        if: inputs.scope == 'all' || inputs.scope == 'hpr-only'
+        run: |
+          set -euo pipefail
+          python -u scripts/stage136_hpr_type_ablation.py run \
+            --history "$DB" --reference "$REF" --baseline-dir "$STAGE134C_BASE" \
+            --out "$OUT" --history-start 2022-01-01 --start 2024-01-01 --end 2025-12-31
+          python - <<'PY'
+          import json,os,pathlib
+          x=json.loads((pathlib.Path(os.environ['OUT'])/'stage136-hpr-type-audit.json').read_text())
+          assert x['paired_races']>10000 and x['no_live_updates'],x
+          assert x['no_odds_as_predictor']
+          print('Same-race frozen v3.1 vs experimental type HPR:',x['paired_races'])
+          PY
+      - name: Publish summary with explicit uncertainty
+        if: always()
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import os,pathlib,json,csv
+          out=pathlib.Path(os.environ['OUT'])
+          print('# Stage136: Maiden / novice / beginners context versus race strength')
+          print('All models are PAPER ONLY. No production changes, no sportsbook odds in model training.\n')
+          a=out/'stage136-class-experience-coverage.json'
+          if a.exists():
+            z=json.loads(a.read_text());c=z['counts']
+            print('## Exact race classification evidence')
+            for key in ('verified_races','race_type_known','official_tier_known','type_known_strength_unverified'):
+              print('-',key,':',c.get(key))
+            print('Maiden:',c.get('type_MAIDEN',0),'Novice:',c.get('type_NOVICE',0),
+                  'Beginner:',c.get('type_BEGINNERS_CHASE',0),'Novice Handicap:',c.get('type_NOVICE_HANDICAP',0))
+          for file,heading in [('stage136-g4-by-discipline-race-type.csv','G4 Specialist/Blended comparisons'),
+                               ('stage136-hpr-type-by-discipline.csv','HPR v3.1 versus HPR type prior')]:
+            p=out/file
+            print('\n## '+heading)
+            if p.exists():
+              rows=list(csv.DictReader(p.open()))
+              subset=[r for r in rows if r.get('race_type')=='Handicap' and r.get('discipline') in ('chase','hurdle','CHASE','HURDLE')]
+              for r in subset[:32]:print('- '+str(r))
+            else:print('Not run, or preceding research step failed')
+          print('\nA type-specific prior is NOT an official strength rating. SP returns are hindsight only.')
+          PY
+      - name: Export complete taxonomy, pairwise model selections and coverage audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage136-race-types-g4-hpr-${{ github.run_id }}
+          path: |
+            reports/stage136/output/*.json
+            reports/stage136/output/*.csv
+            reports/stage136/output/*.csv.gz
+            reports/stage136/output/*.joblib
+          retention-days: 90
+          compression-level: 6
+          if-no-files-found: warn
