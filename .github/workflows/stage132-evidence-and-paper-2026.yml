@@ -1,0 +1,173 @@
+name: "Stage132 - Recover verified class/OR and test G4 + HPR v3.1 (paper only)"
+on:
+  workflow_dispatch:
+    inputs:
+      selection_date:
+        description: "Future racing date YYYY-MM-DD (blank = next unrun racecard date)"
+        required: false
+        default: ''
+        type: string
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage132-class-weight-verification
+  cancel-in-progress: false
+jobs:
+  verified-recovery-and-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PYTHONUNBUFFERED: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      DB: reports/stage132/source/stage2/historical_ukie_staging.sqlite
+      REF: reports/stage132/source/stage4/all_races_with_reference_event_ids.csv
+      G3: reports/stage132/source/g3/stage109-all-horses-historical.csv.gz
+      ORIGINAL_G4: reports/stage132/source/g4/stage111-ranked1-and2.csv.gz
+      ORIGINAL_HPR: reports/stage132/source/hpr/hpr-original.sqlite
+      OLD_MODEL: reports/stage132/source/g4/stage111-paper-specialists.joblib
+      NEW_MODEL: reports/stage132/research/stage131-g4-class-weight-model.joblib
+      NEW_HPR: reports/stage132/research/stage132-hpr-v3_1-research.sqlite
+      OUT: reports/stage132/research
+      REQUESTED_SELECTION_DATE: ${{ inputs.selection_date }}
+    steps:
+      - name: Checkout current Racing Hot Pots sources (read-only)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Install pinned Python research dependencies
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 \
+            scikit-learn==1.6.1 joblib==1.4.2
+      - name: Check exact evidence recovery and original G4 logic
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/stage132_verified_hpr_g4.py scripts/stage131_class_weight_hpr.py
+          python scripts/stage132_verified_hpr_g4.py self-test
+          python scripts/stage131_class_weight_hpr.py self-test
+          python scripts/stage111_model_g4.py self-test
+          test -s data/racecards.json
+          test -s data/hpr/shards/manifest.json
+      - name: Restore verified historical source and frozen G3/G4 baselines
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage132/source/{stage2,stage4,g3,g4,hpr} "$OUT"
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage2-historical-staging-database --dir reports/stage132/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage4-reference-named-events-and-winners --dir reports/stage132/source/stage4
+          gh run download 43407036838 --repo "$GITHUB_REPOSITORY" \
+            --name stage109-g3-learning-43407036838 --dir reports/stage132/source/g3
+          G4_RUN=$(gh run list --repo "$GITHUB_REPOSITORY" \
+            --workflow stage111-g4-specialists.yml --status success --limit 10 \
+            --json databaseId --jq '.[0].databaseId')
+          test -n "$G4_RUN" && test "$G4_RUN" != null
+          gh run download "$G4_RUN" --repo "$GITHUB_REPOSITORY" \
+            --name "stage111-g4-specialists-${G4_RUN}" --dir reports/stage132/source/g4
+          for f in "$DB" "$REF" "$G3" "$ORIGINAL_G4" "$OLD_MODEL"; do
+            test -s "$f" || { echo "Missing frozen reference: $f" >&2; exit 1; }
+          done
+          python scripts/stage87_hpr_storage.py restore \
+            --dir data/hpr/shards --db "$ORIGINAL_HPR"
+      - name: Recover exact race class and complete-field ratings, rebuild HPR v3.1
+        run: |
+          set -euo pipefail
+          python -u scripts/stage132_verified_hpr_g4.py rebuild-hpr \
+            --old-hpr "$ORIGINAL_HPR" --history-db "$DB" \
+            --reference "$REF" --daily-dir data/hpr/daily --out-dir "$OUT"
+          python - <<'PY'
+          import json,os,pathlib,sqlite3
+          out=pathlib.Path(os.environ['OUT'])
+          a=json.loads((out/'stage132-hpr-evidence-audit.json').read_text())
+          assert a['total_events']>100000,a
+          assert a['remaining_class_unknown']<=a['original_class_unknown'],a
+          db=sqlite3.connect(out/'stage132-hpr-v3_1-research.sqlite')
+          assert db.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+          assert db.execute('SELECT COUNT(*) FROM hpr_ratings').fetchone()[0]==a['total_events']
+          assert db.execute('SELECT COUNT(DISTINCT model_version) FROM hpr_ratings').fetchone()[0]==1
+          print('Exact data-recovery HPR audit:',json.dumps(a,indent=2))
+          PY
+      - name: Repeat original historical G4 paired comparison, unchanged data lineage
+        run: |
+          set -euo pipefail
+          python -u scripts/stage131_class_weight_hpr.py historical-g4 \
+            --db "$DB" --reference "$REF" --g3-baseline "$G3" \
+            --g4-baseline "$ORIGINAL_G4" --out-dir "$OUT"
+          python - <<'PY'
+          import os,pathlib,json,pandas as pd
+          p=pathlib.Path(os.environ['OUT'])
+          audit=json.loads((p/'stage131-g4-audit.json').read_text())
+          assert audit['paired_rows']>50000
+          s=pd.read_csv(p/'stage131-g4-by-discipline-racetype.csv')
+          assert {'hurdle','chase'}<=set(s.discipline)
+          assert {'Handicap','Non-handicap'}<=set(s.race_type)
+          print('Historical G4 class+weight comparison rerun: paired rows',audit['paired_rows'])
+          PY
+      - name: Score 2026 future racecards with old and new G4 and HPR v3.1
+        run: |
+          set -euo pipefail
+          args=(--history-db "$DB" --reference "$REF" \
+            --old-g4 "$OLD_MODEL" --new-g4 "$NEW_MODEL" \
+            --hpr-db "$NEW_HPR" --cards data/racecards.json --out-dir "$OUT")
+          if [ -n "$REQUESTED_SELECTION_DATE" ]; then args+=(--selection-date "$REQUESTED_SELECTION_DATE"); fi
+          python -u scripts/stage132_verified_hpr_g4.py paper-2026 "${args[@]}"
+          test -s "$OUT/stage132-2026-paper-audit.json"
+      - name: Show verified recovery and research summary
+        if: always()
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json,csv,os,pathlib
+          p=pathlib.Path(os.environ['OUT'])
+          print('# Stage132 — exact class / weight / opposition research')
+          print('NO live app writes, NO original HPR updates, NO original model changes.\n')
+          a=p/'stage132-hpr-evidence-audit.json'
+          if a.exists():
+            x=json.loads(a.read_text())
+            print('## Verified HPR-v3.1 recovery')
+            for k in ['total_events','original_class_unknown','class_recovered','remaining_class_unknown',
+                      'original_opposition_unknown_est','remaining_opposition_unknown',
+                      'original_weight_unknown_est','remaining_weight_unknown']:
+              print('-',k,':',x.get(k))
+          else:print('HPR recalibration did not complete; inspect logs.\n')
+          b=p/'stage131-g4-by-discipline-racetype.csv'
+          if b.exists():
+            print('\n## National Hunt handicap — chronological original vs challenger')
+            print('| Period | Model | Discipline | Races | Old wins | New wins | Old SR | New SR | Old SP ROI | New SP ROI |')
+            print('|---|---|---|---:|---:|---:|---:|---:|---:|---:|')
+            for r in csv.DictReader(b.open()):
+              if r['discipline'] not in ('hurdle','chase') or r['race_type']!='Handicap':continue
+              print('| '+' | '.join(str(r[k]) for k in ['period','model','discipline','paired_races',
+                 'original_wins','new_wins','original_strike_pct','new_strike_pct',
+                 'original_roi_sp_pct','new_roi_sp_pct'])+' |')
+          c=p/'stage132-2026-paper-audit.json'
+          if c.exists():
+            x=json.loads(c.read_text());print('\n## Future 2026 paper selections')
+            print('Date:',x.get('selection_date'),'Status:',x.get('status'),
+                  'Eligible races:',x.get('eligible_races',0),'Changes:',x.get('specialist_changes',0))
+            print('Form latest:',(x.get('form_history') or {}).get('hpr_latest_date'))
+            if x.get('status')=='NO_UNRUN_RACECARDS':
+              print('Racecards do not yet include an eligible future race. Refresh racecards before rerun.')
+          print('\nAll G4 SP ROI is hindsight, not guaranteed returns. HPR rating ranks are not calibrated win percentages.')
+          PY
+      - name: Upload immutable research artifacts, ratings and comparison selections
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage132-exact-class-hpr-g4-${{ github.run_id }}
+          path: |
+            reports/stage132/research/*.json
+            reports/stage132/research/*.csv
+            reports/stage132/research/*.csv.gz
+            reports/stage132/research/*.sqlite
+          compression-level: 6
+          retention-days: 90
+          if-no-files-found: warn
