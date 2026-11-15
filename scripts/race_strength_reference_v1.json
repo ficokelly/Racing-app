@@ -1,0 +1,745 @@
+{
+  "schema_version": "1.0.0",
+  "as_of": "2026-11-15",
+  "name": "Racing Hot Pots race-strength classification reference",
+  "scope": "UK/Ireland only; historic-aware",
+  "purpose": "Structured pre-race categorical strength prior; NOT official universal numeric ranking",
+  "score_semantics": "provisional ordinal feature from 0 to 100, NOT a calibrated rating nor winning probability",
+  "principles": [
+    "Pattern/Listed grades rank highest within their own Flat or National Hunt discipline",
+    "Handicap versus non-handicap is a separate categorical feature; no assumption of equal ability between them",
+    "GB Class 1 contains multiple sublevels; never overwrite a known Group/Grade/Listed label with generic class",
+    "Irish 0-100/0-140 denote handicap entry rating bands, not Pattern grades",
+    "Ground race tier in event DATE and official metadata; race labels can change over seasons",
+    "Use pre-race field official ratings as independent measures of opposition strength; no post-race ratings, finishing positions or SP for prediction",
+    "Unknown classifications return null and audit reason"
+  ],
+  "source_urls": {
+    "BHA_GLOSSARY": "https://www.britishhorseracing.com/regulation/glossary-of-race-types/",
+    "BHA_2022_RENAME": "https://www.britishhorseracing.com/press_releases/jump-pattern-committee-update-22-23-season/",
+    "BHA_2026_JUMP": "https://www.britishhorseracing.com/press_releases/changes-to-the-jump-pattern-ahead-of-the-core-2026-27-jump-season/",
+    "BHA_2021_CLASS7": "https://www.britishhorseracing.com/press_releases/changes-to-the-rules-of-racing-2021/",
+    "HRI_2026_MIN": "https://www.hri.ie/HRI/media/HRI/Comms/Documents/2026-Minimum-Race-Values.pdf",
+    "HRI_2025_BANDS": "https://www.irishracing.com/news/change-to-national-hunt-rating-bands-in-2025/252115",
+    "BHA_HANDICAPPING": "https://www.britishhorseracing.com/regulation/guide-to-handicapping/"
+  },
+  "classifications": [
+    {
+      "code": "FLAT_GROUP_1",
+      "label": "Group 1",
+      "segment": "FLAT_PATTERN",
+      "jurisdictions": [
+        "GB",
+        "IRELAND"
+      ],
+      "disciplines": [
+        "FLAT",
+        "AW"
+      ],
+      "rank_within_segment": 1,
+      "provisional_strength_score": 100,
+      "classification_official": true,
+      "sources": [
+        "BHA_GLOSSARY",
+        "HRI_2026_MIN"
+      ],
+      "notes": "Group label must be explicitly stated; not inferred from Class 1"
+    },
+    {
+      "code": "NH_GRADE_1",
+      "label": "Grade 1",
+      "segment": "NH_PATTERN",
+      "jurisdictions": [
+        "GB",
+        "IRELAND"
+      ],
+      "disciplines": [
+        "HURDLE",
+        "CHASE",
+        "NH_FLAT"
+      ],
+      "rank_within_segment": 1,
+      "provisional_strength_score": 100,
+      "classification_official": true,
+      "sources": [
+        "BHA_GLOSSARY",
+        "HRI_2026_MIN"
+      ],
+      "notes": "Actual Grade 3 handicap is handled in handicap segment, not here"
+    },
+    {
+      "code": "FLAT_GROUP_2",
+      "label": "Group 2",
+      "segment": "FLAT_PATTERN",
+      "jurisdictions": [
+        "GB",
+        "IRELAND"
+      ],
+      "disciplines": [
+        "FLAT",
+        "AW"
+      ],
+      "rank_within_segment": 2,
+      "provisional_strength_score": 90,
+      "classification_official": true,
+      "sources": [
+        "BHA_GLOSSARY",
+        "HRI_2026_MIN"
+      ],
+      "notes": "Group label must be explicitly stated; not inferred from Class 1"
+    },
+    {
+      "code": "NH_GRADE_2",
+      "label": "Grade 2",
+      "segment": "NH_PATTERN",
+      "jurisdictions": [
+        "GB",
+        "IRELAND"
+      ],
+      "disciplines": [
+        "HURDLE",
+        "CHASE",
+        "NH_FLAT"
+      ],
+      "rank_within_segment": 2,
+      "provisional_strength_score": 90,
+      "classification_official": true,
+      "sources": [
+        "BHA_GLOSSARY",
+        "HRI_2026_MIN"
+      ],
+      "notes": "Actual Grade 3 handicap is handled in handicap segment, not here"
+    },
+    {
+      "code": "FLAT_GROUP_3",
+      "label": "Group 3",
+      "segment": "FLAT_PATTERN",
+      "jurisdictions": [
+        "GB",
+        "IRELAND"
+      ],
+      "disciplines": [
+        "FLAT",
+        "AW"
+      ],
+      "rank_within_segment": 3,
+      "provisional_strength_score": 80,
+      "classification_official": true,
+      "sources": [
+        "BHA_GLOSSARY",
+        "HRI_2026_MIN"
+      ],
+      "notes": "Group label must be explicitly stated; not inferred from Class 1"
+    },
+    {
+      "code": "NH_GRADE_3",
+      "label": "Grade 3",
+      "segment": "NH_PATTERN",
+      "jurisdictions": [
+        "GB",
+        "IRELAND"
+      ],
+      "disciplines": [
+        "HURDLE",
+        "CHASE",
+        "NH_FLAT"
+      ],
+      "rank_within_segment": 3,
+      "provisional_strength_score": 80,
+      "classification_official": true,
+      "sources": [
+        "BHA_GLOSSARY",
+        "HRI_2026_MIN"
+      ],
+      "notes": "Actual Grade 3 handicap is handled in handicap segment, not here"
+    },
+    {
+      "code": "FLAT_LISTED",
+      "label": "Listed",
+      "segment": "FLAT_PATTERN",
+      "jurisdictions": [
+        "GB",
+        "IRELAND"
+      ],
+      "disciplines": [
+        "FLAT",
+        "AW"
+      ],
+      "rank_within_segment": 4,
+      "provisional_strength_score": 70,
+      "classification_official": true,
+      "sources": [
+        "BHA_GLOSSARY",
+        "HRI_2026_MIN"
+      ],
+      "notes": ""
+    },
+    {
+      "code": "NH_LISTED",
+      "label": "Listed",
+      "segment": "NH_PATTERN",
+      "jurisdictions": [
+        "GB",
+        "IRELAND"
+      ],
+      "disciplines": [
+        "HURDLE",
+        "CHASE",
+        "NH_FLAT"
+      ],
+      "rank_within_segment": 4,
+      "provisional_strength_score": 70,
+      "classification_official": true,
+      "sources": [
+        "BHA_GLOSSARY",
+        "HRI_2026_MIN"
+      ],
+      "notes": ""
+    },
+    {
+      "code": "IE_NH_G3_HANDICAP",
+      "label": "Grade 3 Handicap (Ireland)",
+      "segment": "NH_HANDICAP",
+      "jurisdictions": [
+        "IRELAND"
+      ],
+      "disciplines": [
+        "HURDLE",
+        "CHASE"
+      ],
+      "rank_within_segment": 1,
+      "provisional_strength_score": 68,
+      "classification_official": true,
+      "sources": [
+        "HRI_2026_MIN"
+      ],
+      "notes": "Not interchangeable with a Grade 3 non-handicap (weight-for-age) race"
+    },
+    {
+      "code": "GB_NH_PREMIER_HANDICAP",
+      "label": "Premier Handicap (Britain)",
+      "segment": "NH_HANDICAP",
+      "jurisdictions": [
+        "GB"
+      ],
+      "disciplines": [
+        "HURDLE",
+        "CHASE"
+      ],
+      "rank_within_segment": 2,
+      "provisional_strength_score": 65,
+      "classification_official": true,
+      "sources": [
+        "BHA_2022_RENAME",
+        "BHA_2026_JUMP"
+      ],
+      "notes": "Before Oct 2022 generally named Grade 3 Handicap; time-aware alias"
+    },
+    {
+      "code": "IE_NH_LISTED_HANDICAP",
+      "label": "Listed Handicap (Ireland)",
+      "segment": "NH_HANDICAP",
+      "jurisdictions": [
+        "IRELAND"
+      ],
+      "disciplines": [
+        "HURDLE",
+        "CHASE"
+      ],
+      "rank_within_segment": 2,
+      "provisional_strength_score": 64,
+      "classification_official": true,
+      "sources": [
+        "HRI_2026_MIN"
+      ],
+      "notes": ""
+    },
+    {
+      "code": "IE_FLAT_PREMIER_HANDICAP",
+      "label": "Premier Handicap (Ireland)",
+      "segment": "FLAT_HANDICAP",
+      "jurisdictions": [
+        "IRELAND"
+      ],
+      "disciplines": [
+        "FLAT",
+        "AW"
+      ],
+      "rank_within_segment": 1,
+      "provisional_strength_score": 65,
+      "classification_official": true,
+      "sources": [
+        "HRI_2026_MIN"
+      ],
+      "notes": ""
+    },
+    {
+      "code": "GB_FLAT_HERITAGE_HANDICAP",
+      "label": "Heritage Handicap (Britain)",
+      "segment": "FLAT_HANDICAP",
+      "jurisdictions": [
+        "GB"
+      ],
+      "disciplines": [
+        "FLAT",
+        "AW"
+      ],
+      "rank_within_segment": 2,
+      "provisional_strength_score": 63,
+      "classification_official": true,
+      "sources": [
+        "BHA_GLOSSARY"
+      ],
+      "notes": "Programme designation: not a Group/Listed race"
+    },
+    {
+      "code": "GB_CLASS_1",
+      "label": "British Class 1",
+      "segment": "GB_CLASS",
+      "jurisdictions": [
+        "GB"
+      ],
+      "disciplines": [
+        "FLAT",
+        "AW",
+        "HURDLE",
+        "CHASE",
+        "NH_FLAT"
+      ],
+      "rank_within_segment": 1,
+      "provisional_strength_score": 66,
+      "classification_official": true,
+      "sources": [
+        "BHA_HANDICAPPING"
+      ],
+      "notes": "Class 1 alone does not reveal whether G1/G2/G3/Listed/Premier. Low confidence."
+    },
+    {
+      "code": "GB_CLASS_2",
+      "label": "British Class 2",
+      "segment": "GB_CLASS",
+      "jurisdictions": [
+        "GB"
+      ],
+      "disciplines": [
+        "FLAT",
+        "AW",
+        "HURDLE",
+        "CHASE",
+        "NH_FLAT"
+      ],
+      "rank_within_segment": 2,
+      "provisional_strength_score": 60,
+      "classification_official": true,
+      "sources": [
+        "BHA_HANDICAPPING"
+      ],
+      "notes": "Check runner OR for actual field strength"
+    },
+    {
+      "code": "GB_CLASS_3",
+      "label": "British Class 3",
+      "segment": "GB_CLASS",
+      "jurisdictions": [
+        "GB"
+      ],
+      "disciplines": [
+        "FLAT",
+        "AW",
+        "HURDLE",
+        "CHASE",
+        "NH_FLAT"
+      ],
+      "rank_within_segment": 3,
+      "provisional_strength_score": 50,
+      "classification_official": true,
+      "sources": [
+        "BHA_HANDICAPPING"
+      ],
+      "notes": "Check runner OR for actual field strength"
+    },
+    {
+      "code": "GB_CLASS_4",
+      "label": "British Class 4",
+      "segment": "GB_CLASS",
+      "jurisdictions": [
+        "GB"
+      ],
+      "disciplines": [
+        "FLAT",
+        "AW",
+        "HURDLE",
+        "CHASE",
+        "NH_FLAT"
+      ],
+      "rank_within_segment": 4,
+      "provisional_strength_score": 40,
+      "classification_official": true,
+      "sources": [
+        "BHA_HANDICAPPING"
+      ],
+      "notes": "Check runner OR for actual field strength"
+    },
+    {
+      "code": "GB_CLASS_5",
+      "label": "British Class 5",
+      "segment": "GB_CLASS",
+      "jurisdictions": [
+        "GB"
+      ],
+      "disciplines": [
+        "FLAT",
+        "AW",
+        "HURDLE",
+        "CHASE",
+        "NH_FLAT"
+      ],
+      "rank_within_segment": 5,
+      "provisional_strength_score": 30,
+      "classification_official": true,
+      "sources": [
+        "BHA_HANDICAPPING"
+      ],
+      "notes": "Check runner OR for actual field strength"
+    },
+    {
+      "code": "GB_CLASS_6",
+      "label": "British Class 6",
+      "segment": "GB_CLASS",
+      "jurisdictions": [
+        "GB"
+      ],
+      "disciplines": [
+        "FLAT",
+        "AW",
+        "HURDLE",
+        "CHASE",
+        "NH_FLAT"
+      ],
+      "rank_within_segment": 6,
+      "provisional_strength_score": 20,
+      "classification_official": true,
+      "sources": [
+        "BHA_2021_CLASS7",
+        "BHA_HANDICAPPING"
+      ],
+      "notes": "Check runner OR for actual field strength"
+    },
+    {
+      "code": "GB_CLASS_7",
+      "label": "British Class 7",
+      "segment": "GB_CLASS",
+      "jurisdictions": [
+        "GB"
+      ],
+      "disciplines": [
+        "FLAT",
+        "AW",
+        "HURDLE",
+        "CHASE",
+        "NH_FLAT"
+      ],
+      "rank_within_segment": 7,
+      "provisional_strength_score": 10,
+      "classification_official": true,
+      "sources": [
+        "BHA_2021_CLASS7",
+        "BHA_HANDICAPPING"
+      ],
+      "notes": "Class 7 historical only (discontinued Feb 2021)"
+    },
+    {
+      "code": "IE_FLAT_BAND_0_100",
+      "label": "Irish Flat handicap 0–100",
+      "segment": "IE_FLAT_HANDICAP_BAND",
+      "jurisdictions": [
+        "IRELAND"
+      ],
+      "disciplines": [
+        "FLAT",
+        "AW"
+      ],
+      "rank_within_segment": 1,
+      "provisional_strength_score": 59,
+      "classification_official": true,
+      "sources": [
+        "HRI_2026_MIN",
+        "HRI_2025_BANDS"
+      ],
+      "notes": "Rating band indicates eligibility ceiling, not guaranteed strength; scored heuristically. Lower older bands are historical."
+    },
+    {
+      "code": "IE_FLAT_BAND_0_90",
+      "label": "Irish Flat handicap 0–90",
+      "segment": "IE_FLAT_HANDICAP_BAND",
+      "jurisdictions": [
+        "IRELAND"
+      ],
+      "disciplines": [
+        "FLAT",
+        "AW"
+      ],
+      "rank_within_segment": 2,
+      "provisional_strength_score": 54,
+      "classification_official": true,
+      "sources": [
+        "HRI_2026_MIN",
+        "HRI_2025_BANDS"
+      ],
+      "notes": "Rating band indicates eligibility ceiling, not guaranteed strength; scored heuristically. Lower older bands are historical."
+    },
+    {
+      "code": "IE_FLAT_BAND_0_80",
+      "label": "Irish Flat handicap 0–80",
+      "segment": "IE_FLAT_HANDICAP_BAND",
+      "jurisdictions": [
+        "IRELAND"
+      ],
+      "disciplines": [
+        "FLAT",
+        "AW"
+      ],
+      "rank_within_segment": 3,
+      "provisional_strength_score": 49,
+      "classification_official": true,
+      "sources": [
+        "HRI_2026_MIN",
+        "HRI_2025_BANDS"
+      ],
+      "notes": "Rating band indicates eligibility ceiling, not guaranteed strength; scored heuristically. Lower older bands are historical."
+    },
+    {
+      "code": "IE_FLAT_BAND_0_70",
+      "label": "Irish Flat handicap 0–70",
+      "segment": "IE_FLAT_HANDICAP_BAND",
+      "jurisdictions": [
+        "IRELAND"
+      ],
+      "disciplines": [
+        "FLAT",
+        "AW"
+      ],
+      "rank_within_segment": 4,
+      "provisional_strength_score": 44,
+      "classification_official": true,
+      "sources": [
+        "HRI_2026_MIN",
+        "HRI_2025_BANDS"
+      ],
+      "notes": "Rating band indicates eligibility ceiling, not guaranteed strength; scored heuristically. Lower older bands are historical."
+    },
+    {
+      "code": "IE_FLAT_BAND_0_60",
+      "label": "Irish Flat handicap 0–60",
+      "segment": "IE_FLAT_HANDICAP_BAND",
+      "jurisdictions": [
+        "IRELAND"
+      ],
+      "disciplines": [
+        "FLAT",
+        "AW"
+      ],
+      "rank_within_segment": 5,
+      "provisional_strength_score": 39,
+      "classification_official": true,
+      "sources": [
+        "HRI_2026_MIN",
+        "HRI_2025_BANDS"
+      ],
+      "notes": "Rating band indicates eligibility ceiling, not guaranteed strength; scored heuristically. Lower older bands are historical."
+    },
+    {
+      "code": "IE_NH_BAND_0_140",
+      "label": "Irish Jumps handicap 0–140",
+      "segment": "IE_NH_HANDICAP_BAND",
+      "jurisdictions": [
+        "IRELAND"
+      ],
+      "disciplines": [
+        "HURDLE",
+        "CHASE"
+      ],
+      "rank_within_segment": 1,
+      "provisional_strength_score": 61,
+      "classification_official": true,
+      "sources": [
+        "HRI_2026_MIN",
+        "HRI_2025_BANDS"
+      ],
+      "notes": "Rating band indicates eligibility ceiling, not guaranteed strength; scored heuristically. Lower older bands are historical."
+    },
+    {
+      "code": "IE_NH_BAND_0_130",
+      "label": "Irish Jumps handicap 0–130",
+      "segment": "IE_NH_HANDICAP_BAND",
+      "jurisdictions": [
+        "IRELAND"
+      ],
+      "disciplines": [
+        "HURDLE",
+        "CHASE"
+      ],
+      "rank_within_segment": 2,
+      "provisional_strength_score": 56,
+      "classification_official": true,
+      "sources": [
+        "HRI_2026_MIN",
+        "HRI_2025_BANDS"
+      ],
+      "notes": "Rating band indicates eligibility ceiling, not guaranteed strength; scored heuristically. Lower older bands are historical."
+    },
+    {
+      "code": "IE_NH_BAND_0_120",
+      "label": "Irish Jumps handicap 0–120",
+      "segment": "IE_NH_HANDICAP_BAND",
+      "jurisdictions": [
+        "IRELAND"
+      ],
+      "disciplines": [
+        "HURDLE",
+        "CHASE"
+      ],
+      "rank_within_segment": 3,
+      "provisional_strength_score": 51,
+      "classification_official": true,
+      "sources": [
+        "HRI_2026_MIN",
+        "HRI_2025_BANDS"
+      ],
+      "notes": "Rating band indicates eligibility ceiling, not guaranteed strength; scored heuristically. Lower older bands are historical."
+    },
+    {
+      "code": "IE_NH_BAND_0_110",
+      "label": "Irish Jumps handicap 0–110",
+      "segment": "IE_NH_HANDICAP_BAND",
+      "jurisdictions": [
+        "IRELAND"
+      ],
+      "disciplines": [
+        "HURDLE",
+        "CHASE"
+      ],
+      "rank_within_segment": 4,
+      "provisional_strength_score": 46,
+      "classification_official": true,
+      "sources": [
+        "HRI_2026_MIN",
+        "HRI_2025_BANDS"
+      ],
+      "notes": "Rating band indicates eligibility ceiling, not guaranteed strength; scored heuristically. Lower older bands are historical."
+    },
+    {
+      "code": "IE_NH_BAND_0_100",
+      "label": "Irish Jumps handicap 0–100",
+      "segment": "IE_NH_HANDICAP_BAND",
+      "jurisdictions": [
+        "IRELAND"
+      ],
+      "disciplines": [
+        "HURDLE",
+        "CHASE"
+      ],
+      "rank_within_segment": 5,
+      "provisional_strength_score": 41,
+      "classification_official": true,
+      "sources": [
+        "HRI_2026_MIN",
+        "HRI_2025_BANDS"
+      ],
+      "notes": "Rating band indicates eligibility ceiling, not guaranteed strength; scored heuristically. Lower older bands are historical."
+    },
+    {
+      "code": "IE_NH_BAND_0_95",
+      "label": "Irish Jumps handicap 0–95",
+      "segment": "IE_NH_HANDICAP_BAND",
+      "jurisdictions": [
+        "IRELAND"
+      ],
+      "disciplines": [
+        "HURDLE",
+        "CHASE"
+      ],
+      "rank_within_segment": 6,
+      "provisional_strength_score": 37,
+      "classification_official": true,
+      "sources": [
+        "HRI_2026_MIN",
+        "HRI_2025_BANDS"
+      ],
+      "notes": "Rating band indicates eligibility ceiling, not guaranteed strength; scored heuristically. Lower older bands are historical."
+    },
+    {
+      "code": "IE_NH_LETTER_A",
+      "label": "Irish historical letter-grade handicap A",
+      "segment": "LEGACY_UNMAPPED",
+      "jurisdictions": [
+        "IRELAND"
+      ],
+      "disciplines": [
+        "HURDLE",
+        "CHASE"
+      ],
+      "rank_within_segment": 1,
+      "provisional_strength_score": null,
+      "classification_official": false,
+      "sources": [],
+      "notes": "Preserve label; do not equate with Grade 1/2/3 or score without verified historical event mapping"
+    },
+    {
+      "code": "IE_NH_LETTER_B",
+      "label": "Irish historical letter-grade handicap B",
+      "segment": "LEGACY_UNMAPPED",
+      "jurisdictions": [
+        "IRELAND"
+      ],
+      "disciplines": [
+        "HURDLE",
+        "CHASE"
+      ],
+      "rank_within_segment": 2,
+      "provisional_strength_score": null,
+      "classification_official": false,
+      "sources": [],
+      "notes": "Preserve label; do not equate with Grade 1/2/3 or score without verified historical event mapping"
+    },
+    {
+      "code": "IE_NH_LETTER_C",
+      "label": "Irish historical letter-grade handicap C",
+      "segment": "LEGACY_UNMAPPED",
+      "jurisdictions": [
+        "IRELAND"
+      ],
+      "disciplines": [
+        "HURDLE",
+        "CHASE"
+      ],
+      "rank_within_segment": 3,
+      "provisional_strength_score": null,
+      "classification_official": false,
+      "sources": [],
+      "notes": "Preserve label; do not equate with Grade 1/2/3 or score without verified historical event mapping"
+    },
+    {
+      "code": "UNKNOWN",
+      "label": "No reliable official tier",
+      "segment": "UNCLASSIFIED",
+      "jurisdictions": [
+        "GB",
+        "IRELAND"
+      ],
+      "disciplines": [
+        "FLAT",
+        "AW",
+        "HURDLE",
+        "CHASE",
+        "NH_FLAT"
+      ],
+      "rank_within_segment": null,
+      "provisional_strength_score": null,
+      "classification_official": false,
+      "sources": [],
+      "notes": "Never substitute race type (Maiden/Novice/Handicap) for grade"
+    }
+  ],
+  "official_label_vs_model_scale": "official labels are from cited sources; ALL provisional_strength_score values are research hypotheses chosen by Hot Pots, not issued by BHA/HRI"
+}
