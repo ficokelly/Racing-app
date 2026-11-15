@@ -1,0 +1,154 @@
+name: "Stage134C - Kaggle class-aware full-field HPR v0 vs v3.1 chronological replay"
+on:
+  workflow_dispatch:
+    inputs:
+      history_start:
+        description: "Historical run-form start YYYY-MM-DD (default 2022-01-01)"
+        required: true
+        default: "2022-01-01"
+        type: string
+      start_date:
+        description: "Evaluation start, inclusive YYYY-MM-DD"
+        required: true
+        default: "2024-01-01"
+        type: string
+      end_date:
+        description: "Evaluation end, inclusive YYYY-MM-DD"
+        required: true
+        default: "2025-12-31"
+        type: string
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage134c-full-field-hpr-kaggle-class
+  cancel-in-progress: false
+jobs:
+  full-field-hpr-reconstruction:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      DB: reports/stage134/source/stage2/historical_ukie_staging.sqlite
+      REF: reports/stage134/source/stage4/all_races_with_reference_event_ids.csv
+      OUT: reports/stage134/output
+      HISTORY_START: ${{ inputs.history_start }}
+      START: ${{ inputs.start_date }}
+      END: ${{ inputs.end_date }}
+    steps:
+      - name: Checkout read-only reference code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Install Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned exact historical model dependencies
+        run: |
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 \
+            scikit-learn==1.6.1 joblib==1.4.2
+      - name: Verify target dates and Stage86/Stage132 class/weight HPR reconstruction
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from datetime import date
+          import os
+          a,b,c=(date.fromisoformat(os.environ[k]) for k in ('HISTORY_START','START','END'))
+          assert date(1988,1,1)<=a<=b<=c<date.today(),(a,b,c)
+          print('Strict historical date order:',a,b,c)
+          PY
+          python -m py_compile \
+            scripts/stage134c_full_field_hpr_replay.py \
+            scripts/stage86_hpr_engine.py \
+            scripts/stage133_class_taxonomy_hpr_replay.py \
+            scripts/stage131_class_weight_hpr.py \
+            scripts/stage108_model_g2.py
+          python - <<'PY'
+          from pathlib import Path
+          text=Path('scripts/stage134c_full_field_hpr_replay.py').read_text()
+          assert '(2,1,3,4)[i]' in text, 'Corrected fixture missing; wrong script was uploaded'
+          assert "stored_class=str(entries[0].get('race_class') or '').strip()" in text, 'Missing actual Kaggle race_class in scoring'
+          assert 'numeric_class_recovered_from_kaggle_field' in text, 'Missing recovery audit'
+          assert '(1 if i==1 else i+2)' not in text, 'Obsolete broken fixture detected'
+          print('Stage134C verified: corrected fixture and Kaggle class-aware replay are present')
+          PY
+          python scripts/stage134c_full_field_hpr_replay.py self-test
+          python scripts/stage86_hpr_engine.py --mode self-test
+      - name: Restore exact Kaggle archive and race-name reference
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage134/source/{stage2,stage4} "$OUT"
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage2-historical-staging-database --dir reports/stage134/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage4-reference-named-events-and-winners --dir reports/stage134/source/stage4
+          test -s "$DB"
+          test -s "$REF"
+          python - <<'PY'
+          import os,sqlite3
+          c=sqlite3.connect('file:'+os.path.abspath(os.environ['DB'])+'?mode=ro',uri=True)
+          assert c.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+          assert c.execute('SELECT COUNT(*) FROM historical_races').fetchone()[0]>30000
+          c.close()
+          print('Verified immutable historical archive')
+          PY
+      - name: Reconstruct both HPR versions WITH Kaggle class per exact UK and Irish race
+        run: |
+          set -euo pipefail
+          python -u scripts/stage134c_full_field_hpr_replay.py replay \
+            --history "$DB" --reference "$REF" \
+            --history-start "$HISTORY_START" --start "$START" --end "$END" --out "$OUT"
+          python - <<'PY'
+          import json,os,pathlib
+          p=pathlib.Path(os.environ['OUT'])
+          x=json.loads((p/'stage134-hpr-replay-audit.json').read_text())
+          assert x['audit']['verified_races']>1000,x
+          assert x['audit']['historical_performances_scored']>10000,x
+          # Catch the Stage134B bug: it failed to read historical_races.race_class.
+          assert x['audit'].get('numeric_class_recovered_from_kaggle_field',0)>1000,x['audit']
+          assert x['audit'].get('races_with_explicit_uk_class',0)>1000,x['audit']
+          assert x.get('no_live_updates',True) is True
+          print('Complete-field historical replay eligible races:',x['eligible_races'])
+          if x['eligible_races']<100:
+             print('WARNING: insufficient sample; no predictive improvement claim')
+          PY
+      - name: Show factual historical performance and exclusions
+        if: always()
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import pathlib,os,json
+          p=pathlib.Path(os.environ['OUT']);a=p/'stage134-hpr-replay-audit.json'
+          print('# Stage134C: Kaggle class-aware HPR v0 vs v3.1 reconstruction')
+          print('NO live racing code, HPR shards or model selections modified. Reconstructed scores are not the sparse historical persisted ledger.')
+          if a.is_file():
+            x=json.loads(a.read_text());print('## Replay status:',x['status']);print('Verified paired complete races:',x['eligible_races'])
+            print('### Exclusions and coverage')
+            for k,v in sorted(x.get('audit',{}).items()):print(f'- {k}: {v}')
+            if x.get('summary'):
+              print('## Win and SP ROI on identical complete fields')
+              print('| Period | Discipline | Race type | Races | Old wins | v3.1 wins | v3.1 today wins | Old SR | v3.1 SR | v3.1 today SR | Old ROI | v3.1 ROI | v3.1 today ROI |')
+              print('|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|')
+              for r in x['summary']:
+                if r['period']=='ALL' or (r['period'] in ('2024','2025') and r['discipline'] in ('CHASE','HURDLE')):
+                  print('| '+' | '.join(str(r[k]) for k in ('period','discipline','type','races','old_wins','new_wins','target_wins','old_strike_pct','new_strike_pct','target_strike_pct','old_roi_sp_pct','new_roi_sp_pct','target_roi_sp_pct'))+' |')
+          else:print('No result: look at failed steps. No performance is claimed.')
+          print('SP is settlement hindsight. HPR scores are not calibrated win probabilities.')
+          PY
+      - name: Upload paired selections, disciplinary comparisons and exclusions
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage134c-kaggle-class-full-field-replay-${{ github.run_id }}
+          path: |
+            reports/stage134/output/*.json
+            reports/stage134/output/*.csv
+          retention-days: 90
+          compression-level: 6
+          if-no-files-found: warn
