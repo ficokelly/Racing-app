@@ -82,6 +82,10 @@ output = {
     "runners": all_runners,
 }
 Path("data").mkdir(exist_ok=True)
+# Stage130: runpy.run_path() starts with scripts/ as sys.path[0].
+# Restore the repository root so the shared package imports.
+import sys as _rhp_stage130_sys
+_rhp_stage130_sys.path.insert(0, str(Path(__file__).resolve().parent))
 from scripts.rhp_runner_eligibility import apply_to_racecards
 apply_to_racecards(output)
 Path("data/racecards.json").write_text(json.dumps(output, indent=2), encoding="utf-8")
