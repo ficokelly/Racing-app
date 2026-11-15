@@ -1,0 +1,136 @@
+name: "Stage137 - Frozen D 8 pillars x race-type specialists x NLP quarterly 2023-25"
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage137-frozen-d-racetype-quarterly
+  cancel-in-progress: false
+jobs:
+  d-racetype-nlp-walkforward:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    env:
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      DB: reports/stage137/source/stage2/historical_ukie_staging.sqlite
+      REF: reports/stage137/source/stage4/all_races_with_reference_event_ids.csv
+      OUT: reports/stage137/research
+    steps:
+      - name: Checkout frozen D and stage136 race classifications (read-only)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Install Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned numerical and language modelling dependencies
+        run: |
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 \
+            scikit-learn==1.6.1 joblib==1.4.2
+      - name: Verify frozen eight pillars, dates, distinct race types and NLP safety
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/stage137_frozen_d_race_type_walkforward.py \
+            scripts/stage30_gap_aware_abcd.py \
+            scripts/stage108_model_g2.py \
+            scripts/stage136_race_type_strength.py \
+            scripts/race_strength_lookup.py
+          python scripts/stage137_frozen_d_race_type_walkforward.py self-test
+          python scripts/stage30_gap_aware_abcd.py --self-test
+          test -s reports/stage30/stage30-summary.json
+          test -s scripts/race_strength_reference_v1.json
+          python - <<'PY'
+          import json
+          x=json.load(open('reports/stage30/stage30-summary.json'))['model_results']['D']
+          assert x['chosen_combination']=='D-064-gap14' and abs(float(x['selection_margin'])-.14)<1e-7
+          print('Original frozen D combo verified unchanged:',x['chosen_combination'])
+          PY
+      - name: Restore exact historical races and pre-race classification evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage137/source/{stage2,stage4} "$OUT"
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage2-historical-staging-database \
+            --dir reports/stage137/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage4-reference-named-events-and-winners \
+            --dir reports/stage137/source/stage4
+          test -s "$DB" && test -s "$REF"
+          python - <<'PY'
+          import sqlite3,os
+          cx=sqlite3.connect('file:'+os.path.abspath(os.environ['DB'])+'?mode=ro',uri=True)
+          assert cx.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+          c=[x[1] for x in cx.execute('PRAGMA table_info(historical_runs)')]
+          needed={'horse_name_norm','horse_name','horse_country','horse_source_id','finish_pos',
+                  'outcome','trainer','jockey','official_rating','age','sire','dam','sp_decimal',
+                  'draw','race_comment','beaten','weight_lbs'}
+          assert needed<=set(c),sorted(needed-set(c))
+          print('Archived full historical form and comment fields verified')
+          cx.close()
+          PY
+      - name: Replay original D and learn quarterly category-specific models and NLP comments
+        run: |
+          set -euo pipefail
+          python -u scripts/stage137_frozen_d_race_type_walkforward.py walkforward \
+            --db "$DB" --reference "$REF" --out "$OUT"
+          python - <<'PY'
+          import os,pathlib,json
+          p=pathlib.Path(os.environ['OUT'])
+          r=json.loads((p/'stage137-summary.json').read_text())
+          assert r['status']=='PAPER_ONLY_FROZEN_D_RETAINED' and not r['live_models_modified'],r
+          assert len(r['evaluation_quarters'])==8 and r['2023_train_races']>=500,r
+          assert r['evaluated_races']>1000 and all(v['races']==r['evaluated_races'] for v in r['overall'].values()),r
+          print('Verified original frozen D and three quarterly challengers all assessed on',r['evaluated_races'],'identical races')
+          PY
+      - name: Publish 2024 and 2025 walk-forward SR ROI and context coverage
+        if: always()
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json,pathlib,csv,os
+          p=pathlib.Path(os.environ['OUT']);f=p/'stage137-summary.json'
+          print('# Stage137: Frozen D versus specialised race-type, NLP and 8-pillar candidates')
+          print('No live model, app or HPR store is modified. No target-race odds are model inputs.\n')
+          if not f.is_file():
+              print('Incomplete run: check prior errors. No results claimed.')
+          else:
+              a=json.loads(f.read_text());print('2023 training races:',a['2023_train_races'])
+              print('Quarterly paired races:',a['evaluated_races'])
+              print('| Model | Wins | SR | SP ROI | Capped SP ROI |')
+              print('|---|---:|---:|---:|---:|')
+              for m,r in a['overall'].items():
+                  print('|',m,'|',r['winners'],'|',r['strike_pct'],'|',r['roi_sp_pct'],'|',r['roi_sp_capped_20_1_pct'],'|')
+              q=p/'stage137-period-discipline-racetype.csv'
+              if q.is_file():
+                  for key in ('QUARTER','BROAD','BROAD_TYPE','RACE_TYPE'):
+                      print('\n###',key)
+                      print('| Model | Group | Races | Wins | SR | SP ROI | Capped ROI |')
+                      print('|---|---|---:|---:|---:|---:|---:|')
+                      with q.open() as f2:
+                          for r in csv.DictReader(f2):
+                              if r['breakdown']==key and (key!='RACE_TYPE' or ('CHASE' in r['group'] or 'HURDLE' in r['group'])):
+                                  print('|',r['model'],'|',r['group'],'|',r['races'],'|',r['winners'],'|',r['strike_pct'],'|',r['roi_sp_pct'],'|',r['roi_sp_capped_20_1_pct'],'|')
+              print('\nNLP is an online, fitted word/bigram regression model, not an LLM. During each test quarter its parameters stay frozen.')
+              print('Grades with insufficient examples use a parent-category model; they are not claimed to be separately trained.')
+              print('**Bias warning:** historical frozen D weights were selected using 2024 outcomes; the 2024 frozen comparator is not an untouched baseline.')
+          PY
+      - name: Upload full selections, quarterly diagnostics and pillar-weight combinations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage137-frozen-d-specialist-nlp-${{ github.run_id }}
+          path: |
+            reports/stage137/research/*.json
+            reports/stage137/research/*.csv
+            reports/stage137/research/*.csv.gz
+          retention-days: 90
+          compression-level: 6
+          if-no-files-found: warn
