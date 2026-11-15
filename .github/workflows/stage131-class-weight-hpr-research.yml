@@ -1,0 +1,167 @@
+name: "Stage131 - Class, weight and opposition strength: G4 challenger + HPR v3"
+on:
+  workflow_dispatch:
+    inputs:
+      run_scope:
+        description: "Run full HPR recalibration, historical G4 challenger, or both"
+        required: true
+        default: both
+        type: choice
+        options:
+          - both
+          - hpr-only
+          - g4-only
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage131-class-weight-hpr-research
+  cancel-in-progress: false
+jobs:
+  class-weight-research:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PYTHONUNBUFFERED: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      STAGE131_MODE: ${{ inputs.run_scope }}
+      DB: reports/stage131/source/stage2/historical_ukie_staging.sqlite
+      REF: reports/stage131/source/stage4/all_races_with_reference_event_ids.csv
+      G3: reports/stage131/source/g3/stage109-all-horses-historical.csv.gz
+      G4: reports/stage131/source/g4/stage111-ranked1-and2.csv.gz
+      OUT: reports/stage131/output
+    steps:
+      - name: Checkout existing, unchanged Racing Hot Pots code and HPR shards
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install pinned historical model dependencies
+        run: |
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 \
+            scikit-learn==1.6.1 joblib==1.4.2
+      - name: Verify class/weight HPR chronology, version isolation, and synthetic tests
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/stage131_class_weight_hpr.py
+          python scripts/stage131_class_weight_hpr.py self-test
+          test -s data/hpr/shards/manifest.json
+          python scripts/stage87_hpr_storage.py self-test
+          python scripts/stage111_model_g4.py self-test
+      - name: Rebuild all known historical HPR events into NEW versioned research database
+        if: inputs.run_scope == 'both' || inputs.run_scope == 'hpr-only'
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage131/source/hpr "$OUT"
+          python scripts/stage87_hpr_storage.py restore \
+            --dir data/hpr/shards \
+            --db reports/stage131/source/hpr/hpr-original.sqlite
+          python -u scripts/stage131_class_weight_hpr.py rebuild-hpr \
+            --store reports/stage131/source/hpr/hpr-original.sqlite \
+            --daily-dir data/hpr/daily \
+            --out-dir "$OUT"
+          python - <<'PY'
+          import json,os,sqlite3,pathlib
+          p=pathlib.Path(os.environ['OUT'])
+          a=json.loads((p/'stage131-hpr-recalibration-audit.json').read_text())
+          assert a['new_events']==a['original_events']>10000,a
+          db=sqlite3.connect(p/'hpr-v3-class-weight-research.sqlite')
+          assert db.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+          assert db.execute('SELECT COUNT(DISTINCT model_version) FROM hpr_ratings').fetchone()[0]==1
+          db.close()
+          print('ALL HPR EVENTS REBUILT INTO SEPARATE v3 VERSION:',a['new_events'])
+          print('MISSING CLASS:',a['coverage'].get('class_unknown'))
+          print('DAILY SOURCES RECONCILED:',a['daily_merge'])
+          PY
+      - name: Restore identical historical DB, verified named race mapping and G3 decisions
+        if: inputs.run_scope == 'both' || inputs.run_scope == 'g4-only'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage131/source/{stage2,stage4,g3,g4}
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage2-historical-staging-database --dir reports/stage131/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage4-reference-named-events-and-winners --dir reports/stage131/source/stage4
+          gh run download 43407036838 --repo "$GITHUB_REPOSITORY" \
+            --name stage109-g3-learning-43407036838 --dir reports/stage131/source/g3
+          G4_RUN=$(gh run list --repo "$GITHUB_REPOSITORY" \
+            --workflow stage111-g4-specialists.yml --status success --limit 10 \
+            --json databaseId --jq '.[0].databaseId')
+          if test -z "$G4_RUN" || test "$G4_RUN" = null; then
+            echo 'No successful original G4 historical research run' >&2
+            exit 1
+          fi
+          gh run download "$G4_RUN" --repo "$GITHUB_REPOSITORY" \
+            --name "stage111-g4-specialists-${G4_RUN}" --dir reports/stage131/source/g4
+          for f in "$DB" "$REF" "$G3" "$G4"; do
+            test -s "$f" || { echo "MISSING FROZEN REFERENCE: $f" >&2; exit 1; }
+          done
+          echo "Original G4 baseline run: $G4_RUN"
+      - name: Train G4 class and weight challenger on identical chronological splits
+        if: inputs.run_scope == 'both' || inputs.run_scope == 'g4-only'
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT"
+          python -u scripts/stage131_class_weight_hpr.py historical-g4 \
+            --db "$DB" --reference "$REF" --g3-baseline "$G3" \
+            --g4-baseline "$G4" --out-dir "$OUT"
+          python - <<'PY'
+          import os,json,pathlib,pandas as pd
+          p=pathlib.Path(os.environ['OUT'])
+          a=json.loads((p/'stage131-g4-audit.json').read_text())
+          assert a['paired_rows']>1000,a
+          s=pd.read_csv(p/'stage131-g4-by-discipline-racetype.csv')
+          assert (s['race_type']=='Handicap').any()
+          assert (s['race_type']=='Non-handicap').any()
+          print('TRUE PAIRED G4 SPECIALIST + BLENDED OUT-OF-TIME COMPARISONS')
+          print(s.to_string(index=False))
+          PY
+      - name: Show research coverage and paired handicap metrics
+        if: always()
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import pathlib,json,csv,os
+          out=pathlib.Path(os.environ['OUT'])
+          print('# Stage131 research — class, weight and opposition strength')
+          print('Frozen G4/HPR records and the live app were not modified.')
+          a=out/'stage131-hpr-recalibration-audit.json'
+          if a.exists():
+            d=json.loads(a.read_text())
+            print('## HPR v3 — completed archived recalibration')
+            print('Distinct assessed runs:',d['new_events'])
+            print('Missing historical race class:',d['coverage'].get('class_unknown',0))
+            print('Missing opponent rating:',d['coverage'].get('opponent_rating_unknown',0))
+            print('Merged daily snapshots:',d['daily_merge'])
+          else:print('HPR rebuild not requested or not completed.')
+          m=out/'stage131-g4-by-discipline-racetype.csv'
+          if m.exists():
+            print('## Paired original G4 versus challenger — same races')
+            print('| Period | G4 variant | Discipline | Type | Races | Old wins | New wins | Old strike | New strike | Old SP ROI | New SP ROI |')
+            print('|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|')
+            for r in csv.DictReader(m.open()):
+              print('| '+' | '.join(str(r.get(k,'')) for k in ('period','model','discipline','race_type','paired_races','original_wins','new_wins','original_strike_pct','new_strike_pct','original_roi_sp_pct','new_roi_sp_pct'))+' |')
+          else:print('G4 historical backtest not requested or not completed.')
+          print('\nThis run is research, not live selection promotion. All ROI uses SP hindsight.')
+          PY
+      - name: Preserve full audit, G4 selections, and versioned HPR SQLite artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage131-class-weight-hpr-${{ github.run_id }}
+          path: |
+            reports/stage131/output/*.json
+            reports/stage131/output/*.csv
+            reports/stage131/output/*.csv.gz
+            reports/stage131/output/*.joblib
+            reports/stage131/output/*.sqlite
+          retention-days: 90
+          compression-level: 6
+          if-no-files-found: warn
