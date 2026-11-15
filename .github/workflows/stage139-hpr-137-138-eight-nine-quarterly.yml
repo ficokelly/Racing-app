@@ -1,0 +1,166 @@
+name: 'Stage139 - HPR v3.1 full-history in Ability or Pillar 9 (D137 / D138 quarterly)'
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage139-hpr-137-138-ability-ninth
+  cancel-in-progress: false
+jobs:
+  research-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    env:
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      DB: reports/stage139/source/stage2/historical_ukie_staging.sqlite
+      REF: reports/stage139/source/stage4/all_races_with_reference_event_ids.csv
+      ARCHIVE137: reports/stage139/source/stage137/stage137-quarterly-predictions.csv.gz
+      ARCHIVE138: reports/stage139/source/stage138/stage138-full-quarters-rank1-rank2.csv.gz
+      OUT: reports/stage139/research
+    steps:
+      - name: Checkout unchanged original D and research scripts
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned numerical and machine-learning packages
+        run: |
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 \
+            scikit-learn==1.6.1 joblib==1.4.2
+      - name: Check HPR-v3.1 original formula, candidate pipeline, and self tests
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/stage139_hpr_137_138_walkforward.py \
+            scripts/stage137_frozen_d_race_type_walkforward.py \
+            scripts/stage138_integrated_eight_pillars.py \
+            scripts/stage134c_full_field_hpr_replay.py \
+            scripts/stage86_hpr_engine.py \
+            scripts/stage131_class_weight_hpr.py \
+            scripts/stage133_class_taxonomy_hpr_replay.py
+          python scripts/stage139_hpr_137_138_walkforward.py self-test
+          python scripts/stage134c_full_field_hpr_replay.py self-test
+          python scripts/stage137_frozen_d_race_type_walkforward.py self-test
+          python scripts/stage138_integrated_eight_pillars.py self-test
+          test -s reports/stage30/stage30-summary.json
+      - name: Restore full archive including 1988-era results and immutable comparisons
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage139/source/{stage2,stage4,stage137,stage138} "$OUT"
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage2-historical-staging-database \
+            --dir reports/stage139/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage4-reference-named-events-and-winners \
+            --dir reports/stage139/source/stage4
+          gh run download 43756586012 --repo "$GITHUB_REPOSITORY" \
+            --name stage137-frozen-d-specialist-nlp-43756586012 \
+            --dir reports/stage139/source/stage137
+          gh run download 43765966699 --repo "$GITHUB_REPOSITORY" \
+            --name stage138-integrated-eight-pillars-43765966699 \
+            --dir reports/stage139/source/stage138
+          test -s "$DB" && test -s "$REF" && test -s "$ARCHIVE137" && test -s "$ARCHIVE138"
+          python - <<'PY'
+          import sqlite3,os,csv,pandas as pd
+          cx=sqlite3.connect('file:'+os.path.abspath(os.environ['DB'])+'?mode=ro',uri=True)
+          try:
+            assert cx.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+            oldest=cx.execute("SELECT MIN(race_date) FROM historical_races WHERE race_date<='2025-12-31'").fetchone()[0]
+            years=dict(cx.execute("SELECT substr(race_date,1,4),COUNT(*) FROM historical_races WHERE race_date<='2025-12-31' GROUP BY substr(race_date,1,4)"))
+            assert oldest<='1990-12-31' and len(years)>=30,(oldest,len(years))
+            print('Full historical archive earliest',oldest,'years',len(years),'races',sum(years.values()))
+          finally:cx.close()
+          known_years=set()
+          with open(os.environ['REF'],encoding='utf-8-sig') as f:
+            for r in csv.DictReader(f):
+              if r['region_scope'] in ('GB','IRELAND'):
+                known_years.add(r['date'][:4])
+          assert '2023' in known_years and '2025' in known_years and any(int(y)<2000 for y in known_years),sorted(known_years)[:10]
+          print('Verified archival exact race references exist before 2000')
+          a=pd.read_csv(os.environ['ARCHIVE137'],compression='gzip',usecols=['model','race_id'])
+          b=pd.read_csv(os.environ['ARCHIVE138'],compression='gzip',usecols=['model','race_id'])
+          assert len(a[a.model=='FROZEN_D'])==25509
+          assert len(b[b.model=='FROZEN_D'])==25509
+          print('Exact 25,509-race paired immutable parent comparisons present')
+          PY
+      - name: Rebuild HPR from ALL available earlier runs and quarterly-test all four arms
+        run: |
+          set -euo pipefail
+          python -u scripts/stage139_hpr_137_138_walkforward.py walkforward \
+            --db "$DB" --reference "$REF" \
+            --stage137 "$ARCHIVE137" --stage138 "$ARCHIVE138" --out "$OUT"
+          python - <<'PY'
+          import json,os,pathlib
+          out=pathlib.Path(os.environ['OUT'])
+          x=json.loads((out/'stage139-summary.json').read_text())
+          assert x['status']=='PAPER_ONLY_FROZEN_PARENTS_UNCHANGED'
+          assert len(x['models'])==7 and len(x['evaluation_quarters'])==8
+          assert x['matched_races']==25509 and not x['live_models_modified']
+          assert x['HPR_previous_calendar_dates_only']
+          h=x['hpr_reconstruction_audit']
+          assert h['history_start']<='1990-12-31'
+          assert h['unbounded_previous_runs_per_target_horse']
+          assert h['counts']['rated_preoff_runner_rows']>50000
+          assert all(z['races']==25509 for z in x['yearly_overall'].values())
+          for f in ('stage139-all-7-models-rank1-rank2.csv.gz',
+                    'stage139-period-racetype-results.csv',
+                    'stage139-hpr-source-audit.json'):
+            assert (out/f).stat().st_size>1000,f
+          print('PASS Stage139: seven identical historical model cohorts, full available older form, zero live writes')
+          PY
+      - name: Publish strike rate SP ROI and historic HPR coverage
+        if: always()
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json,os,pathlib,csv
+          out=pathlib.Path(os.environ['OUT'])
+          print('# Stage139: HPR v3.1 inside Ability versus a ninth pillar')
+          print('**Research only — original D, Stage137, Stage138 and all production files unchanged.**')
+          f=out/'stage139-summary.json'
+          if not f.exists():print('Incomplete; check previous failed step.');raise SystemExit(0)
+          x=json.loads(f.read_text());h=x['hpr_reconstruction_audit']
+          print('Full archive begins:',h['history_start'])
+          print('HPR prior-run rows rated:',h['counts']['rated_preoff_runner_rows'])
+          print('HPR prior-run unknown:',h['counts']['no_usable_prior_same_code'])
+          print('Same matched races per model:',x['matched_races'])
+          print('| Model | Winners | Strike rate | SP ROI | Capped 20/1 SP ROI | Rank 1 or 2 winners |')
+          print('|---|---:|---:|---:|---:|---:|')
+          for name,r in x['yearly_overall'].items():
+            print('|',name,'|',r['rank1_winners'],'|',r['rank1_strike_pct'],'|',r['sp_roi_pct'],'|',r['sp_capped20to1_roi_pct'],'|',r['rank1_or_2_winners'],'|')
+          p=out/'stage139-period-racetype-results.csv'
+          if p.exists():
+            with p.open() as f:
+              rows=list(csv.DictReader(f))
+            for label in ('QUARTER','BROAD','DISCIPLINE'):
+              print('\n##',label)
+              print('| Model | Group | Races | Wins | SR | SP ROI |')
+              print('|---|---|---:|---:|---:|---:|')
+              for r in rows:
+                if r['breakdown']==label:
+                  print('|',r['model'],'|',r['group'],'|',r['races'],'|',r['rank1_winners'],'|',r['rank1_strike_pct'],'|',r['sp_roi_pct'],'|')
+          print('\nUnknown prior HPR is neutral, not zero. Earliest available archived date is not proof that each horse has a complete career history.')
+          print('HPR v3.1 requires same-code previous runs; historical family form cannot be a substitute for HPR unless explicitly tested as a different formula.')
+          print('Historical SP ROI is a hindsight benchmark, not an executable bookmaker price.')
+          PY
+      - name: Upload full selections, quarterly weights, HPR coverage and comparison audits
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage139-hpr-137-138-${{ github.run_id }}
+          path: |
+            reports/stage139/research/*.json
+            reports/stage139/research/*.csv
+            reports/stage139/research/*.csv.gz
+            reports/stage139/research/*.sqlite
+          retention-days: 90
+          compression-level: 6
+          if-no-files-found: warn
