@@ -1,0 +1,335 @@
+name: "Stage132 - E 75/25 without HPR: today's NH handicaps (pre-off paper)"
+
+on:
+  push:
+    paths:
+      - '.github/workflows/stage132-e75-nh-handicaps.yml'
+  workflow_dispatch:
+    inputs:
+      selection_date:
+        description: 'Today in Ireland, YYYY-MM-DD (leave blank for today); no backdating'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage132-e75-preoff-nh-handicaps
+  cancel-in-progress: false
+
+jobs:
+  handicap-paper:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - name: Checkout unchanged live Hot Pots app
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Freeze target racing date and refuse historical reruns
+        env:
+          REQUESTED_DATE: ${{ github.event.inputs.selection_date || '' }}
+        run: |
+          set -euo pipefail
+          TODAY=$(date -u +%F)
+          TARGET="${REQUESTED_DATE:-$TODAY}"
+          if [ "$TARGET" != "$TODAY" ]; then
+            echo 'Only same-day, pre-off paper selections are permitted; no backdated live selections.' >&2
+            exit 1
+          fi
+          echo "E75_TARGET_DATE=$TARGET" >> "$GITHUB_ENV"
+          echo "E75_START_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Install pinned Stage98 Python dependencies
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1 \
+            kagglehub joblib beautifulsoup4
+
+      - name: Check today's card before constructing historical model state
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, datetime as dt, pathlib
+          card=json.loads(pathlib.Path('data/racecards.json').read_text())
+          timestamp=dt.datetime.fromisoformat(card['collected_at'].replace('Z','+00:00'))
+          assert timestamp.tzinfo and timestamp.date().isoformat()==os.environ['E75_TARGET_DATE'], 'Wrong racing date'
+          now=dt.datetime.now(dt.timezone.utc)
+          assert dt.timedelta(0)<=now-timestamp<dt.timedelta(hours=8), 'Racecards too old: refresh and rerun'
+          runners=[r for r in card.get('runners',[]) if r.get('date')==os.environ['E75_TARGET_DATE']]
+          assert len(runners)>=50, 'Incomplete today card'
+          print('Racecard snapshot:', timestamp.isoformat(),'runners:',len(runners))
+          PY
+
+      - name: Load frozen September Stage97-98 E model reference
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage132/reference
+          gh run download 42944089042 --repo "$GITHUB_REPOSITORY" \
+            --name stage98-verified-recovery-v5-42944089042 \
+            --dir reports/stage132/reference
+          test -s reports/stage132/reference/stage98-blind-manifest.json
+          test -s reports/stage132/reference/stage98-optimal-profiles-by-race-type.csv
+
+      - name: Generate exact original E75 no-HPR scorer from sealed Stage99 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage132
+          python - <<'PY'
+          from pathlib import Path
+          src=Path('.github/workflows/stage99-today-original-dc-vs-e-balanced.yml').read_text()
+          start="cat > reports/stage99/stage99_today_research.py <<'STAGE99_PY'\n"
+          stop='\n          STAGE99_PY'
+          assert src.count(start)==1
+          tail=src.split(start,1)[1]
+          assert stop in tail
+          raw=tail.split(stop,1)[0]
+          script='\n'.join(line[10:] if line.startswith('          ') else line for line in raw.split('\n'))+'\n'
+          def patch(old,new):
+              global script
+              hits=script.count(old)
+              if hits!=1:raise RuntimeError('Source drift; expected one match, found '+str(hits)+' for '+old[:90])
+              script=script.replace(old,new)
+          patch('import collections,csv,datetime as dt,hashlib,json,pathlib,sqlite3,statistics,sys',
+                'import collections,csv,datetime as dt,hashlib,json,os,pathlib,sqlite3,statistics,sys')
+          patch("TARGET='2026-11-11'", "TARGET=os.environ['E75_TARGET_DATE']")
+          patch("'racecard_sha256']", "'racecard_sha256','decision_utc']")
+          patch("raise RuntimeError('Racecards are not dated 11 November 2026: '+str(when))",
+                "raise RuntimeError('Racecards not dated '+TARGET+': '+str(when))")
+          patch("    # Stage97 used a same-day 09:45 UTC archive cutoff. Preserve that boundary.\n"
+                "    if when.time()>dt.time(9,45):\n"
+                "        raise RuntimeError('Racecards were collected after Stage97 09:45 UTC preoff cutoff; stop rather than silently change test protocol')",
+                "    now=dt.datetime.now(dt.timezone.utc)\n"
+                "    if when>now+dt.timedelta(minutes=1) or now-when>dt.timedelta(hours=8):\n"
+                "        raise RuntimeError('Racecard snapshot is future-dated or over eight hours old')")
+          patch("    groups,rejected=S97.model_groups(TARGET,cards)\n"
+                "    return groups,rejected,{'collected_at':obj['collected_at'],'sha256':hashlib.sha256(raw).hexdigest(),\n"
+                "                            'total_today_card_runners':len(cards),'nh_groups':len(groups)}",
+                "    groups,rejected=S97.model_groups(TARGET,cards)\n"
+                "    eligible=[];excluded=collections.Counter();threshold=dt.datetime.now(dt.timezone.utc)+dt.timedelta(minutes=5)\n"
+                "    for key,field in groups:\n"
+                "        first=field[0];name=str(first.get('race_name') or '')\n"
+                "        cat=S94.race_cat(first)\n"
+                "        if 'handicap' not in name.lower() and 'handicap' not in cat.lower():\n"
+                "            excluded['NON_HANDICAP']+=1;continue\n"
+                "        if S97.code(first.get('type') or first.get('race_type') or name) not in ('HURDLE','CHASE'):\n"
+                "            excluded['NON_HURDLE_OR_CHASE']+=1;continue\n"
+                "        try:\n"
+                "            off=dt.datetime.fromisoformat(str(first.get('race_time')).replace('Z','+00:00'))\n"
+                "            if off.tzinfo is None:raise ValueError('Naive off time')\n"
+                "            off=off.astimezone(dt.timezone.utc)\n"
+                "        except (ValueError,TypeError):\n"
+                "            excluded['INVALID_OFF_TIME']+=1;continue\n"
+                "        if off<=threshold:\n"
+                "            excluded['OFF_OR_IMMINENT']+=1;continue\n"
+                "        eligible.append((key,field))\n"
+                "    return eligible,rejected,{'collected_at':obj['collected_at'],'sha256':hashlib.sha256(raw).hexdigest(),\n"
+                "            'total_today_card_runners':len(cards),'nh_groups':len(groups),\n"
+                "            'eligible_future_nh_handicaps':len(eligible),'excluded':dict(excluded)}")
+          patch("            # The Sept 30 information boundary forbids October/November form strings.\n"
+                "            field=[{**r,'form':''} for r in original_field]",
+                "            # Never score races that passed while restoring historical state.\n"
+                "            try:\n"
+                "                off=dt.datetime.fromisoformat(str(original_field[0].get('race_time')).replace('Z','+00:00'))\n"
+                "                if off.tzinfo is None:raise ValueError('Missing off timezone')\n"
+                "                if off.astimezone(dt.timezone.utc)<=dt.datetime.now(dt.timezone.utc)+dt.timedelta(minutes=5):\n"
+                "                    missing['OFF_DURING_MODEL_SETUP']+=1;continue\n"
+                "            except (ValueError,TypeError):\n"
+                "                missing['INVALID_OFF_TIME']+=1;continue\n"
+                "            field=[{**r,'form':''} for r in original_field]")
+          patch('                e_pick=fit_profile(race,selected)',
+                "                e_pick={'selected_candidate':S98.baseline_ids()[S98.MODEL_E],\n"
+                "                        'fit_group':'ORIGINAL_STAGE97_FIXED_E75_NO_HPR'}\n"
+                "                assert e_pick['selected_candidate']=='E__people_heavy__D65__C25'")
+          patch('    rank1=[z for z in output if z[\'rank\']==1]',
+                "    # Only publish selections for races still in the future at CSV creation time.\n"
+                "    published=dt.datetime.now(dt.timezone.utc)\n"
+                "    def remaining(row):\n"
+                "        off=dt.datetime.fromisoformat(row['date']+'T'+row['off_utc']+':00+00:00')\n"
+                "        return off>published+dt.timedelta(minutes=2)\n"
+                "    output=[r for r in output if remaining(r)]\n"
+                "    for row in output:row['decision_utc']=published.isoformat()\n"
+                "    races=len({(r['date'],r['course'],r['off_utc']) for r in output\n"
+                "              if r['model']=='E_75_25_NO_HPR' and r['rank']==1})\n"
+                "    rank1=[z for z in output if z['rank']==1]")
+          patch('if races<12:raise RuntimeError(f\'Only {races} of {card_meta["nh_groups"]} NH races scored; investigate: {dict(missing)}\')',
+                "if races<1:raise RuntimeError(f'No future NH handicaps remain: {dict(missing)} {card_meta}')")
+          patch("'stage98_optimized_training_through':'2026-11-05'",
+                "'original_e_training_cutoff':'2026-09-30'")
+          patch("'model_e_method':'Stage98 BALANCED by exact race type with fallback'",
+                "'model_e_method':'Unchanged Stage97 E 75/25 without HPR E__people_heavy__D65__C25'")
+          patch("'no_result_data_read_by_scorer':True",
+                "'selection_written_utc':published.isoformat(),'no_result_data_read_by_scorer':True")
+          script=script.replace('E_BALANCED_OPTIMISED','E_75_25_NO_HPR')
+          script=script.replace('e_balanced_rank1','e75_no_hpr_rank1')
+          script=script.replace('stage99-11nov-','stage132-e75-')
+          script=script.replace('stage99/','stage132/')
+          script=script.replace("'Stage99: score 11 Nov", "'Stage132: score today")
+          Path('reports/stage132/stage132_e75_paper.py').write_text(script)
+          print('Preoff scorer generated:',len(script),'characters')
+          PY
+          python -m py_compile reports/stage132/stage132_e75_paper.py
+          python -u reports/stage132/stage132_e75_paper.py --mode self-test \
+            --reference reports/stage132/reference
+
+      - name: Restore frozen Kaggle database import cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            reports/stage94/base/original.sqlite
+            reports/stage68/base/c_classifier_2024_stage81_v1.joblib
+            ~/.cache/kagglehub
+          key: stage94-dc-replay-base-v1-${{ hashFiles('import_historical_ukie.py') }}
+          restore-keys: |
+            stage94-dc-replay-base-v1-
+            rhp-dc-stage81-v1-
+
+      - name: Restore Stage97 historical source (never touch live DB)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pathlib,subprocess,sys,kagglehub,sqlite3,shutil
+          path=pathlib.Path(kagglehub.dataset_download(
+              'deltaromeo/horse-racing-results-ukireland-2015-2025/versions/129'))
+          assert path.is_dir() and list(path.rglob('*.csv'))
+          base=pathlib.Path('reports/stage94/base/original.sqlite')
+          base.parent.mkdir(parents=True,exist_ok=True)
+          dest=pathlib.Path('reports/stage132/base')
+          dest.mkdir(parents=True,exist_ok=True)
+          (dest/'kaggle-path.txt').write_text(str(path))
+          if not base.is_file() or base.stat().st_size<1_000_000:
+              subprocess.run([sys.executable,'import_historical_ukie.py','--mode','import',
+                '--input',str(path),'--min-date','1988-01-01','--max-date','2026-10-07',
+                '--database',str(base),'--report',str(base.parent/'import.json')],check=True)
+          with sqlite3.connect('file:'+str(base.resolve())+'?mode=ro',uri=True) as db:
+              assert db.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+              assert db.execute('SELECT COUNT(*) FROM historical_races').fetchone()[0]>100000
+          shutil.copyfile(base,dest/'original.sqlite')
+          PY
+
+      - name: Build same Stage98 race metadata and frozen classifier
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/stage65m_backfill.py \
+            --baseline reports/stage132/base/original.sqlite \
+            --out reports/stage132/base --max-date 2026-11-09 \
+            --keep-candidate --skip-replay
+          python -u scripts/stage65p_enrich_race_details.py \
+            --db reports/stage132/base/backfilled_research_only.sqlite \
+            --source "$(cat reports/stage132/base/kaggle-path.txt)" \
+            --out reports/stage132/enrichment
+          python - <<'PY'
+          import hashlib,sqlite3,pathlib
+          from scripts.rhp_stage83_dc_integrated import integrate
+          p='data/rhp-stage81-ukie-2021plus-hashes.csv.gz'
+          with open(p,'rb') as fp:sha=hashlib.file_digest(fp,'sha256').hexdigest()
+          assert sha=='b028ec32d2bae1d34331cda150d545b7441c9e45aa4ddb27b5ce450562288cbe'
+          integrate('reports/stage132/base/backfilled_research_only.sqlite',p,'reports/stage132/integration')
+          p=pathlib.Path('reports/stage132/empty-hpr.sqlite')
+          with sqlite3.connect(p) as db:db.execute('CREATE TABLE IF NOT EXISTS hpr_ratings (race_date TEXT)')
+          PY
+
+      - name: Physically embargo all results from October 2026 onwards
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import sqlite3
+          path='reports/stage132/base/backfilled_research_only.sqlite'
+          with sqlite3.connect(path) as db:
+              db.execute('DELETE FROM historical_runs WHERE race_id IN (SELECT id FROM historical_races WHERE race_date>=?)',('2026-10-01',))
+              db.execute('DELETE FROM historical_races WHERE race_date>=?',('2026-10-01',))
+              db.commit()
+              assert db.execute('SELECT COUNT(*) FROM historical_races WHERE race_date>=?',('2026-10-01',)).fetchone()[0]==0
+              assert db.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+          PY
+          mkdir -p reports/stage132/sealed
+          if [ -d data/racing-results ]; then mv data/racing-results reports/stage132/sealed/racing-results; fi
+          if [ -f data/race-results.json ]; then mv data/race-results.json reports/stage132/sealed/race-results.json; fi
+          test ! -e data/racing-results
+          test ! -e data/race-results.json
+
+      - name: Select all still-unrun National Hunt handicaps (Rank 1 and 2)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u reports/stage132/stage132_e75_paper.py --mode predict \
+            --root . \
+            --db reports/stage132/base/backfilled_research_only.sqlite \
+            --ratings reports/stage132/empty-hpr.sqlite \
+            --reference reports/stage132/reference \
+            --out reports/stage132/output
+          python - <<'PY'
+          import csv,datetime as dt,json,pathlib
+          root=pathlib.Path('reports/stage132/output')
+          audit=json.loads((root/'stage132-e75-summary.json').read_text())
+          rows=list(csv.DictReader((root/'stage132-e75-all-rank1-rank2.csv').open()))
+          e=[r for r in rows if r['model']=='E_75_25_NO_HPR']
+          assert audit['preoff_races_scored']>0
+          assert len(rows)==4*audit['preoff_races_scored']
+          assert len(e)==2*audit['preoff_races_scored']
+          for r in rows:
+              off=dt.datetime.fromisoformat(r['date']+'T'+r['off_utc']+':00+00:00')
+              chosen=dt.datetime.fromisoformat(r['decision_utc'])
+              assert off>chosen, 'Do not publish an after-off pick'
+          with (root/'stage132-e75-rank1-rank2.csv').open('w',newline='') as fp:
+              writer=csv.DictWriter(fp,fieldnames=list(e[0]))
+              writer.writeheader();writer.writerows(e)
+          ranked={}
+          for r in e:
+              key=(r['date'],r['off_utc'],r['course'])
+              ranked.setdefault(key,{})[int(r['rank'])]=r
+          lines=['# E 75/25 without HPR — genuine pre-off National Hunt handicap paper selections',
+                 '',f"**Race date:** {audit['for_date']}  ",
+                 f"**Pre-off races:** {audit['preoff_races_scored']}  ",
+                 f"**Selection saved:** {audit['selection_written_utc']} UTC  ",
+                 '', '| Time (UTC) | Meeting | Race type | Rank 1 | Rank 2 |',
+                 '|---|---|---|---|---|']
+          for date,off,course in sorted(ranked):
+              a=ranked[(date,off,course)]
+              if 1 not in a or 2 not in a:continue
+              lines.append(f"| {off} | {course} | {a[1]['race_type']} | {a[1]['horse']} | {a[2]['horse']} |")
+          lines+=['','**Paper only.** The model sees no current odds and no HPR. Historical results are frozen at 30 September 2026; racecards after an off are never included. No betting execution is implied.']
+          (root/'README.md').write_text('\n'.join(lines)+'\n')
+          print('\n'.join(lines))
+          PY
+
+      - name: Display today's Rank 1 and Rank 2 picks in the run summary
+        if: always()
+        run: |
+          if test -s reports/stage132/output/README.md; then
+            cat reports/stage132/output/README.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'No confirmed pre-off E75 handicap selections were produced. Check logs; do not backdate picks.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload E75 and comparator selections with reproducibility audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage132-e75-nh-handicaps-${{ github.run_id }}
+          path: |
+            reports/stage132/output/README.md
+            reports/stage132/output/stage132-e75-summary.json
+            reports/stage132/output/stage132-e75-rank1-rank2.csv
+            reports/stage132/output/stage132-e75-all-rank1-rank2.csv
+            reports/stage132/output/stage132-e75-side-by-side.csv
+          if-no-files-found: warn
+          retention-days: 90
