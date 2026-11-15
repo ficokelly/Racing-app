@@ -1,0 +1,144 @@
+name: "Stage133 - Kaggle race name/type/class audit + strict HPR v0 vs v3.1 replay"
+on:
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: "Historical evaluation START, inclusive YYYY-MM-DD"
+        required: false
+        default: "2024-01-01"
+        type: string
+      end_date:
+        description: "Historical evaluation END, inclusive YYYY-MM-DD"
+        required: false
+        default: "2025-12-31"
+        type: string
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage133-class-and-hpr-evaluation
+  cancel-in-progress: false
+jobs:
+  class-and-hpr-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      PYTHONUNBUFFERED: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      HISTORY: reports/stage133/source/stage2/historical_ukie_staging.sqlite
+      REF: reports/stage133/source/stage4/all_races_with_reference_event_ids.csv
+      HPR: reports/stage133/source/hpr/stage132-hpr-v3_1-research.sqlite
+      OUT: reports/stage133/result
+      START: ${{ inputs.start_date }}
+      END: ${{ inputs.end_date }}
+    steps:
+      - name: Checkout research code only
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Install Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install G2 dependency versions for historical exact ID reference
+        run: |
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 \
+            scikit-learn==1.6.1 joblib==1.4.2
+      - name: Verify parsing, identities and chronology rules
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/stage133_class_taxonomy_hpr_replay.py
+          python scripts/stage133_class_taxonomy_hpr_replay.py self-test
+          python - <<'PY'
+          import datetime as dt,os
+          s=dt.date.fromisoformat(os.environ['START'])
+          e=dt.date.fromisoformat(os.environ['END'])
+          assert dt.date(2016,1,1)<=s<=e<dt.date(2026,11,15),(s,e)
+          print('Historical dates verified:',s,e)
+          PY
+      - name: Restore original Kaggle-derived archive and EXACT named-race reference
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage133/source/{stage2,stage4,hpr} "$OUT"
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage2-historical-staging-database --dir reports/stage133/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage4-reference-named-events-and-winners --dir reports/stage133/source/stage4
+          test -s "$HISTORY" && test -s "$REF"
+      - name: Restore PREVIOUS completed Stage132 HPR v3.1 (read-only)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run download 43713278308 --repo "$GITHUB_REPOSITORY" \
+            --name stage132-exact-class-hpr-g4-43713278308 \
+            --dir reports/stage133/source/hpr
+          test -s "$HPR"
+          python - <<'PY'
+          import sqlite3,os
+          db=sqlite3.connect('file:'+os.path.abspath(os.environ['HPR'])+'?mode=ro',uri=True)
+          assert db.execute('pragma quick_check').fetchone()[0]=='ok'
+          n=db.execute('select count(*) from hpr_ratings').fetchone()[0]
+          assert n>100000,n
+          print('Original HPR v3.1 events:',n)
+          db.close()
+          PY
+      - name: Audit Kaggle race title for race type and jurisdiction-aware class
+        run: |
+          set -euo pipefail
+          python -u scripts/stage133_class_taxonomy_hpr_replay.py audit \
+            --hpr "$HPR" --history "$HISTORY" --reference "$REF" --out "$OUT"
+      - name: Chronological HPR v0 vs v3.1 exact-field head-to-head
+        run: |
+          set -euo pipefail
+          python -u scripts/stage133_class_taxonomy_hpr_replay.py replay \
+            --hpr "$HPR" --history "$HISTORY" --reference "$REF" \
+            --out "$OUT" --start "$START" --end "$END"
+          test -s "$OUT/stage133-hpr-paired-audit.json"
+      - name: Put coverage and verified results into job summary
+        if: always()
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json,os,pathlib
+          out=pathlib.Path(os.environ['OUT'])
+          print('# Stage133 — race name / country / class, and chronological HPR v0-v3.1 comparison')
+          print('Only official Class 1–6, Grade/Group, Listed or rated handicap band stated in a real source are labelled; no inferred official class.')
+          a=out/'stage133-audit-summary.json'
+          if a.exists():
+              x=json.loads(a.read_text())
+              print('## Historical source jurisdiction split')
+              print('British race count:',x['archive'].get('GB_races',0))
+              print('Irish race count:',x['archive'].get('IRELAND_races',0))
+              print('Irish HPR missing British class but not applicable:',x['hpr'].get('original_unknown_irish_nonapplicable',0))
+              print('Historic class/type audit CSV attached to this run.')
+          else:print('Classification audit missing/failed; check logs.')
+          r=out/'stage133-hpr-paired-audit.json'
+          if r.exists():
+              y=json.loads(r.read_text())
+              print('## HPR replay status:',y.get('status'))
+              print('Strict full-field eligible races:',y.get('eligible_races',0))
+              print('| Discipline | Race type | Races | Old wins | New wins | Old SR | New SR | Old SP ROI | New SP ROI |')
+              print('|---|---|---:|---:|---:|---:|---:|---:|---:|')
+              for k in y.get('summary',[]):
+                  print('| '+' | '.join(str(k.get(c,'')) for c in ('discipline','race_type','races','old_winners','new_winners','old_strike_pct','new_strike_pct','old_sp_roi_pct','new_sp_roi_pct'))+' |')
+              if y.get('eligible_races',0)<100:
+                  print('Warning: under 100 eligible complete races. Interpret as coverage diagnosis, not evidence of predictive superiority.')
+          else:print('HPR replay did not complete; check logs.')
+          print('No live app writes or model updates. Past SP is settlement only, not a predictor.')
+          PY
+      - name: Upload ONLY audit and paired outcome files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage133-class-type-hpr-replay-${{ github.run_id }}
+          path: |
+            reports/stage133/result/*.csv
+            reports/stage133/result/*.json
+          retention-days: 90
+          compression-level: 6
+          if-no-files-found: warn
