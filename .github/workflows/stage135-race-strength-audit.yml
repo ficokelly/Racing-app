@@ -1,0 +1,98 @@
+name: 'Stage135 - UK and Ireland race strength classification audit (research only)'
+on:
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: 'Historical audit start YYYY-MM-DD'
+        default: '2022-01-01'
+        required: true
+        type: string
+      end_date:
+        description: 'Historical audit end YYYY-MM-DD'
+        default: '2025-12-31'
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage135-race-strength-audit
+  cancel-in-progress: false
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      PYTHONUNBUFFERED: '1'
+      DB: reports/stage135/source/stage2/historical_ukie_staging.sqlite
+      REF: reports/stage135/source/stage4/all_races_with_reference_event_ids.csv
+      OUT: reports/stage135/output
+      START: ${{ inputs.start_date }}
+      END: ${{ inputs.end_date }}
+    steps:
+      - name: Checkout code and reference data without write access
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify classification schema and UK Ireland edge cases
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/race_strength_lookup.py scripts/test_race_strength_lookup.py
+          python scripts/test_race_strength_lookup.py
+          test -s scripts/race_strength_reference_v1.json
+          test -s scripts/race_strength_reference_v1.csv
+      - name: Restore immutable exact historical UK Ireland race names and class fields
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage135/source/{stage2,stage4} "$OUT"
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage2-historical-staging-database --dir reports/stage135/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage4-reference-named-events-and-winners --dir reports/stage135/source/stage4
+          test -s "$DB" && test -s "$REF"
+      - name: Audit exact race classifications without altering models
+        run: |
+          set -euo pipefail
+          python scripts/race_strength_lookup.py --audit-db "$DB" --reference "$REF" \
+            --start "$START" --end "$END" --out "$OUT"
+          python - <<'PY'
+          import json,os,pathlib
+          x=json.loads((pathlib.Path(os.environ['OUT'])/'race-strength-coverage-audit.json').read_text())
+          assert x['audit']['verified_races']>1000,x
+          assert x['live_updates'] is False
+          print('Audit verified races',x['audit']['verified_races'])
+          PY
+      - name: Summarize labels and missing coverage
+        if: always()
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import pathlib,json,os
+          a=pathlib.Path(os.environ['OUT'])/'race-strength-coverage-audit.json'
+          print('# Stage135 race strength reference audit')
+          print('Paper research only. No live rankings or model parameters updated.')
+          if a.exists():
+            z=json.loads(a.read_text())
+            print('Verified exact UK/Irish races:',z['audit']['verified_races'])
+            print('Unknown race-strength tier:',z['audit'].get('unknown_races',0))
+            print('Top categories:')
+            for k,v in sorted(z['audit'].items(),key=lambda p:-p[1]):
+              if k.startswith('classification_'):
+                print('- '+k[len('classification_'):]+': '+str(v))
+          else:print('No data audit produced; see failed step.')
+          PY
+      - name: Upload classification coverage research outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage135-race-strength-classification-${{ github.run_id }}
+          path: |
+            reports/stage135/output/*.json
+            reports/stage135/output/*.csv
+          retention-days: 90
+          if-no-files-found: warn
