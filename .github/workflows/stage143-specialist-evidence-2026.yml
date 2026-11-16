@@ -1,0 +1,129 @@
+name: 'Stage143 — Specialist Evidence by Every Race Type (2026 Research)'
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/stage143-specialist-evidence-2026.yml'
+      - 'scripts/stage143_specialist_evidence_2026.py'
+      - 'scripts/stage143_race_type_specialist_config.json'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage143-specialist-evidence-research
+  cancel-in-progress: false
+jobs:
+  specialist-walkforward:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    env:
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      DB: reports/stage143/source/stage2/historical_ukie_staging.sqlite
+      REF: reports/stage143/source/stage4/all_races_with_reference_event_ids.csv
+      ARCHIVE137: reports/stage143/source/stage137/stage137-quarterly-predictions.csv.gz
+      ARCHIVE141: reports/stage143/source/stage141
+      ARCHIVE142: reports/stage143/source/stage142
+      OUT: reports/stage143/research
+    steps:
+      - name: Checkout unchanged frozen models and new isolated Stage143 research files
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned research dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2
+      - name: Validate Stage143 specialist routes and original archived code
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/stage143_specialist_evidence_2026.py scripts/stage142_full_history_core_2026.py scripts/stage141_grade_weight_2026.py
+          python scripts/stage143_specialist_evidence_2026.py self-test
+          python scripts/stage142_full_history_core_2026.py self-test
+          python scripts/stage141_grade_weight_2026.py self-test
+          test -s reports/stage30/stage30-summary.json
+      - name: Restore immutable full-history archive and Stage137 Stage141 Stage142 control artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage143/source/{stage2,stage4,stage137,stage141,stage142} "$OUT"
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage2-historical-staging-database --dir reports/stage143/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage4-reference-named-events-and-winners --dir reports/stage143/source/stage4
+          gh run download 43756586012 --repo "$GITHUB_REPOSITORY" --name stage137-frozen-d-specialist-nlp-43756586012 --dir reports/stage143/source/stage137
+          gh run download 43782077626 --repo "$GITHUB_REPOSITORY" --name stage141-grade-and-weight-43782077626 --dir "$ARCHIVE141"
+          gh run download 43844674350 --repo "$GITHUB_REPOSITORY" --name stage142-full-history-eight-pillars-43844674350 --dir "$ARCHIVE142"
+          test -s "$DB" && test -s "$REF" && test -s "$ARCHIVE137"
+          test -s "$ARCHIVE141/stage141-summary.json" && test -s "$ARCHIVE141/stage141-2026-rank1-rank2.csv.gz"
+          test -s "$ARCHIVE142/stage142-summary.json" && test -s "$ARCHIVE142/stage142-2026-rank1-rank2.csv.gz"
+          python - <<'PY'
+          import json,pathlib,os
+          old=json.loads((pathlib.Path(os.environ['ARCHIVE141'])/'stage141-summary.json').read_text())
+          newer=json.loads((pathlib.Path(os.environ['ARCHIVE142'])/'stage142-summary.json').read_text())
+          assert old['source_cutoff']==newer['source_cutoff']=='2026-11-10'
+          assert old['overall']['D137_HPR_ABILITY_OR_WEIGHT']['races']==9794
+          assert newer['overall']['D142_LONG_CORE_FORM_OR_WEIGHT']['races']==9794
+          assert old['baseline_guard']['2025_q4_baseline_exact_match']
+          assert newer['2026_immutable_stage141_cohort']['stage141_controls_are_exact_same_2026_field_and_winners']
+          print('Immutable same-source 2026 controls verified: 9794 races')
+          PY
+      - name: Train race-specific evidence and interaction challengers with temporal validation
+        run: |
+          set -euo pipefail
+          python -u scripts/stage143_specialist_evidence_2026.py walkforward \
+            --db "$DB" --reference "$REF" --stage137 "$ARCHIVE137" \
+            --stage141 "$ARCHIVE141" --stage142 "$ARCHIVE142" \
+            --config scripts/stage143_race_type_specialist_config.json \
+            --out "$OUT" --to-date 2026-11-10
+          python - <<'PY'
+          import json,pathlib,os
+          out=pathlib.Path(os.environ['OUT']);z=json.loads((out/'stage143-summary.json').read_text())
+          assert z['source_cutoff']=='2026-11-10'
+          assert z['original_D_stage137_stage141_stage142_live_and_G_models_unchanged']
+          assert z['routed_test_2026']>4500
+          assert len(z['overall'])==4 and len(z['model_folds_2026'])==4
+          assert {v['races'] for v in z['overall'].values()}=={z['routed_test_2026']}
+          assert (out/'stage143-quarantine-review.csv').exists()
+          assert (out/'stage143-feature-coverage.csv').exists()
+          print('STAGE143_ACCEPTED',json.dumps(z['overall']))
+          PY
+      - name: Publish transparent Stage143 controls and QA summary
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import os,json,pathlib
+          p=pathlib.Path(os.environ['OUT'])/'stage143-summary.json'
+          print('# Stage143 — specialist race-type evidence and interactions')
+          print('Research only. Original D, D(c), G, Stage137, Stage141, Stage142 and live selections unchanged.')
+          if not p.exists():
+           print('**Incomplete research.** Failed job step must be reviewed; no model performance claim.');raise SystemExit(0)
+          s=json.loads(p.read_text());print('Source cutoff:',s['source_cutoff'])
+          print('QA included races:',s['routed_test_2026'],'excluded:',s['quarantined_or_unknown_test_2026'])
+          print('2025 temporal validation:',s['2025_temporal_validation'])
+          print('| Model | Races | Winners | SR% | SP ROI% | Rank1/2 wins |')
+          print('|---|---:|---:|---:|---:|---:|')
+          for model,v in s['overall'].items():
+           print('|',model,'|',v['races'],'|',v['wins'],'|',v['sr_pct'],'|',v['sp_roi_pct'],'|',v['rank1_or2_wins'],'|')
+          print('This is an untrusted historical source with targeted quarantines, NOT an independently jurisdiction-certified UK/IE dataset.')
+          print('2026 outcomes previously observed; ROI on SP priced subset; no bookmaker-time odds measured.')
+          PY
+      - name: Upload research results and QA artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage143-specialist-research-${{ github.run_id }}
+          path: |
+            reports/stage143/research/*.json
+            reports/stage143/research/*.csv
+            reports/stage143/research/*.csv.gz
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 6
