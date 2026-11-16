@@ -1,0 +1,142 @@
+name: 'Stage141 — Verified Grades + OR/Weight + Winning Handicap Mark (2026)'
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/stage141-exact-grade-and-weight-2026.yml'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage141-exact-pattern-and-historical-weight-research
+  cancel-in-progress: false
+jobs:
+  grade-and-weight-backtest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 340
+    env:
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      DB: reports/stage141/source/stage2/historical_ukie_staging.sqlite
+      REF: reports/stage141/source/stage4/all_races_with_reference_event_ids.csv
+      ARCHIVE137: reports/stage141/source/stage137/stage137-quarterly-predictions.csv.gz
+      OUT: reports/stage141/research
+    steps:
+      - name: Read-only checkout original racing models and new research challenger
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned modelling dependencies
+        run: |
+          python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2
+      - name: Validate grades, hypothetical OR-weight merit, prior winning mark and immutable model identity
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/stage141_grade_weight_2026.py scripts/stage140_d137_hpr_ability_2026.py scripts/stage139_hpr_137_138_walkforward.py scripts/stage137_frozen_d_race_type_walkforward.py
+          python scripts/stage141_grade_weight_2026.py self-test
+          python scripts/stage140_d137_hpr_ability_2026.py self-test
+          python scripts/stage139_hpr_137_138_walkforward.py self-test
+          python scripts/stage137_frozen_d_race_type_walkforward.py self-test
+          test -s reports/stage30/stage30-summary.json
+      - name: Restore verified 1988-2026 historical archive and immutable Stage137 selection baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage141/source/{stage2,stage4,stage137} "$OUT"
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage2-historical-staging-database --dir reports/stage141/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage4-reference-named-events-and-winners --dir reports/stage141/source/stage4
+          gh run download 43756586012 --repo "$GITHUB_REPOSITORY" --name stage137-frozen-d-specialist-nlp-43756586012 --dir reports/stage141/source/stage137
+          test -s "$DB" && test -s "$REF" && test -s "$ARCHIVE137"
+          python - <<'PY'
+          import sqlite3,os
+          c=sqlite3.connect('file:'+os.path.abspath(os.environ['DB'])+'?mode=ro',uri=True)
+          assert c.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+          assert 'stage65p_race_details' in {x[0] for x in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+          assert 'pattern' in {x[1] for x in c.execute('PRAGMA table_info(stage65p_race_details)')}
+          assert c.execute("SELECT COUNT(*) FROM stage65p_race_details WHERE pattern IS NOT NULL AND TRIM(pattern)<>''").fetchone()[0]>100
+          assert c.execute("SELECT MIN(race_date) FROM historical_races").fetchone()[0]<='1990-12-31'
+          assert c.execute("SELECT MAX(race_date) FROM historical_races").fetchone()[0]>='2026-11-10'
+          c.close()
+          print('Verified exact Stage65P pattern field and full long-term history')
+          PY
+      - name: Reconcile and audit original source Pattern/Grade/Group labels without guessing
+        run: |
+          set -euo pipefail
+          python -u scripts/stage141_grade_weight_2026.py audit --db "$DB" --reference "$REF" --out "$OUT" --to-date 2026-11-10
+          python - <<'PY'
+          import json,os,pathlib
+          p=pathlib.Path(os.environ['OUT'])/'stage141-grade-audit.json'
+          data=json.loads(p.read_text())
+          print('EXACT GRADES RECOVERED',data['recovered_count'])
+          print('TOP ORIGINAL PATTERN VALUES',data['pattern_frequency'][:25])
+          if data['recovered_count']<20:raise RuntimeError('Insufficient explicit Grade/Group recovery; see pattern audit instead of inventing grades')
+          PY
+      - name: Quarterly-test seven unchanged/grade/OR/weight/combined challengers through 2026
+        run: |
+          set -euo pipefail
+          python -u scripts/stage141_grade_weight_2026.py walkforward --db "$DB" --reference "$REF" --stage137 "$ARCHIVE137" --out "$OUT"
+          python - <<'PY'
+          import json,os,pathlib
+          p=pathlib.Path(os.environ['OUT']);r=json.loads((p/'stage141-summary.json').read_text())
+          assert r['original_frozen_D_unchanged'] and r['original_stage137_unchanged'] and r['original_stage139_hpr_unchanged']
+          assert r['baseline_guard']['2025_q4_baseline_exact_match']
+          assert not r['live_predictions_modified'] and not r['live_database_modified']
+          assert len(r['models'])==7 and len(r['folds'])>=3
+          n={x['races'] for x in r['overall'].values()};assert len(n)==1 and min(n)>1000
+          for f in ('stage141-grade-audit.json','stage141-weight-audit.json','stage141-grade-review.csv','stage141-2026-rank1-rank2.csv.gz','stage141-2026-runner-scores.csv.gz','stage141-2026-discipline-racetype.csv'):
+            # Review queue may legitimately be empty; don't make that fatal.
+            if f=='stage141-grade-review.csv' and not (p/f).exists():continue
+            assert (p/f).stat().st_size>100,f
+          print('PASS STAGE141',r['overall'])
+          PY
+      - name: Publish clear comparison and source confidence audit
+        if: always()
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json,os,pathlib,csv
+          p=pathlib.Path(os.environ['OUT'])
+          print('# Stage141: Exact Grade, OR relative to carried weight, winning mark and form')
+          print('**Paper research. No original D, Stage137, Stage139, shared database or live app changes.**')
+          g=p/'stage141-grade-audit.json'
+          if g.exists():
+            d=json.loads(g.read_text());print('Explicit Grade/Group records recovered:',d['recovered_count']);print('Original pattern examples:',d['pattern_frequency'][:20])
+          f=p/'stage141-summary.json'
+          if not f.exists():print('Full modelling not completed. Check previous step and review published audits.');raise SystemExit(0)
+          r=json.loads(f.read_text())
+          print('2026 result source ends:',r['source_cutoff'])
+          print('2025Q4 unchanged Stage137 reproduced:',r['baseline_guard']['2025_q4_baseline_exact_match'])
+          print('| Model | Races | Rank1 wins | Strike% | SP ROI% | SP coverage |')
+          print('|---|---:|---:|---:|---:|---:|')
+          for m,z in r['overall'].items():print('|',m,'|',z['races'],'|',z['wins'],'|',z['strike_pct'],'|',z['sp_roi_pct'],'|',z['sp_coverage_pct'],'|')
+          print('\nSource weight/OR coverage:',r['weight_audit']['coverage'])
+          print('**Not a BHA performance figure:** actual jockey claims and trustworthy overall margin are not inferred when missing.')
+          d=p/'stage141-2026-discipline-racetype.csv'
+          if d.exists():
+            rows=list(csv.DictReader(d.open()))
+            for category in ('BROAD','RACE_TYPE'):
+              print('\n##',category)
+              print('| Model | Group | Races | Wins | SR% | SP ROI% |')
+              print('|---|---|---:|---:|---:|---:|')
+              for row in rows:
+                if row['breakdown']==category and int(row['races'])>=40:print('|',row['model'],'|',row['group'],'|',row['races'],'|',row['wins'],'|',row['strike_pct'],'|',row['sp_roi_pct'],'|')
+          PY
+      - name: Upload complete selections and original-data correction audits
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage141-grade-and-weight-${{ github.run_id }}
+          path: |
+            reports/stage141/research/*.json
+            reports/stage141/research/*.csv
+            reports/stage141/research/*.csv.gz
+          retention-days: 90
+          compression-level: 6
+          if-no-files-found: warn
