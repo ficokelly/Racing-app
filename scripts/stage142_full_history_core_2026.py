@@ -10,7 +10,7 @@ Historical data are previous-CALENDAR-day only. No price in prediction inputs.
 A 1988 archive start does NOT certify every horse's entire career is present.
 """
 from __future__ import annotations
-import argparse,collections,csv,datetime as dt,gzip,hashlib,json,math,pathlib,sqlite3,sys
+import argparse,collections,csv,datetime as dt,gzip,hashlib,json,math,pathlib,sqlite3,sys,tempfile
 from collections import defaultdict
 import numpy as np
 import stage137_frozen_d_race_type_walkforward as S
@@ -355,6 +355,26 @@ def summarize(rs):
  return [{'model':a,'breakdown':b,'group':c,**metric(grp)} for (a,b,c),grp in sorted(groups.items())]
 
 
+def write_rank_rows(path, rows):
+ """Safely export archived controls and new challengers with heterogeneous schemas.
+
+ Stage141 archived controls do not include Stage142-only probability and HPR
+ display columns. All source columns must survive; genuinely absent control
+ values remain blank, never fabricated or replaced with zeros.
+ """
+ if not rows:raise RuntimeError('Refusing empty Stage142 rank output')
+ path=pathlib.Path(path);path.parent.mkdir(parents=True,exist_ok=True)
+ fields=list(rows[0]);seen=set(fields)
+ for row in rows:
+  for field in row:
+   if field not in seen:fields.append(field);seen.add(field)
+ opener=gzip.open if str(path).endswith('.gz') else open
+ with opener(path,'wt',newline='',encoding='utf8') as f:
+  writer=csv.DictWriter(f,fieldnames=fields,restval='')
+  writer.writeheader();writer.writerows(rows)
+ return fields
+
+
 def evaluate(base,extended,archived,out,last):
  bylong={str(r['race_id']):r for r in extended}
  bybase={str(r['race_id']):r for r in base}
@@ -428,7 +448,7 @@ def evaluate(base,extended,archived,out,last):
  if set(bymodel)!=set(ALL_MODELS) or any(ids!=cohort for ids in bymodel.values()):
   raise RuntimeError('Models have different race/runner cohorts')
  table=summarize(output)
- U.store_rows(out/'stage142-2026-rank1-rank2.csv.gz',output,True)
+ write_rank_rows(out/'stage142-2026-rank1-rank2.csv.gz',output)
  U.store_rows(out/'stage142-2026-discipline-racetype.csv',table)
  overall={m:next(z for z in table if z['model']==m and z['breakdown']=='ALL') for m in ALL_MODELS}
  return overall,folds
@@ -534,7 +554,21 @@ def self_test():
  assert changed and other[8]!=row[8] and other[9]==row[9]
  assert metric([{'rank1_won':1,'rank2_won':0,'sp':3.0},
                {'rank1_won':0,'rank2_won':1,'sp':2.0}])['sp_roi_pct']==50.0
- print('STAGE142_SELFTEST_OK - immutable baselines, 8 pillars, form-only ablation, OR-weight reuse')
+ # Regression for actual GitHub Stage142 failure: saved Stage141 controls lack
+ # challenger-only probability/HPR columns. No data should be dropped or faked.
+ with tempfile.TemporaryDirectory() as d:
+  test=pathlib.Path(d)/'ranks.csv.gz'
+  original=[{'race_id':'r1','model':CONTROL_BASE,'rank1_won':1},
+            {'race_id':'r1','model':CORE,'rank1_won':0,
+             'score_rank1':.37,'score_rank2':.25,'hpr_rank1':72.5}]
+  cols=write_rank_rows(test,original)
+  assert len(cols)==len(set(cols)) and set(original[1]).issubset(set(cols))
+  with gzip.open(test,'rt',encoding='utf8',newline='') as f:
+   saved=list(csv.DictReader(f))
+  assert len(saved)==2 and saved[0]['score_rank1']==''
+  assert saved[1]['score_rank1']=='0.37' and saved[1]['hpr_rank1']=='72.5'
+  assert saved[0]['model']==CONTROL_BASE and saved[1]['model']==CORE
+ print('STAGE142_SELFTEST_OK - immutable baselines, 8 pillars, form-only ablation, OR-weight reuse, heterogeneous archived/new result schema')
 
 
 def main():
