@@ -1,0 +1,132 @@
+name: 'Stage143 - Frozen D eight-pillar weights by race type (Weight OR Grade)'
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/stage143-frozen-d-specialist-eight-pillars.yml'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage143-frozen-d-specialist-research
+  cancel-in-progress: false
+jobs:
+  specialist-weights:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 340
+    env:
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      DB: reports/stage143/source/stage2/historical_ukie_staging.sqlite
+      REF: reports/stage143/source/stage4/all_races_with_reference_event_ids.csv
+      ARCHIVE137: reports/stage143/source/stage137/stage137-quarterly-predictions.csv.gz
+      OUT: reports/stage143/research
+    steps:
+      - name: Checkout original frozen D and Stage143 challenger (no write access)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2
+      - name: Verify Frozen D eight pillars, source parsers and specialist candidate grid
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/stage143_frozen_d_specialist_weights_2026.py scripts/stage141_grade_weight_2026.py scripts/stage137_frozen_d_race_type_walkforward.py
+          python scripts/stage143_frozen_d_specialist_weights_2026.py self-test
+          python scripts/stage141_grade_weight_2026.py self-test
+          python scripts/stage137_frozen_d_race_type_walkforward.py self-test
+          test -s reports/stage30/stage30-summary.json
+      - name: Restore original verified UK IE historical archive and frozen selections
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage143/source/{stage2,stage4,stage137} "$OUT"
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage2-historical-staging-database --dir reports/stage143/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage4-reference-named-events-and-winners --dir reports/stage143/source/stage4
+          gh run download 43756586012 --repo "$GITHUB_REPOSITORY" --name stage137-frozen-d-specialist-nlp-43756586012 --dir reports/stage143/source/stage137
+          test -s "$DB" && test -s "$REF" && test -s "$ARCHIVE137"
+          python - <<'PY'
+          import sqlite3,os
+          c=sqlite3.connect('file:'+os.path.abspath(os.environ['DB'])+'?mode=ro',uri=True)
+          assert c.execute('pragma quick_check').fetchone()[0]=='ok'
+          a,b=c.execute('SELECT min(race_date),max(race_date) FROM historical_races').fetchone()
+          assert a<='1988-12-31' and b>='2026-11-10'
+          t={x[0] for x in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+          assert 'stage65p_race_details' in t
+          print('Stage143 read-only history:',a,b,'verified source tables',flush=True)
+          PY
+      - name: Backtest specialist eight-pillar Weight OR Grade combinations with prior-only tuning
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/stage143_frozen_d_specialist_weights_2026.py walkforward --db "$DB" --reference "$REF" --stage137 "$ARCHIVE137" --out "$OUT" --to-date 2026-11-10
+          python - <<'PY'
+          import json,os,pathlib,csv
+          out=pathlib.Path(os.environ['OUT']); s=json.loads((out/'stage143-summary.json').read_text())
+          assert s['research_only'] and s['frozen_D_unchanged'] and not s['live_model_changed']
+          assert s['eight_pillars_only']==['Ability','Trainer','Jockey','Course','Draw','Distance','Ground','Jumping']
+          assert s['new_extra_pillar_count']==0 and s['source_cutoff']=='2026-11-10'
+          assert len(s['model_arms'])==11 and len(s['folds'])==4
+          assert s['official_grade_recovery_count']>=100
+          assert s['original_2025_frozen_source_proof']['2025_q4_baseline_exact_match']
+          assert {m['races'] for m in s['model_wins_overall'].values()}=={9794}
+          assert s['pillar_grid_candidates']>250
+          for f in ('stage143-2026-rank1-rank2.csv.gz','stage143-all-runners-2026.csv.gz','stage143-2026-discipline-racetype.csv','stage143-learned-eight-pillar-weights.csv','stage143-firstrecorded-debut-audit.json','stage141-weight-audit.json','stage141-grade-audit.json'):
+            assert (out/f).is_file() and (out/f).stat().st_size>100,f
+          with (out/'stage143-learned-eight-pillar-weights.csv').open() as f:
+            w=list(csv.DictReader(f));assert any(z['level']=='RACE_TYPE' for z in w)
+            assert {z['objective'] for z in w}=={'SR','ROI'}
+          print('STAGE143_ACCEPTED',json.dumps(s['model_wins_overall']))
+          PY
+      - name: Publish model comparison and specialist pillar weights
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json,pathlib,os,csv
+          out=pathlib.Path(os.environ['OUT']);p=out/'stage143-summary.json'
+          print('# Stage143 — Frozen D: Weight, OR, Grade, form and specialist pillar weights')
+          print('Paper research only. Original frozen model, live selections and historical database unchanged.')
+          if not p.exists():print('Full test did not finish; review failed stage and the published grade/weight/debut audits.');raise SystemExit(0)
+          s=json.loads(p.read_text());print('2026 result archive cutoff:',s['source_cutoff'])
+          print('Source grades recovered:',s['official_grade_recovery_count'])
+          print('Eight pillar candidate combinations:',s['pillar_grid_candidates'])
+          print('| Model | Races | Rank1 winners | SR% | Rank1+2 winners | SP ROI% |')
+          print('|---|---:|---:|---:|---:|---:|')
+          for model,a in s['model_wins_overall'].items():
+            print('|',model,'|',a['races'],'|',a['wins'],'|',a['strike_pct'],'|',a['rank1_or2_winners'],'|',a['sp_roi_pct'],'|')
+          r=out/'stage143-2026-discipline-racetype.csv'
+          if r.exists():
+            data=list(csv.DictReader(r.open()))
+            for dim in ('DISCIPLINE','RACE_TYPE'):
+              print('##',dim,'— specialist combinations')
+              print('| Model | Group | Races | SR% | SP ROI% |')
+              print('|---|---|---:|---:|---:|')
+              for z in data:
+                if z['breakdown']==dim and int(z['races'])>=75:
+                  print('|',z['model'],'|',z['group'],'|',z['races'],'|',z['strike_pct'],'|',z['sp_roi_pct'],'|')
+          print('Winning-mark, jockey-allowance and race-comment caveats are explained in the complete artifact summary. Historical SP ROI is not a live price claim.')
+          PY
+      - name: Upload all research outputs and specialist weights even after failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage143-frozen-d-specialists-${{ github.run_id }}
+          path: |
+            reports/stage143/research/*.json
+            reports/stage143/research/*.csv
+            reports/stage143/research/*.csv.gz
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 6
