@@ -1,0 +1,2023 @@
+{
+  "spec_id": "Stage143-2026-specialist-race-type-criteria-research-v1",
+  "creation_date": "2026-11-16",
+  "scope": "RESEARCH ONLY, no live code or predictions modified",
+  "basis": "Stage142 full 2026 rank1/rank2 and all runner artifact; Stage136-142 repo code; BHA/HRI rules and other cited evidence",
+  "not_yet_proven": "Prioritization is research hypothesis. Stage142 exploratory pillar checks do not establish causal importance, optimal weights, or profitability.",
+  "original_pillars": [
+    "Ability",
+    "Trainer",
+    "Jockey",
+    "Course",
+    "Draw",
+    "Distance",
+    "Ground",
+    "Jumping"
+  ],
+  "feature_library": {
+    "form_adjusted": {
+      "meaning": "Last 3\u20138 completed runs adjusted for beaten margin, field size, rivals, track, going, class, weight, pace/interference and reliability; never use finishing position alone.",
+      "mapped_pillar": "Ability",
+      "readiness": "DERIVE_FROM_EXISTING_HISTORY"
+    },
+    "real_ability": {
+      "meaning": "Previous-day HPR/form-performance figure with shrinkage for sparse observations; no future form or post-race RPR.",
+      "mapped_pillar": "Ability",
+      "readiness": "AVAILABLE_PARTIAL_HPR"
+    },
+    "class_relative": {
+      "meaning": "Historical opposition quality, actual class/Grade/Group transitions, top 4 rival form and proven ceiling against today\u2019s field; use same-code ratings.",
+      "mapped_pillar": "Ability",
+      "readiness": "DERIVE_FROM_EXISTING_HISTORY"
+    },
+    "handicap_value": {
+      "meaning": "Actual pre-race OR, today\u2019s carried lb and legitimate jockey claim / WFA/penalty; compute theoretical net merit = (OR diff) \u2212 (carried lb diff); identify wrong-at-weights.",
+      "mapped_pillar": "Ability",
+      "readiness": "STAGE141_AVAILABLE_PARTIAL"
+    },
+    "winning_mark": {
+      "meaning": "Prior handicap winning OR/weight, now-vs-then mark, recent close/strong efforts at same code, same conditions; signal only if prior mark verified.",
+      "mapped_pillar": "Ability",
+      "readiness": "STAGE141_AVAILABLE_PARTIAL"
+    },
+    "weight_penalty": {
+      "meaning": "Actual weight carried, WFA, sex allowances and winner penalties in non-handicaps; compare like for like; do not assume equal weights.",
+      "mapped_pillar": "Ability",
+      "readiness": "STAGE141_PARTIAL_CLAIMS_UNKNOWN"
+    },
+    "fitness_cycle": {
+      "meaning": "Days since last run, 2nd/3rd run after layoff, within-season freshness, recovery burden; use learned type-specific effect.",
+      "mapped_pillar": "Ability",
+      "readiness": "DERIVE_FROM_EXISTING_HISTORY"
+    },
+    "progression": {
+      "meaning": "Slope of pre-race performance adjusted for strength and conditions; maiden-to-handicap and novice-to-open transitions; stable uncertainty.",
+      "mapped_pillar": "Ability",
+      "readiness": "DERIVE_FROM_EXISTING_HISTORY"
+    },
+    "speed_adjusted": {
+      "meaning": "Historical standardized speed/time and finishing sectionals if archived and genuinely pre-race; distance/going, track, wind and pace adjusted, never naked times.",
+      "mapped_pillar": "Ability",
+      "readiness": "VERIFY_SOURCE_FIELDS"
+    },
+    "pace_run_style": {
+      "meaning": "Observed previous running positions/sectionals and projected pace pressure for today\u2019s field; no fabricated pace when unavailable.",
+      "mapped_pillar": "Ability",
+      "readiness": "REQUIRES_STRUCTURED_IN_RUNNING_POSITIONS"
+    },
+    "draw_pace": {
+      "meaning": "Stall \u00d7 track configuration \u00d7 trip \u00d7 field size \u00d7 expected early pace; prior-only track statistics with smoothing; do not apply to jumps.",
+      "mapped_pillar": "Draw",
+      "readiness": "REQUIRES_PACE_AND_TRACK_GEOMETRY"
+    },
+    "surface_affinity": {
+      "meaning": "Turf vs Polytrack/Tapeta (and historic surface changes) with horse/sire/dam performance; do not collapse all AW together.",
+      "mapped_pillar": "Ground",
+      "readiness": "REQUIRES_SURFACE_PROVENANCE_FIX"
+    },
+    "going_fit": {
+      "meaning": "Previous adjusted ratings/margins on comparable going, breeding and surface when unexposed; avoid hard exclusion on unknown going.",
+      "mapped_pillar": "Ground",
+      "readiness": "DERIVE_FROM_EXISTING_HISTORY"
+    },
+    "distance_stamina": {
+      "meaning": "Distance response curve, best comparable performance, finish profile, sire/dam stamina, jump trip; account for pace and going.",
+      "mapped_pillar": "Distance",
+      "readiness": "DERIVE_AND_ENRICH_PEDIGREE"
+    },
+    "course_profile": {
+      "meaning": "Right/left-handed, sharp/stiff, undulations, straight/run-in, obstacle complexity, surface and track-distance profile; avoid unverified venue homonyms.",
+      "mapped_pillar": "Course",
+      "readiness": "REQUIRES_GEOMETRY_REFERENCE"
+    },
+    "jockey_conditional": {
+      "meaning": "Jockey skill by race type / track / obstacle or sprint, recent and long-term quality, experience, claiming allowance and horse-trainer partnership; shrink small samples.",
+      "mapped_pillar": "Jockey",
+      "readiness": "DERIVE_FROM_EXISTING_HISTORY"
+    },
+    "jockey_claim": {
+      "meaning": "Verified apprentice/conditional claims deducted from carried weight only where applicable; separately assess rider quality.",
+      "mapped_pillar": "Jockey",
+      "readiness": "VERIFY_OFFICIAL_CLAIM_FIELDS"
+    },
+    "jockey_steeple": {
+      "meaning": "Recent and lifetime completion/fall/UR performance of rider in chase/hunter chase, adjusted for mount quality and course.",
+      "mapped_pillar": "Jockey",
+      "readiness": "DERIVE_FROM_EXISTING_HISTORY"
+    },
+    "jockey_flat": {
+      "meaning": "Jockey effectiveness at break/pace placement, sprint vs staying races and track/draw, adjusted for mount quality.",
+      "mapped_pillar": "Jockey",
+      "readiness": "REQUIRES_PACE_TO_VALIDATE"
+    },
+    "stable_profile": {
+      "meaning": "Trainer performance by precisely this race type, age class, first-time starters, transfer/reintroduction or novice transition; current 14/30d form shrunk to stable baseline.",
+      "mapped_pillar": "Trainer",
+      "readiness": "DERIVE_FROM_EXISTING_HISTORY"
+    },
+    "stable_progression": {
+      "meaning": "Trainer success improving lightly raced horses in maiden\u2192novice\u2192handicap, off breaks and on surface switches, accounting for opposition.",
+      "mapped_pillar": "Trainer",
+      "readiness": "DERIVE_FROM_EXISTING_HISTORY"
+    },
+    "pedigree_flat": {
+      "meaning": "Sire/dam/siblings for 2yo debut, early speed vs staying, going and AW surface performance; missing pedigrees produce uncertainty.",
+      "mapped_pillar": "Ability",
+      "readiness": "REQUIRES_PEDIGREE_COVERAGE_AUDIT"
+    },
+    "pedigree_jumps": {
+      "meaning": "Sire/dam point-to-point/bumper/hurdle/chase stamina and obstacle background; careful with unverified race history.",
+      "mapped_pillar": "Ability",
+      "readiness": "REQUIRES_PEDIGREE_AND_POINT_TO_POINT"
+    },
+    "jumping_quality": {
+      "meaning": "Prior jumping error rate per obstacle jumped, trend, completion, late mistakes, efficiency and severity from comments; confidence adjusted for sample.",
+      "mapped_pillar": "Jumping",
+      "readiness": "DERIVE_FROM_COMMENTS_AND_RESULTS"
+    },
+    "jumping_transition": {
+      "meaning": "Actual chase or hurdle experience, completion under that code, schooling/race experience proxies; do not treat hurdle clean runs as proven fence ability.",
+      "mapped_pillar": "Jumping",
+      "readiness": "DERIVE_FROM_PRIOR_CODE_HISTORY"
+    },
+    "field_opposition": {
+      "meaning": "Strength and experience distribution of all declared runners, lightly raced upside, runner count, race conditions; learn relative ranking.",
+      "mapped_pillar": "Ability",
+      "readiness": "DERIVE_FROM_EXISTING_HISTORY"
+    },
+    "bumper_progression": {
+      "meaning": "Prior bumper/point-to-point evidence, same-type trainer debut performance, pace/finish potential and proven stamina; no Jumping pillar for bumpers.",
+      "mapped_pillar": "Ability",
+      "readiness": "REQUIRES_POINT_TO_POINT_VERIFICATION"
+    },
+    "hunter_pts": {
+      "meaning": "Verified point-to-point / hunter chase records, amateur riding and staying/obstacle exposure; explicitly mark source missing.",
+      "mapped_pillar": "Jumping",
+      "readiness": "REQUIRES_POINT_TO_POINT_VERIFICATION"
+    },
+    "juvenile_maturity": {
+      "meaning": "2yo or 3yo development, chronological month, sire/dam maturity, experience and comparative WFA; separate from older horse patterns.",
+      "mapped_pillar": "Ability",
+      "readiness": "DERIVE_FROM_EXISTING_HISTORY"
+    },
+    "older_horse_cycle": {
+      "meaning": "Career peak versus current level, repeated losing runs vs feasible OR mark, layoffs, course/going/trip return, age-related changes.",
+      "mapped_pillar": "Ability",
+      "readiness": "DERIVE_FROM_EXISTING_HISTORY"
+    },
+    "restricted_conditions": {
+      "meaning": "Eligibility details: auction/sales price restriction, novice winner penalties, sex/WFA allowances, claimed value, exact condition wording.",
+      "mapped_pillar": "Ability",
+      "readiness": "REQUIRES_RACE_CONDITIONS_TEXT"
+    },
+    "classified_net": {
+      "meaning": "Eligibility OR ceiling with largely level weights rather than handicap pounds; higher OR may offer a relative advantage.",
+      "mapped_pillar": "Ability",
+      "readiness": "STAGE141_OR_WEIGHT_AVAILABLE_PARTIAL"
+    },
+    "seller_claimer": {
+      "meaning": "Low-grade form reliability, verified claim/sale conditions, class/trainer move and underlying recent speed; avoid inferred intent.",
+      "mapped_pillar": "Ability",
+      "readiness": "REQUIRES_RACE_CONDITIONS_TEXT"
+    },
+    "cross_country": {
+      "meaning": "Verified specialist banks/fences, cross-country course and extreme-trip form, obstacle completion and stamina; avoid using ordinary chase rating alone.",
+      "mapped_pillar": "Jumping",
+      "readiness": "REQUIRES_CROSS_COUNTRY_COURSE_REFERENCE"
+    },
+    "veteran": {
+      "meaning": "Actual age and repeated race cycles, old vs recent best figures, fitness, course, OR recovery; avoid simplistic age penalty.",
+      "mapped_pillar": "Ability",
+      "readiness": "DERIVE_FROM_EXISTING_HISTORY"
+    },
+    "graded_quality": {
+      "meaning": "Peak and reliable pre-race performances specifically at Group/Grade/Listed quality, collateral form, pace, stamina, allowances and penalty terms.",
+      "mapped_pillar": "Ability",
+      "readiness": "DERIVE_FROM_HISTORICAL_CLASS_LABELS"
+    },
+    "draw_context_bias": {
+      "meaning": "Prior-calendar-day course \u00d7 trip \u00d7 surface draw-zone winning performance against runner-count expected wins, with shrinkage and minimum 30 past drawn starters. Not a pace-interaction estimate.",
+      "mapped_pillar": "Draw",
+      "readiness": "IMPLEMENT_FROM_HISTORICAL_PRIOR_STALL_RECORDS"
+    }
+  },
+  "full_type_catalog": [
+    {
+      "race_type_id": "TURF_MAIDEN",
+      "discipline": "TURF",
+      "primary_type": "MAIDEN",
+      "decision_question": "trainer and jockey first-time/maiden record; pedigree and actual proven form",
+      "candidate_signals_prioritized_not_fitted": [
+        "stable_profile",
+        "jockey_flat",
+        "pedigree_flat",
+        "progression",
+        "form_adjusted",
+        "distance_stamina",
+        "going_fit",
+        "draw_pace",
+        "draw_context_bias"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "race-type form and ability HPR where credible; development, class, mark and penalties",
+        "Trainer": "type-age-debut success and current stable quality adjusted for horse quality",
+        "Jockey": "flat sprint/staying skills, track experience, partnerships and verified claims",
+        "Course": "track geometry, pace pressure, straight vs bends, history",
+        "Draw": "stall x course/trip/field/pace interaction with uncertainty",
+        "Distance": "proven/suggested trip and early speed/staying finish; pedigree for unexposed",
+        "Ground": "going-adjusted form and pedigree; bias conditionally",
+        "Jumping": null
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "TURF_NOVICE",
+      "discipline": "TURF",
+      "primary_type": "NOVICE",
+      "decision_question": "differentiate exposed winners carrying penalties from improving maidens",
+      "candidate_signals_prioritized_not_fitted": [
+        "progression",
+        "real_ability",
+        "weight_penalty",
+        "stable_progression",
+        "jockey_flat",
+        "pedigree_flat",
+        "distance_stamina",
+        "draw_pace",
+        "draw_context_bias"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "race-type form and ability HPR where credible; development, class, mark and penalties",
+        "Trainer": "type-age-debut success and current stable quality adjusted for horse quality",
+        "Jockey": "flat sprint/staying skills, track experience, partnerships and verified claims",
+        "Course": "track geometry, pace pressure, straight vs bends, history",
+        "Draw": "stall x course/trip/field/pace interaction with uncertainty",
+        "Distance": "proven/suggested trip and early speed/staying finish; pedigree for unexposed",
+        "Ground": "going-adjusted form and pedigree; bias conditionally",
+        "Jumping": null
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "TURF_HANDICAP",
+      "discipline": "TURF",
+      "primary_type": "HANDICAP",
+      "decision_question": "current ability vs effective mark, recent competitive form, pace and course setup",
+      "candidate_signals_prioritized_not_fitted": [
+        "handicap_value",
+        "winning_mark",
+        "form_adjusted",
+        "progression",
+        "speed_adjusted",
+        "pace_run_style",
+        "draw_pace",
+        "draw_context_bias",
+        "going_fit",
+        "fitness_cycle"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "race-type form and ability HPR where credible; development, class, mark and penalties",
+        "Trainer": "type-age-debut success and current stable quality adjusted for horse quality",
+        "Jockey": "flat sprint/staying skills, track experience, partnerships and verified claims",
+        "Course": "track geometry, pace pressure, straight vs bends, history",
+        "Draw": "stall x course/trip/field/pace interaction with uncertainty",
+        "Distance": "proven/suggested trip and early speed/staying finish; pedigree for unexposed",
+        "Ground": "going-adjusted form and pedigree; bias conditionally",
+        "Jumping": null
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "TURF_NURSERY",
+      "discipline": "TURF",
+      "primary_type": "NURSERY",
+      "decision_question": "2yo handicap with rapidly changing developmental ability",
+      "candidate_signals_prioritized_not_fitted": [
+        "juvenile_maturity",
+        "progression",
+        "pedigree_flat",
+        "handicap_value",
+        "form_adjusted",
+        "draw_pace",
+        "draw_context_bias",
+        "stable_progression"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "race-type form and ability HPR where credible; development, class, mark and penalties",
+        "Trainer": "type-age-debut success and current stable quality adjusted for horse quality",
+        "Jockey": "flat sprint/staying skills, track experience, partnerships and verified claims",
+        "Course": "track geometry, pace pressure, straight vs bends, history",
+        "Draw": "stall x course/trip/field/pace interaction with uncertainty",
+        "Distance": "proven/suggested trip and early speed/staying finish; pedigree for unexposed",
+        "Ground": "going-adjusted form and pedigree; bias conditionally",
+        "Jumping": null
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "TURF_GROUP_1",
+      "discipline": "TURF",
+      "primary_type": "GROUP_1",
+      "decision_question": "reliability at elite level plus exact terms, not generic handicap form",
+      "candidate_signals_prioritized_not_fitted": [
+        "graded_quality",
+        "weight_penalty",
+        "class_relative",
+        "speed_adjusted",
+        "pace_run_style",
+        "distance_stamina",
+        "going_fit",
+        "course_profile",
+        "draw_context_bias"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "race-type form and ability HPR where credible; development, class, mark and penalties",
+        "Trainer": "type-age-debut success and current stable quality adjusted for horse quality",
+        "Jockey": "flat sprint/staying skills, track experience, partnerships and verified claims",
+        "Course": "track geometry, pace pressure, straight vs bends, history",
+        "Draw": "stall x course/trip/field/pace interaction with uncertainty",
+        "Distance": "proven/suggested trip and early speed/staying finish; pedigree for unexposed",
+        "Ground": "going-adjusted form and pedigree; bias conditionally",
+        "Jumping": null
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "TURF_GROUP_2",
+      "discipline": "TURF",
+      "primary_type": "GROUP_2",
+      "decision_question": "prove Group level or credible improvement and check winner penalties",
+      "candidate_signals_prioritized_not_fitted": [
+        "graded_quality",
+        "class_relative",
+        "weight_penalty",
+        "progression",
+        "speed_adjusted",
+        "distance_stamina",
+        "going_fit",
+        "draw_context_bias"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "race-type form and ability HPR where credible; development, class, mark and penalties",
+        "Trainer": "type-age-debut success and current stable quality adjusted for horse quality",
+        "Jockey": "flat sprint/staying skills, track experience, partnerships and verified claims",
+        "Course": "track geometry, pace pressure, straight vs bends, history",
+        "Draw": "stall x course/trip/field/pace interaction with uncertainty",
+        "Distance": "proven/suggested trip and early speed/staying finish; pedigree for unexposed",
+        "Ground": "going-adjusted form and pedigree; bias conditionally",
+        "Jumping": null
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "TURF_GROUP_3",
+      "discipline": "TURF",
+      "primary_type": "GROUP_3",
+      "decision_question": "Listed-to-Group progression vs higher-class exposed form and penalties",
+      "candidate_signals_prioritized_not_fitted": [
+        "graded_quality",
+        "progression",
+        "class_relative",
+        "weight_penalty",
+        "speed_adjusted",
+        "distance_stamina",
+        "pace_run_style",
+        "draw_context_bias"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "race-type form and ability HPR where credible; development, class, mark and penalties",
+        "Trainer": "type-age-debut success and current stable quality adjusted for horse quality",
+        "Jockey": "flat sprint/staying skills, track experience, partnerships and verified claims",
+        "Course": "track geometry, pace pressure, straight vs bends, history",
+        "Draw": "stall x course/trip/field/pace interaction with uncertainty",
+        "Distance": "proven/suggested trip and early speed/staying finish; pedigree for unexposed",
+        "Ground": "going-adjusted form and pedigree; bias conditionally",
+        "Jumping": null
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "TURF_LISTED",
+      "discipline": "TURF",
+      "primary_type": "LISTED",
+      "decision_question": "progression from handicap/class versus established black-type class",
+      "candidate_signals_prioritized_not_fitted": [
+        "graded_quality",
+        "class_relative",
+        "progression",
+        "weight_penalty",
+        "speed_adjusted",
+        "pace_run_style",
+        "draw_context_bias"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "race-type form and ability HPR where credible; development, class, mark and penalties",
+        "Trainer": "type-age-debut success and current stable quality adjusted for horse quality",
+        "Jockey": "flat sprint/staying skills, track experience, partnerships and verified claims",
+        "Course": "track geometry, pace pressure, straight vs bends, history",
+        "Draw": "stall x course/trip/field/pace interaction with uncertainty",
+        "Distance": "proven/suggested trip and early speed/staying finish; pedigree for unexposed",
+        "Ground": "going-adjusted form and pedigree; bias conditionally",
+        "Jumping": null
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "TURF_CONDITIONS",
+      "discipline": "TURF",
+      "primary_type": "CONDITIONS",
+      "decision_question": "exact eligibility and allowances control the effective merit ordering",
+      "candidate_signals_prioritized_not_fitted": [
+        "weight_penalty",
+        "restricted_conditions",
+        "class_relative",
+        "real_ability",
+        "progression",
+        "distance_stamina",
+        "going_fit",
+        "draw_context_bias"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "race-type form and ability HPR where credible; development, class, mark and penalties",
+        "Trainer": "type-age-debut success and current stable quality adjusted for horse quality",
+        "Jockey": "flat sprint/staying skills, track experience, partnerships and verified claims",
+        "Course": "track geometry, pace pressure, straight vs bends, history",
+        "Draw": "stall x course/trip/field/pace interaction with uncertainty",
+        "Distance": "proven/suggested trip and early speed/staying finish; pedigree for unexposed",
+        "Ground": "going-adjusted form and pedigree; bias conditionally",
+        "Jumping": null
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "TURF_CLASSIFIED",
+      "discipline": "TURF",
+      "primary_type": "CLASSIFIED",
+      "decision_question": "level-weight OR-relative advantage unlike a conventional handicap",
+      "candidate_signals_prioritized_not_fitted": [
+        "classified_net",
+        "class_relative",
+        "form_adjusted",
+        "speed_adjusted",
+        "pace_run_style",
+        "distance_stamina",
+        "draw_context_bias"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "race-type form and ability HPR where credible; development, class, mark and penalties",
+        "Trainer": "type-age-debut success and current stable quality adjusted for horse quality",
+        "Jockey": "flat sprint/staying skills, track experience, partnerships and verified claims",
+        "Course": "track geometry, pace pressure, straight vs bends, history",
+        "Draw": "stall x course/trip/field/pace interaction with uncertainty",
+        "Distance": "proven/suggested trip and early speed/staying finish; pedigree for unexposed",
+        "Ground": "going-adjusted form and pedigree; bias conditionally",
+        "Jumping": null
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "TURF_SELLING_CLAIMING",
+      "discipline": "TURF",
+      "primary_type": "SELLING_CLAIMING",
+      "decision_question": "low-grade recent ability and precise claiming rules",
+      "candidate_signals_prioritized_not_fitted": [
+        "seller_claimer",
+        "form_adjusted",
+        "speed_adjusted",
+        "stable_profile",
+        "handicap_value",
+        "weight_penalty",
+        "pace_run_style",
+        "draw_context_bias"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "race-type form and ability HPR where credible; development, class, mark and penalties",
+        "Trainer": "type-age-debut success and current stable quality adjusted for horse quality",
+        "Jockey": "flat sprint/staying skills, track experience, partnerships and verified claims",
+        "Course": "track geometry, pace pressure, straight vs bends, history",
+        "Draw": "stall x course/trip/field/pace interaction with uncertainty",
+        "Distance": "proven/suggested trip and early speed/staying finish; pedigree for unexposed",
+        "Ground": "going-adjusted form and pedigree; bias conditionally",
+        "Jumping": null
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "TURF_AUCTION_RESTRICTED_SALES",
+      "discipline": "TURF",
+      "primary_type": "AUCTION_RESTRICTED_SALES",
+      "decision_question": "pedigree and restricted entry plus allowance conditions",
+      "candidate_signals_prioritized_not_fitted": [
+        "restricted_conditions",
+        "pedigree_flat",
+        "stable_profile",
+        "juvenile_maturity",
+        "weight_penalty",
+        "jockey_flat",
+        "draw_pace",
+        "draw_context_bias"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "race-type form and ability HPR where credible; development, class, mark and penalties",
+        "Trainer": "type-age-debut success and current stable quality adjusted for horse quality",
+        "Jockey": "flat sprint/staying skills, track experience, partnerships and verified claims",
+        "Course": "track geometry, pace pressure, straight vs bends, history",
+        "Draw": "stall x course/trip/field/pace interaction with uncertainty",
+        "Distance": "proven/suggested trip and early speed/staying finish; pedigree for unexposed",
+        "Ground": "going-adjusted form and pedigree; bias conditionally",
+        "Jumping": null
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "TURF_OTHER_OPEN",
+      "discipline": "TURF",
+      "primary_type": "OTHER_OPEN",
+      "decision_question": "use conservative full-field relative assessment until type identified",
+      "candidate_signals_prioritized_not_fitted": [
+        "class_relative",
+        "form_adjusted",
+        "real_ability",
+        "weight_penalty",
+        "pace_run_style",
+        "distance_stamina",
+        "draw_context_bias"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "race-type form and ability HPR where credible; development, class, mark and penalties",
+        "Trainer": "type-age-debut success and current stable quality adjusted for horse quality",
+        "Jockey": "flat sprint/staying skills, track experience, partnerships and verified claims",
+        "Course": "track geometry, pace pressure, straight vs bends, history",
+        "Draw": "stall x course/trip/field/pace interaction with uncertainty",
+        "Distance": "proven/suggested trip and early speed/staying finish; pedigree for unexposed",
+        "Ground": "going-adjusted form and pedigree; bias conditionally",
+        "Jumping": null
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "AW_MAIDEN",
+      "discipline": "AW",
+      "primary_type": "MAIDEN",
+      "decision_question": "unexposed ability, specialist surface suitability and first-time trainer",
+      "candidate_signals_prioritized_not_fitted": [
+        "stable_profile",
+        "pedigree_flat",
+        "surface_affinity",
+        "jockey_flat",
+        "progression",
+        "form_adjusted",
+        "draw_pace",
+        "draw_context_bias"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "AW-specific form, OR/weight when relevant, synthetic-adjusted speed",
+        "Trainer": "AW meeting/maiden/switch and recent stable form",
+        "Jockey": "synthetic surface break/pace placement, partnerships and verified claims",
+        "Course": "track-specific turn configuration, Polytrack/Tapeta and surface era",
+        "Draw": "stall x trip x pace x track with smoothing",
+        "Distance": "AW pace/distance-specific speed or stamina, not turf equivalence",
+        "Ground": "surface type and AW vs turf relative ability; no turf-going penalty",
+        "Jumping": null
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "AW_NOVICE",
+      "discipline": "AW",
+      "primary_type": "NOVICE",
+      "decision_question": "surface aptitude, development and exact novice penalties",
+      "candidate_signals_prioritized_not_fitted": [
+        "surface_affinity",
+        "progression",
+        "weight_penalty",
+        "stable_profile",
+        "jockey_flat",
+        "speed_adjusted",
+        "draw_pace",
+        "draw_context_bias"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "AW-specific form, OR/weight when relevant, synthetic-adjusted speed",
+        "Trainer": "AW meeting/maiden/switch and recent stable form",
+        "Jockey": "synthetic surface break/pace placement, partnerships and verified claims",
+        "Course": "track-specific turn configuration, Polytrack/Tapeta and surface era",
+        "Draw": "stall x trip x pace x track with smoothing",
+        "Distance": "AW pace/distance-specific speed or stamina, not turf equivalence",
+        "Ground": "surface type and AW vs turf relative ability; no turf-going penalty",
+        "Jumping": null
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "AW_HANDICAP",
+      "discipline": "AW",
+      "primary_type": "HANDICAP",
+      "decision_question": "AW-specific form; mark; pace/draw/surface and recent repeatability",
+      "candidate_signals_prioritized_not_fitted": [
+        "handicap_value",
+        "winning_mark",
+        "surface_affinity",
+        "form_adjusted",
+        "pace_run_style",
+        "draw_pace",
+        "draw_context_bias",
+        "speed_adjusted",
+        "course_profile"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "AW-specific form, OR/weight when relevant, synthetic-adjusted speed",
+        "Trainer": "AW meeting/maiden/switch and recent stable form",
+        "Jockey": "synthetic surface break/pace placement, partnerships and verified claims",
+        "Course": "track-specific turn configuration, Polytrack/Tapeta and surface era",
+        "Draw": "stall x trip x pace x track with smoothing",
+        "Distance": "AW pace/distance-specific speed or stamina, not turf equivalence",
+        "Ground": "surface type and AW vs turf relative ability; no turf-going penalty",
+        "Jumping": null
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "AW_NURSERY",
+      "discipline": "AW",
+      "primary_type": "NURSERY",
+      "decision_question": "2yo AW maturity, surface, stalls and mark shifts",
+      "candidate_signals_prioritized_not_fitted": [
+        "juvenile_maturity",
+        "surface_affinity",
+        "pedigree_flat",
+        "draw_pace",
+        "draw_context_bias",
+        "handicap_value",
+        "progression"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "AW-specific form, OR/weight when relevant, synthetic-adjusted speed",
+        "Trainer": "AW meeting/maiden/switch and recent stable form",
+        "Jockey": "synthetic surface break/pace placement, partnerships and verified claims",
+        "Course": "track-specific turn configuration, Polytrack/Tapeta and surface era",
+        "Draw": "stall x trip x pace x track with smoothing",
+        "Distance": "AW pace/distance-specific speed or stamina, not turf equivalence",
+        "Ground": "surface type and AW vs turf relative ability; no turf-going penalty",
+        "Jumping": null
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "AW_LISTED_PATTERN",
+      "discipline": "AW",
+      "primary_type": "LISTED_PATTERN",
+      "decision_question": "AW specialist elite evidence and weight/allowances",
+      "candidate_signals_prioritized_not_fitted": [
+        "graded_quality",
+        "surface_affinity",
+        "weight_penalty",
+        "class_relative",
+        "speed_adjusted",
+        "pace_run_style",
+        "draw_context_bias"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "AW-specific form, OR/weight when relevant, synthetic-adjusted speed",
+        "Trainer": "AW meeting/maiden/switch and recent stable form",
+        "Jockey": "synthetic surface break/pace placement, partnerships and verified claims",
+        "Course": "track-specific turn configuration, Polytrack/Tapeta and surface era",
+        "Draw": "stall x trip x pace x track with smoothing",
+        "Distance": "AW pace/distance-specific speed or stamina, not turf equivalence",
+        "Ground": "surface type and AW vs turf relative ability; no turf-going penalty",
+        "Jumping": null
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "AW_CONDITIONS",
+      "discipline": "AW",
+      "primary_type": "CONDITIONS",
+      "decision_question": "exact WFA/sex/penalties and specialist surface record",
+      "candidate_signals_prioritized_not_fitted": [
+        "weight_penalty",
+        "surface_affinity",
+        "class_relative",
+        "restricted_conditions",
+        "speed_adjusted",
+        "draw_pace",
+        "draw_context_bias"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "AW-specific form, OR/weight when relevant, synthetic-adjusted speed",
+        "Trainer": "AW meeting/maiden/switch and recent stable form",
+        "Jockey": "synthetic surface break/pace placement, partnerships and verified claims",
+        "Course": "track-specific turn configuration, Polytrack/Tapeta and surface era",
+        "Draw": "stall x trip x pace x track with smoothing",
+        "Distance": "AW pace/distance-specific speed or stamina, not turf equivalence",
+        "Ground": "surface type and AW vs turf relative ability; no turf-going penalty",
+        "Jumping": null
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "AW_CLASSIFIED",
+      "discipline": "AW",
+      "primary_type": "CLASSIFIED",
+      "decision_question": "known AW OR and level-weights differential, course/pace",
+      "candidate_signals_prioritized_not_fitted": [
+        "classified_net",
+        "surface_affinity",
+        "speed_adjusted",
+        "pace_run_style",
+        "draw_pace",
+        "draw_context_bias"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "AW-specific form, OR/weight when relevant, synthetic-adjusted speed",
+        "Trainer": "AW meeting/maiden/switch and recent stable form",
+        "Jockey": "synthetic surface break/pace placement, partnerships and verified claims",
+        "Course": "track-specific turn configuration, Polytrack/Tapeta and surface era",
+        "Draw": "stall x trip x pace x track with smoothing",
+        "Distance": "AW pace/distance-specific speed or stamina, not turf equivalence",
+        "Ground": "surface type and AW vs turf relative ability; no turf-going penalty",
+        "Jumping": null
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "AW_SELLING_CLAIMING",
+      "discipline": "AW",
+      "primary_type": "SELLING_CLAIMING",
+      "decision_question": "low-grade AW repeat form, trainer and claiming terms",
+      "candidate_signals_prioritized_not_fitted": [
+        "seller_claimer",
+        "surface_affinity",
+        "form_adjusted",
+        "handicap_value",
+        "stable_profile",
+        "draw_pace",
+        "draw_context_bias"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "AW-specific form, OR/weight when relevant, synthetic-adjusted speed",
+        "Trainer": "AW meeting/maiden/switch and recent stable form",
+        "Jockey": "synthetic surface break/pace placement, partnerships and verified claims",
+        "Course": "track-specific turn configuration, Polytrack/Tapeta and surface era",
+        "Draw": "stall x trip x pace x track with smoothing",
+        "Distance": "AW pace/distance-specific speed or stamina, not turf equivalence",
+        "Ground": "surface type and AW vs turf relative ability; no turf-going penalty",
+        "Jumping": null
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "AW_AUCTION_RESTRICTED_SALES",
+      "discipline": "AW",
+      "primary_type": "AUCTION_RESTRICTED_SALES",
+      "decision_question": "eligibility, surface pedigree and debut trainer",
+      "candidate_signals_prioritized_not_fitted": [
+        "restricted_conditions",
+        "pedigree_flat",
+        "stable_profile",
+        "surface_affinity",
+        "juvenile_maturity",
+        "weight_penalty",
+        "draw_context_bias"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "AW-specific form, OR/weight when relevant, synthetic-adjusted speed",
+        "Trainer": "AW meeting/maiden/switch and recent stable form",
+        "Jockey": "synthetic surface break/pace placement, partnerships and verified claims",
+        "Course": "track-specific turn configuration, Polytrack/Tapeta and surface era",
+        "Draw": "stall x trip x pace x track with smoothing",
+        "Distance": "AW pace/distance-specific speed or stamina, not turf equivalence",
+        "Ground": "surface type and AW vs turf relative ability; no turf-going penalty",
+        "Jumping": null
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "AW_OTHER_OPEN",
+      "discipline": "AW",
+      "primary_type": "OTHER_OPEN",
+      "decision_question": "surface specific merits then exact race-condition modifiers",
+      "candidate_signals_prioritized_not_fitted": [
+        "surface_affinity",
+        "form_adjusted",
+        "speed_adjusted",
+        "weight_penalty",
+        "pace_run_style",
+        "draw_context_bias"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "AW-specific form, OR/weight when relevant, synthetic-adjusted speed",
+        "Trainer": "AW meeting/maiden/switch and recent stable form",
+        "Jockey": "synthetic surface break/pace placement, partnerships and verified claims",
+        "Course": "track-specific turn configuration, Polytrack/Tapeta and surface era",
+        "Draw": "stall x trip x pace x track with smoothing",
+        "Distance": "AW pace/distance-specific speed or stamina, not turf equivalence",
+        "Ground": "surface type and AW vs turf relative ability; no turf-going penalty",
+        "Jumping": null
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "HURDLE_MAIDEN",
+      "discipline": "HURDLE",
+      "primary_type": "MAIDEN",
+      "decision_question": "quality of prior hurdling or flat/bumper form, improving jumping, stable",
+      "candidate_signals_prioritized_not_fitted": [
+        "stable_profile",
+        "jockey_conditional",
+        "jumping_transition",
+        "jumping_quality",
+        "pedigree_jumps",
+        "form_adjusted",
+        "progression",
+        "distance_stamina"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "hurdle-code form, class, handicap OR/weight or graded performance",
+        "Trainer": "maiden/novice/handicap/juvenile conversion by stable",
+        "Jockey": "hurdle rider completion and claim, field and going experience",
+        "Course": "hurdle layout, run-in and undulation suitability",
+        "Draw": null,
+        "Distance": "stamina relative to hurdle trip and going",
+        "Ground": "soft/heavy aptitude from comparable hurdles with confidence",
+        "Jumping": "hurdle mistake/efficiency per obstacle and recovery trends"
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "HURDLE_NOVICE",
+      "discipline": "HURDLE",
+      "primary_type": "NOVICE",
+      "decision_question": "established hurdle experience versus new talent plus novice winner penalties",
+      "candidate_signals_prioritized_not_fitted": [
+        "jumping_quality",
+        "progression",
+        "weight_penalty",
+        "class_relative",
+        "form_adjusted",
+        "stable_progression",
+        "jockey_conditional"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "hurdle-code form, class, handicap OR/weight or graded performance",
+        "Trainer": "maiden/novice/handicap/juvenile conversion by stable",
+        "Jockey": "hurdle rider completion and claim, field and going experience",
+        "Course": "hurdle layout, run-in and undulation suitability",
+        "Draw": null,
+        "Distance": "stamina relative to hurdle trip and going",
+        "Ground": "soft/heavy aptitude from comparable hurdles with confidence",
+        "Jumping": "hurdle mistake/efficiency per obstacle and recovery trends"
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "HURDLE_NOVICE_HANDICAP",
+      "discipline": "HURDLE",
+      "primary_type": "NOVICE_HANDICAP",
+      "decision_question": "novice jumping reliability plus actual handicap position and development",
+      "candidate_signals_prioritized_not_fitted": [
+        "handicap_value",
+        "jumping_quality",
+        "progression",
+        "winning_mark",
+        "form_adjusted",
+        "going_fit",
+        "distance_stamina"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "hurdle-code form, class, handicap OR/weight or graded performance",
+        "Trainer": "maiden/novice/handicap/juvenile conversion by stable",
+        "Jockey": "hurdle rider completion and claim, field and going experience",
+        "Course": "hurdle layout, run-in and undulation suitability",
+        "Draw": null,
+        "Distance": "stamina relative to hurdle trip and going",
+        "Ground": "soft/heavy aptitude from comparable hurdles with confidence",
+        "Jumping": "hurdle mistake/efficiency per obstacle and recovery trends"
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "HURDLE_HANDICAP",
+      "discipline": "HURDLE",
+      "primary_type": "HANDICAP",
+      "decision_question": "actual OR/weight/last winning mark plus strong recent form and stamina",
+      "candidate_signals_prioritized_not_fitted": [
+        "handicap_value",
+        "winning_mark",
+        "form_adjusted",
+        "jumping_quality",
+        "going_fit",
+        "distance_stamina",
+        "fitness_cycle",
+        "stable_profile"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "hurdle-code form, class, handicap OR/weight or graded performance",
+        "Trainer": "maiden/novice/handicap/juvenile conversion by stable",
+        "Jockey": "hurdle rider completion and claim, field and going experience",
+        "Course": "hurdle layout, run-in and undulation suitability",
+        "Draw": null,
+        "Distance": "stamina relative to hurdle trip and going",
+        "Ground": "soft/heavy aptitude from comparable hurdles with confidence",
+        "Jumping": "hurdle mistake/efficiency per obstacle and recovery trends"
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "HURDLE_JUVENILE",
+      "discipline": "HURDLE",
+      "primary_type": "JUVENILE",
+      "decision_question": "3yo hurdle experience, translated flat speed and WFA/penalties",
+      "candidate_signals_prioritized_not_fitted": [
+        "juvenile_maturity",
+        "jumping_transition",
+        "jumping_quality",
+        "weight_penalty",
+        "pedigree_jumps",
+        "stable_profile",
+        "distance_stamina"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "hurdle-code form, class, handicap OR/weight or graded performance",
+        "Trainer": "maiden/novice/handicap/juvenile conversion by stable",
+        "Jockey": "hurdle rider completion and claim, field and going experience",
+        "Course": "hurdle layout, run-in and undulation suitability",
+        "Draw": null,
+        "Distance": "stamina relative to hurdle trip and going",
+        "Ground": "soft/heavy aptitude from comparable hurdles with confidence",
+        "Jumping": "hurdle mistake/efficiency per obstacle and recovery trends"
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "HURDLE_GRADE_1",
+      "discipline": "HURDLE",
+      "primary_type": "GRADE_1",
+      "decision_question": "true highest-grade hurdle performance, clean jumping and elite conditions",
+      "candidate_signals_prioritized_not_fitted": [
+        "graded_quality",
+        "jumping_quality",
+        "weight_penalty",
+        "class_relative",
+        "distance_stamina",
+        "going_fit",
+        "pace_run_style"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "hurdle-code form, class, handicap OR/weight or graded performance",
+        "Trainer": "maiden/novice/handicap/juvenile conversion by stable",
+        "Jockey": "hurdle rider completion and claim, field and going experience",
+        "Course": "hurdle layout, run-in and undulation suitability",
+        "Draw": null,
+        "Distance": "stamina relative to hurdle trip and going",
+        "Ground": "soft/heavy aptitude from comparable hurdles with confidence",
+        "Jumping": "hurdle mistake/efficiency per obstacle and recovery trends"
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "HURDLE_GRADE_2",
+      "discipline": "HURDLE",
+      "primary_type": "GRADE_2",
+      "decision_question": "grade experience and improvement versus penalty terms",
+      "candidate_signals_prioritized_not_fitted": [
+        "graded_quality",
+        "progression",
+        "weight_penalty",
+        "jumping_quality",
+        "distance_stamina",
+        "going_fit"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "hurdle-code form, class, handicap OR/weight or graded performance",
+        "Trainer": "maiden/novice/handicap/juvenile conversion by stable",
+        "Jockey": "hurdle rider completion and claim, field and going experience",
+        "Course": "hurdle layout, run-in and undulation suitability",
+        "Draw": null,
+        "Distance": "stamina relative to hurdle trip and going",
+        "Ground": "soft/heavy aptitude from comparable hurdles with confidence",
+        "Jumping": "hurdle mistake/efficiency per obstacle and recovery trends"
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "HURDLE_GRADE_3",
+      "discipline": "HURDLE",
+      "primary_type": "GRADE_3",
+      "decision_question": "mix handicap and graded context where explicit handicap",
+      "candidate_signals_prioritized_not_fitted": [
+        "graded_quality",
+        "handicap_value",
+        "weight_penalty",
+        "jumping_quality",
+        "form_adjusted",
+        "distance_stamina"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "hurdle-code form, class, handicap OR/weight or graded performance",
+        "Trainer": "maiden/novice/handicap/juvenile conversion by stable",
+        "Jockey": "hurdle rider completion and claim, field and going experience",
+        "Course": "hurdle layout, run-in and undulation suitability",
+        "Draw": null,
+        "Distance": "stamina relative to hurdle trip and going",
+        "Ground": "soft/heavy aptitude from comparable hurdles with confidence",
+        "Jumping": "hurdle mistake/efficiency per obstacle and recovery trends"
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "HURDLE_LISTED",
+      "discipline": "HURDLE",
+      "primary_type": "LISTED",
+      "decision_question": "pattern/handicap modifier and conditions-sensitive merit",
+      "candidate_signals_prioritized_not_fitted": [
+        "graded_quality",
+        "weight_penalty",
+        "class_relative",
+        "jumping_quality",
+        "progression",
+        "going_fit"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "hurdle-code form, class, handicap OR/weight or graded performance",
+        "Trainer": "maiden/novice/handicap/juvenile conversion by stable",
+        "Jockey": "hurdle rider completion and claim, field and going experience",
+        "Course": "hurdle layout, run-in and undulation suitability",
+        "Draw": null,
+        "Distance": "stamina relative to hurdle trip and going",
+        "Ground": "soft/heavy aptitude from comparable hurdles with confidence",
+        "Jumping": "hurdle mistake/efficiency per obstacle and recovery trends"
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "HURDLE_CONDITIONS",
+      "discipline": "HURDLE",
+      "primary_type": "CONDITIONS",
+      "decision_question": "past hurdle class and precise penalty/allowances",
+      "candidate_signals_prioritized_not_fitted": [
+        "weight_penalty",
+        "restricted_conditions",
+        "class_relative",
+        "jumping_quality",
+        "form_adjusted",
+        "distance_stamina"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "hurdle-code form, class, handicap OR/weight or graded performance",
+        "Trainer": "maiden/novice/handicap/juvenile conversion by stable",
+        "Jockey": "hurdle rider completion and claim, field and going experience",
+        "Course": "hurdle layout, run-in and undulation suitability",
+        "Draw": null,
+        "Distance": "stamina relative to hurdle trip and going",
+        "Ground": "soft/heavy aptitude from comparable hurdles with confidence",
+        "Jumping": "hurdle mistake/efficiency per obstacle and recovery trends"
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "HURDLE_RATED",
+      "discipline": "HURDLE",
+      "primary_type": "RATED",
+      "decision_question": "rated condition terms, actual OR against weights, proven hurdling",
+      "candidate_signals_prioritized_not_fitted": [
+        "handicap_value",
+        "weight_penalty",
+        "class_relative",
+        "jumping_quality",
+        "form_adjusted"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "hurdle-code form, class, handicap OR/weight or graded performance",
+        "Trainer": "maiden/novice/handicap/juvenile conversion by stable",
+        "Jockey": "hurdle rider completion and claim, field and going experience",
+        "Course": "hurdle layout, run-in and undulation suitability",
+        "Draw": null,
+        "Distance": "stamina relative to hurdle trip and going",
+        "Ground": "soft/heavy aptitude from comparable hurdles with confidence",
+        "Jumping": "hurdle mistake/efficiency per obstacle and recovery trends"
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "HURDLE_ACADEMY_INTRODUCTORY",
+      "discipline": "HURDLE",
+      "primary_type": "ACADEMY_INTRODUCTORY",
+      "decision_question": "development and novice experience including debut status",
+      "candidate_signals_prioritized_not_fitted": [
+        "jumping_transition",
+        "pedigree_jumps",
+        "stable_profile",
+        "juvenile_maturity",
+        "jockey_conditional",
+        "weight_penalty"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "hurdle-code form, class, handicap OR/weight or graded performance",
+        "Trainer": "maiden/novice/handicap/juvenile conversion by stable",
+        "Jockey": "hurdle rider completion and claim, field and going experience",
+        "Course": "hurdle layout, run-in and undulation suitability",
+        "Draw": null,
+        "Distance": "stamina relative to hurdle trip and going",
+        "Ground": "soft/heavy aptitude from comparable hurdles with confidence",
+        "Jumping": "hurdle mistake/efficiency per obstacle and recovery trends"
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "HURDLE_CLAIMING_SELLING",
+      "discipline": "HURDLE",
+      "primary_type": "CLAIMING_SELLING",
+      "decision_question": "low-grade hurdle reliability and actual claim/weight terms",
+      "candidate_signals_prioritized_not_fitted": [
+        "seller_claimer",
+        "jumping_quality",
+        "form_adjusted",
+        "handicap_value",
+        "weight_penalty"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "hurdle-code form, class, handicap OR/weight or graded performance",
+        "Trainer": "maiden/novice/handicap/juvenile conversion by stable",
+        "Jockey": "hurdle rider completion and claim, field and going experience",
+        "Course": "hurdle layout, run-in and undulation suitability",
+        "Draw": null,
+        "Distance": "stamina relative to hurdle trip and going",
+        "Ground": "soft/heavy aptitude from comparable hurdles with confidence",
+        "Jumping": "hurdle mistake/efficiency per obstacle and recovery trends"
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "HURDLE_OTHER_OPEN",
+      "discipline": "HURDLE",
+      "primary_type": "OTHER_OPEN",
+      "decision_question": "class, hurdle completion reliability, stamina and conditions",
+      "candidate_signals_prioritized_not_fitted": [
+        "class_relative",
+        "jumping_quality",
+        "form_adjusted",
+        "weight_penalty",
+        "going_fit"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "hurdle-code form, class, handicap OR/weight or graded performance",
+        "Trainer": "maiden/novice/handicap/juvenile conversion by stable",
+        "Jockey": "hurdle rider completion and claim, field and going experience",
+        "Course": "hurdle layout, run-in and undulation suitability",
+        "Draw": null,
+        "Distance": "stamina relative to hurdle trip and going",
+        "Ground": "soft/heavy aptitude from comparable hurdles with confidence",
+        "Jumping": "hurdle mistake/efficiency per obstacle and recovery trends"
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "CHASE_BEGINNERS",
+      "discipline": "CHASE",
+      "primary_type": "BEGINNERS",
+      "decision_question": "switching hurdles to fences; raw hurdle OR is not proven fence ability",
+      "candidate_signals_prioritized_not_fitted": [
+        "jumping_transition",
+        "jumping_quality",
+        "class_relative",
+        "stable_progression",
+        "jockey_steeple",
+        "pedigree_jumps",
+        "distance_stamina"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "chase-specific form, OR/weight, grade and stamina",
+        "Trainer": "novice/beginners/fence debut handling and course specialty",
+        "Jockey": "steeplechase completion/positioning, amateur/conditional adjustment",
+        "Course": "fence course, direction, obstacle/run-in profile",
+        "Draw": null,
+        "Distance": "true chase stamina and ground-induced demands",
+        "Ground": "going and stamina interaction plus obstacle pressure",
+        "Jumping": "fence-specific severe errors, completions, exposure and obstacle risk"
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "CHASE_RATED_BEGINNERS",
+      "discipline": "CHASE",
+      "primary_type": "RATED_BEGINNERS",
+      "decision_question": "beginners chase with eligibility/OR context, no false hurdle-chase parity",
+      "candidate_signals_prioritized_not_fitted": [
+        "jumping_transition",
+        "jumping_quality",
+        "class_relative",
+        "weight_penalty",
+        "jockey_steeple",
+        "distance_stamina"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "chase-specific form, OR/weight, grade and stamina",
+        "Trainer": "novice/beginners/fence debut handling and course specialty",
+        "Jockey": "steeplechase completion/positioning, amateur/conditional adjustment",
+        "Course": "fence course, direction, obstacle/run-in profile",
+        "Draw": null,
+        "Distance": "true chase stamina and ground-induced demands",
+        "Ground": "going and stamina interaction plus obstacle pressure",
+        "Jumping": "fence-specific severe errors, completions, exposure and obstacle risk"
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "CHASE_NOVICE",
+      "discipline": "CHASE",
+      "primary_type": "NOVICE",
+      "decision_question": "completion and error rate over fences; up-to-date novice class/penalties",
+      "candidate_signals_prioritized_not_fitted": [
+        "jumping_quality",
+        "jumping_transition",
+        "progression",
+        "weight_penalty",
+        "jockey_steeple",
+        "class_relative",
+        "distance_stamina"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "chase-specific form, OR/weight, grade and stamina",
+        "Trainer": "novice/beginners/fence debut handling and course specialty",
+        "Jockey": "steeplechase completion/positioning, amateur/conditional adjustment",
+        "Course": "fence course, direction, obstacle/run-in profile",
+        "Draw": null,
+        "Distance": "true chase stamina and ground-induced demands",
+        "Ground": "going and stamina interaction plus obstacle pressure",
+        "Jumping": "fence-specific severe errors, completions, exposure and obstacle risk"
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "CHASE_NOVICE_HANDICAP",
+      "discipline": "CHASE",
+      "primary_type": "NOVICE_HANDICAP",
+      "decision_question": "rapidly changing chase ability vs allocated mark plus safety",
+      "candidate_signals_prioritized_not_fitted": [
+        "handicap_value",
+        "jumping_quality",
+        "jumping_transition",
+        "progression",
+        "winning_mark",
+        "going_fit",
+        "distance_stamina"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "chase-specific form, OR/weight, grade and stamina",
+        "Trainer": "novice/beginners/fence debut handling and course specialty",
+        "Jockey": "steeplechase completion/positioning, amateur/conditional adjustment",
+        "Course": "fence course, direction, obstacle/run-in profile",
+        "Draw": null,
+        "Distance": "true chase stamina and ground-induced demands",
+        "Ground": "going and stamina interaction plus obstacle pressure",
+        "Jumping": "fence-specific severe errors, completions, exposure and obstacle risk"
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "CHASE_HANDICAP",
+      "discipline": "CHASE",
+      "primary_type": "HANDICAP",
+      "decision_question": "chase-specific OR/weight, recent form, stamina and jumping efficiency",
+      "candidate_signals_prioritized_not_fitted": [
+        "handicap_value",
+        "winning_mark",
+        "jumping_quality",
+        "form_adjusted",
+        "distance_stamina",
+        "going_fit",
+        "course_profile",
+        "jockey_steeple"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "chase-specific form, OR/weight, grade and stamina",
+        "Trainer": "novice/beginners/fence debut handling and course specialty",
+        "Jockey": "steeplechase completion/positioning, amateur/conditional adjustment",
+        "Course": "fence course, direction, obstacle/run-in profile",
+        "Draw": null,
+        "Distance": "true chase stamina and ground-induced demands",
+        "Ground": "going and stamina interaction plus obstacle pressure",
+        "Jumping": "fence-specific severe errors, completions, exposure and obstacle risk"
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "CHASE_GRADE_1",
+      "discipline": "CHASE",
+      "primary_type": "GRADE_1",
+      "decision_question": "highest-grade proven fence form and elite jumping under exact terms",
+      "candidate_signals_prioritized_not_fitted": [
+        "graded_quality",
+        "jumping_quality",
+        "weight_penalty",
+        "class_relative",
+        "distance_stamina",
+        "course_profile",
+        "going_fit"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "chase-specific form, OR/weight, grade and stamina",
+        "Trainer": "novice/beginners/fence debut handling and course specialty",
+        "Jockey": "steeplechase completion/positioning, amateur/conditional adjustment",
+        "Course": "fence course, direction, obstacle/run-in profile",
+        "Draw": null,
+        "Distance": "true chase stamina and ground-induced demands",
+        "Ground": "going and stamina interaction plus obstacle pressure",
+        "Jumping": "fence-specific severe errors, completions, exposure and obstacle risk"
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "CHASE_GRADE_2",
+      "discipline": "CHASE",
+      "primary_type": "GRADE_2",
+      "decision_question": "high-grade fence ability, novice/open distinction and penalties",
+      "candidate_signals_prioritized_not_fitted": [
+        "graded_quality",
+        "jumping_quality",
+        "weight_penalty",
+        "progression",
+        "course_profile",
+        "distance_stamina"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "chase-specific form, OR/weight, grade and stamina",
+        "Trainer": "novice/beginners/fence debut handling and course specialty",
+        "Jockey": "steeplechase completion/positioning, amateur/conditional adjustment",
+        "Course": "fence course, direction, obstacle/run-in profile",
+        "Draw": null,
+        "Distance": "true chase stamina and ground-induced demands",
+        "Ground": "going and stamina interaction plus obstacle pressure",
+        "Jumping": "fence-specific severe errors, completions, exposure and obstacle risk"
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "CHASE_GRADE_3",
+      "discipline": "CHASE",
+      "primary_type": "GRADE_3",
+      "decision_question": "grade/handicap distinction, reliable completion and weight differential",
+      "candidate_signals_prioritized_not_fitted": [
+        "graded_quality",
+        "jumping_quality",
+        "handicap_value",
+        "weight_penalty",
+        "form_adjusted",
+        "course_profile"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "chase-specific form, OR/weight, grade and stamina",
+        "Trainer": "novice/beginners/fence debut handling and course specialty",
+        "Jockey": "steeplechase completion/positioning, amateur/conditional adjustment",
+        "Course": "fence course, direction, obstacle/run-in profile",
+        "Draw": null,
+        "Distance": "true chase stamina and ground-induced demands",
+        "Ground": "going and stamina interaction plus obstacle pressure",
+        "Jumping": "fence-specific severe errors, completions, exposure and obstacle risk"
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "CHASE_LISTED",
+      "discipline": "CHASE",
+      "primary_type": "LISTED",
+      "decision_question": "listed/chase grade and handicap condition, jumping and allowances",
+      "candidate_signals_prioritized_not_fitted": [
+        "graded_quality",
+        "jumping_quality",
+        "weight_penalty",
+        "class_relative",
+        "distance_stamina"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "chase-specific form, OR/weight, grade and stamina",
+        "Trainer": "novice/beginners/fence debut handling and course specialty",
+        "Jockey": "steeplechase completion/positioning, amateur/conditional adjustment",
+        "Course": "fence course, direction, obstacle/run-in profile",
+        "Draw": null,
+        "Distance": "true chase stamina and ground-induced demands",
+        "Ground": "going and stamina interaction plus obstacle pressure",
+        "Jumping": "fence-specific severe errors, completions, exposure and obstacle risk"
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "CHASE_HUNTER",
+      "discipline": "CHASE",
+      "primary_type": "HUNTER",
+      "decision_question": "confirmed point-to-point and hunter chase experience, amateur rider",
+      "candidate_signals_prioritized_not_fitted": [
+        "hunter_pts",
+        "jumping_quality",
+        "jockey_steeple",
+        "distance_stamina",
+        "going_fit",
+        "fitness_cycle"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "chase-specific form, OR/weight, grade and stamina",
+        "Trainer": "novice/beginners/fence debut handling and course specialty",
+        "Jockey": "steeplechase completion/positioning, amateur/conditional adjustment",
+        "Course": "fence course, direction, obstacle/run-in profile",
+        "Draw": null,
+        "Distance": "true chase stamina and ground-induced demands",
+        "Ground": "going and stamina interaction plus obstacle pressure",
+        "Jumping": "fence-specific severe errors, completions, exposure and obstacle risk"
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "CHASE_CROSS_COUNTRY",
+      "discipline": "CHASE",
+      "primary_type": "CROSS_COUNTRY",
+      "decision_question": "course obstacles and extreme trip dominate generic chase ratings",
+      "candidate_signals_prioritized_not_fitted": [
+        "cross_country",
+        "jumping_quality",
+        "distance_stamina",
+        "course_profile",
+        "going_fit",
+        "jockey_steeple"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "chase-specific form, OR/weight, grade and stamina",
+        "Trainer": "novice/beginners/fence debut handling and course specialty",
+        "Jockey": "steeplechase completion/positioning, amateur/conditional adjustment",
+        "Course": "fence course, direction, obstacle/run-in profile",
+        "Draw": null,
+        "Distance": "true chase stamina and ground-induced demands",
+        "Ground": "going and stamina interaction plus obstacle pressure",
+        "Jumping": "fence-specific severe errors, completions, exposure and obstacle risk"
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "CHASE_GRADUATION",
+      "discipline": "CHASE",
+      "primary_type": "GRADUATION",
+      "decision_question": "limited previous chase winners, improving fence ability and penalties",
+      "candidate_signals_prioritized_not_fitted": [
+        "jumping_transition",
+        "jumping_quality",
+        "progression",
+        "weight_penalty",
+        "class_relative"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "chase-specific form, OR/weight, grade and stamina",
+        "Trainer": "novice/beginners/fence debut handling and course specialty",
+        "Jockey": "steeplechase completion/positioning, amateur/conditional adjustment",
+        "Course": "fence course, direction, obstacle/run-in profile",
+        "Draw": null,
+        "Distance": "true chase stamina and ground-induced demands",
+        "Ground": "going and stamina interaction plus obstacle pressure",
+        "Jumping": "fence-specific severe errors, completions, exposure and obstacle risk"
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "CHASE_CONDITIONS_RATED",
+      "discipline": "CHASE",
+      "primary_type": "CONDITIONS_RATED",
+      "decision_question": "explicit WFA and rating/penalty terms plus chase completion",
+      "candidate_signals_prioritized_not_fitted": [
+        "weight_penalty",
+        "class_relative",
+        "jumping_quality",
+        "form_adjusted",
+        "jockey_steeple"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "chase-specific form, OR/weight, grade and stamina",
+        "Trainer": "novice/beginners/fence debut handling and course specialty",
+        "Jockey": "steeplechase completion/positioning, amateur/conditional adjustment",
+        "Course": "fence course, direction, obstacle/run-in profile",
+        "Draw": null,
+        "Distance": "true chase stamina and ground-induced demands",
+        "Ground": "going and stamina interaction plus obstacle pressure",
+        "Jumping": "fence-specific severe errors, completions, exposure and obstacle risk"
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "CHASE_VETERANS",
+      "discipline": "CHASE",
+      "primary_type": "VETERANS",
+      "decision_question": "aging vs recent ability and current mark; fitness/completion",
+      "candidate_signals_prioritized_not_fitted": [
+        "veteran",
+        "winning_mark",
+        "handicap_value",
+        "jumping_quality",
+        "fitness_cycle",
+        "distance_stamina"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "chase-specific form, OR/weight, grade and stamina",
+        "Trainer": "novice/beginners/fence debut handling and course specialty",
+        "Jockey": "steeplechase completion/positioning, amateur/conditional adjustment",
+        "Course": "fence course, direction, obstacle/run-in profile",
+        "Draw": null,
+        "Distance": "true chase stamina and ground-induced demands",
+        "Ground": "going and stamina interaction plus obstacle pressure",
+        "Jumping": "fence-specific severe errors, completions, exposure and obstacle risk"
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "CHASE_MAIDEN",
+      "discipline": "CHASE",
+      "primary_type": "MAIDEN",
+      "decision_question": "whether fence experience exists, hurdling transfer and stable",
+      "candidate_signals_prioritized_not_fitted": [
+        "jumping_transition",
+        "jumping_quality",
+        "stable_profile",
+        "pedigree_jumps",
+        "jockey_steeple",
+        "weight_penalty"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "chase-specific form, OR/weight, grade and stamina",
+        "Trainer": "novice/beginners/fence debut handling and course specialty",
+        "Jockey": "steeplechase completion/positioning, amateur/conditional adjustment",
+        "Course": "fence course, direction, obstacle/run-in profile",
+        "Draw": null,
+        "Distance": "true chase stamina and ground-induced demands",
+        "Ground": "going and stamina interaction plus obstacle pressure",
+        "Jumping": "fence-specific severe errors, completions, exposure and obstacle risk"
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "CHASE_CLAIMING_SELLING",
+      "discipline": "CHASE",
+      "primary_type": "CLAIMING_SELLING",
+      "decision_question": "chase safety plus low-grade form and race conditions",
+      "candidate_signals_prioritized_not_fitted": [
+        "seller_claimer",
+        "jumping_quality",
+        "form_adjusted",
+        "handicap_value",
+        "weight_penalty"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "chase-specific form, OR/weight, grade and stamina",
+        "Trainer": "novice/beginners/fence debut handling and course specialty",
+        "Jockey": "steeplechase completion/positioning, amateur/conditional adjustment",
+        "Course": "fence course, direction, obstacle/run-in profile",
+        "Draw": null,
+        "Distance": "true chase stamina and ground-induced demands",
+        "Ground": "going and stamina interaction plus obstacle pressure",
+        "Jumping": "fence-specific severe errors, completions, exposure and obstacle risk"
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "CHASE_OTHER_OPEN",
+      "discipline": "CHASE",
+      "primary_type": "OTHER_OPEN",
+      "decision_question": "conservative chase form with specialist jumping/country fit",
+      "candidate_signals_prioritized_not_fitted": [
+        "jumping_quality",
+        "class_relative",
+        "weight_penalty",
+        "distance_stamina",
+        "going_fit"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "chase-specific form, OR/weight, grade and stamina",
+        "Trainer": "novice/beginners/fence debut handling and course specialty",
+        "Jockey": "steeplechase completion/positioning, amateur/conditional adjustment",
+        "Course": "fence course, direction, obstacle/run-in profile",
+        "Draw": null,
+        "Distance": "true chase stamina and ground-induced demands",
+        "Ground": "going and stamina interaction plus obstacle pressure",
+        "Jumping": "fence-specific severe errors, completions, exposure and obstacle risk"
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "NH_FLAT_MAIDEN",
+      "discipline": "NH_FLAT",
+      "primary_type": "MAIDEN",
+      "decision_question": "first/second bumper evidence, pedigree and trainer, no jumping penalty",
+      "candidate_signals_prioritized_not_fitted": [
+        "bumper_progression",
+        "pedigree_jumps",
+        "stable_profile",
+        "jockey_conditional",
+        "distance_stamina",
+        "going_fit"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "bumper experience, PTP background and predicted potential; no hurdle/chase OR penalty",
+        "Trainer": "stable bumper and debut record, first-time context",
+        "Jockey": "bumper experience, course and stable partnership",
+        "Course": "track run-in, turns and climb",
+        "Draw": null,
+        "Distance": "bumper stamina and breeding against today\u2019s trip",
+        "Ground": "going and pedigree given limited history",
+        "Jumping": null
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "NH_FLAT_WINNERS_ONE",
+      "discipline": "NH_FLAT",
+      "primary_type": "WINNERS_ONE",
+      "decision_question": "winner-quality against unexposed rivals and conditional terms",
+      "candidate_signals_prioritized_not_fitted": [
+        "bumper_progression",
+        "class_relative",
+        "stable_profile",
+        "weight_penalty",
+        "pedigree_jumps",
+        "distance_stamina"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "bumper experience, PTP background and predicted potential; no hurdle/chase OR penalty",
+        "Trainer": "stable bumper and debut record, first-time context",
+        "Jockey": "bumper experience, course and stable partnership",
+        "Course": "track run-in, turns and climb",
+        "Draw": null,
+        "Distance": "bumper stamina and breeding against today\u2019s trip",
+        "Ground": "going and pedigree given limited history",
+        "Jumping": null
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "NH_FLAT_WINNERS_TWO",
+      "discipline": "NH_FLAT",
+      "primary_type": "WINNERS_TWO",
+      "decision_question": "proven bumper class versus penalty and age terms",
+      "candidate_signals_prioritized_not_fitted": [
+        "bumper_progression",
+        "graded_quality",
+        "weight_penalty",
+        "distance_stamina",
+        "stable_profile"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "bumper experience, PTP background and predicted potential; no hurdle/chase OR penalty",
+        "Trainer": "stable bumper and debut record, first-time context",
+        "Jockey": "bumper experience, course and stable partnership",
+        "Course": "track run-in, turns and climb",
+        "Draw": null,
+        "Distance": "bumper stamina and breeding against today\u2019s trip",
+        "Ground": "going and pedigree given limited history",
+        "Jumping": null
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "NH_FLAT_PATTERN",
+      "discipline": "NH_FLAT",
+      "primary_type": "PATTERN",
+      "decision_question": "graded/Listed bumper class, stable and future jumping pedigree",
+      "candidate_signals_prioritized_not_fitted": [
+        "graded_quality",
+        "bumper_progression",
+        "pedigree_jumps",
+        "weight_penalty",
+        "distance_stamina",
+        "going_fit"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "bumper experience, PTP background and predicted potential; no hurdle/chase OR penalty",
+        "Trainer": "stable bumper and debut record, first-time context",
+        "Jockey": "bumper experience, course and stable partnership",
+        "Course": "track run-in, turns and climb",
+        "Draw": null,
+        "Distance": "bumper stamina and breeding against today\u2019s trip",
+        "Ground": "going and pedigree given limited history",
+        "Jumping": null
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    },
+    {
+      "race_type_id": "NH_FLAT_OPEN",
+      "discipline": "NH_FLAT",
+      "primary_type": "OPEN",
+      "decision_question": "past bumper/point-to-point evidence, trainer debut, stamina, age",
+      "candidate_signals_prioritized_not_fitted": [
+        "bumper_progression",
+        "stable_profile",
+        "pedigree_jumps",
+        "jockey_conditional",
+        "distance_stamina",
+        "going_fit",
+        "weight_penalty"
+      ],
+      "eight_pillar_contract": {
+        "Ability": "bumper experience, PTP background and predicted potential; no hurdle/chase OR penalty",
+        "Trainer": "stable bumper and debut record, first-time context",
+        "Jockey": "bumper experience, course and stable partnership",
+        "Course": "track run-in, turns and climb",
+        "Draw": null,
+        "Distance": "bumper stamina and breeding against today\u2019s trip",
+        "Ground": "going and pedigree given limited history",
+        "Jumping": null
+      },
+      "exclusion_and_fallback": "Unknown not treated as zero; route to broader discipline/age/surface/handicap parent when scarce data; do not activate a claim without verified source."
+    }
+  ],
+  "type_count": 59,
+  "orthogonal_modifiers": {
+    "AGE_2YO": {
+      "when": "Flat two-year-old age-restricted",
+      "features": [
+        "juvenile_maturity",
+        "pedigree_flat",
+        "stable_profile"
+      ]
+    },
+    "AGE_3YO": {
+      "when": "Flat three-year-old age-restricted",
+      "features": [
+        "juvenile_maturity",
+        "progression",
+        "weight_penalty"
+      ]
+    },
+    "JUVENILE_HURDLE": {
+      "when": "3-year-old/juvenile hurdles regardless of Grade",
+      "features": [
+        "juvenile_maturity",
+        "jumping_transition",
+        "weight_penalty"
+      ]
+    },
+    "NOVICE": {
+      "when": "Novice eligibility (including graded and novice handicap)",
+      "features": [
+        "jumping_transition",
+        "progression",
+        "weight_penalty"
+      ]
+    },
+    "HANDICAP": {
+      "when": "Explicit handicap, including Graded/Listed and selling",
+      "features": [
+        "handicap_value",
+        "winning_mark",
+        "form_adjusted"
+      ]
+    },
+    "PATTERN_GRADE": {
+      "when": "Group/Grade 1,2,3 or Listed with explicit text",
+      "features": [
+        "graded_quality",
+        "weight_penalty",
+        "class_relative"
+      ]
+    },
+    "SPRINT": {
+      "when": "Flat up to 6f",
+      "features": [
+        "pace_run_style",
+        "draw_pace",
+        "jockey_flat"
+      ]
+    },
+    "MILE": {
+      "when": "Flat >6f through 9f",
+      "features": [
+        "pace_run_style",
+        "draw_pace",
+        "distance_stamina"
+      ]
+    },
+    "MIDDLE": {
+      "when": "Flat >9f through 13f",
+      "features": [
+        "distance_stamina",
+        "pace_run_style",
+        "speed_adjusted"
+      ]
+    },
+    "STAYERS": {
+      "when": "Flat >13f or NH extended trips, calibrated by code",
+      "features": [
+        "distance_stamina",
+        "going_fit",
+        "fitness_cycle"
+      ]
+    },
+    "SOFT_HEAVY": {
+      "when": "Declared turf going soft/heavy",
+      "features": [
+        "going_fit",
+        "distance_stamina",
+        "jumping_quality"
+      ]
+    },
+    "SMALL_FIELD": {
+      "when": "<7 declared starters",
+      "features": [
+        "pace_run_style",
+        "field_opposition"
+      ]
+    },
+    "LARGE_FIELD": {
+      "when": ">=16 declared starters",
+      "features": [
+        "pace_run_style",
+        "draw_pace",
+        "jumping_quality"
+      ]
+    },
+    "APPRENTICE_CONDITIONAL": {
+      "when": "Race restricted to claiming/non-senior professionals",
+      "features": [
+        "jockey_claim",
+        "jockey_conditional",
+        "weight_penalty"
+      ]
+    },
+    "AMATEUR": {
+      "when": "Amateur riders, hunter chase or amateur race",
+      "features": [
+        "jockey_steeple",
+        "hunter_pts",
+        "jumping_quality"
+      ]
+    },
+    "SEX_ALLOWANCE": {
+      "when": "Fillies/mares allowance explicitly published",
+      "features": [
+        "weight_penalty",
+        "juvenile_maturity"
+      ]
+    },
+    "FIRST_TIME": {
+      "when": "Verified first run in code (not merely no observed history)",
+      "features": [
+        "stable_profile",
+        "pedigree_flat",
+        "pedigree_jumps"
+      ]
+    },
+    "SURFACE_CHANGE": {
+      "when": "Turf to AW or Polytrack to Tapeta regime",
+      "features": [
+        "surface_affinity",
+        "course_profile"
+      ]
+    },
+    "SELLER_CLAIMER": {
+      "when": "Selling/claiming type even if a handicap",
+      "features": [
+        "seller_claimer",
+        "restricted_conditions"
+      ]
+    },
+    "VETERAN": {
+      "when": "Veteran restriction explicitly specified",
+      "features": [
+        "veteran",
+        "fitness_cycle"
+      ]
+    },
+    "RATED": {
+      "when": "Rated conditions/beginner/novice",
+      "features": [
+        "handicap_value",
+        "weight_penalty"
+      ]
+    }
+  },
+  "critical_rules": [
+    "First validate true GB/IE venue/country by race ID + date + source country, do not accept venue name only.",
+    "Classify country, turf/AW surface (and AW surface subtype), obstacle code, primary eligibility, actual handicap status, explicit group/grade and modifiers separately.",
+    "Never collapse Flat Group/Grade into OTHER; never replace known turf-only venue as FLAT_UNKNOWN without an audit; handle mixed venues via source evidence.",
+    "No market odds, SP or post-race rating in candidate predictor features; SP may only evaluate historical ROI.",
+    "Physical carried pounds and OR both preserved. In equal-weight pattern races, relative OR is informative but not an implicit handicap or mechanical winner.",
+    "Differentiate horses with genuinely verified debut from those whose form is absent in incomplete source.",
+    "Use past calendar day only, no future rivals form/collateral revisions until they actually occur.",
+    "Train specialist features hierarchically by parent type; share strength with broader discipline when race type is rare.",
+    "No effect can be called an established predictor until tested in out-of-time matched cohorts and prospective forward races.",
+    "Frozen D, D(c), Stage 137, Stage141 and Stage142 stay read only."
+  ],
+  "test_plan": [
+    "QA source: venue homonyms; date/race-id jurisdiction; high-confidence official course/surface and correct obstacle code; collect anomalies.",
+    "Independent race taxonomy: surface \u00d7 discipline \u00d7 eligibility; preserve modifiers for handicap, graded, novice, juvenile, claiming/conditional and age/sex.",
+    "Feature provenance ledger per horse/race: when each input first became known, null, source reliability and use status.",
+    "Construct specialist features from pre-race history and only verified available sources; avoid fabricating pace, weight claims or pedigree.",
+    "Ablation A: unchanged Stage141 vs type-aware signal masks and nonlinear interactions with same model family and fixed training schedule.",
+    "Ablation B: specialist flat maiden/novice, flat and AW handicap, hurdle maiden/novice/handicap, beginner/novice/handicap chases, bumpers.",
+    "Ablation C: patterns and scarce types use hierarchical shared prior, compare with parent type instead of free model.",
+    "Temporal: 2022\u20132024 development, 2025 validation, 2026 through 10 Nov retrospective re-evaluation, then genuinely new prospective starts.",
+    "Report Rank1/Rank2 wins, calibrated win probabilities, logloss/Brier, ROI on priced SP coverage, distance/ground/surface and type, UK/IE, confidence intervals.",
+    "Use grouped time/meeting bootstrap, minimum sample disclosure and multiple comparisons cautions. No retrospective selection of winners as live model."
+  ],
+  "observed_dataset": {
+    "2026_races": 9794,
+    "source_cutoff": "2026-11-10",
+    "subtype_counts": {
+      "FLAT_OTHER": 340,
+      "FLAT_HANDICAP": 1123,
+      "HURDLE_NOVICE": 248,
+      "HURDLE_MAIDEN": 436,
+      "CHASE_HANDICAP": 847,
+      "HURDLE_HANDICAP": 1186,
+      "HURDLE_OTHER": 112,
+      "CHASE_NOVICE": 51,
+      "NH_BUMPER": 195,
+      "CHASE_BEGINNERS": 72,
+      "AW_HANDICAP": 1546,
+      "AW_NOVICE": 235,
+      "CHASE_OTHER": 90,
+      "AW_MAIDEN": 201,
+      "AW_OTHER": 169,
+      "CHASE_MAIDEN": 14,
+      "FLAT_MAIDEN": 260,
+      "FLAT_NOVICE": 127,
+      "FLAT_UNKNOWN_OTHER": 260,
+      "FLAT_UNKNOWN_HANDICAP": 1663,
+      "FLAT_UNKNOWN_MAIDEN": 333,
+      "FLAT_UNKNOWN_NOVICE": 273,
+      "HURDLE_GRADE_1": 4,
+      "CHASE_GRADE_2": 2,
+      "CHASE_GRADE_3": 5,
+      "HURDLE_GRADE_3": 2
+    },
+    "broad_counts": {
+      "FLAT": 1850,
+      "NH": 3264,
+      "AW": 2151,
+      "FLAT_UNKNOWN": 2529
+    },
+    "FLAT_UNKNOWN_races": 2529,
+    "FLAT_UNKNOWN_pct": 25.82,
+    "FLAT_GROUP_1_races_in_FLAT_OTHER": 33,
+    "confirmed_non_UK_IRELAND_source_example": {
+      "date": "2026-01-01",
+      "course_label": "Ascot",
+      "runner": "Luvnwar (NZ)",
+      "race_id": "kaggle-deltaromeo-ukie:2026-01-01:ascot:4803587",
+      "confirmed_actual_venue": "Ascot, Western Australia, based on independent Perth racecard"
+    },
+    "stage142_verified_pre_2022_races": 343740,
+    "stage142_pre_2022_runners": 3535623,
+    "hpr_full_field_coverage_by_type_exploratory": {
+      "HURDLE_MAIDEN_pct": 5.5,
+      "FLAT_MAIDEN_pct": 4.6,
+      "AW_MAIDEN_pct": 6.0,
+      "NH_BUMPER_pct": 6.2,
+      "HURDLE_HANDICAP_pct": 82.1,
+      "AW_HANDICAP_pct": 77.1
+    },
+    "caveat": "2026 results already examined; not a fresh blind future holdout. Other source-country mistakes may exist; full extent not established."
+  },
+  "sources": [
+    {
+      "name": "BHA glossary race types",
+      "url": "https://www.britishhorseracing.com/regulation/glossary-of-race-types/",
+      "supports": "official rules of eligibility, weights and race categories"
+    },
+    {
+      "name": "BHA performance figures",
+      "url": "https://www.britishhorseracing.com/regulation/performance-figures/",
+      "supports": "margin, race shape, carried weight, interference and merit"
+    },
+    {
+      "name": "BHA handicapping tools",
+      "url": "https://www.britishhorseracing.com/regulation/handicapping-tools/",
+      "supports": "time and speed figures and contextual race interpretation"
+    },
+    {
+      "name": "BHA handicap weight",
+      "url": "https://www.britishhorseracing.com/races-can-horse-run-handicap-rating/",
+      "supports": "OR conversion to pounds, penalties, WFA, rider claims"
+    },
+    {
+      "name": "BHA initial ratings",
+      "url": "https://www.britishhorseracing.com/regulation/guide-to-handicapping/translating-performance-figures-initial-handicap-rating/",
+      "supports": "separate AW turf and hurdles chase OR"
+    },
+    {
+      "name": "HRI Irish NH programme 2025",
+      "url": "https://www.hri-ras.ie/getmedia/7692c79c-c4b5-4d3b-b939-46c580a7fe27/NH-Sep-Dec-%28Provisional-Summary%29.pdf?v=20251002170000",
+      "supports": "maiden, juvenile, novice, rated, handicap, beginner and bumper classifications"
+    },
+    {
+      "name": "BHA racing administration type filters",
+      "url": "https://support.racingadmin.co.uk/opencms/opencms/racing-admin-support/help-and-support/faqs/searching-for-fixtures-races/how-do-i-filter-the-list-of-races/",
+      "supports": "novice handicap, juvenile, graded handicap and chase/hurdle interactions"
+    },
+    {
+      "name": "Timeform jumping analysis",
+      "url": "https://www.timeform.com/horse-racing/features/generic-feature/graeme-north-rating-a-horses-jumping-ability-12112020",
+      "supports": "field/going/obstacle impact on chase jumping reliability"
+    },
+    {
+      "name": "Perth Australia 2026 Jan 1 racecard",
+      "url": "https://www.singaporepools.com.sg/en/HorseRacing/Documents/OverseasRaceCardLibrary/PERTH_FORM_010126.pdf",
+      "supports": "proof of Australian Ascot horse Luvnwar in 2026 UK/IE labelled test sample"
+    }
+  ],
+  "implementation_note_2026": "Stage143 adds draw_context_bias to the original research hypothesis library; retains draw_pace as unavailable pending structured in-running pace and geometry evidence."
+}
