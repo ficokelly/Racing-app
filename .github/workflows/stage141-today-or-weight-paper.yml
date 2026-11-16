@@ -1,0 +1,127 @@
+name: 'Stage141 — Today HPR + OR + Weight (paper selections)'
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/stage141-today-or-weight-paper.yml'
+  workflow_dispatch:
+    inputs:
+      selection_date:
+        description: 'Same-day Ireland/UK race date, YYYY-MM-DD; blank uses today'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage141-or-weight-same-day-paper
+  cancel-in-progress: false
+
+jobs:
+  selections:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      PYTHONPATH: '.:scripts'
+    steps:
+      - name: Checkout unchanged app and original frozen research models
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pinned Stage141 modelling dependencies
+        run: |
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 \
+            scikit-learn==1.6.1 joblib==1.4.2
+
+      - name: Validate same-day target and immutable Stage141 model
+        env:
+          USER_DATE: ${{ inputs.selection_date }}
+        run: |
+          set -euo pipefail
+          DAY="$(date -u +%F)"
+          TARGET="${USER_DATE:-$DAY}"
+          if [ "$DAY" != "$TARGET" ]; then
+            echo 'Refusing non-preoff historical date: requested' "$TARGET" 'actual' "$DAY" >&2
+            exit 1
+          fi
+          echo "TARGET_DATE=$TARGET" >> "$GITHUB_ENV"
+          python -m py_compile scripts/stage141_today_or_weight_paper.py scripts/stage141_grade_weight_2026.py
+          python scripts/stage141_grade_weight_2026.py self-test
+          test -s data/racecards.json
+          test -s reports/stage30/stage30-summary.json
+
+      - name: Restore verified historical archive and exact named-race mapping
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage141-today/source/{stage2,stage4}
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage2-historical-staging-database \
+            --dir reports/stage141-today/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage4-reference-named-events-and-winners \
+            --dir reports/stage141-today/source/stage4
+          test -s reports/stage141-today/source/stage2/historical_ukie_staging.sqlite
+          test -s reports/stage141-today/source/stage4/all_races_with_reference_event_ids.csv
+
+      - name: Generate unresulted, pre-off HPR + OR + weight selections
+        run: |
+          set -euo pipefail
+          python -u scripts/stage141_today_or_weight_paper.py \
+            --db reports/stage141-today/source/stage2/historical_ukie_staging.sqlite \
+            --reference reports/stage141-today/source/stage4/all_races_with_reference_event_ids.csv \
+            --cards data/racecards.json \
+            --date "$TARGET_DATE" \
+            --out reports/stage141-today/paper
+
+      - name: Put rank-one and rank-two selections in job Summary
+        if: always()
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import csv,json,pathlib
+          folder=pathlib.Path('reports/stage141-today/paper')
+          f=folder/'stage141-today-rank1-rank2.csv'
+          print('# Stage141 — Today HPR + OR + Weight (pre-off paper only)')
+          print('Model: **D137_HPR_ABILITY_OR_WEIGHT**, frozen 2026Q4 training through 30 September 2026.')
+          print('No odds used for rankings. No results are available to the selection model.')
+          if not f.exists():
+              print('No selections published. Check failing job step: fail closed instead of inventing picks.')
+          else:
+              rows=list(csv.DictReader(f.open()))
+              print('| Time UTC | Meeting | Race type | Rank | Horse | Score (uncalibrated) | OR | Weight lb | HPR |')
+              print('|---|---|---|---:|---|---:|---:|---:|---:|')
+              for r in rows:
+                  print('|',' | '.join(str(r.get(k,'')) for k in ('time_utc','meeting','race_type','rank','horse',
+                    'raw_model_score_not_calibrated_win_pct','or','weight_lb','hpr')),'|')
+              report=json.loads((folder/'stage141-today-audit.json').read_text())
+              print('Source historical results through',report['historical_source_latest'])
+              print('Racecard snapshot',report['cards']['collected_at'])
+              print('**Review non-runners and going: racecards may have changed.**')
+          PY
+
+      - name: Save selections, full ranking and coverage audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage141-today-hpr-or-weight-${{ github.run_id }}
+          path: |
+            reports/stage141-today/paper/stage141-today-*.csv
+            reports/stage141-today/paper/stage141-today-*.json
+          if-no-files-found: warn
+          retention-days: 30
