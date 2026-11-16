@@ -18,7 +18,7 @@ from collections import Counter, defaultdict, deque
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 
-VERSION='stage146-full-field-retrained-specialist-trend-v1'
+VERSION='stage146-full-field-retrained-specialist-trend-v1.1-pathfix'
 A_MODEL='STAGE146_A_RETRAINED_TRENDS'
 B_MODEL='STAGE146_B_RETRAINED_TRENDS'
 CONTROL143A='STAGE143_TYPE_EVIDENCE'
@@ -293,6 +293,11 @@ def summarise(rows):
 
 def build_research(db,reference,source141,source142,source143,config_path,out,to_date=CUTOFF):
  A,R,T,J,U,H,S=modules()
+ # Stage139 -> Stage134C calls db.resolve(); keep file arguments as Path.
+ # Normalize here as well as in argparse to protect programmatic callers.
+ db=pathlib.Path(db);reference=pathlib.Path(reference)
+ source141=pathlib.Path(source141);source142=pathlib.Path(source142)
+ source143=pathlib.Path(source143);config_path=pathlib.Path(config_path)
  out=pathlib.Path(out);out.mkdir(parents=True,exist_ok=True)
  config=json.loads(pathlib.Path(config_path).read_text())
  assert config['type_count']==59 and len(config['full_type_catalog'])==59
@@ -499,7 +504,7 @@ def main():
  p=argparse.ArgumentParser()
  p.add_argument('command',choices=('self-test','walkforward'))
  for n in ('db','reference','source141','source142','source143','config','out','to-date'):
-  p.add_argument('--'+n)
+  p.add_argument('--'+n, type=str if n=='to-date' else pathlib.Path)
  a=p.parse_args()
  if a.command=='self-test':return self_test()
  needed=('db','reference','source141','source142','source143','config','out')
