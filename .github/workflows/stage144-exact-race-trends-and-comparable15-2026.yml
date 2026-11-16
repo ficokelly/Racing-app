@@ -1,0 +1,136 @@
+name: 'Stage144 - Three-form baselines and named race trends (2026)'
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/stage144-exact-race-trends-and-comparable15-2026.yml'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage144-exact-race-trends-2026
+  cancel-in-progress: false
+jobs:
+  race-trend-walkforward:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 320
+    env:
+      PYTHONUNBUFFERED: '1'
+      OUT: reports/stage144/research
+      DB: reports/stage144/source/stage2/historical_ukie_staging.sqlite
+      REF: reports/stage144/source/stage4/all_races_with_reference_event_ids.csv
+      STAGE143: reports/stage144/source/stage143
+      STAGE141: reports/stage144/source/stage141
+    steps:
+      - name: Checkout research source without permission to modify originals
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify historical winner-versus-runner denominators and prevent SP leakage
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/stage144_named_race_trends_2026.py
+          python scripts/stage144_named_race_trends_2026.py self-test
+      - name: Restore original 1988-2026 source, named-series candidates, Stage143 and Stage141 controls
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage144/source/{stage2,stage4,stage143,stage141} "$OUT"
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage2-historical-staging-database --dir reports/stage144/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage4-reference-named-events-and-winners --dir reports/stage144/source/stage4
+          gh run download 43840922734 --repo "$GITHUB_REPOSITORY" --name stage143-frozen-d-specialists-43840922734 --dir reports/stage144/source/stage143
+          gh run download 43782077626 --repo "$GITHUB_REPOSITORY" --name stage141-grade-and-weight-43782077626 --dir reports/stage144/source/stage141
+          test -s "$DB" && test -s "$REF"
+          test -s "$STAGE143/stage143-all-runners-2026.csv.gz"
+          test -s "$STAGE143/stage143-2026-rank1-rank2.csv.gz"
+          test -s "$STAGE141/stage141-2026-runner-scores.csv.gz"
+          test -s "$STAGE141/stage141-2026-rank1-rank2.csv.gz"
+          python - <<'PY'
+          import os,sqlite3
+          c=sqlite3.connect('file:'+os.path.abspath(os.environ['DB'])+'?mode=ro',uri=True)
+          assert c.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+          assert c.execute('SELECT MIN(race_date) FROM historical_races').fetchone()[0]<='1988-12-31'
+          assert c.execute('SELECT MAX(race_date) FROM historical_races').fetchone()[0]>='2026-11-10'
+          assert c.execute("SELECT COUNT(*) FROM stage65p_race_details WHERE race_name IS NOT NULL").fetchone()[0]>50000
+          c.close();print('Verified historical database and original named-event artifact')
+          PY
+      - name: Audit recurring identities and match 2026 candidate races to earlier editions
+        run: |
+          set -euo pipefail
+          python -u scripts/stage144_named_race_trends_2026.py audit --reference "$REF" --stage143 "$STAGE143" --stage141 "$STAGE141" --out "$OUT"
+          python - <<'PY'
+          import json,os,pathlib
+          a=json.loads((pathlib.Path(os.environ['OUT'])/'stage144-recurrence-feasibility.json').read_text())
+          assert a['target_2026']==9794
+          assert a['controls']['original_stage141_reproduced']
+          assert a['controls']['all_three_baselines_identical_2026_runner_cohort']
+          assert a['controls']['baseline_wins']=={'FROZEN_D_EXACT':2010,'D_FORM_OR_GRADE__SR':2374,'D137_HPR_ABILITY_OR_WEIGHT':2597}
+          assert a['2026_audit']['exact_8plus_candidates']>=200
+          assert any(x['prior_editions']>=30 for x in a['queen_mother_2026'])
+          print('Exact Queen Mother Champion Chase annual series matched as CANDIDATES, not independently verified')
+          PY
+      - name: Replay historical form and compare exact-series and comparable-15 trends for all three base models
+        run: |
+          set -euo pipefail
+          python -u scripts/stage144_named_race_trends_2026.py backtest --db "$DB" --reference "$REF" --stage143 "$STAGE143" --stage141 "$STAGE141" --out "$OUT" --to-date 2026-11-10
+          python - <<'PY'
+          import json,os,pathlib
+          p=pathlib.Path(os.environ['OUT']);j=json.loads((p/'stage144-summary.json').read_text())
+          assert j['research_only'] and not j['original_models_modified']
+          assert not j['odds_used_for_2026_predictions']
+          assert j['matched_2026_races_per_model']>=8000
+          assert j['run_audit']['eligible_exact']>=150
+          assert len(j['models'])==24
+          assert len(j['base_models'])==3
+          assert j['three_immutable_model_controls']['original_stage141_reproduced']
+          assert j['three_immutable_model_controls']['all_three_baselines_identical_2026_runner_cohort']
+          assert j['three_immutable_model_controls']['baseline_wins']=={'FROZEN_D_EXACT':2010,'D_FORM_OR_GRADE__SR':2374,'D137_HPR_ABILITY_OR_WEIGHT':2597}
+          assert all(v['races']==j['matched_2026_races_per_model'] for v in j['overall'].values())
+          for f in ('stage144-2026-rank1-rank2.csv.gz','stage144-2026-discipline-racetype.csv','stage144-discovered-form-trends.csv', 'stage144-source-matches.csv','stage144-recurrence-feasibility.json'):
+            assert (p/f).stat().st_size>100,f
+          print('PASS STAGE144',j['overall'])
+          PY
+      - name: Publish performance, source trust and odds-use distinctions
+        if: always()
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import pathlib,json,os
+          p=pathlib.Path(os.environ['OUT'])
+          print('# Stage144 — Frozen D, Stage143 and Stage141 with recurring / comparable-15 trends')
+          print('**READ-ONLY. Frozen D, Stage143, Stage141 HPR+OR+Weight, original data, and live predictions unchanged.**')
+          a=p/'stage144-recurrence-feasibility.json'
+          if a.exists():
+            x=json.loads(a.read_text());print('Named-series candidates:',x['series_count']);print('2026 eligible exact candidates:',x['2026_audit'].get('exact_8plus_candidates'))
+            print('Queen Mother Champion Chase earlier editions:',x['queen_mother_2026'][0]['prior_editions'] if x['queen_mother_2026'] else 'not found')
+          f=p/'stage144-summary.json'
+          if not f.exists():print('Backtest incomplete. Review previous step: no fabricated comparison metrics.');raise SystemExit(0)
+          j=json.loads(f.read_text())
+          print('Matched race sample per model:',j['matched_2026_races_per_model'])
+          print('Verified base controls:',j['three_immutable_model_controls'])
+          print('Excluded probable foreign-country venue collisions:',j['run_audit'].get('foreign_collision_targets',0))
+          print('Strictly historical SP trend discovery only. No evaluated-race SP as feature or 2026 odds gate.')
+          print('| Model | Races | Rank1 wins | Strike rate | SP ROI | Exact / fallback sources |')
+          print('|---|---:|---:|---:|---:|---:|')
+          for m,v in j['overall'].items():
+            print('|',m,'|',v['races'],'|',v['wins'],'|',v['strike_pct'],'|',v['sp_roi_pct'],'|',str(v['exact_used'])+'/'+str(v['fallback_used']),'|')
+          print('These historical results are not executable bookmaker prices or independently verified recurring-event winner histories.')
+          PY
+      - name: Upload full audit and 2026 backtest even if modelling fails
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage144-recurring-race-trends-${{ github.run_id }}
+          path: |
+            reports/stage144/research/*.json
+            reports/stage144/research/*.csv
+            reports/stage144/research/*.csv.gz
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 6
