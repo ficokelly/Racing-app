@@ -1,0 +1,112 @@
+name: 'Stage146 — TODAY 16 Nov — Genuine Full-Field A/B Paper Selections'
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/stage146_today_paper_selections.py'
+      - '.github/workflows/stage146-today-2026-11-16.yml'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage146-nov16-forward-paper-once
+  cancel-in-progress: false
+jobs:
+  stage146-today:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      PYTHONUNBUFFERED: '1'
+      PYTHONPATH: '.:scripts'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      DB: 'reports/stage146-today/source/stage2/historical_ukie_staging.sqlite'
+      REF: 'reports/stage146-today/source/stage4/all_races_with_reference_event_ids.csv'
+      OUT: 'reports/stage146-today/paper'
+    steps:
+      - name: Checkout read-only original Stage146 model, today's cards and helper modules
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Stage146 exact pinned dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2
+      - name: Verify original scorer and isolated today's forward interface
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/stage146_today_paper_selections.py scripts/stage146_full_field_trend_fusion.py scripts/stage141_today_or_weight_paper.py
+          python scripts/stage146_today_paper_selections.py self-test
+          python scripts/stage146_full_field_trend_fusion.py self-test
+          python scripts/stage143_specialist_evidence_2026.py self-test
+          test -s data/racecards.json && test -s scripts/stage143_race_type_specialist_config.json
+      - name: Refresh UK and Ireland racecards in temporary checkout (never commit)
+        env:
+          RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
+          RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
+        run: |
+          set -euo pipefail
+          python collect-racecards.py
+          python - <<'PY'
+          import json
+          j=json.load(open('data/racecards.json'))
+          meetings=sorted({x['course'] for x in j['runners'] if x.get('date')=='2026-11-16'})
+          print('LATEST_CARD_SNAPSHOT',j['collected_at'],'MEETINGS',meetings)
+          assert j.get('runners') and any(x.get('date')=='2026-11-16' for x in j['runners'])
+          PY
+      - name: Restore original historic sources without modifying them
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage146-today/source/{stage2,stage4} "$OUT"
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage2-historical-staging-database --dir reports/stage146-today/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage4-reference-named-events-and-winners --dir reports/stage146-today/source/stage4
+          test -s "$DB" && test -s "$REF"
+      - name: Generate genuinely forward Stage146A and B all-runner predictions for remaining races
+        run: |
+          set -euo pipefail
+          python -u scripts/stage146_today_paper_selections.py today \
+            --db "$DB" --reference "$REF" --cards data/racecards.json \
+            --config scripts/stage143_race_type_specialist_config.json \
+            --date 2026-11-16 --out "$OUT"
+          test -s "$OUT/stage146-today-rank1-rank2.csv"
+          test -s "$OUT/stage146-today-all-runners.csv"
+          test -s "$OUT/stage146-today-audit.json"
+      - name: Display remaining race selections in this workflow
+        if: always()
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import os,pathlib,csv,json
+          out=pathlib.Path(os.environ['OUT'])
+          print('# Model Stage146 — 16 November 2026 remaining races')
+          p=out/'stage146-today-rank1-rank2.csv'
+          if not p.exists():
+           print('No valid model predictions created. See failing step. No substitutions or made-up selections.');raise SystemExit(0)
+          rows=list(csv.DictReader(p.open()))
+          print('| Irish time | Course | Model | Rank 1 | Win probability | Rank 2 | Win probability | Trend source |')
+          print('|---|---|---|---|---:|---|---:|---|')
+          a={(r['time_utc'],r['course'],r['model'],r['rank']):r for r in rows}
+          for time,course,model in sorted(set((r['time_utc'],r['course'],r['model']) for r in rows)):
+           first=a[(time,course,model,'1')];second=a[(time,course,model,'2')]
+           print('|',time,'|',course,'|',model,'|',first['horse'],'|',round(100*float(first['model_win_probability']),1),'% |',second['horse'],'|',round(100*float(second['model_win_probability']),1),'% |',first['trend_source'],'|')
+          print('**Research paper only**. No current odds used; no past-off races included. Confirm non-runners and pre-off prices.')
+          aud=json.loads((out/'stage146-today-audit.json').read_text());print('Racecard as-of:',aud['racecard_audit']['collected_at'])
+          PY
+      - name: Upload full and top-two Stage146 selections and audit, even after failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage146-today-real-a-b-${{ github.run_id }}
+          path: |
+            reports/stage146-today/paper/stage146-today-*.csv
+            reports/stage146-today/paper/stage146-today-*.json
+          if-no-files-found: warn
+          retention-days: 30
