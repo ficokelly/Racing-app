@@ -19,7 +19,7 @@ import stage134c_full_field_hpr_replay as C
 import stage108_model_g2 as G
 import race_strength_lookup as R
 
-VERSION='stage141-2026-grade-or-weight-winning-mark-v2'
+VERSION='stage141-2026-grade-or-weight-winning-mark-v2.1-missing-or-guard'
 BASE='D137_HPR_ABILITY_UNCHANGED'
 GRADE='D137_HPR_ABILITY_GRADE'
 OR_ONLY='D137_HPR_ABILITY_OR'
@@ -288,6 +288,8 @@ def weight_context(db,reference,races,out,last):
     last5=same[-5:]
     recent_quality3=avg([p['quality'] for p in last3])
     recent_quality5=avg([p['quality'] for p in last5])
+    # Unknown historic OR must NOT be treated as zero or subtracted from today's OR.
+    recent_or_mean=avg([p['or'] for p in last3])
     near=(int(abs(or_now-winmark)<=2) if or_now is not None and winmark is not None else None)
     # Qualified composite: last winning mark, >=2 non-winning runs since that
     # win, competitive *recent actual finished results*, not a blind signal.
@@ -313,7 +315,7 @@ def weight_context(db,reference,races,out,last):
        len(valid_or)/n if n else None,
        int(net is not None and netmean is not None),
        (or_now-last3[-1]['or'] if or_now is not None and last3 and last3[-1]['or'] is not None else None),
-       (or_now-avg([p['or'] for p in last3]) if or_now is not None and last3 else None),
+       (or_now-recent_or_mean if or_now is not None and recent_or_mean is not None else None),
        peak,
        (peak-or_now if peak is not None and or_now is not None else None),
        winmark,
