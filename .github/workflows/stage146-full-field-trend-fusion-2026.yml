@@ -1,0 +1,137 @@
+name: 'Stage146 — Retrained Full-Field Specialist + Historical Trends (2026)'
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/stage146-full-field-trend-fusion-2026.yml'
+      - 'scripts/stage146_full_field_trend_fusion.py'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage146-full-field-specialist-trends-research
+  cancel-in-progress: false
+jobs:
+  full-field-trend-research:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    env:
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      DB: reports/stage146/source/stage2/historical_ukie_staging.sqlite
+      REF: reports/stage146/source/stage4/all_races_with_reference_event_ids.csv
+      STAGE141: reports/stage146/source/stage141
+      STAGE142: reports/stage146/source/stage142
+      STAGE143: reports/stage146/source/stage143
+      OUT: reports/stage146/research
+    steps:
+      - name: Checkout independent research challenger and immutable baseline modules
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Use Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned ML libraries
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2
+      - name: Validate full-field trend source and original frozen model interfaces
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/stage146_full_field_trend_fusion.py scripts/stage143_specialist_evidence_2026.py scripts/stage144_named_race_trends_2026.py
+          python scripts/stage146_full_field_trend_fusion.py self-test
+          python scripts/stage143_specialist_evidence_2026.py self-test
+          python scripts/stage144_named_race_trends_2026.py self-test
+          test -s reports/stage30/stage30-summary.json
+          test -s scripts/stage143_race_type_specialist_config.json
+      - name: Restore immutable UK IE history and certified-from-prior-run comparator artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage146/source/{stage2,stage4,stage141,stage142,stage143} "$OUT"
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage2-historical-staging-database --dir reports/stage146/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage4-reference-named-events-and-winners --dir reports/stage146/source/stage4
+          gh run download 43782077626 --repo "$GITHUB_REPOSITORY" --name stage141-grade-and-weight-43782077626 --dir "$STAGE141"
+          gh run download 43844674350 --repo "$GITHUB_REPOSITORY" --name stage142-full-history-eight-pillars-43844674350 --dir "$STAGE142"
+          gh run download 43858925874 --repo "$GITHUB_REPOSITORY" --name stage143-specialist-research-43858925874 --dir "$STAGE143"
+          test -s "$DB" && test -s "$REF"
+          test -s "$STAGE141/stage141-summary.json"
+          test -s "$STAGE142/stage142-summary.json"
+          test -s "$STAGE143/stage143-2026-rank1-rank2.csv.gz"
+          python - <<'PY'
+          import os,json,pathlib,sqlite3,csv,gzip
+          db=pathlib.Path(os.environ['DB']).resolve()
+          conn=sqlite3.connect('file:'+str(db)+'?mode=ro',uri=True)
+          assert conn.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+          oldest,newest=conn.execute('SELECT MIN(race_date),MAX(race_date) FROM historical_races').fetchone()
+          assert oldest<='1988-12-31' and newest>='2026-11-10'
+          conn.close()
+          meta=json.loads((pathlib.Path(os.environ['STAGE141'])/'stage141-summary.json').read_text())
+          assert meta['source_cutoff']=='2026-11-10'
+          old=json.loads((pathlib.Path(os.environ['STAGE143'])/'stage143-summary.json').read_text())
+          assert old['source_cutoff']=='2026-11-10' and old['routed_test_2026']==8225
+          assert old['original_D_stage137_stage141_stage142_live_and_G_models_unchanged']
+          print('STAGE146_IMMUTABLE_INPUTS_OK',oldest,newest,old['routed_test_2026'])
+          PY
+      - name: Build previous-day historic trend features for every runner and refit 2025 2026 quarters
+        run: |
+          set -euo pipefail
+          python -u scripts/stage146_full_field_trend_fusion.py walkforward \
+            --db "$DB" --reference "$REF" --source141 "$STAGE141" --source142 "$STAGE142" \
+            --source143 "$STAGE143" --config scripts/stage143_race_type_specialist_config.json \
+            --out "$OUT" --to-date 2026-11-10
+          python - <<'PY'
+          import os,json,pathlib
+          o=pathlib.Path(os.environ['OUT']);s=json.loads((o/'stage146-summary.json').read_text())
+          assert s['cohort']==8225 and len(s['overall'])==6
+          assert len(s['validation_2025'])==2 and len(s['folds_2026'])==4
+          assert s['model_retrained_with_historical_trend_feature_per_runner']
+          assert s['stage143_scores_are_not_a_top_two_gate']
+          assert s['original_stage141_stage142_stage143_stage144_and_live_unchanged']
+          assert s['no_preoff_sp_inputs']
+          assert all(s['overall'][m]['races']==8225 for m in s['models'])
+          assert s['overall']['STAGE143_TYPE_EVIDENCE']['wins']==1758
+          assert s['overall']['D137_HPR_ABILITY_OR_WEIGHT']['wins']==2206
+          assert s['overall']['STAGE143_TYPE_INTERACTIONS']['wins']==1755
+          print('STAGE146_ACCEPTED_FINAL',json.dumps(s['overall']))
+          PY
+      - name: Publish comparative results and provenance
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json,os,pathlib
+          print('# Stage146 — Fully refitted 143A/143B + previous-day named/comparable trends')
+          print('Original D, D(c), G, Stage141-145 files and all live selections are read-only and unchanged.')
+          p=pathlib.Path(os.environ['OUT'])/'stage146-summary.json'
+          if not p.is_file():
+            print('Research incomplete — inspect failed job steps; NO valid results claimed.')
+          else:
+            s=json.loads(p.read_text());print('Cohort:',s['cohort'])
+            print('Trend source counts:',s['trend_source_audit']['target_source_counts'])
+            print('| Model | Races | Wins | SR | Rank1/2 winners | SP ROI | SP ROI capped 99/1 |')
+            print('|---|---:|---:|---:|---:|---:|---:|')
+            for m,z in s['overall'].items():
+             print('|',m,'|',z['races'],'|',z['wins'],'|',z['strike_pct'],'|',z['rank1_or2_wins'],'|',z['sp_roi_pct'],'|',z['sp_roi_capped_99to1_pct'],'|')
+            print('2025 validation:',s['validation_2025'])
+            print('Retrospective after 2026 outcomes seen; named-race series candidate matched only; prices are settled SP, not available preoff quotes.')
+          PY
+      - name: Upload full-field selections results and QA even when research fails
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage146-full-field-trends-${{ github.run_id }}
+          path: |
+            reports/stage146/research/*.json
+            reports/stage146/research/*.csv
+            reports/stage146/research/*.csv.gz
+          retention-days: 90
+          compression-level: 6
+          if-no-files-found: warn
