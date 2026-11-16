@@ -1,0 +1,144 @@
+name: 'Stage142 — 1988+ Full History Core Pillars and Form vs HPR OR Weight (2026)'
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/stage142-full-history-eight-pillars-2026.yml'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage142-full-history-preoff-eight-pillars-research
+  cancel-in-progress: false
+jobs:
+  historical-lookback:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    env:
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      DB: reports/stage142/source/stage2/historical_ukie_staging.sqlite
+      REF: reports/stage142/source/stage4/all_races_with_reference_event_ids.csv
+      ARCHIVE137: reports/stage142/source/stage137/stage137-quarterly-predictions.csv.gz
+      ARCHIVE141: reports/stage142/source/stage141
+      OUT: reports/stage142/research
+    steps:
+      - name: Checkout original frozen models and Stage142 challenger without edits
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install exact modelling dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2
+      - name: Validate chronological full-history ablation logic and immutable Stage141 interface
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/stage142_full_history_core_2026.py scripts/stage141_grade_weight_2026.py scripts/stage140_d137_hpr_ability_2026.py scripts/stage139_hpr_137_138_walkforward.py scripts/stage137_frozen_d_race_type_walkforward.py
+          python scripts/stage142_full_history_core_2026.py self-test
+          python scripts/stage141_grade_weight_2026.py self-test
+          python scripts/stage140_d137_hpr_ability_2026.py self-test
+          python scripts/stage139_hpr_137_138_walkforward.py self-test
+          python scripts/stage137_frozen_d_race_type_walkforward.py self-test
+          test -s reports/stage30/stage30-summary.json
+      - name: Restore immutable exact UK IE archive, Stage137 and successful Stage141 results
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage142/source/{stage2,stage4,stage137,stage141} "$OUT"
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage2-historical-staging-database --dir reports/stage142/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage4-reference-named-events-and-winners --dir reports/stage142/source/stage4
+          gh run download 43756586012 --repo "$GITHUB_REPOSITORY" --name stage137-frozen-d-specialist-nlp-43756586012 --dir reports/stage142/source/stage137
+          gh run download 43782077626 --repo "$GITHUB_REPOSITORY" --name stage141-grade-and-weight-43782077626 --dir "$ARCHIVE141"
+          test -s "$DB" && test -s "$REF" && test -s "$ARCHIVE137"
+          test -s "$ARCHIVE141/stage141-summary.json"
+          test -s "$ARCHIVE141/stage141-2026-rank1-rank2.csv.gz"
+          python - <<'PY'
+          import sqlite3,os,json,pathlib
+          db=pathlib.Path(os.environ['DB']).resolve()
+          con=sqlite3.connect('file:'+str(db)+'?mode=ro',uri=True)
+          assert con.execute('pragma quick_check').fetchone()[0]=='ok'
+          oldest,newest=con.execute('select min(race_date),max(race_date) from historical_races').fetchone()
+          assert oldest<='1988-12-31' and newest>='2026-11-10'
+          print('Archive verified:',oldest,'to',newest,'read-only')
+          con.close()
+          j=json.loads((pathlib.Path(os.environ['ARCHIVE141'])/'stage141-summary.json').read_text())
+          assert j['source_cutoff']=='2026-11-10' and j['baseline_guard']['2025_q4_baseline_exact_match']
+          assert j['overall']['D137_HPR_ABILITY_OR_WEIGHT']['races']==9794
+          print('Stage141 immutable controls confirmed: 9794 same 2026 races')
+          PY
+      - name: Rebuild 1988-2021 eight-pillar and historical form state and test 2026 sequentially
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/stage142_full_history_core_2026.py walkforward --db "$DB" --reference "$REF" --stage137 "$ARCHIVE137" --stage141 "$ARCHIVE141" --out "$OUT" --to-date 2026-11-10
+          python - <<'PY'
+          import pathlib,json,os
+          root=pathlib.Path(os.environ['OUT'])
+          s=json.loads((root/'stage142-summary.json').read_text())
+          assert s['source_cutoff']=='2026-11-10'
+          assert s['2025_original_stage137_exact_reproduction']['2025_q4_baseline_exact_match']
+          assert s['2026_immutable_stage141_cohort']['stage141_controls_are_exact_same_2026_field_and_winners']
+          assert s['full_history']['counts']['verified_prior_races']>=200000
+          assert len(s['overall'])==6 and len(s['folds'])==4
+          assert {z['races'] for z in s['overall'].values()}=={9794}
+          assert not s['live_predictions_modified'] and not s['live_database_modified']
+          for f in ('stage142-2026-rank1-rank2.csv.gz','stage142-2026-all-runners.csv.gz','stage142-2026-discipline-racetype.csv','stage141-weight-audit.json','stage139-hpr-source-audit.json'):
+            assert (root/f).stat().st_size>100,f
+          print('STAGE142_ACCEPTED',json.dumps(s['overall']))
+          PY
+      - name: Publish transparent success or failure and original-model safety statement
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json,pathlib,os,csv
+          p=pathlib.Path(os.environ['OUT'])
+          print('# Stage142 — Full 1988+ D Core Pillars and Form')
+          print('No live models altered. Frozen D, Stage137, Stage139 HPR and Stage141 prior predictions are read-only.')
+          path=p/'stage142-summary.json'
+          if not path.exists():
+            print('Full quarterly test incomplete. See failed job step; no claimed 2026 performance.')
+            raise SystemExit(0)
+          j=json.loads(path.read_text())
+          print('2026 results source cutoff:',j['source_cutoff'])
+          print('Actual verified pre-2022 races warm-started:',j['full_history']['counts']['verified_prior_races'])
+          print('Same 2026 source/horse/winner set:',j['2026_immutable_stage141_cohort'])
+          print('| Model | Races | Rank1 wins | SR% | SP ROI% | Rank1/2 winners |')
+          print('|---|---:|---:|---:|---:|---:|')
+          for model,z in j['overall'].items():
+            print('|',model,'|',z['races'],'|',z['wins'],'|',z['strike_pct'],'|',z['sp_roi_pct'],'|',z['rank1_or2_wins'],'|')
+          print('2026 changes per original 8 pillars:',j['matched_and_feature_differences']['2026_changes_by_pillar'])
+          f=p/'stage142-2026-discipline-racetype.csv'
+          if f.exists():
+            rows=list(csv.DictReader(f.open()))
+            for typ in ('DISCIPLINE','RACE_TYPE'):
+              print('##',typ)
+              print('| Model | Type | Races | Wins | SR% | ROI% |')
+              print('|---|---|---:|---:|---:|---:|')
+              for z in rows:
+                if z['breakdown']==typ and int(z['races'])>=40:
+                  print('|',z['model'],'|',z['group'],'|',z['races'],'|',z['wins'],'|',z['strike_pct'],'|',z['sp_roi_pct'],'|')
+          print('Historical source completeness is not assured; test is retrospective; ROI uses priced SP subset.')
+          PY
+      - name: Upload research only results and complete source confidence audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage142-full-history-eight-pillars-${{ github.run_id }}
+          path: |
+            reports/stage142/research/*.json
+            reports/stage142/research/*.csv
+            reports/stage142/research/*.csv.gz
+          retention-days: 90
+          compression-level: 6
+          if-no-files-found: warn
