@@ -1,0 +1,341 @@
+{
+  "version": 1,
+  "date": "2026-11-17",
+  "generated_at": "2026-11-17T10:19:08.431958+00:00",
+  "deadline": "09:45 Europe/Dublin",
+  "before_deadline": false,
+  "status": "INCOMPLETE_CHECK_REQUIRED",
+  "controller_mode": "RECONCILE_EXISTING_ONLY",
+  "prediction_times_are_not_normalized_to_deadline": true,
+  "no_model_rescoring_during_reconciliation": true,
+  "cards": {
+    "date": "2026-11-17",
+    "races": 25,
+    "meeting_count": 3,
+    "cards_collected_at": "2026-11-17T09:33:13.080815+00:00"
+  },
+  "run_groups": [
+    {
+      "group": "A_B",
+      "workflow": "stage13-strategy-learning.yml",
+      "models": [
+        "A",
+        "B"
+      ],
+      "status": "completed",
+      "requested_at": "2026-11-17T00:00:00+00:00",
+      "run_id": 44056621845,
+      "url": "https://github.com/ficokelly/Racing-app/actions/runs/44056621845",
+      "reason": "",
+      "conclusion": "failure",
+      "completed_at": "2026-11-17T09:37:06Z",
+      "output_status": "WORKFLOW_FAILURE",
+      "models_with_rank1": {
+        "A": 0,
+        "B": 0
+      }
+    },
+    {
+      "group": "C",
+      "workflow": "stage21-model-c-live.yml",
+      "models": [
+        "C"
+      ],
+      "status": "completed",
+      "requested_at": "2026-11-17T00:00:00+00:00",
+      "run_id": 44056627378,
+      "url": "https://github.com/ficokelly/Racing-app/actions/runs/44056627378",
+      "reason": "",
+      "conclusion": "success",
+      "completed_at": "2026-11-17T09:37:40Z",
+      "output_status": "EMPTY_OR_WRONG_DATE",
+      "models_with_rank1": {
+        "C": 0
+      }
+    },
+    {
+      "group": "D_Z",
+      "workflow": "stage38-model-d-repair.yml",
+      "models": [
+        "D",
+        "Z"
+      ],
+      "status": "completed",
+      "requested_at": "2026-11-17T00:00:00+00:00",
+      "run_id": 44056631818,
+      "url": "https://github.com/ficokelly/Racing-app/actions/runs/44056631818",
+      "reason": "",
+      "conclusion": "success",
+      "completed_at": "2026-11-17T09:40:04Z",
+      "output_status": "OK",
+      "models_with_rank1": {
+        "D": 25,
+        "Z": 0
+      }
+    },
+    {
+      "group": "Dc",
+      "workflow": "rhp-stage69-dc-live.yml",
+      "models": [
+        "D(c)"
+      ],
+      "status": "completed",
+      "requested_at": "2026-11-17T00:00:00+00:00",
+      "run_id": 44056636379,
+      "url": "https://github.com/ficokelly/Racing-app/actions/runs/44056636379",
+      "reason": "",
+      "conclusion": "success",
+      "completed_at": "2026-11-17T09:40:48Z",
+      "output_status": "OK",
+      "models_with_rank1": {
+        "D(c)": 25
+      }
+    },
+    {
+      "group": "G",
+      "workflow": "stage107-model-g-paper.yml",
+      "models": [
+        "G"
+      ],
+      "status": "completed",
+      "requested_at": "2026-11-17T00:00:00+00:00",
+      "run_id": 44056643092,
+      "url": "https://github.com/ficokelly/Racing-app/actions/runs/44056643092",
+      "reason": "",
+      "conclusion": "success",
+      "completed_at": "2026-11-17T09:35:35Z",
+      "output_status": "OK",
+      "models_with_rank1": {
+        "G": 25
+      }
+    },
+    {
+      "group": "G2_G3",
+      "workflow": "stage109-g3-paper.yml",
+      "models": [
+        "G2_FROZEN",
+        "G3_LEARNED"
+      ],
+      "status": "completed",
+      "requested_at": "2026-11-17T00:00:00+00:00",
+      "run_id": 44056648935,
+      "url": "https://github.com/ficokelly/Racing-app/actions/runs/44056648935",
+      "reason": "",
+      "conclusion": "success",
+      "completed_at": "2026-11-17T09:37:10Z",
+      "output_status": "OK",
+      "models_with_rank1": {
+        "G2_FROZEN": 25,
+        "G3_LEARNED": 25
+      }
+    },
+    {
+      "group": "G4",
+      "workflow": "stage111b-g4-paper-fix.yml",
+      "models": [
+        "G4_SPECIALIST"
+      ],
+      "status": "completed",
+      "requested_at": "2026-11-17T00:00:00+00:00",
+      "run_id": 44056654463,
+      "url": "https://github.com/ficokelly/Racing-app/actions/runs/44056654463",
+      "reason": "",
+      "conclusion": "success",
+      "completed_at": "2026-11-17T09:37:03Z",
+      "output_status": "OK",
+      "models_with_rank1": {
+        "G4_SPECIALIST": 25
+      }
+    },
+    {
+      "group": "G5",
+      "workflow": "stage128-g5-paper.yml",
+      "models": [
+        "G5_STRENGTH_QUARTERLY",
+        "G5_NETWORK_QUARTERLY",
+        "G5_COMBINED_QUARTERLY",
+        "G5_ADAPTIVE_QUARTERLY"
+      ],
+      "status": "completed",
+      "requested_at": "2026-11-17T00:00:00+00:00",
+      "run_id": 44056660044,
+      "url": "https://github.com/ficokelly/Racing-app/actions/runs/44056660044",
+      "reason": "",
+      "conclusion": "success",
+      "completed_at": "2026-11-17T09:36:22Z",
+      "output_status": "OK",
+      "models_with_rank1": {
+        "G5_STRENGTH_QUARTERLY": 23,
+        "G5_NETWORK_QUARTERLY": 23,
+        "G5_COMBINED_QUARTERLY": 23,
+        "G5_ADAPTIVE_QUARTERLY": 23
+      }
+    },
+    {
+      "group": "Stage141",
+      "workflow": "stage141-today-or-weight-paper.yml",
+      "models": [
+        "D137_HPR_ABILITY_OR_WEIGHT"
+      ],
+      "status": "completed",
+      "requested_at": "2026-11-17T00:00:00+00:00",
+      "run_id": 44056665741,
+      "url": "https://github.com/ficokelly/Racing-app/actions/runs/44056665741",
+      "reason": "",
+      "conclusion": "success",
+      "completed_at": "2026-11-17T09:45:15Z",
+      "output_status": "OK",
+      "models_with_rank1": {
+        "D137_HPR_ABILITY_OR_WEIGHT": 25
+      }
+    },
+    {
+      "group": "Stage143_146",
+      "workflow": "stage147-daily-143-146.yml",
+      "models": [
+        "STAGE143_TYPE_EVIDENCE",
+        "STAGE143_TYPE_INTERACTIONS",
+        "STAGE146_A_RETRAINED_TRENDS",
+        "STAGE146_B_RETRAINED_TRENDS"
+      ],
+      "status": "completed",
+      "requested_at": "2026-11-17T00:00:00+00:00",
+      "run_id": 44056671514,
+      "url": "https://github.com/ficokelly/Racing-app/actions/runs/44056671514",
+      "reason": "",
+      "conclusion": "success",
+      "completed_at": "2026-11-17T10:01:57Z",
+      "output_status": "OK",
+      "models_with_rank1": {
+        "STAGE143_TYPE_EVIDENCE": 25,
+        "STAGE143_TYPE_INTERACTIONS": 25,
+        "STAGE146_A_RETRAINED_TRENDS": 25,
+        "STAGE146_B_RETRAINED_TRENDS": 25
+      }
+    }
+  ],
+  "observed_rank1_races_by_model": {
+    "D": 25,
+    "D(c)": 25,
+    "G": 25,
+    "G2_FROZEN": 25,
+    "G3_LEARNED": 25,
+    "G4_SPECIALIST": 25,
+    "G5_NETWORK_QUARTERLY": 23,
+    "G5_STRENGTH_QUARTERLY": 23,
+    "G5_COMBINED_QUARTERLY": 23,
+    "G5_ADAPTIVE_QUARTERLY": 23,
+    "D137_HPR_ABILITY_OR_WEIGHT": 25,
+    "STAGE146_A_RETRAINED_TRENDS": 25,
+    "STAGE146_B_RETRAINED_TRENDS": 25,
+    "STAGE143_TYPE_EVIDENCE": 25,
+    "STAGE143_TYPE_INTERACTIONS": 25
+  },
+  "coverage_by_model": {
+    "A": {
+      "rank1_races": 0,
+      "declared_races": 25,
+      "coverage_percent": 0.0
+    },
+    "B": {
+      "rank1_races": 0,
+      "declared_races": 25,
+      "coverage_percent": 0.0
+    },
+    "C": {
+      "rank1_races": 0,
+      "declared_races": 25,
+      "coverage_percent": 0.0
+    },
+    "D": {
+      "rank1_races": 25,
+      "declared_races": 25,
+      "coverage_percent": 100.0
+    },
+    "Z": {
+      "rank1_races": 0,
+      "declared_races": 25,
+      "coverage_percent": 0.0
+    },
+    "D(c)": {
+      "rank1_races": 25,
+      "declared_races": 25,
+      "coverage_percent": 100.0
+    },
+    "G": {
+      "rank1_races": 25,
+      "declared_races": 25,
+      "coverage_percent": 100.0
+    },
+    "G2_FROZEN": {
+      "rank1_races": 25,
+      "declared_races": 25,
+      "coverage_percent": 100.0
+    },
+    "G3_LEARNED": {
+      "rank1_races": 25,
+      "declared_races": 25,
+      "coverage_percent": 100.0
+    },
+    "G4_SPECIALIST": {
+      "rank1_races": 25,
+      "declared_races": 25,
+      "coverage_percent": 100.0
+    },
+    "G5_STRENGTH_QUARTERLY": {
+      "rank1_races": 23,
+      "declared_races": 25,
+      "coverage_percent": 92.0
+    },
+    "G5_NETWORK_QUARTERLY": {
+      "rank1_races": 23,
+      "declared_races": 25,
+      "coverage_percent": 92.0
+    },
+    "G5_COMBINED_QUARTERLY": {
+      "rank1_races": 23,
+      "declared_races": 25,
+      "coverage_percent": 92.0
+    },
+    "G5_ADAPTIVE_QUARTERLY": {
+      "rank1_races": 23,
+      "declared_races": 25,
+      "coverage_percent": 92.0
+    },
+    "D137_HPR_ABILITY_OR_WEIGHT": {
+      "rank1_races": 25,
+      "declared_races": 25,
+      "coverage_percent": 100.0
+    },
+    "STAGE143_TYPE_EVIDENCE": {
+      "rank1_races": 25,
+      "declared_races": 25,
+      "coverage_percent": 100.0
+    },
+    "STAGE143_TYPE_INTERACTIONS": {
+      "rank1_races": 25,
+      "declared_races": 25,
+      "coverage_percent": 100.0
+    },
+    "STAGE146_A_RETRAINED_TRENDS": {
+      "rank1_races": 25,
+      "declared_races": 25,
+      "coverage_percent": 100.0
+    },
+    "STAGE146_B_RETRAINED_TRENDS": {
+      "rank1_races": 25,
+      "declared_races": 25,
+      "coverage_percent": 100.0
+    }
+  },
+  "models_without_daily_workflow": {
+    "E_HPR": "Historical HPR archive is not a complete daily ranked model",
+    "E_75_25": "No verified general daily scorer (earlier one-day NH handicap test only)",
+    "F": "Research-only; no verified daily paper scorer",
+    "Stage137_140": "Historical training/backtest controls, not separate daily selection workflows",
+    "Stage142": "Historical model; no verified daily full-field scorer",
+    "Stage144_145": "Trend research/replay, not standalone daily model predictions",
+    "Original_D_variants_A_B_C": "Archived A/B/C D variants beyond the current live A/B/C are research-only"
+  },
+  "limit": "One Group success can include partial or late paper coverage; inspect per-race rows. Scheduled start is not a guaranteed SLA."
+}
