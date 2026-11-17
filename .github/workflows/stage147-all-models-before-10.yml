@@ -3,6 +3,17 @@ name: 'Stage147 — All Models Morning Controller (before 10 Dublin)'
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: 'run: dispatch new models; reconcile: combine earlier run artifacts without triggering models'
+        required: false
+        type: choice
+        options: [run, reconcile]
+        default: run
+      recover_since:
+        description: 'Reconcile only: earliest UTC model-run creation, e.g. 2026-11-17T09:32:00Z'
+        required: false
+        type: string
+        default: ''
       selection_date:
         description: 'Dublin today only YYYY-MM-DD (leave blank for current day)'
         required: false
@@ -56,7 +67,7 @@ jobs:
             echo 'Cannot backdate or use stale horse selections; today Dublin only' >&2
             exit 1
           fi
-          if ((10#$HOUR >= 10)); then
+          if [[ '${{ inputs.mode }}' != 'reconcile' ]] && ((10#$HOUR >= 10)); then
             echo 'Morning deadline has passed. Run research manually; do not label it pre-10am.' >&2
             exit 1
           fi
@@ -65,6 +76,7 @@ jobs:
           python scripts/stage147_daily_143_146.py self-test
           test -s data/racecards.json
       - name: Refresh today and tomorrow UK IE racecards from source API
+        if: ${{ inputs.mode != 'reconcile' }}
         env:
           RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
           RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
@@ -80,6 +92,7 @@ jobs:
           print('STAGE147_FRESH_RACECARDS',data['collected_at'],'RACES',len(races),'TARGET',os.environ['TARGET_DAY'])
           PY
       - name: Refresh pre-off odds for price-aware paper models when PuntersEdge is connected
+        if: ${{ inputs.mode != 'reconcile' }}
         env:
           PUNTERSEDGE_API_KEY: ${{ secrets.PUNTERSEDGE_API_KEY }}
         shell: bash
@@ -96,6 +109,7 @@ jobs:
             echo '::warning::PUNTERSEDGE_API_KEY not connected. Price-qualified subsets may be absent.'
           fi
       - name: Publish one fresh reference snapshot to main before triggering child scorers
+        if: ${{ inputs.mode != 'reconcile' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -124,6 +138,7 @@ jobs:
             fi
           done
       - name: Dispatch all configured paper model groups; monitor and validate Rank 1 and 2
+        if: ${{ inputs.mode != 'reconcile' }}
         id: controller
         env:
           GH_TOKEN: ${{ github.token }}
@@ -132,6 +147,17 @@ jobs:
           set -euo pipefail
           python -u scripts/stage147_morning_controller.py run \
             --date "$TARGET_DAY" --cards data/racecards.json
+      - name: Reconcile today's existing pre-off model outputs without re-running any model
+        if: ${{ inputs.mode == 'reconcile' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          RECOVER_SINCE: ${{ inputs.recover_since }}
+        run: |
+          set -euo pipefail
+          python -u scripts/stage147_morning_controller.py reconcile \
+            --date "$TARGET_DAY" --cards data/racecards.json \
+            --since "${RECOVER_SINCE:-}"
       - name: Put complete model status and rank-one availability in the GitHub run Summary
         if: always()
         shell: bash
