@@ -181,6 +181,34 @@ def get_repo_json(path):
     if z.get('encoding')!='base64':raise RuntimeError('GitHub JSON data unavailable for '+path)
     return json.loads(base64.b64decode(z['content']))
 
+def published_rankings(race, model):
+    """Extract ranked candidates from the model's *actual* public schema.
+
+    Model C stores the ordered full field in `ranking`, with `probability`;
+    it does not attach numeric `rank` to individual `runners`. D and D(c)
+    publish ranks in `runners`. Never manufacture rankings from horse order.
+    """
+    if model != 'C':
+        return race.get('runners', [])
+    rankings=race.get('ranking')
+    if not isinstance(rankings, list):
+        return []
+    declared={normalize(x.get('horse')) for x in race.get('runners', [])
+              if isinstance(x,dict) and x.get('horse')}
+    result=[]
+    seen=set()
+    for position, candidate in enumerate(rankings[:2],1):
+        if not isinstance(candidate,dict) or not candidate.get('horse'):
+            return []
+        key=normalize(candidate['horse'])
+        if not key or key not in declared or key in seen:
+            return []
+        seen.add(key)
+        result.append({'horse':candidate['horse'], 'rank':position,
+                       'win_probability':candidate.get('probability','')})
+    return result if len(result)==2 else []
+
+
 def extract_published(task,day,rec):
     # Only use the new target day; these published JSON files contain historical cards too.
     out=[]
@@ -210,7 +238,7 @@ def extract_published(task,day,rec):
             print('STAGE147_PUBLISHED_ERROR',name,path,str(ex),flush=True);continue
         for race in j.get('races',[]):
             if race.get('date')!=day:continue
-            for z in race.get('runners',[]):
+            for z in published_rankings(race,name):
                 rank=str(z.get('rank') or '')
                 if rank not in ('1','2'):continue
                 stamp=dt_parse(race.get('published_at') or race.get('scored_at') or j.get('generated_at'))
@@ -393,6 +421,14 @@ def self_test():
        {'date':'2026-11-17','model':'D','race_id':canonical_race('2026-11-17','Carlisle','13:00'),'rank':1}]
     validate_rows(a,'2026-11-17')
     assert len(extract_archive(x,ENABLED[6],'2026-11-16','fake'))==0
+    sample_c={'runners':[{'horse':'Horse Alpha'}, {'horse':'Horse Beta'}],
+              'ranking':[{'horse':'Horse Beta','probability':0.6},
+                         {'horse':'Horse Alpha','probability':0.3}]}
+    c=published_rankings(sample_c,'C')
+    assert [(q['horse'],q['rank']) for q in c]==[('Horse Beta',1),('Horse Alpha',2)]
+    assert len(published_rankings(sample_c,'D'))==2
+    assert not published_rankings({'runners':sample_c['runners'],
+       'ranking':[{'horse':'Imaginary Horse'},{'horse':'Horse Alpha'}]},'C')
     print('STAGE147_SELFTEST_OK',len(ENABLED),'child workflows',sum(len(z['models']) for z in ENABLED),'daily model identifiers')
 
 def previous_day_test():return (dt.date(2026,11,17)-dt.timedelta(days=1)).isoformat()
