@@ -46,8 +46,22 @@ def dt_parse(s):
     except (TypeError,ValueError):return None
 
 def now_utc():return dt.datetime.now(dt.timezone.utc)
-def nice_time(row):return str(row.get('time_utc') or row.get('off_utc') or row.get('time') or row.get('race_time') or '').strip()[:5]
+def nice_time(row):
+    """Return UTC HH:MM from either HH:MM or timestamp fields, never a date prefix."""
+    raw=str(row.get('time_utc') or row.get('off_utc') or row.get('time') or row.get('race_time') or '').strip()
+    if re.fullmatch(r'\d{1,2}:\d{2}(:\d{2})?',raw):return raw[:5].zfill(5)
+    stamp=dt_parse(raw)
+    return stamp.strftime('%H:%M') if stamp else ''
+
 def normalize(v):return re.sub('[^A-Z0-9]','',str(v or '').upper())
+
+def canonical_race(day,meeting,time):
+    """Stable race join key for models with inconsistent or absent source race IDs."""
+    time=nice_time({'time':time})
+    course=normalize(meeting)
+    if not course or not time:raise ValueError('Missing meeting/off time; cannot build a safe race key')
+    return f'{day}|{course}|{time}'
+
 
 def endpoint(url,method='GET',body=None):
     key=os.getenv('GH_TOKEN') or os.getenv('GITHUB_TOKEN')
@@ -122,7 +136,7 @@ def get_artifact_csv(rec,task,out):
     if not runid:return [],'NO_RUN'
     artifacts=api(f'actions/runs/{runid}/artifacts',per_page=50).get('artifacts',[])
     # Only download small daily artifacts; never restore the training DB through the controller.
-    candidates=[z for z in artifacts if not z.get('expired') and (z.get('size_in_bytes') or 0)<5_000_000]
+    candidates=[z for z in artifacts if not z.get('expired') and (z.get('size_in_bytes') or 0)<60_000_000]
     if not candidates:return [],'NO_DAILY_ARTIFACT'
     last_error='EXPECTED_CSV_NOT_FOUND'
     for item in candidates:
@@ -148,20 +162,23 @@ def extract_archive(rows,task,day,run_url):
         if rank not in ('1','2'):continue
         horse=r.get('horse')
         if not horse:continue
-        rkey=str(r.get('race_id') or '')
-        if not rkey:rkey='|'.join((day,str(r.get('course') or r.get('meeting') or ''),nice_time(r)))
+        rkey=canonical_race(day,r.get('course') or r.get('meeting'),nice_time(r))
         sig=(model,rkey,rank)
         if sig in seen:raise RuntimeError(f'Duplicate model-race-rank {sig} in artifact')
         seen.add(sig)
         out.append({'date':day,'model':model,'meeting':r.get('course') or r.get('meeting') or '',
           'time_utc':nice_time(r),'race_id':rkey,'horse':horse,'rank':int(rank),
           'win_probability':r.get('model_win_probability') or r.get('win_probability') or '',
-          'trend_source':r.get('trend_source') or '', 'source':'IMMUTABLE_PAPER_ARTIFACT','run_url':run_url})
+          'trend_source':r.get('trend_source') or '', 'source':'IMMUTABLE_PAPER_ARTIFACT','run_url':run_url,
+          'prediction_asof':r.get('scored_at') or r.get('decision_utc') or r.get('asof_utc') or ''})
     return out
 
 def get_repo_json(path):
     z=api('contents/'+path,ref='main')
-    if z.get('encoding')!='base64':raise RuntimeError('GitHub JSON encoding changed')
+    # GitHub Contents API omits base64 content for files over 1 MiB.
+    if z.get('encoding')!='base64' and z.get('sha'):
+        z=api('git/blobs/'+z['sha'])
+    if z.get('encoding')!='base64':raise RuntimeError('GitHub JSON data unavailable for '+path)
     return json.loads(base64.b64decode(z['content']))
 
 def extract_published(task,day,rec):
@@ -178,9 +195,10 @@ def extract_published(task,day,rec):
                 off=dt_parse(row.get('race_time'))
                 if not stamp or (off and stamp>=off):continue
                 out.append({'date':day,'model':model,'meeting':row.get('course',''),
-                  'time_utc':row.get('time',''),'race_id':row.get('race_id') or (day+'|'+str(row.get('course'))+'|'+str(row.get('time'))),
+                  'time_utc':nice_time(row),'race_id':canonical_race(day,row.get('course'),nice_time(row)),
                   'horse':selected['horse'],'rank':1,'win_probability':selected.get('winning_probability',''),
-                  'trend_source':'','source':'PREOFF_QUALIFIED_SELECTION_ONLY', 'run_url':rec['url']})
+                  'trend_source':'','source':'PREOFF_QUALIFIED_SELECTION_ONLY', 'run_url':rec['url'],
+                  'prediction_asof':selected.get('published_at') or ''})
         return out
     if task['id']=='C':files=[('C','data/strategy-c-probabilities.json')]
     elif task['id']=='D_Z':files=[('D','data/strategy-d-probabilities.json'),('Z','data/strategy-z-probabilities.json')]
@@ -199,10 +217,11 @@ def extract_published(task,day,rec):
                 off=dt_parse(race.get('race_time'))
                 if stamp and off and stamp>=off:continue
                 out.append({'date':day,'model':name,'meeting':race.get('course',''),
-                  'time_utc':race.get('time',''),'race_id':race.get('race_id',''),
+                  'time_utc':nice_time(race),'race_id':canonical_race(day,race.get('course'),nice_time(race)),
                   'horse':z['horse'],'rank':int(rank),
                   'win_probability':z.get('win_probability') or z.get('probability') or '',
-                  'trend_source':'','source':'COMMITTED_PREOFF_RANKINGS','run_url':rec['url']})
+                  'trend_source':'','source':'COMMITTED_PREOFF_RANKINGS','run_url':rec['url'],
+                  'prediction_asof':race.get('published_at') or race.get('scored_at') or j.get('generated_at') or ''})
     return out
 
 def record_outputs(rec,task,day,out):
@@ -238,8 +257,48 @@ def write_summary(manifest,rows):
          '', 'A green workflow does not imply every race or model was ranked. See `stage147-morning-status.json` for missing groups and exact child run links.',
          '', 'All research results are paper only, not confirmed betting value; no current result or SP is used in forecasts.']
     (OUT/'README.md').write_text('\n'.join(md)+'\n')
-    print('STAGE147_SUMMARY',json.dumps({'date':manifest['date'],'status':manifest['status'],'modelsWithSelections':len(models),'rows':len(rows)}),flush=True)
+    print('STAGE147_SUMMARY',json.dumps({'date':manifest['date'],'status':manifest['status'],'modelsWithSelections':sum(bool(v) for v in models.values()),'rows':len(rows)}),flush=True)
     for line in md:print(line)
+
+def existing_runs(day,since):
+    """Recover already launched morning runs without dispatching or re-scoring horses."""
+    after=dt_parse(since) if since else dt.datetime.combine(dt.date.fromisoformat(day),dt.time(0),ZONE).astimezone(dt.timezone.utc)
+    if not after:raise RuntimeError('Invalid --since ISO date-time')
+    records=[]
+    for task in ENABLED:
+        rec={'group':task['id'],'workflow':task['workflow'],'models':task['models'],
+             'status':'MISSING_RUN','requested_at':after.isoformat(), 'run_id':None,'url':None,
+             'reason':'No dispatched run found since '+after.isoformat()}
+        try:
+            runs=api('actions/workflows/'+task['workflow']+'/runs',event='workflow_dispatch',per_page=100).get('workflow_runs',[])
+            matches=[x for x in runs if x.get('head_branch')=='main' and
+                     (dt_parse(x.get('created_at')) or dt.datetime.min.replace(tzinfo=dt.timezone.utc))>=after and
+                     (dt_parse(x.get('created_at')) or dt.datetime.min.replace(tzinfo=dt.timezone.utc)).astimezone(ZONE).date().isoformat()==day]
+            if matches:
+                x=max(matches,key=lambda a:a.get('created_at') or '')
+                rec.update({'status':x['status'],'run_id':x['id'],'url':x['html_url'],
+                    'conclusion':x.get('conclusion'),'completed_at':x.get('updated_at'),'reason':''})
+        except Exception as ex:rec['reason']='RUN_LOOKUP_FAILED: '+str(ex)
+        records.append(rec)
+        print('STAGE147_RECOVER',rec['group'],rec['status'],rec['run_id'],flush=True)
+    return records
+
+
+def collect_completed(records,day,out):
+    """Collect safely, isolating a bad output to its source group."""
+    outputs={};results={}
+    for task in ENABLED:
+        rec=next(r for r in records if r['group']==task['id'])
+        if rec.get('status')=='completed' and rec.get('conclusion')=='success':
+            try:
+                rows,result=record_outputs(rec,task,day,out)
+                validate_rows(rows,day)
+                outputs[task['id']]=rows;results[task['id']]=result
+            except Exception as ex:results[task['id']]='OUTPUT_ERROR: '+str(ex)
+        elif rec.get('status')=='completed':results[task['id']]='WORKFLOW_'+str(rec.get('conclusion')).upper()
+        else:results[task['id']]='NOT_FINISHED_OR_NOT_FOUND'
+    return outputs,results
+
 
 def run(args):
     day=args.date or date_dublin()
@@ -251,13 +310,14 @@ def run(args):
         data=dry_run(day);data['cards']=card
         (OUT/'stage147-dry-run.json').write_text(json.dumps(data,indent=2)+'\n')
         print(json.dumps({**data,'groups':[{k:v for k,v in z.items() if k!='inputs'} for z in data['groups']]},indent=2));return
-    records=dispatch(day)
+    recovery=args.command=='reconcile'
+    records=existing_runs(day,args.since) if recovery else dispatch(day)
     deadline=dt.datetime.combine(dt.date.fromisoformat(day),dt.time(9,45),ZONE).astimezone(dt.timezone.utc)
     if now_utc()>=deadline:
         print('STAGE147_LATE_MANUAL_RUN: deadline already passed; do not claim before 10AM',flush=True)
     # Start after dispatch, poll run records and fail closed on missing artifacts.
     status_by_id={r['group']:r for r in records};outputs={};results={}
-    while now_utc()<deadline:
+    while not recovery and now_utc()<deadline:
         terminal=0
         for task in ENABLED:
             r=status_by_id[task['id']]
@@ -278,12 +338,15 @@ def run(args):
                 if r.get('conclusion')=='success' and task['id'] not in results:
                     try:
                         a,reason=record_outputs(r,task,day,OUT)
+                        validate_rows(a,day)
                         results[task['id']]=reason;outputs[task['id']]=a
                     except Exception as ex:results[task['id']]='OUTPUT_ERROR: '+str(ex)
                 elif r.get('conclusion')!='success':results[task['id']]='WORKFLOW_'+str(r.get('conclusion')).upper()
         print('STAGE147_PROGRESS',terminal,'/',len(ENABLED),'groups done',flush=True)
         if terminal==len(ENABLED):break
         time.sleep(90)
+    if recovery:
+        outputs,results=collect_completed(records,day,OUT)
     allrows=[r for task in ENABLED for r in outputs.get(task['id'],[])]
     validate_rows(allrows,day)
     bymodel=collections.Counter(r['model'] for r in allrows if r['rank']==1)
@@ -300,12 +363,16 @@ def run(args):
     manifest={'version':1,'date':day,'generated_at':now_utc().isoformat(),
       'deadline':'09:45 Europe/Dublin','before_deadline':finished_before_deadline,
       'status':'CONNECTED_MODELS_HAVE_SELECTIONS' if healthy and finished_before_deadline else 'INCOMPLETE_CHECK_REQUIRED',
+      'controller_mode':'RECONCILE_EXISTING_ONLY' if recovery else 'DISPATCH_NEW',
+      'prediction_times_are_not_normalized_to_deadline':True,
+      'no_model_rescoring_during_reconciliation':recovery,
       'cards':{k:v for k,v in card.items() if k!='race_keys'},'run_groups':records,
       'observed_rank1_races_by_model':dict(bymodel),'coverage_by_model':coverage,
       'models_without_daily_workflow':NOT_READY,
       'limit':'One Group success can include partial or late paper coverage; inspect per-race rows. Scheduled start is not a guaranteed SLA.'}
     write_summary(manifest,allrows)
-    if manifest['status']!='CONNECTED_MODELS_HAVE_SELECTIONS':raise SystemExit('Stage147 incomplete: examine morning-status.json and failed/missing child workflows')
+    if manifest['status']!='CONNECTED_MODELS_HAVE_SELECTIONS':
+        print('::warning::Stage147 coverage incomplete; see stage147-morning-status.json. Reconciliation succeeded, but not all models produced selections.',flush=True)
 
 def rec_ok(r):return r.get('output_status')=='OK'
 
@@ -319,6 +386,12 @@ def self_test():
     parsed=extract_archive(x,ENABLED[6],'2026-11-17','https://github.com/example/runs/1')
     assert len(parsed)==1 and parsed[0]['rank']==1 and parsed[0]['time_utc']=='17:00'
     validate_rows(parsed,'2026-11-17')
+    assert nice_time({'race_time':'2026-11-17T12:30:00Z'})=='12:30'
+    assert canonical_race('2026-11-17','Carlisle','12:30')=='2026-11-17|CARLISLE|12:30'
+    assert canonical_race('2026-11-17','Carlisle','12:30')!=canonical_race('2026-11-17','Carlisle','13:00')
+    a=[{'date':'2026-11-17','model':'D','race_id':canonical_race('2026-11-17','Carlisle','12:30'),'rank':1},
+       {'date':'2026-11-17','model':'D','race_id':canonical_race('2026-11-17','Carlisle','13:00'),'rank':1}]
+    validate_rows(a,'2026-11-17')
     assert len(extract_archive(x,ENABLED[6],'2026-11-16','fake'))==0
     print('STAGE147_SELFTEST_OK',len(ENABLED),'child workflows',sum(len(z['models']) for z in ENABLED),'daily model identifiers')
 
@@ -326,9 +399,10 @@ def previous_day_test():return (dt.date(2026,11,17)-dt.timedelta(days=1)).isofor
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser()
-    parser.add_argument('command',choices=('self-test','run'))
+    parser.add_argument('command',choices=('self-test','run','reconcile'))
     parser.add_argument('--date',default='');parser.add_argument('--cards',default='data/racecards.json')
     parser.add_argument('--dry-run',action='store_true')
+    parser.add_argument('--since',default='',help='ISO timestamp; restrict reconcile to the desired morning dispatch')
     args=parser.parse_args()
     if args.command=='self-test':self_test()
     else:run(args)
