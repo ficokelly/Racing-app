@@ -1,0 +1,173 @@
+name: 'Stage147 — All Models Morning Controller (before 10 Dublin)'
+
+on:
+  workflow_dispatch:
+    inputs:
+      selection_date:
+        description: 'Dublin today only YYYY-MM-DD (leave blank for current day)'
+        required: false
+        type: string
+        default: ''
+  schedule:
+    - cron: '37 4 * * *'
+      timezone: 'Europe/Dublin'
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: stage147-all-models-morning
+  cancel-in-progress: false
+
+jobs:
+  morning:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+    env:
+      PYTHONUNBUFFERED: '1'
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+      TZ: Europe/Dublin
+    steps:
+      - name: Checkout latest repo (source models are not modified)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Use Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate local date, model list and alert on invalid controller
+        env:
+          ASKED_DAY: ${{ inputs.selection_date }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          DAY="$(TZ=Europe/Dublin date +%F)"
+          HOUR="$(TZ=Europe/Dublin date +%H)"
+          if [[ -n "${ASKED_DAY:-}" && "$ASKED_DAY" != "$DAY" ]]; then
+            echo 'Cannot backdate or use stale horse selections; today Dublin only' >&2
+            exit 1
+          fi
+          if ((10#$HOUR >= 10)); then
+            echo 'Morning deadline has passed. Run research manually; do not label it pre-10am.' >&2
+            exit 1
+          fi
+          echo "TARGET_DAY=$DAY" >> "$GITHUB_ENV"
+          python scripts/stage147_morning_controller.py self-test
+          python scripts/stage147_daily_143_146.py self-test
+          test -s data/racecards.json
+      - name: Refresh today and tomorrow UK IE racecards from source API
+        env:
+          RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
+          RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
+        run: |
+          set -euo pipefail
+          python collect-racecards.py
+          cp data/racecards.json "$RUNNER_TEMP/stage147-racecards.json"
+          python - <<'PY'
+          import json,datetime as dt,os,pathlib
+          data=json.loads(pathlib.Path(os.environ['RUNNER_TEMP'],'stage147-racecards.json').read_text())
+          races={r['race_id'] for r in data['runners'] if r.get('date')==os.environ['TARGET_DAY'] and r.get('horse') and r.get('race_id')}
+          if not races:raise RuntimeError('No races returned today from racing feed')
+          print('STAGE147_FRESH_RACECARDS',data['collected_at'],'RACES',len(races),'TARGET',os.environ['TARGET_DAY'])
+          PY
+      - name: Refresh pre-off odds for price-aware paper models when PuntersEdge is connected
+        env:
+          PUNTERSEDGE_API_KEY: ${{ secrets.PUNTERSEDGE_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${PUNTERSEDGE_API_KEY:-}" ]; then
+            if python collect-odds.py; then
+              cp data/latest-odds.json "$RUNNER_TEMP/stage147-latest-odds.json"
+              echo 'Fresh bookmaker quotes collected.'
+            else
+              echo '::warning::Odds API failed. Odds-free model predictions may still work; mark price-qualified lists uncertain.'
+            fi
+          else
+            echo '::warning::PUNTERSEDGE_API_KEY not connected. Price-qualified subsets may be absent.'
+          fi
+      - name: Publish one fresh reference snapshot to main before triggering child scorers
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            cp "$RUNNER_TEMP/stage147-racecards.json" data/racecards.json
+            if [ -s "$RUNNER_TEMP/stage147-latest-odds.json" ]; then
+              cp "$RUNNER_TEMP/stage147-latest-odds.json" data/latest-odds.json
+            fi
+            git add data/racecards.json data/latest-odds.json
+            if git diff --cached --quiet; then
+              echo 'Same snapshot already published';break
+            fi
+            git commit -m "Stage147: pre-off morning UK IE cards and odds $TARGET_DAY"
+            if git push origin HEAD:main; then
+              echo 'Morning source snapshot committed';break
+            fi
+            echo "Retrying due to concurrent model data push: $attempt"
+            sleep "$((attempt*3))"
+            if [ "$attempt" = 5 ]; then
+              echo 'Could not commit shared source cards; do not dispatch mismatched snapshots' >&2
+              exit 1
+            fi
+          done
+      - name: Dispatch all configured paper model groups; monitor and validate Rank 1 and 2
+        id: controller
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -u scripts/stage147_morning_controller.py run \
+            --date "$TARGET_DAY" --cards data/racecards.json
+      - name: Put complete model status and rank-one availability in the GitHub run Summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -s reports/stage147/morning/README.md ]; then
+            cat reports/stage147/morning/README.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo '# Stage147 Morning: no results; inspect failed steps' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload one combined morning artifact even if one of the models fails
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage147-all-models-morning-${{ github.run_id }}
+          path: |
+            reports/stage147/morning/*.json
+            reports/stage147/morning/*.csv
+            reports/stage147/morning/*.md
+          retention-days: 90
+          if-no-files-found: warn
+      - name: Persist status and selection archive without rewriting frozen model files
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s reports/stage147/morning/stage147-morning-status.json || exit 0
+          mkdir -p "$RUNNER_TEMP/stage147-publish"
+          cp reports/stage147/morning/stage147-morning-status.json "$RUNNER_TEMP/stage147-publish/status.json"
+          cp reports/stage147/morning/stage147-all-models-rank1-rank2.csv "$RUNNER_TEMP/stage147-publish/selections.csv"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3 4; do
+            git fetch origin main
+            git reset --hard origin/main
+            mkdir -p "data/daily-models/$TARGET_DAY"
+            cp "$RUNNER_TEMP/stage147-publish/status.json" "data/daily-models/$TARGET_DAY/status.json"
+            cp "$RUNNER_TEMP/stage147-publish/selections.csv" "data/daily-models/$TARGET_DAY/selections.csv"
+            git add "data/daily-models/$TARGET_DAY"
+            if git diff --cached --quiet; then exit 0; fi
+            git commit -m "Stage147: archive paper model morning coverage $TARGET_DAY"
+            if git push origin HEAD:main; then exit 0; fi
+            sleep "$((attempt*3))"
+          done
+          echo '::warning::Model artifact saved but permanent repository archive push failed.'

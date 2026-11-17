@@ -1,0 +1,119 @@
+name: 'Stage147 — Daily Stage143A/B + Stage146A/B independent paper predictions'
+
+on:
+  workflow_dispatch:
+    inputs:
+      selection_date:
+        description: 'Today in Europe/Dublin, YYYY-MM-DD; leave empty for today'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage147-143-146-daily-paper
+  cancel-in-progress: false
+
+jobs:
+  selections:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      PYTHONUNBUFFERED: '1'
+      PYTHONPATH: '.:scripts'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      DB: 'reports/stage147-143-146/source/stage2/historical_ukie_staging.sqlite'
+      REF: 'reports/stage147-143-146/source/stage4/all_races_with_reference_event_ids.csv'
+      OUT: 'reports/stage147-143-146/paper'
+    steps:
+      - name: Checkout read-only paper models
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install exact pinned ML dependencies
+        run: python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2
+      - name: Validate daily target and source code
+        env:
+          ASKED_DAY: ${{ inputs.selection_date }}
+        run: |
+          set -euo pipefail
+          export CURRENT_DAY="$(TZ=Europe/Dublin date +%F)"
+          TARGET="${ASKED_DAY:-$CURRENT_DAY}"
+          if [ "$TARGET" != "$CURRENT_DAY" ]; then
+            echo 'Cannot backdate or forecast paper models using today-only declared cards' >&2
+            exit 1
+          fi
+          echo "TARGET_DAY=$TARGET" >> "$GITHUB_ENV"
+          python -m py_compile scripts/stage147_daily_143_146.py scripts/stage146_full_field_trend_fusion.py scripts/stage141_today_or_weight_paper.py
+          python scripts/stage147_daily_143_146.py self-test
+          python scripts/stage146_full_field_trend_fusion.py self-test
+          test -s data/racecards.json
+          test -s scripts/stage143_race_type_specialist_config.json
+          python - <<'PY'
+          import json,datetime as dt
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+          j=json.loads(Path('data/racecards.json').read_text())
+          stamp=dt.datetime.fromisoformat(j['collected_at'].replace('Z','+00:00'))
+          age=(dt.datetime.now(dt.timezone.utc)-stamp.astimezone(dt.timezone.utc)).total_seconds()
+          date=dt.datetime.now(ZoneInfo('Europe/Dublin')).date().isoformat()
+          assert 0<=age<=4*3600, f'Stale cards {age/3600:.2f}h; refresh before scoring'
+          assert any(x.get('date')==date for x in j.get('runners',[])), 'No declared races for target date'
+          print('STAGE147_CARDS_ASOF',j['collected_at'],'AGE_MIN',round(age/60,1))
+          PY
+      - name: Restore immutable source history and named-race candidate mapping
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage147-143-146/source/{stage2,stage4} "$OUT"
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage2-historical-staging-database --dir reports/stage147-143-146/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage4-reference-named-events-and-winners --dir reports/stage147-143-146/source/stage4
+          test -s "$DB" && test -s "$REF"
+      - name: Score every future runner with frozen Stage143 baseline and Stage146 trends
+        run: |
+          set -euo pipefail
+          python -u scripts/stage147_daily_143_146.py today \
+            --db "$DB" --reference "$REF" --cards data/racecards.json \
+            --config scripts/stage143_race_type_specialist_config.json \
+            --date "$TARGET_DAY" --out "$OUT"
+          test -s "$OUT/stage146-today-rank1-rank2.csv"
+          test -s "$OUT/stage146-today-all-runners.csv"
+          test -s "$OUT/stage146-today-audit.json"
+      - name: Summarise Stage143 and Stage146 on one page
+        if: always()
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import pathlib,csv,json
+          p=pathlib.Path('reports/stage147-143-146/paper')
+          print('# Stage143A/B + Stage146A/B — true daily pre-off paper selections')
+          f=p/'stage146-today-rank1-rank2.csv'
+          if not f.is_file():
+           print('No verified prediction created; see failure step and audit.');raise SystemExit(0)
+          rows=[z for z in csv.DictReader(f.open()) if str(z['rank'])=='1']
+          print('| Time Irish | Course | Model | Rank 1 | Model win % | Trend source |')
+          print('|---|---|---|---|---:|---|')
+          for z in sorted(rows,key=lambda r:(r['time_utc'],r['course'],r['model'])):
+           print(f"| {z['time_utc']} | {z['course']} | {z['model']} | {z['horse']} | {float(z['model_win_probability'])*100:.1f}% | {z['trend_source']} |")
+          audit=json.loads((p/'stage146-today-audit.json').read_text())
+          print('History latest:',audit['historical_results_through'],'Cards as-of:',audit['racecard_audit']['collected_at'])
+          print('These are odds-free paper selections, not bets. Missing form after the history cutoff is disclosed.')
+          PY
+      - name: Preserve all-runner ranks and coverage audit, even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage147-daily-143-146-${{ github.run_id }}
+          path: |
+            reports/stage147-143-146/paper/*.csv
+            reports/stage147-143-146/paper/stage146-today-audit.json
+          retention-days: 90
+          if-no-files-found: warn
