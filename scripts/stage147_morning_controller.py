@@ -16,7 +16,7 @@ OUT=pathlib.Path('reports/stage147/morning')
 # Each workflow's name and dispatch inputs are verified against current Racing-app.
 # Research baselines without genuine daily scoring are listed further below.
 ENABLED=(
- {'id':'A_B','models':['A','B'],'workflow':'stage13-strategy-learning.yml','inputs':{},'source':'published'},
+ {'id':'A_B','models':['A','B'],'workflow':'stage148-daily-ab.yml','inputs':{'selection_date':'$DAY'},'source':'artifact','csv':'stage148-ab-rank1-rank2.csv'},
  {'id':'C','models':['C'],'workflow':'stage21-model-c-live.yml','inputs':{},'source':'published'},
  {'id':'D_Z','models':['D','Z'],'workflow':'stage38-model-d-repair.yml','inputs':{'day':'$DAY'},'source':'published'},
  {'id':'Dc','models':['D(c)'],'workflow':'rhp-stage69-dc-live.yml','inputs':{'day':'$DAY'},'source':'published'},
@@ -28,6 +28,7 @@ ENABLED=(
  {'id':'Stage143_146','models':['STAGE143_TYPE_EVIDENCE','STAGE143_TYPE_INTERACTIONS','STAGE146_A_RETRAINED_TRENDS','STAGE146_B_RETRAINED_TRENDS'],'workflow':'stage147-daily-143-146.yml','inputs':{'selection_date':'$DAY'},'source':'artifact','csv':'stage146-today-rank1-rank2.csv'},
 )
 # These had historical tests but lack an independently verified genuine *daily* Rank1 scorer.
+CONDITIONAL_MODELS={'Z'}  # Do not force rankings in races to which this specialist does not apply.
 NOT_READY={
  'E_HPR':'Historical HPR archive is not a complete daily ranked model',
  'E_75_25':'No verified general daily scorer (earlier one-day NH handicap test only)',
@@ -169,6 +170,8 @@ def extract_archive(rows,task,day,run_url):
         out.append({'date':day,'model':model,'meeting':r.get('course') or r.get('meeting') or '',
           'time_utc':nice_time(r),'race_id':rkey,'horse':horse,'rank':int(rank),
           'win_probability':r.get('model_win_probability') or r.get('win_probability') or '',
+          'model_version':r.get('model_version') or '',
+          'relative_form_score':r.get('relative_form_score') or '',
           'trend_source':r.get('trend_source') or '', 'source':'IMMUTABLE_PAPER_ARTIFACT','run_url':run_url,
           'prediction_asof':r.get('scored_at') or r.get('decision_utc') or r.get('asof_utc') or ''})
     return out
@@ -280,8 +283,9 @@ def write_summary(manifest,rows):
     md=['# Morning models — '+manifest['date'],'','**Cards:** '+str(manifest['cards']['races'])+' races / '+str(manifest['cards']['meeting_count'])+' meetings. '+
         '**Published at:** '+manifest['generated_at'],'','| Model | Races with Rank 1 | Status |','|---|---:|---|']
     for m in sorted(set(sum((x['models'] for x in ENABLED),[]))):
-        n=len(models[m]);md.append(f'| {m} | {n} | {"Selections available" if n else "Missing / awaiting daily picks"} |')
-    md+=['','**Not yet connected to daily scoring:** '+', '.join(NOT_READY),
+        n=len(models[m]);label=("Selections available" if n else ("No qualifying specialist (conditional)" if m in CONDITIONAL_MODELS else "Missing / awaiting daily picks"));md.append(f'| {m} | {n} | {label} |')
+    md+=['','**A/B model note:** A uses the original A probabilities. B now uses a rebuilt B2 historical-form research score (not the original frozen B model and not calibrated win probability).',
+         '', '**Not yet connected to daily scoring:** '+', '.join(NOT_READY),
          '', 'A green workflow does not imply every race or model was ranked. See `stage147-morning-status.json` for missing groups and exact child run links.',
          '', 'All research results are paper only, not confirmed betting value; no current result or SP is used in forecasts.']
     (OUT/'README.md').write_text('\n'.join(md)+'\n')
@@ -298,8 +302,9 @@ def existing_runs(day,since):
              'status':'MISSING_RUN','requested_at':after.isoformat(), 'run_id':None,'url':None,
              'reason':'No dispatched run found since '+after.isoformat()}
         try:
-            runs=api('actions/workflows/'+task['workflow']+'/runs',event='workflow_dispatch',per_page=100).get('workflow_runs',[])
+            runs=api('actions/workflows/'+task['workflow']+'/runs',per_page=100).get('workflow_runs',[])
             matches=[x for x in runs if x.get('head_branch')=='main' and
+                     (x.get('event')=='workflow_dispatch' or (task['id']=='A_B' and x.get('event')=='push')) and
                      (dt_parse(x.get('created_at')) or dt.datetime.min.replace(tzinfo=dt.timezone.utc))>=after and
                      (dt_parse(x.get('created_at')) or dt.datetime.min.replace(tzinfo=dt.timezone.utc)).astimezone(ZONE).date().isoformat()==day]
             if matches:
@@ -384,7 +389,7 @@ def run(args):
         rec['models_with_rank1']={model:bymodel[model] for model in task['models']}
     finished_before_deadline=now_utc()<=deadline
     healthy=all(r['status']=='completed' and r.get('conclusion')=='success' and rec_ok(r) and
-        all(bymodel[m]>0 for m in r['models']) for r in records)
+        all(bymodel[m]>0 for m in r['models'] if m not in CONDITIONAL_MODELS) for r in records)
     coverage={m:{'rank1_races':bymodel[m], 'declared_races':card['races'],
                    'coverage_percent':round(100*bymodel[m]/card['races'],1) if card['races'] else 0} 
               for task in ENABLED for m in task['models']}
@@ -396,6 +401,8 @@ def run(args):
       'no_model_rescoring_during_reconciliation':recovery,
       'cards':{k:v for k,v in card.items() if k!='race_keys'},'run_groups':records,
       'observed_rank1_races_by_model':dict(bymodel),'coverage_by_model':coverage,
+      'conditional_models_without_qualifiers':sorted(m for m in CONDITIONAL_MODELS if not bymodel[m]),
+      'model_b_version_note':'B is rebuilt B2 historical-form research; uncalibrated relative scores',
       'models_without_daily_workflow':NOT_READY,
       'limit':'One Group success can include partial or late paper coverage; inspect per-race rows. Scheduled start is not a guaranteed SLA.'}
     write_summary(manifest,allrows)
