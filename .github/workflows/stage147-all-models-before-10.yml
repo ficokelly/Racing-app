@@ -39,6 +39,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Install NumPy before model self-tests
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check numpy==2.2.6
+          python -c 'import numpy; print("STAGE147_NUMPY_READY", numpy.__version__)'
       - name: Validate local date, model list and alert on invalid controller
         env:
           ASKED_DAY: ${{ inputs.selection_date }}
