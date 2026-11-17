@@ -1,0 +1,103 @@
+name: 'Stage148 — Daily A original + B2 independent form rankings'
+
+on:
+  workflow_dispatch:
+    inputs:
+      selection_date:
+        description: 'Dublin today YYYY-MM-DD (blank means today)'
+        required: false
+        type: string
+        default: ''
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/stage148_daily_ab.py'
+      - '.github/workflows/stage148-daily-ab.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stage148-daily-a-b2-paper
+  cancel-in-progress: false
+
+jobs:
+  ab-paper:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PYTHONUNBUFFERED: '1'
+      OUT: reports/stage148/ab-paper
+    steps:
+      - name: Checkout current source and cards (no model data changes)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check dates and independent original A and new B2 source identity
+        env:
+          SELECTED_DAY: ${{ inputs.selection_date }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          DAY="$(TZ=Europe/Dublin date +%F)"
+          if [[ -n "${SELECTED_DAY:-}" && "$SELECTED_DAY" != "$DAY" ]]; then
+            echo 'No backdated model scoring is permitted' >&2
+            exit 1
+          fi
+          echo "TARGET_DAY=$DAY" >> "$GITHUB_ENV"
+          python -m py_compile scripts/stage148_daily_ab.py
+          python scripts/stage148_daily_ab.py self-test
+          test -s data/strategy-probabilities.json
+          test -s data/racecards.json
+      - name: Refresh latest declared UK/IE fields before independent A/B2 ranking
+        env:
+          RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
+          RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python collect-racecards.py
+          test -s data/racecards.json
+      - name: Rank all eligible pre-off races independently for A and B2
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/stage148_daily_ab.py today \
+            --date "$TARGET_DAY" \
+            --cards data/racecards.json \
+            --a data/strategy-probabilities.json \
+            --out "$OUT"
+          test -s "$OUT/stage148-ab-rank1-rank2.csv"
+          test -s "$OUT/stage148-ab-audit.json"
+      - name: Show exact dated ranking counts
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import csv,json,pathlib
+          p=pathlib.Path('reports/stage148/ab-paper/stage148-ab-rank1-rank2.csv')
+          print('# Stage148 A + rebuilt B2 paper selections')
+          if not p.is_file():
+              print('No verified A/B2 picks generated; see scoring failure. Do not substitute another model.');raise SystemExit()
+          data=list(csv.DictReader(p.open()))
+          print('Original A probabilities retained; rebuilt B2 uses different, odds-free historical form scoring.')
+          print('B2 has no calibrated win probability and is **not** the original frozen B model.')
+          print('| Model | Races with Rank 1 |')
+          print('|---|---:|')
+          for model in ('A','B'):
+              print(f'| {model} | {sum(r["model"]==model and r["rank"]=="1" for r in data)} |')
+          PY
+      - name: Upload the true full-field daily rankings and coverage audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage148-daily-a-b2-${{ github.run_id }}
+          path: |
+            reports/stage148/ab-paper/stage148-ab-*.csv
+            reports/stage148/ab-paper/stage148-ab-*.json
+          retention-days: 90
+          if-no-files-found: warn
