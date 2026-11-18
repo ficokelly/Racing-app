@@ -1,0 +1,222 @@
+name: 'Stage153 — ROI Specialists single Hot Pots model'
+
+on:
+  workflow_dispatch:
+    inputs:
+      selection_date:
+        description: 'Dublin date, today or tomorrow (blank = tomorrow for evening runs; today otherwise)'
+        required: false
+        type: string
+        default: ''
+  schedule:
+    # Start far enough ahead for slower underlying historical specialist runs.
+    # Target first view 20:00 the evening before, then 08/10/12/14/16 Dublin.
+    - cron: '7 18 * * *'
+      timezone: 'Europe/Dublin'
+    - cron: '7 7,9,11,13,15 * * *'
+      timezone: 'Europe/Dublin'
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: stage153-roi-combined-publication
+  cancel-in-progress: false
+
+jobs:
+  combine:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 230
+    env:
+      PYTHONUNBUFFERED: '1'
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+      TZ: Europe/Dublin
+    steps:
+      - name: Checkout full current app, preserving underlying research files
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Use Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Confirm date and fail-closed assembler
+        env:
+          REQUESTED: ${{ inputs.selection_date }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/stage153_roi_combined.py self-test
+          python -m py_compile scripts/stage153_roi_combined.py
+          python - <<'PY'
+          import datetime as dt,os
+          from zoneinfo import ZoneInfo
+          now=dt.datetime.now(ZoneInfo('Europe/Dublin'))
+          requested=os.environ.get('REQUESTED','')
+          target=requested or (now.date()+dt.timedelta(days=int(now.hour>=18))).isoformat()
+          allowed={now.date().isoformat(),(now.date()+dt.timedelta(days=1)).isoformat()}
+          if target not in allowed:raise RuntimeError('Only today/tomorrow live selections permitted')
+          with open(os.environ['GITHUB_ENV'],'a') as f:f.write('TARGET_DAY='+target+'\n')
+          print('STAGE153_TARGET',target,'STARTED',now.isoformat())
+          PY
+      - name: Refresh live racecards (including explicit withdrawals) once before specialist dispatch
+        env:
+          RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
+          RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${RACING_API_USERNAME:-}" && test -n "${RACING_API_PASSWORD:-}"
+          python scripts/stage26_feed_capture.py racecards
+          python - <<'PY'
+          import datetime as dt,json,os
+          from pathlib import Path
+          j=json.loads(Path('data/racecards.json').read_text())
+          n=len({r.get('race_id') for r in j.get('runners',[]) if r.get('date')==os.environ['TARGET_DAY']})
+          if n<1:raise RuntimeError('No refreshed racecards for target, cannot invent selections')
+          print('STAGE153_DECLARED_RACES',n)
+          PY
+          cp data/racecards.json "$RUNNER_TEMP/stage153-refreshed-racecards.json"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            cp "$RUNNER_TEMP/stage153-refreshed-racecards.json" data/racecards.json
+            git add data/racecards.json
+            if git diff --cached --quiet; then break; fi
+            git commit -m 'Stage153: refresh UK IE declarations before specialist run'
+            if git push origin HEAD:main; then break; fi
+            sleep "$((attempt*5))"
+            test "$attempt" -lt 5 || exit 1
+          done
+      - name: Dispatch all required independent specialist scorers and capture new run IDs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage153/source
+          python - <<'PY'
+          import datetime as dt,json,os,pathlib,subprocess,time
+          workflows=[
+            ('stage141-today-or-weight-paper.yml','stage141-today-hpr-or-weight-'),
+            ('stage151-d142-core-form-or-weight-today.yml','stage151-d142-core-form-weight-today-'),
+            ('stage152-best-roi-specialists-today.yml','stage152-best-roi-specialists-'),
+            ('stage147-daily-143-146.yml','stage147-daily-143-146-'),
+            ('stage128-g5-paper.yml','stage128-g5-paper-')]
+          began=dt.datetime.now(dt.timezone.utc)-dt.timedelta(seconds=20)
+          for name,_ in workflows:
+            for attempt in range(1,4):
+              result=subprocess.run(['gh','workflow','run',name,'--ref','main','-f',
+                'selection_date='+os.environ['TARGET_DAY']],capture_output=True,text=True)
+              if result.returncode==0:
+                print('DISPATCHED',name,'attempt',attempt,flush=True)
+                break
+              print('DISPATCH_RETRY',name,attempt,result.stderr[:250],flush=True)
+              if attempt==3:raise RuntimeError('Failed to dispatch required specialist '+name)
+              time.sleep(attempt*10)
+          pathlib.Path('reports/stage153/source/dispatch.json').write_text(json.dumps({
+            'began':began.isoformat(),'workflows':workflows},indent=2))
+          PY
+      - name: Wait for today-specific source runs, never use stale or earlier-day artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import datetime as dt,json,pathlib,subprocess,time
+          home=pathlib.Path('reports/stage153/source')
+          data=json.loads((home/'dispatch.json').read_text())
+          began=dt.datetime.fromisoformat(data['began'])
+          workflows=dict(data['workflows']);ids={};complete={};retry_count={}
+          deadline=time.monotonic()+105*60
+          while time.monotonic()<deadline:
+            for wf in workflows:
+              if wf in complete:continue
+              try:
+                r=subprocess.run(['gh','run','list','--workflow',wf,'--event','workflow_dispatch',
+                 '--limit','8','--json','databaseId,createdAt,status,conclusion'],capture_output=True,text=True,check=True,timeout=40)
+                fresh=[x for x in json.loads(r.stdout) if
+                 dt.datetime.fromisoformat(x['createdAt'].replace('Z','+00:00'))>=began]
+                if not fresh:continue
+                x=max(fresh,key=lambda x:x['databaseId']);ids[wf]=x['databaseId']
+                if x['status']=='completed':
+                  conclusion=x.get('conclusion')
+                  if conclusion!='success' and retry_count.get(wf,0)<1:
+                    try:
+                      subprocess.run(['gh','run','rerun',str(x['databaseId']),'--failed','--repo',
+                         'ficokelly/Racing-app'],check=True,timeout=45,capture_output=True,text=True)
+                      retry_count[wf]=retry_count.get(wf,0)+1
+                      print('RETRY_SOURCE_FAILURE',wf,x['databaseId'],conclusion,flush=True)
+                      continue
+                    except subprocess.SubprocessError as error:
+                      print('SOURCE_RETRY_UNAVAILABLE',wf,str(error)[:200],flush=True)
+                  complete[wf]=conclusion
+                  print('SOURCE_COMPLETE',wf,x['databaseId'],conclusion,flush=True)
+              except (subprocess.SubprocessError,ValueError,KeyError) as e:
+                print('SOURCE_POLL_WARNING',wf,str(e),flush=True)
+            if len(complete)==len(workflows):break
+            time.sleep(40)
+          for wf,prefix in workflows.items():
+            if complete.get(wf)!='success':
+              print('UNAVAILABLE_SPECIALIST',wf,complete.get(wf,'timeout'),flush=True);continue
+            destination=home/wf.removesuffix('.yml');destination.mkdir(exist_ok=True)
+            for attempt in range(1,4):
+              res=subprocess.run(['gh','run','download',str(ids[wf]),'--repo',
+               'ficokelly/Racing-app','--name',prefix+str(ids[wf]),'--dir',str(destination)],
+               capture_output=True,text=True)
+              if res.returncode==0:
+                print('ARTIFACT_DOWNLOADED',wf,ids[wf],flush=True)
+                break
+              print('ARTIFACT_DOWNLOAD_RETRY',wf,attempt,res.stderr[:250],flush=True)
+              if attempt<3:time.sleep(attempt*10)
+            else: print('ARTIFACT_UNAVAILABLE',wf,'after three attempts',flush=True)
+          (home/'status.json').write_text(json.dumps({'ids':ids,'conclusions':complete,'automatic_retries':retry_count},indent=2))
+          PY
+      - name: Build one race-type ROI model and settle already finished preserved picks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/stage153_roi_combined.py build \
+            --date "$TARGET_DAY" --cards data/racecards.json \
+            --sources reports/stage153/source \
+            --output data/strategy-roi-combined.json
+          python scripts/stage153_roi_combined.py settle \
+            --output data/strategy-roi-combined.json \
+            --results data/race-results.json \
+            --settled data/strategy-roi-combined-results.json
+          cat reports/stage153/source/status.json >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish source-model-attributed combined ranking without changing frozen models
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          cp data/strategy-roi-combined.json "$RUNNER_TEMP/stage153-combined.json"
+          cp data/strategy-roi-combined-results.json "$RUNNER_TEMP/stage153-results.json"
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            cp "$RUNNER_TEMP/stage153-combined.json" data/strategy-roi-combined.json
+            cp "$RUNNER_TEMP/stage153-results.json" data/strategy-roi-combined-results.json
+            git add data/strategy-roi-combined.json data/strategy-roi-combined-results.json
+            if git diff --cached --quiet; then echo 'Already published';exit 0;fi
+            git commit -m "Stage153: publish race-type ROI specialists for $TARGET_DAY"
+            if git push origin HEAD:main;then echo 'PUBLISHED';exit 0;fi
+            sleep "$((attempt*4))"
+          done
+          exit 1
+      - name: Preserve complete provenance, missing arms and selection coverage audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage153-combined-${{ github.run_id }}
+          path: |
+            reports/stage153/source/dispatch.json
+            reports/stage153/source/status.json
+            data/strategy-roi-combined.json
+            data/strategy-roi-combined-results.json
+          retention-days: 90
+          if-no-files-found: warn
