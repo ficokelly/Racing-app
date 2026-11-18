@@ -68,6 +68,16 @@ jobs:
             python calculate-strike-rates.py || echo "WARNING: Form rebuild failed; verified results will still be published."
           fi
 
+      - name: Update settled ROI specialists using final verified results
+        shell: bash
+        run: |
+          if test -s data/strategy-roi-combined.json; then
+            python scripts/stage153_roi_combined.py settle \
+              --output data/strategy-roi-combined.json \
+              --results data/race-results.json \
+              --settled data/strategy-roi-combined-results.json
+          fi
+
       - name: Update and archive complete racecards once an hour
         env:
           RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
@@ -116,6 +126,7 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add data/aw2-track-stats.json data/latest-odds.json data/odds-history.json data/odds-archive/ data/race-results.json data/racecards.json data/racecards-archive.json data/nonrunner-monitor.json data/racing-results/ data/strike-rates.json data/form-identity-cache.json data/strategy-d-history.json data/strategy-d-results.json reports/stage32/form-rebuild-audit.json
           # This file is created only after a confirmed non-runner. It is optional.
+          if [ -f data/strategy-roi-combined-results.json ]; then git add data/strategy-roi-combined-results.json; fi
           if [ -f data/nonrunner-decision-history.json ]; then
             git add data/nonrunner-decision-history.json
           fi

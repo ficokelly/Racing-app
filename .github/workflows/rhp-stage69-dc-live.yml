@@ -199,7 +199,7 @@ jobs:
           exit 1
 
       - name: Notify only for new or changed Hot Pots selections
-        if: steps.guard.outputs.run == 'true'
+        if: ${{ false }}  # Stage153 owns the visible Hot Pots strategy
         env:
           ONESIGNAL_API_KEY: ${{ secrets.ONESIGNAL_API_KEY }}
           ONESIGNAL_SUBSCRIPTION_ID: ${{ secrets.ONESIGNAL_SUBSCRIPTION_ID }}
