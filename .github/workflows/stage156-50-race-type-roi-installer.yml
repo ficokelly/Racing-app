@@ -1,0 +1,198 @@
+name: 'Stage156 — Complete 50-race-type specialist routing'
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: stage156-roi-racetype-installer
+  cancel-in-progress: false
+
+jobs:
+  install:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout current app without touching frozen research models
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install source-only 50-type coverage and audited research mapping
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'STAGE156_FILES'
+          import pathlib,base64,gzip,hashlib,json
+          package={
+              'scripts/stage153_roi_combined.py': (
+                'H4sIAFom/moC/608/XPbNrK/669A0+mQfKYUy4nTnlxmxo2VxHeu7We77fR8Hg4lQhJritSRlGzVz//72w+AACnJSW+uM41FYLFYLBb7hSW//eb1sixej5'
+                'LstcxWYrGuZnn2pvPq1avLIi8XclwlK+mLIhrLbrVeSFHky0rG4uriVFxDdxKlSVmJz3klLvOqFHFSLtJoLSZSxr1O5yJL16KaSSEfo3ElFoXs5pMJ/o0T'
+                'QJ1npZgU+Rz/+VNmojQY53ks01JEhRTLEnGdy5UsRJJN4N9IlDKVhIDHX1/60DjK8/t5dA8AiyIZS2xCwkUhy2VaiRwGZjlQUzD2XucSemSxkgrQAWqSAi'
+                'ZfLEdAxAzWuUjG96V4mAFxuAxCl5QCFnEEaFcJkCZiOU6BzrgzSWQalyKDtQPGCSCfiWUWyyJdJ9nUXp1hgBjJSQ6LpCnHETb1kP0dWlcYTpbVspBhKJL5'
+                'Ii8qWAEsgcDKjm4qpouoKGG94zxVbCnhoVz5Io4qWSVzWCHsTeWLP8o888U8qma+WMC/aTKC3ZU82595JoHBuZ7rn/B8Cs+dX24+BHHVQ0QI01tW487JLz'
+                '+dnZ4HGsZ1hssiX8jXJ7iQzPE6nauLX26G18FTRzhZvoINEbNlEafSGTifDsPz4c1vF1f/CP/3l+Orm+HV2e+OD4DzKImB1zXgSf/tQXh2cf4p/HBxNQw/'
+                'Xlz9HF5chb8NTz99vqERsygDVkYLM+b65vjTsP/2TXjz++UwHP56ejI8/zAkYE3HrjHvwuPwanhzdXx6PjwJb66G5yfXNHAkp0mWyaIU41lU7qLs8+XV1m'
+                'nMmDffI1B4/NPp2enN77uWshP+09XxybA1KpuJSRqBeC9k9uU5ogfBPP4q5gJ0tgTRKtYv8zVasjCDyFdw9EBDfAH+oWYO0sFT87xqjSFoGAB97nwrrqto'
+                'KvuH7wYiSitZZBHqJPs0RcWcNUWEBMioGM/gKMzhUCQk7nBi4MTlcziteHTx9ySpolGSJtW6BzNcoVITOSqrZVYuFyj9cIbptKPWK4/wxLKqWOCxz5clwM'
+                'ZykeZrAFQUvkFVkJR4/Hos/eHPx5fhx9OzYaAOW+8S/rpwrJMUDrXXA6x5upKu1wNqZVapP68dOLiR89op8qSLZCAVXdK93Xm06OExdjqxnIg0j+KQOkLo'
+                'cL1BR1TFGv6F473GzgBhe/irdJs0weQwtpKPlet5MICwlIEa15vKynW4zfGfnhEiKoEHlUhl5nKH9z443PeFc5ohv1NZKQMhQJNFaT5dSscMi9LUXTFa0r'
+                '+OB9osFqppBjuZg+xEaYgLhjn3vff7ApSjWIHaV9T1VlG6lKUiWIJu1D0dsDFjuaiEe3E9LIq88H9FUP55TBTAxtCjh9pQIo+KCGRCXC0zVG3U5zpa3Iws'
+                'GcMHZ2chQI5K1Oc5miO97oFw9kD2Xel5bJJkBwTrDBhJhoNQ4OB4WeBY1rA+IkiXccs6ZNEcBLWQ/14mYCeIBWW+LND0ZFM4YWQj+HQdvguVmm0LQgeHjY'
+                'HPfimrCgaWyMXWqF5SyXlJUpNMCJoOCwBy/4D/3GLPXaAR3ar9u+t0UI6uAxeOdElse9vvVnkcrbuw2d1iSSqzB5aITj2DHPa7MSie7hjMXheInHcfZDKd'
+                'VS8NOegCb3NafBePhGFW+cKwt+++SMzBD93pIfXPctBzuhusFx6uDKiDWf6UbukNtLg5Tu+PPMncMW3MGJmFG1+iPDiO1xuD7p7kaex6xNNeUkZptpyjyC'
+                'JOsJ1Z/uAafGBYtZXuYQ8YW4YE5eVWBq7qRaW2wAQEmHPkXwTnlwaQFxAiDNJbK4IqsKeYkCLUAxuUF6DP4Oi5zj8d39nb3x/s7zt00GAdYP3/ZN+gFOdA'
+                'wUBRhb/NUdyg0ZxK6zTewGHgg9jAwiwHTq0s4h+DCUh2BW1mlkckCH0Y4MAkyUCG3UdPgLsoFTl6znoiSxdsmRMPZwgMcZWM4PTgguHoGA4FGkDSVGQP8H'
+                'CiSbG8zTyOiYfsZ+I5W6FSj3vox4lJoNDe7t8d4egAmT5R+hVQhtgIynBDfo6AMBsY6WQ4e7RpbY7uiHJZTADCRqGatsPzUgMj9WoQt5Mo/LGcL8oAtDU7'
+                'Tij8SD1hs9qAJmpiR6YBZZoACPaU/8OespIggC3wEUwoi2ab8nhajeQURyn4dFnV7G/Mks0menaPtN5XrGXAZ6B20GpY7Kj1wg7nEkcWsse2xC2cf40Y8P'
+                '/0DzB1iEtJ8IZDa+S+5R0TScqZq4lnHE1/mwC5qQXIxwW7v7RTW3foP+OLxruLqLYfbDGg7YYTEt24c23/DRlqy87AoqrhgdOUdEyaKjJ6CJQqAQRPTgyB'
+                'YZTeg6Idz2Q6L0H9xI2HMfim0PCAmqSYRfNFBS7fM5LhgvtMZKjDTKQt8nRdgT643+ipooUEX7LdXK4zcEyqZGz38IlAFwA8dFR5Nsn3konw9S+wN7gACP'
+                'emFPrCb/BTqtmDTFP4nckH0C4VyMszcgsYQIiztftoE4NWlBpAwUETDJwW4DGSuqmJsXkpvhWcDIgWC/DCj3+jbAR45XAQ0GHPBeIBTx58xQTtXtxjOdCh'
+                'TC2legOtMKezQ6At0LqTYVXs05QUKxDaRLEZLHW2nWV7TtXVERvGi1yxsERvCpzyB7RdyFHaEOYqQzwkWQiBz0iFPShaGy1F9NBsqTWn+s+xZgthZ0Jw15'
+                'NRgTzegmorGM06rrbgxiEv4K8HGtwOrlasAnQaYO1krWjh2mtZobuCEmS7LKstXMwnkzCfaAZWgeVKacTK2iZzqUWz0hirjgA3k+xsDY2CV5vZIzFO8/F9'
+                'EwJRheAOMlTdjKRstvK8Ch17R1v8x6ZzBzTtOTfOHs19Ozi823PApdOOXe0mGd9o0zWiEJGDj9KNk6L0q6gAgpBLU4g2wEMKrKxTD8ZE4ANhcstF9xxWDo'
+                '52VTaAPuSgXmUBDg5HVeFoTTFf8PTMwgsT0UkC8cU5SdfmedUMohUQ7jQLPISlahBFJWSDsAdHcQSZV71imuYjVwOT/AgVXYURcC5QDi2JjwYLgpfCBcah'
+                'HVb8L4KQrrIDbxdpqGN7G9cCtHPRpQEc1XvtsLxNoCWaPIzkA7tYbNSY3dGwN1iAfmUoWKSFu3bu9bS4dRDtccAbTg/hkEuUT5rYudsL+gpynEMInS2Zcw'
+                '8JMJxWjBbRBa2cY4gbOMtq0v2hWyZT8HjkA9gNGTgOReMTNeWEZR63C1jbOwE5ugJ2gLBMPE3VJs3mhOcPt45JrhKAcxdgJGUN8Qyi1nH9JmDxHjTWI1jJ'
+                'BjUwh78+nUSNidqa0XOdrGijw3xyYKkcg4UyzXoXFPsTNmSsepDnR23qpMS43KKPG1oqRLvxZnPniwAn7IFampBAOd/93v1u3v0uFt99Hnz3cw3LQ8N7ub'
+                'aiAzWLhsFOl5D6BtwntmgQpTFuoeOuB9ZbZjGt/0itFH6XtlTp3N/b7zFnhwYe4qwMs0tZnmGqSJiskTjct24oSJDQSVhT1NarEZ5WyF59ETEHzwgzbZwj'
+                'jFQE95oCuiRbLCs9kJA21Tc1mUAKbTmmXSzRQjrQieLbBlhjUZV4NlzX5EZBiurcM5xdLeNEdbiVpXoKmkNB1QkyrUo5XrVbbjXs3TcBddRTiZr7CA6yNU'
+                'nh+DQ2gjzqwQ58jK42qmqTfcLqN8awTdH3Je44KuK/bFDYQhSkIXC82gwOsR3/9s5TUQltln2469ONW4b7rXpJlfNGWq2WtbePL0hNwzm4tQDvlNeBkqXP'
+                'sDX0PnCh54XD5puzVbQib8Rcnx5zdrw213XeKmOGAMSgBkHP2zDlfksKwGSAuqTdzHNIz8pLL5YSHvvw/xqDVycr8B89J3mW1SwGLw1jhXIM7huENRgdxF'
+                'nJKgW38J6xJSU4ellYj4Vne7j9m2FCFKwlzqt+eCpbByqilC7tpo+i4aMh8Isou/dTsiE+Xf75xCqf7QGyZ4HnMri9I8ma0yHH4bwD2GQOeZs/9aFHZwEg'
+                '6djRD2UIXAelAIC77KvGyTTByVYmsU3g7KuCr98/ePP28N33P/xt37ljaeIhdFpTCKcCfr7t9u+Ik9G4ClwIEzPqFSSIOIxgA9glFVRjooyuNEsJMhmDHq'
+                'XENMStEIaAiIA/HeOdxzKzhx84xk1v4almSRFvn/SNnvQBTDsogBI0N83G16vVrJDSGkkiQbugBXviPNE+PosnXOBzD2FAjtDKobNv9iefFLw9dtMkwexw'
+                'yAO0t85PDXehNeeFGpii0cALoCceM5gyAbNFQbOjXCnVsSg0evj5Eu4bWL1lrMDpIycdA1ZD2BMg0ZOB81621opNIXhioG+QeXhm2mu3QKiXacNWmzgS0/'
+                '0fA2z/MfgeAoLOxgac4fagbgM2JBkFE6X3zKiiaU40Amo6TLDldlzMGTQ7hCYonCQdtRcFLe1F8H1ASD1KpcLvl7j7ISqKBJwDohRgved0RIkaYHlNV5vk'
+                'VpIMedLc3XaA7HkNGto8oz3+dCgyWT3kxb1AzQNUV3iVM5aYUNIaIl8s8jLh8oVoBYooGoHMoUYgghuEEdUyrZ1eIPyly2pK+EOYEZekyMxiqFGFclYg2V'
+                'rCVV3owUhEFMeUUZmRSzXvjqKSkuL6dtXZA/YL94nBnz1SA2os6wDH23PUIsodTONqDtRNVokEKlpmn3VuahaaipQ68RPNQMvj/S4Sa1istx23Iwj6vAFo'
+                'CNpC9EStz7jHiCGTEWZoMNMI7kg2peoT7Cn1kS3N3jDygw2UbHgIJ4LAEv9Y4o01ktoc/X734FJWTBIYvCyGY6KVt8UuRAEk6cWikFq80gqmPvxKWzXkOL'
+                'g1atfQ+4R/n+vD9ESn51mMuK7niQWqNoyvwlf+K/EKFIWhrWfnepxfZZFMEom5qTiBrVvqXYWwt8SCILzIJ298FSUpHAxZz42euiizaFHO8sqH84DXMDQP'
+                '6G1GAp5lMkfq58C6HppQnUQT6tqOlqo8htEyAbcHfEK68snyh0Dfzh2xpxhgH6VX2Dt8sO+3uALGo263eRsn0hykNXhxAKeQ2CFV3sITDbMx+S417anqG4'
+                'gjqohUcdD3GlM+77rOphKs8bLA1AMuosrneYEhNhfqUIUQcGtNSgoLKyAytwu0UKDI0bbzGcQWdr+b2Qrtwm/38WvRVGCDbQSf53WEIFRFlREF0pHMM3bq'
+                'O0otQqRBqarNoCNo5LCIcj2kJmtRJHlB6ScgkEAAA4Z/8hHvmOmCvE7wgKu8wQsF3k7d1KEKjDFhhQlTOIizg5RAZyCIpFt3M4rZc1SpQWFnBl8MHiBE63'
+                'xNRoiIA0/4aIwZuh1JOw7ANsNSHwSMjDDm9qmAxlXbrKsMaMkYQNkpS1jJgq+sCeFGUFSrFr5/DvhWWd9Vqjlv9++aaz7S+VbAedvvD9BXxn0jrhIoz9cr'
+                'F2DaXQ8QEF9pmL0qnOtbcQmxZUKeKyoCcMDxkmizmhH08liaQsEZeL8jOV1mPRUXpjFbn8nkR9QNfEuGPNdKHyA8xXzKY1HJURyCKatCGLWR/YmoPrMRTt'
+                'S7wCfNhIIrD5lQLkdoNYP6zlvB4zo5y6VyV8gjBeyR8FRAoFQlJkHjhFn83GTd35cZsFycf1b+jKrUmsquuf8Ao7iSWZLWFh2IKnt18scBNhZw1gjfxc3n'
+                '4VV4cTk8B0UwFQ/5MlX2/AF1yTwq79l8R6jlINwTaTJPcBLtKGAxV/64RisxSaPplO6HIBKpUs7wtGXqxTt6GPkHrTAkpBCK8SPfEyJO2vLGhTK2Kr/WHj'
+                'to8dj5/MvVydkw/Psvvw7PT8+GDouiLkQj1YR2fY7CY1er+WDYOKTDWzLOgnHdK7F3lUQdO7cG7OXy3H8vwTbKoosRoUYIirgs0b7S1agP1gFxqqJbSpQh'
+                '8zCbu2ay44Azoba30VzYljokZoaNhc6GFtbm+E6dkG1huW3C3Zk6JVFvfnsMbXFznCp20+VfKt8QkCrWaFgy9FM4LcDdUOJBmcqS7pHDEjQy/BthjVidTG'
+                '3811q28pn13oam2jDkXQlV2rHDmiN4YrMwYKvhawU44L8+W4cBqzUrVTXAlDhoFE+5ZpaQD16Qf98qORmo3aFFLzOWQu3qOWS5IRL9EwCxXpA1lUc3xJiH'
+                '550Z0B9f7dPAaZaVlzW21l44g1aDr05dyMeMz5MzsE+XRrVRZzho7ulGv7dtZJ7QXeTuseWiBtqGADXfvdyGA4NOq9dskMpwDm7vgIm6/N0Z4CGzGmoOOc'
+                'fX18Pr65+H5zchKMuT0/NPNTvr+vYwqlgUwBrB3oBrHWYjjROCvDnIQoTFv9jyXGc3m9br1mHX3bkL0HmDYaMkawZzplwfM0KmvF4Vv5NZxZJ68OfR1lHJ'
+                'K9XeY6ofoEBlYAEn3ZS3TCY+GJuJd8ZmdXxbtWE1MZ9gRPLHA535JSnctSyzeeBP15UFjVcWgCLUx3UcT8dEG2LWiny8T7NySbkm9MmZDKH39wsL1ActBL'
+                'km7bKxOrxECZSHu90yq0sZdEJJjWCcF9w+mkoMRMF0a5fysZEqJ09itKan4MmCulUQ4N3a6GgGFB+IdqcJ+PE7BpkhzJRns1lqNu+bAJ80HtK4EB5b3bpr'
+                '6z5ar6ygc6YKw+PlmN7YqGuYsWC5LOcUMU1U7NkISYSLL5Ogc6XqSjFLkIEn4X15/6hygfZPjdnYwW/FsRIXjMsUgYLGYR4gqsiFOr+4EaY8QphEVYL16s'
+                'hzNusgrhCsYx5FvWWji9R7ZvOVv85PPl47pdF8FEdiNcCM2kobguyejdzf4D+dmrvdCrHvWaXbhPYOtg4Yj5NMpdv3qYqcery9vrr5emG/VIID/QpTdY0z'
+                '4UbGywW9PSOFzvp88SDpW1Uiub0D9O4OWUoIh6zrHnUM2jfMtGLVp7lrajhUh9p30Lh2K8XHCovXPjJ3bVIqVi50bWDaKZGgbgso8WN1Afg8enStJu89Xj'
+                '1vZfeliWQIFPUGMjwalSp7gOhXlMGhlKUKgb5KK2/XxXQj4POdRMCrvh0c3B2V/cCubCIw76g8aLTyMLobixbgoPW75YH3GtcLFMOj59PfA8/f7+33qR67'
+                '7G8kwsuDRhOp6H2ONTB3UsiU3zjBq6gkY9tUJx1hJCdDwWVVzjHnoMZFXpZdPsbWMdUeM7NeCwsw/8mZ4ssw4N4B++CnfwgGeS4xQgJjrua2E36aLGIFKE'
+                'GggXz0zcoqNvrtUiorsT34GMGin2uyar/Wqp9oSxFynROUAW1OrcWPeFdCLnWm33UfBu4k8F9vPIwloFqegjKH6nyQEN9bJQnYbdAcjYPGbLf3d0eUqEWN'
+                'xaB8+j3rMCgzXN+xPil0g3GN2OdhA7patHxTKkkb2AKKk2gPTmxcTA3oJsS6x4Idh5AMplI1PVPpmNF8K1J30u2ILxy8HK0b6cEM2eprV0WU4FWrHqOfYf'
+                'I/IEqQ67pHPRp8tkfIt60WU8ab962WJPgqWlC+x7NXC5vxZfEQKGa3NgNiEYv7YAfw/bKr4YeLq5PhSXh5NQwvPn7cIfhtd3eriPuo0zHFEpJVcAY3xdI6'
+                'EBvuNSjLq+H18Pjqw+fw4vzsd6cGxfoJhVrPQQvT5zVsHfO3wPcdwdKzOmIhat9gG0usDaHkDvN7K3h/E1wTbBoD+9qhyhelSvqrzXu2PCOfy7yerD1+Vt'
+                'emGcTT4LSXVU/w9fFevYo9RxyXykOWIkZXoPAxn2koB5AbumRBJ6fWcvXLWOrqhSt2RvxGUtP56dXR8Q5zxMpD1bdgRqUO2AWH6trZKHX4Uc7yh4yyKnO8'
+                'vmE9rxPmesfBfhxfvj7/SaTRCIxIz6pUIWJUXYrKzhqx59fgdNlJK9L1gmB3RoGN+MYWvjpTGS/r4kzL4oBfc3wqdkW7z7UbzBmgsr5+qW9a0NGa5sW6J1'
+                '6pgPIG+9FREBat9p4RO3WVlYmezC1eFK+iDBNSIDN7rSV5HU7BWsGWr3lNq3mYSZCVuYwyLEVfpugOlJwgOwLmCixXX+PVNb+brS7H0IwnmBaDnRqtOaP0'
+                'taVHjQ1t6DDezEZZEDXtLhp6D8H0iyLwzZdEAL2fOum/qX4woaVRW0rI3ye7xyuwVNDd++CQ6AGg90Gv/2aguHOLK7VNyl1tJUmVFZ5iESl8dX8IzFLDrZ'
+                'cNlf3uYdzhWuFGNehWoNhUZKGMvPIK91mHqRwFBuXHl44JEFUo8b6vrjxpTB/VJK5hf2BaWlh+cl4+qArU23rYJq+eCoPtmRA9bbCpWUcl4JDB0WlLeafO'
+                '6FIt0hcuogxsYaj/ilup9i3UxgWULpK7s26MrHf31OWRvjHSLxk/OSu8IsGEVP+FdB7Wp5hc5VSCbSKHtJGGsqw4BE1gtpf0iv4Blq3Xr1/jaT4S+z9Amy'
+                '/6+/zngP+8RUCUgv47/KW+SNDAq1J/Ku7VzNyjZjv+LQaN2zcs+vI3CgSx1WvSTal38uVIfbDlMdlPKnTlLnNt2UqOGvIwwdGqKG5Nh1FFiN/JCKs8ZGWk'
+                'nPoG2ENUZOR4OldaNaP+PLINBe6ZCoci/dZ8DyIjO9MVYKJuEo0Kirljk97rOeCz2KKn3mqf38dJ4fJDGaBv5RPPw/yenrzmqIcCVAVLLIl0jK9TuUrWfP'
+                'D+0ME58GVW4rcxonKcJAGt1ttz/oXfnsALXfDxVaXM4ZsQk6E//3Q2PHF8C+NTUx6VULA2gZ8epdOB4uYuPltvJrVdCq4isjq2XeLtuqoHJq90dYQ2wl3O'
+                'N23LpZZH5ILNsB8sglAGnEsb8F3tVNa1DfpFqm0aZQcpdR4Xv+Ui1rJCvuLvr7v8Vi/DbgCr9gb00QQvVAPdZauoZhs/kOKCKVTCtX5tRH3nBZMjiE+rcW'
+                'pVTpexqATi2PW5zbd+rFEYFsSVeRV6W3GvouXWrb6ywNfC37iop/aO2r9Yl6Wyfqev6mwpI1C7u+lZ7l7etleaNJ7G6w9MUKDWxwnl6j8sYrbmYLT2RJwQ'
+                'sEY33CorqueYJsAow3XtNLPFUrse/MVMdhBw4tjHDbXpIwQ2feoaEAt6VdLXqcvM6bEpYh4I/QPWS3AZsEkVt2qlM6xf5WuB33KuvbXR6XwmBgJ9BfdLRt'
+                '4EXYYoOTHZCr4OBObRjztzI0juxlKF0HwJCE3sgzauBpvu6baguo7St29R45aw2HhVfStGfW2l7/PqdQ+2cwNs5aLZB8/bUbNc6NLHgalAIxVgfyLK2U5a'
+                'I4uiZ7MbrauzltOIeY4YImEuJFObdYQtf8E0fiv+IeWCIuaFxKJhjDX1xwYAH5Ymmk9UQQSDIXGqomYCIhUuHxcJNEC0k6eYtlNeJhHTdi8ZwtLdBLXpSB'
+                'pj5KjrpC9XGYF7BYptu4NVe1eslF5QJptd+kiTMzGeYWHME82Fb0EUjVosWTzXQL3lggrytsKqHcNt1BpZOWV6tPbIvtJrNA4jmDb0maXeZeLwds/n6QWP'
+                'mqk3LrSuYPR8e3MGeiG197TTVboe3tyQo4R+kBrm1V5FOsE6BBKUR71cCvfwWxWO4+tvTsBPVaLlfJzkpTiLgIgnu8yARvE3LQbwr19/m2KgfrSLGZ6xEL'
+                'HEaxDX+Zm/hPCZq2r81pcRPB89GPq2ggFplns3QPT3BjZgW59iIP3iOj+pDw6ID/QRAn/jswRbkWvg7Z9DwCEboBswNL0GAwC76p4mVW+x+/Yr7dhxZWqt'
+                'jtX76v62F9ERlnnLONR7557yQqh0CfTTgsu16R2skgNm9ZGnuq7s9tFlaC0GJ+qLB6hzNAb7pTj8qgHdjOlOfKtgk0JlAz/Lx1k0B8LALuoBvtukDxXBJl'
+                'XOR/xWg2Gipu+4HOcVItTuXcf+3lWrbAhmPdyvAdp1SM7xb+H5xa+nH4aOKUIyhfvqi2in5zfDq+MPN6cX59fOi7jOTq9vMM99fAMjzhFnq/Lo7qUs4W7U'
+                '7QKzBrE7v8q2TWWcfQwB40148Q/Hr7/a9C7Unw/bxkFQKSAJIWmDMIQJwxCkLQtDzGktAv1Vw95xMV1ikuQSn/Cl8UUvikHfqWZ+Gxe2cZbjeQvIJk2ohg'
+                '1PJlZ446tipMfIy20P73ZZSat0H76RfLQJQxdJjk/laPZr6PWwxrvp9Pm216jsuEia3+zeOrmq1NiGOkOnIXD+x9BGJnYTBwdgf5E6OFGYx13TB7V0sPcS'
+                'pXX09ZeZoIe+yAe2NP+NRWxOFwWLHkc/yFJVex/1UHLw3f5aYAbGwKlXM2oglqSBemVAv86iw2yv8/+xqN1+SlUAAA=='
+              ),
+              'data/roi-racetype-route-map.json': (
+                'H4sIAFom/moC/92bXY/aOBSG7/srrLke3PgjTrK9SiEzZJcGlIRWvbKykB2iAmGTQFVV/e91gE4Z7eB4ICNtfDFoUGycPDl6fc5r+/sbAG52aVFm+frmD3'
+                'BTVslDikzWwwZmvSKZpb3q2ybtFfm2ytYPvR26ua27rNJqkc/rHnVDMP3rre+Bf7dJUYnfAlUOgnwHkHELbIxNsEqq2SKdg33b+kfLW4Bt8Hcy+1KlZSWu'
+                'JMWqBG9FDzDbFkW6rpbfQFn32S7F1WW2Sw/jfk2KtbiPeuAirYq83KSzSlwFX7P1Oi1ANAHh2H8HVvk8XYIyXYrL4gc2eVmBRT57B4JxDLL1PN2k4mM/zC'
+                '5ZZvOkbvXPttoWKUjnD8fR6qdOSzHYd/FNfHc/cXfaj/1xwEMvikO/H3sDHrkjL3psVMOpB69vMYrdew9RwuPPE497H/2BF/S9/W/vGy6yssqLbJYs+Z6K'
+                '6IMYebwsnomXVZF9SflmVomLhECLPte73PAiz46tTAope2yV7jLxoLOUPxTJPD2AK9OkmC34LFnP94/++45m+WqTFFmZr/n+Kepbwvbvy0UmXvAxVhbZwy'
+                'KtuT7exxE/SFb5+gFU6fr32+wV23X95sA8yep3K95bJsCL7jsxXrKuypv9ID9uH1H3R24U+Xe+N2gNLnLOw0UOJKQRrgMtrAPbcTDw60B+PnAHiFh8OAm5'
+                '+94f+fFnfh+6A4+PQ/7J8++HsZQyO8+YMcisRsbUgciSQN4U+S6rFavuuEqW4jNZbZb/U9RDV6Duu5PnQfO7cfjhSPVImYux5WFsyuIYI2g5jYx7GJqOBo'
+                'E88qNagyduHHthoCAUfiAauv1D7MsoWxKpoBArILYgotqE8Qe3FtgzakExH42DeyEroXeIaDWpQJhKZjsKmd1MGUGbahDIwfijL6avFgMYmeZ5uNSARiNb'
+                'bEHT1oHtNIy88HNbaQSWSYMNTdwctAZ0iDbSMI6HXsjHEy9ojbBxbeRSdJrNdZ1w5I1Gfq2vI9f/IP5pP2lDSCLEDBLWiBxZp5HfaeL9oRt5/L137weBF0'
+                'bKk56AL08psBTyyTs4B7meE0nXFfmAtx+Oo0jAmwbxGWm+BLEknzBVhMOmkNg6RfFBBFB71QdGUoNCoYbuYQIZ0w8ybjs7ZlcGc49BG+nHmbQ//V2dcDAK'
+                'Ha1CWm5bXMPaxpK4xiZEtkpgO1iPaXA4reu59uSZUSnc5kg2GaSOHmwP5lB7bK+tp81T/hpohMQTuqDokwSupRK42DBPDSMN+Eo8ocuzCiwpQrAFcbM/jy'
+                'i0mH6cX3HKky07IZW6r0dsaDs6MW/fNDrJG/5bmDzBd3bhyYbY1APycBoORt6jYfTLQVILbcXy5Nrp0DbkC9Xdwy0ttq+qT5h8naTZciYIOlRD2FgmH4y/'
+                '56EXh64feAMeh14wkK+ZYElMY1shpmuvlGiImbTm0MmcZrX8o0fJaZGoA2Rp6nHRThcmUQxkQctUWFk1IOv80uoR8J/Tj17gj7z2ikGCpdOfgiT3KDT00g'
+                'pJwd3+LgyKoc0U1rARpHpRfpWtGJRI0mcqipRm0tDRRCykdfezWZwCYCJJLciTGD0vyBZketUnSpX3ZXvkJNOf2irVkxpGB9gvKrmVFRrLUGMGDVNBOSxN'
+                'lCN0zxrOF6TK5NqdtJY+O2mDIb8bubF88rumwqbXLmszUZUQvWCf1YpLLSNmXktZtDI6X5T84qu+bVmp6pOVfEp6gZ8263QMx9Pw7qLjOoy7LzONkGNIXS'
+                'PaXAo6DFKz61G9J95waueiZI5KJkJMIGYqZ6II1YNv08mdi3cbyUptCxoKkBukuWvicR+Op5Ozbv6lnKW+EYN28+4XkVTrsnv8hDNuUS+oNJSt5ixDvIju'
+                'H486gUtaXSVhsuNnhsrZKBNpYC3v+b6CdWEhLD1gwlSsIizfjd8dwLJNXBeLsM3kp6ybMzZkQj0E4oVucpNngS3Z/nAH2s12EDs9wNpltK/iIyPHli48UY'
+                'XNRPKtAB0C3Hyw78XVnCXJg7HSkVRETrPlLvNtcIyvMtxMuQQ7CknaqbfcZcxKx/su2QVwtduGHUi7XtK9qf9+vPkJfoDQMetGAAA='
+              ),
+          }
+          current=pathlib.Path('scripts/stage153_roi_combined.py')
+          content=current.read_bytes()
+          known_sha='378309f3535f0880c123c3813a938aa730b5dbbe38bed8f6899a995f1751222c'
+          updated=gzip.decompress(base64.b64decode(package['scripts/stage153_roi_combined.py']))
+          if hashlib.sha256(content).hexdigest()!=known_sha and content!=updated:
+              raise RuntimeError('Stage153 scorer changed since audit. Refusing to overwrite newer selection/commentary work; merge before installing.')
+          for name,encoded in package.items():
+              dest=pathlib.Path(name)
+              dest.parent.mkdir(parents=True,exist_ok=True)
+              data=gzip.decompress(base64.b64decode(encoded))
+              dest.write_bytes(data)
+              print('STAGE156_READY',name,len(data))
+          info=json.loads(pathlib.Path('data/roi-racetype-route-map.json').read_text())
+          assert len(info['routes'])==50
+          assert info['routes']['AW_NOVICE']['model']=='STAGE143_TYPE_INTERACTIONS'
+          assert info['routes']['HURDLE_JUVENILE']['model']=='D_FORM_WEIGHT_GRADE__ROI'
+          assert info['routes']['AW_LISTED_PATTERN']['historical_races']==7
+          print('STAGE156_TYPE_AUDIT_OK',len(info['routes']),'historically tested categories')
+          STAGE156_FILES
+          python -m py_compile scripts/stage153_roi_combined.py
+          python scripts/stage153_roi_combined.py self-test
+      - name: Commit improved type routes and preserve all other model files
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add scripts/stage153_roi_combined.py data/roi-racetype-route-map.json
+          if git diff --cached --quiet;then echo 'STAGE156_ALREADY_INSTALLED';exit 0;fi
+          git commit -m 'Stage156: route previously unassessed types via audited ROI specialists'
+          for i in 1 2 3 4 5;do
+            if git pull --rebase origin main && git push origin HEAD:main;then
+              echo 'STAGE156_SOURCE_PUBLISHED';exit 0
+            fi
+            git rebase --abort || true
+            sleep "$((i*4))"
+          done
+          exit 1
+      - name: Trigger fresh combined selections from all existing specialist workflows
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET="$(TZ=Europe/Dublin date +%F)"
+          HOUR="$(TZ=Europe/Dublin date +%H)"
+          if [ "$HOUR" -ge 18 ];then TARGET="$(TZ=Europe/Dublin date -d tomorrow +%F)";fi
+          echo "Reassessing $TARGET: all five specialists will be triggered by Stage153 controller"
+          if gh workflow run stage153-roi-combined.yml --repo ficokelly/Racing-app --ref main -f "selection_date=$TARGET";then
+            echo 'STAGE156_REASSESSMENT_DISPATCHED'
+          else
+            echo 'Stage156 installed successfully, but automatic dispatch was rejected. Run Stage153 manually.'
+          fi
