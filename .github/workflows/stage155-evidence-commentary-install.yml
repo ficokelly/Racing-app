@@ -19,210 +19,139 @@ jobs:
   install:
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 18
+    timeout-minutes: 20
     env:
       GH_TOKEN: ${{ github.token }}
       PYTHONUNBUFFERED: '1'
     steps:
-      - name: Checkout the current live app
+      - name: Checkout full history of main
         uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
           persist-credentials: true
-      - uses: actions/setup-python@v5
+      - name: Use Python 3.11
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install grounded commentary source and preserve optional API evidence fields
+      - name: Recover verified Stage155 commentary module and correct indentation patch
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          from pathlib import Path
-          import base64,gzip
-          chunks=(
-            'H4sIAEQg/moC/8U8a4/btpbf51ewU9yVfCs746TZtp4oQG6TPoBtEqTpXtz1GgItUbYaWdLVYya+xgD7N/bv7S/Z8yAl6uGZ6WKxOwhmJPLw8PC8SR7lyy+e'
-            'NFX5ZJtkT1R2I4pjvc+zZxeXl5c/lnmTRSoSpQzVk31eVkqE+eGgslqWRxHnpfi1lju1fP5MfHj3s6gKFSYyTaq6WlxcvMvSI4BnVXNQlShKNc/jmFCFsoxE'
-            'nKg0qoTMIqE+w5Ak24kEZisU/MpqGFuFeQmT8xRfLy9KVSlZhnuhbhIACdVCvFU3qhSAupTZp0oQiZUAupIsVmUlvv+n10+qpoxhUrGHSXIgG3rlxR7mTUJZ'
-            'CBXtlIjL/CDyKKKh9V6J2yTLkCCYsknrhfgIbUSOSCrx9t1HEcIyt6WsgT6AFX9aIL8uCE8QxE3dlCoIRHIo8rKGNWZ5LesEeHFxodvCPE1VyG2mqboxjxFg'
-            'rpODErISUW1af6/yzDwfZL03zwU8AznmtVTmqcJZgbVhxaTVx4LYzL2vsuPFxUWkYpHl5cG9kWmjVtg6E/OXMLZcXQj4KRWsJhOOs/g9TzIX+I+Chz+wbgDi'
-            'ccg4x5ktQlmpOE8jdyaSGIAWSSXTrDm4s5mZqzlsVWnPxtMAeFIlGZAMkuVuT2zzPNX9Filv80xRW10eu84b4Ys4zWXNg2fDUTc4BbINaIqTLKlhlplQKSh1'
-            'i1B9DlVRC/dfEcObssxLT3w8Fvx4hhBeVl02Kqn2Qy7iAnpsHHEMGpLC7XMuE66DCB1POEdV4Z8lPTuGiyFYZh2QDbllfuuJTIKVaQpRPp/UEfFQs8UjmQKX'
-            'tAhg3GKnahdAZx23gEkIBXoOSksrJBvFtpe+uDIvwMQgyWq1A0QWY6yVQi+udHYxzbAwzcNPZ5WOWeSP2GVUBWnTY1v9HKuE7orqhTGoBdpBUuXAooPRlEWp'
-            'ihQ8hOv8GzL5q6ur1dWVM5stZIVD/gE0u4DCPC+aOiSxxdjiOn/6afWnXzRlf1B/aPr16vlG8wSpCox3G5sIuJgPrfsEUBRSUaIUIgGao6pa1LnI1C08XYOo'
-            'EvJxNXjEJqMVRuCWERG7zbpUshapqmt0le4PnvjNE+9n6HNAQ1SZhAJHgceoFuKvSkQ5sV0C/KGgqcjLEsYoYcP1xA6cxM4jPw8ylhX51LApS3DqYH7lJ/a2'
-            'EiBueRVoAdluYZbI+gKd/nljaYoC9Y5Aq+Nhm6cVgK9Ddk2o+IgAPRA+O1fLp8++fv7P33z73Q+/vf/Lh1+dDY0E6mqchRGs58sNDjH4yDNorYqSXVLTFKjV'
-            '4aybx0BPzKVnKVWIS/c1kvX8+Yo7IHAgSoiP7mfh+2JJWD8T9TSG10eSM4BL8cIHEPj1bBo6RXnjbO4JfMbKuc0zimi6HUDzEkM6iKusHc95CjDoDas9NkIv'
-            'mDfxBZXb8XqGDT/OM8QJGlLvE9DC+5GPBv+Ak6k0fWCc8xvANRlEe9LsPzbHe01g0UCAjURT/FEEVxqBsZn7x9+RC0WOzXrOSUNLw872AXVE60fnD1qpxZ0w'
-            'Tgh+V+8tcSByevvCF863jlbRdoRKdvsevO16Tw6ribPS+gKuDjUQ3vEPvLGiwTs/9DnjMInQyw8etuh3eqOIhK8qc7VC3mm3VuVNGaoAdKtWn2tXv5Z5Xq9M'
-            '7rJ4D389yntWaPadx3tV19LK+dh7mJxQoxYQymAFtwmkrk0tmoqyHDBYTAvRf6FPK5LwU7UwDgbhfHG6YxYBKWTdNjVuwWZekJl3NG8GqYrV5bmY/Hp1U6Rq'
-            'pnOLPk4LeMZeALvJuiElU5FLQYAIIssmwmA+fFhQnly5TFZs+hflLs23rlNpnszrPJLHuUzTedlkGfj2BWSWjlbPQx6pNEANLnH9zuvls2+Cn95/CF795ed/'
-            '+fnj34J3H4K/vvn5x58+OqsrEOuo/8cPr16/saGWd23SgWtBsmhNnXajXKhtkUN274IY8wik4jtNHc+/nVfJDuIuhK00yZQPbh6lVWF0OvQTC+bMLc4AK1q8'
-            'TsL6g5KwEpehB3mItkaT5jioXIAcbIfVDPUxyRo1GoS5EzhQhPI4N25xHJTCnQpw0+sQo60FkBWA53JmGM6Ho2hfAmNmo6kgbMNUoIxtJja1BITCjQcmY8AD'
-            'S4Y0rKMOO5yZ9913sxdDIMAxAhrzS5vGGijZAGGA2fYh0GOyN8hBqtai6W0FAS6sxzbcszRbhDiISdJ6Clqw3lhEjYX3hU/YR5L75LO0+mwHl8R89zjZbDsw'
-            'OQnIQ0LfQ6Iidmz8s6yomu3vsJMLYJMJxglghhFs6+ZtB5vpgvjiiULBasFVgjmvsXfTubtfVSFxXynybaXKG/DqRV4ldXKjqiehbGjDyD6Q5YhxSn0Gjw22'
-            'A3tRCgGUsRlH1w7315trgwGfM9XUpUzx0ThXeDZSOvj9ZLRlEDY7XazD17UJDpue7EwXdvg+ZiMtLQtZ4D7fdSRtn89EWOAx2VpLXzuMA0wAY51OUCodTMob'
-            'qadgls+c2eTkrHhzSBI4iA5i7WAFT03E5eSHwqQ14jydBPkwpT9Q6uNBCuNBFjJbGWkZdCdKoKSI5eNSKJmJNosqE/T4VmZHiZLUaRJyQMUxngrYIFcGic6E'
-            'Rky6W9ur2ExwgOkLKlVvZfipx4NKrbQOGui+Mg10jBOMzUv/2YSWUSYDfcu+S8PmAF0UeCDWNWc4xveXLNXYOVH7JbZfbu5osNNDN1IhGNNOcYdCZJEAezQu'
-            'IhqRtQLS2Vp1v1rj6VPApjalNTpV6zPjHIVMCQ9BUuq8mNf7UqmWlnspD/MDpDN1a4/3UY7HfeDUoOt4P+G+zycJA9F+3V/N0ABiJ8tH5D+O7Y9aRZHnZaCX'
-            'YjE/jPzheYsJLoHZ+AakLZ5phrWNu6IBkA0QMA+0Y2WA87P28YyGG8QTCIZEnadB3iLIBAp5awaDHwpuwb/sVclNeihEyPjMYOzSw7sgEkakDGH08qpTgClV'
-            'DqM7caPKBDDSwevpsrrUCL7ADTQZ8uXlncjpgGMPSRPziPCbtU6J3ghHn+OgxpojvUE+0RMbRA9YNB0bj6CjDuCeVWEU6pQUJ5gDrXMzCfmss/QGcSp3Lc3g'
-            'UG3PaK2cH23unuUwQVqGY3OZ+r7wLT7L2ubyJKGWxvZOGdsV2qJ5DIkGdppI0zsmU92rAH3DaFWT0rYFRdUK9zGo/g4JnHogK5ANHePjXUFdQjKnIqcnBrYj'
-            'WiU/PmaNDGkpO27ntKnZq2U4e61TazMWO3DJ2sK1KzZG23sZ0jr2yCcDaokDm2wqDYhNpye2sDHIcEvTJXzsya21Tq1GX+gEO1noFUHCjPvJwbm2k8cli8pq'
-            'iRO8ogp4BPdynq4BSuPDYB/grzXGAkIU7FaczQDvqH0CO8LwNqkFI5fRHi3QZmDTzVnyJgm74J02QfZp/MZoJk9id/XUDs9hYPwMUgSSqOaRf5CfqZ0azcvL'
-            'Q8LQD2vmJd4C1fM9bDRA4Um8OR4xoKd3Db7ZSyNoA3cHmeY25XMqwyc+Dtbhm4KEcE9M52p3N5uSPcRnxDjU5OnFvjDkzJcDNR7mna3o0qPgW72ODk+cWjxt'
-            'Y7oVW5XCRhZJ12sUn7L8NqNFnSG909ixw76XLOZUR5PGsi9Ko/S2EkOz0WJ47KtxXxUZclIXeSRf9lGOhQ0o7f2kNkLvvaqIo1vxwMtLUkRqnV8trq6ulg+q'
-            'HiR+lhLxdW4SAnMKVdJ9DgYTYxUZxyWjVTDRarGMp5UKOs9q1ZBuPHrvrlUXBxUlUkPNv3nIV56hOU52TalESyQystMunkLIQ44X0ryZ0+clZ9YCIx/aaDn3'
-            's68lxQTCKjA35r5jnhzkMkVBup7JMM6Xx67VXHIEqLxTeooZe4u33fWw/fTc9n2As+72uAWxfMDoItMQNK2tkUpr6VPdg8sI5maAt+ynLwj5wp8/rLeyf/11'
-            'ktvKpdEz25HgcTVtYeykhooQ2lXRcPdkCDrnIwnfgEt9xeZV+lePIF0fd+Fl3/8egTL89DB9L/3nD9lTj695bDlIlO6J0DCP5RZ2BN0S7D3EeAmTKRQimCL6'
-            'S/GaqldCZF2HmO4/qyap5TZJk/r4pKs4MTcZsCVV6KFKvK3Vl6vbpjwCmaAT+wSUdacyuodF++QLUjxxLMoETLc+ukmt7EPv2scGq5LA1ldnaiNEfrK9Qr/q'
-            'wU+zpj9i2RsxyFEZlnyDSQgHw5/2h/f3Et3oYfbeR/Ksh2Tar1nIeiF1gOrr4QX98/4R6gIvafCU3jcimPWv2FpIZ4WHuy4e7lLJAYyp3LYXbw8co86ToKYT'
-            'IPvXcNqRTw7SfYTdaNkkoOkcYadDjxX+BhSYHKzgFzxCyrpi2zJ3eqWSkdyminSw8kSaHJJa66IkPazWK2rc2NeictUv19BRVs58f2m65Ppq06s8AgK49kiu'
-            'V/PlZvaVQ1rsfCXxzl4TRAf3wS0IRTWFi+bncZs+bvcEHdBrEhkaq2N8elzrg//NNd0Z+njNrzvw3dnMruu8lqmP1BI+fd1O908+tQDZa75a0LhapF3KDqhh'
-            'oTjKh1y6o+KOMFVsACdEsr7kW4pjofAgS2+NKoVVY3jO29ba/dd//Gd70blwuuMLnuzp5GRJxdj6SPT1f7jPE3BP2gWdeIl3Q9QvfNwzfO0RW2aTs3BR3gn/'
-            '3JF7JlhIqPOmrkAD+dgOBqKbKWRSmr3AuVVSCV7VUgJ5zZnF4ZScxA+nLtk91fs2pbKJ6ObTXDCT4dUkpMMItzE+wSeFWltGj5cqO9Pc2jddtZhWY7+tTsDo'
-            'FWFvQw0WGxqcXbSACJM2EQQM56vW9gDKewrmsLAKo9RuAh2WTpY3XIJoMNmIYNQQEbIO9+toaWi5ANI+w7z8rBqrhmE0K9YfAfkNlpNlXHGFByXyRiYpTouS'
-            '6hHREBF8MkCWIFNM26Jcca6mL7oGustqsbCP7loCbcJVw1UYaMF5NXvx9Bztr6IoQUqBbr1fWg3pXI6ZRXc4S1hBhzZHXdPOYTlwDpY/4K3ytA/p4yIlshDS'
-            '+724NESLRhpFJFe/ud76HWLT2Du9si9eiH/bUYts71+25qmfufXYGzs/Y2UGV0XxET6Znvp701f0A9bb0okUWeuJCF1fEmPQJbon2V3WQOJVNeBstl2TDMu8'
-            'qrq7gRjtaXQPM1uMjsUet2RzlfFi2z3fu+zRAvZSu+G6BEdEhczEFF11x0WesMytfXtjFiqtRgj4EnQegpa4hQxlz/fAiELuJBaqsDVxMcDoYoZFj9F+M9ot'
-            '2coxguivNkri2LdB56PBF4O6Bhzy8vlqWj1YTBP7ZErtYSTvlenwpZxWEQwa9nq7DQYMfzEfzXxWQnqS+/fv26M4zVvCPEjVqwKyEeY93db3JaBToklfRc9n'
-            'nevbvNtocLbsCVPmnhs1mnPxOt18yTKpwPOiR22db5zrGxI+Tbimheo8QlT7vEmZjq3C4v1KUZkp1lGVOQRU+CezoyA9iW5khsVHZmEmbzNpGxFvKpfJufXT'
-            'NM6ndO7obbV/Wz3dXAN6X55Jqq7r29zfnutkZDGO1i7wehsjuHmj3A/H2iUhkGzx0QO990I/akcG2cWe8rQTTH7XnjKdOPGQVaWqCj+PWHTxXca9DOGMSGMd'
-            'ps1FkKxYQDxn6xJPbRACtJct2ssNhJ27XgTEadtc495JO43AffmOzj4enlvjhpmXszvWHVJxytPUZ2CyiGEriHaBMbRMtrp2ZS/BC7Neqaw7z1tM3mINyH2b'
-            'Dz4Raa2AxD5P1Q0YGUo4L/vKDu6hhpacagvE7f44zCFieYOGxIu2LHT7SPGxQqC/kBDKdA1PCNnKYWVxbvuA1LaPkhrPtS2psrGPvCcWiAopVkTu9rz+No/a'
-            '4hkDJNmxULClJgmw9SvgD0VJs52Y2WrcZbRnSXvVxhulWYoekFO2yhwvVquBMhnETPaII4+Z15wO4UlPw/MfMFUM9zKFjA+jazJk1vS0ZqeaHV13YLzeUB28'
-            'AV+8Ab32ze8wPwZyLP2jyGCdV0pWHhacSmjTwl9gsY4N/H//zpg+amITuMVya3OEU3R29iV90wRNoCPIlCPkSFswPi0oWYn2cysttGswpzyJsHIfLJDOobd5'
-            'kqqyQKMSFCDwxOzhEKAyiKF7N1YqMtVxvQpCPiOu+sXBmpORPPo4cO3Ak/ayODg4yMKfqEr0AMzUVFAzAU5WJFuwsoEdgG99o7X4HnOx9psDuqGTlKwKpKaL'
-            'IZNFjG2U6aoY6Ts0FHTXybtemI1DEBVSd/HJlEgC8t7WpSUXPEdeB/zRnLP5yl9ej8okQ5+LHVusbYXkdW3FQl39xbWsXeUCRmVTIWiYsC/5Y4sRmX0mtDWa'
-            'Ry/0ai653Jf3Fcei8HwjWC6O9U53AxgWn29J9gwk0d6V0Vkpw2pf0llcGTkr/E2V7HxHttIPFi7G054CpvKwjSDzXuFxUdFPRYxKZPoy4zv4sdaIzMNTsvbW'
-            'rc8s7GpzFb9fYsp9fPHs6RdzredNZTQoSs86tHrE/CxHn7Hby7rmLWiPvomRSJL5UBQWMHE4x3BMlsdHcw/gaYtRuaAIGaM3F+1h52iHMQJYaVvRihpgTUdA'
-            'fjhOwqCDA/sZbBsgL5kaS2ecKjozlE7y+rwYJ8AD0QzHBHjf2OByne5EZW7mm98snfNDO6r8U/+oFzUTS3KHJwU2s7zxkKdmyHJ6yN3FwCmRUwzY5WvHxC6U'
-            'nLhFKsEjnQ5ucdENrvQ3Dc+fz3f6U+S5xYFuLPLA+/OfMXq4hMY613bYuQOyN+Yz47L3ER1/gVykSZhgSjkoxnrSBVW9RtivpA1vC81Hze3nKFZ2am8WQ4y/'
-            '6PvFQWGNULWA/bP+uBh9A316nGRFU+vdH6YtkLOwb80+wSb2zg6r1kJ1SMVcx3yHab46LneQhlbs/QvfvC5elbsG+fYe30xAKxYyigKpu1xnPkf5OB76D7/3'
-            'jU6p/t4kEGL8j6X5yHY8mELv/3i0DsePHC/9YkErQxyVCdBAvY/fSy/SHPZrrlxQmMZMh4p1XVNoiYT2Afm7hBHkVoG2KH/tkk+isAneds3BEp6GMRxjUC/A'
-            'USYwjvTtB8iDL9HW7ufecO+zHVHaN52kcdw3tRz8VeA4cdjMutqiUdqC/VbyYyVpHmdScqEFo/keQz70f8aP/0d2wK6+rI38fVo2ZAnfd/8RwqGp8LgGS05l'
-            'HCvc+pb5P2B3a+X39PUZVZvRHQa7bK2VFAxY2UgTo+ZQVMx5lVX4XwnIKkwS/wcJvPESci8+npT/u/n8gb4Cdp1fP7768Q24y+DHD+9+e/v6zevg+3e//PLm'
-            '7cdXH/7meBZuErGHeUyAF4JsTehLQCYBXaMEge87QYB+JQicFfuXi/8GA1NQ6SxCAAA='
-          )
-          code=gzip.decompress(base64.b64decode(''.join(chunks)))
-          Path('scripts/stage155_evidence_commentary.py').write_bytes(code)
-          print('STAGE155_SCRIPT_BYTES',len(code))
-          scorer=Path('scripts/stage153_roi_combined.py')
-          src=scorer.read_text(encoding='utf-8')
-          mark='from stage155_evidence_commentary import enrich as _enrich_individual'
-          if mark not in src:
-            needle='  args.output.write_text(json.dumps(payload,indent=2,ensure_ascii=False)'
-            assert src.count(needle)==1, 'Unexpected scorer version: refusing to modify original scoring model'
-            addition=('  '+mark+'\n'
-               '  _enrich_individual(payload, cards, args.sources)\n'
-               '  # Stage155 only changes prose; source-model runners, ranks, scores and picks are preserved.\n')
-            src=src.replace(needle,addition+needle,1)
-            scorer.write_text(src,encoding='utf-8')
-            print('STAGE155_GROUNDED_PROSE_HOOK_INSTALLED')
-          else:print('STAGE155_PROSE_HOOK_ALREADY_INSTALLED')
-          cards=Path('collect-racecards.py')
-          s=cards.read_text(encoding='utf-8')
-          anchor='"comment", "spotlight", "performance_rating", "speed_rating",'
-          if '"course_distance_wins",' not in s:
-            assert s.count(anchor)==1,'Unexpected free-API collector version; refusing to rewrite'
-            s=s.replace(anchor,anchor+'\n    "course_wins", "distance_wins", "course_distance_wins", "course_and_distance_wins",\n    "cd_wins", "aw_wins", "turf_wins", "last_handicap_winning_mark",\n    "course_winner", "distance_winner", "course_distance_winner", "cd_winner",',1)
-            cards.write_text(s,encoding='utf-8')
-            print('STAGE155_OPTIONAL_VERIFIED_HISTORY_FIELDS_PRESERVED')
+          import pathlib, subprocess, textwrap
+          path='.github/workflows/stage155-evidence-commentary-install.yml'
+          commits=subprocess.check_output(['git','log','--all','--format=%H','--',path],text=True).splitlines()
+          originals=[]
+          for sha in commits:
+              p=subprocess.run(['git','show',f'{sha}:{path}'],capture_output=True,text=True)
+              if p.returncode==0 and 'STAGE155_SCRIPT_BYTES' in p.stdout and 'Check prose differentiates runner form' in p.stdout:
+                  originals.append(p.stdout)
+          if not originals:
+              raise RuntimeError('Original Stage155 source not found in Git history. Refusing to invent a commentary module.')
+          original=originals[-1]
+          def embedded_python(start,end):
+              if original.count(start)!=1 or original.count(end)!=1:
+                  raise RuntimeError('Original installer block changed; safe extraction stopped')
+              part=original.split(start,1)[1].split(end,1)[0]
+              lines=part.splitlines()
+              first=next(i for i,s in enumerate(lines) if s.strip()=="python - <<'PY'")
+              last=next(i for i in range(first+1,len(lines)) if lines[i].strip()=='PY')
+              return textwrap.dedent('\n'.join(lines[first+1:last]))+'\n'
+          source=embedded_python(
+              '      - name: Install grounded commentary source and preserve optional API evidence fields',
+              '      - name: Check prose differentiates runner form and never fabricates course history')
+          # The earlier installer assumed two leading spaces inside the current
+          # Stage153 build() function. Stage156 correctly uses ONE leading space.
+          # Change only the original insertion point and its inserted lines.
+          replacements=[
+            ("needle='  args.output.write_text(json.dumps(payload,indent=2,ensure_ascii=False)'",
+             "needle=' args.output.write_text(json.dumps(payload,indent=2,ensure_ascii=False)'"),
+            ("addition=('  '+mark+'\\n'", "addition=(' '+mark+'\\n'"),
+            ("'  _enrich_individual(payload, cards, args.sources)\\n'",
+             "' _enrich_individual(payload, cards, args.sources)\\n'"),
+            ("'  # Stage155 only changes prose; source-model runners, ranks, scores and picks are preserved.\\n'",
+             "' # Stage155 only changes prose; source-model runners, ranks, scores and picks are preserved.\\n'")]
+          for before,after in replacements:
+              if source.count(before)!=1:
+                  raise RuntimeError('Stage155 patch anchor is not unique: '+before[:90])
+              source=source.replace(before,after,1)
+          test=embedded_python(
+              '      - name: Check prose differentiates runner form and never fabricates course history',
+              '      - name: Commit prose-only changes without modifying the specialist selection rules')
+          pathlib.Path('/tmp/stage155-original-install-corrected.py').write_text(source)
+          pathlib.Path('/tmp/stage155-original-test.py').write_text(test)
+          print('STAGE155_RECOVERED_VERIFIED_ORIGINAL_AND_FIXED_FOUR_ANCHORS')
           PY
-          python -m py_compile scripts/stage155_evidence_commentary.py scripts/stage153_roi_combined.py collect-racecards.py
-          python scripts/stage153_roi_combined.py self-test
-      - name: Check prose differentiates runner form and never fabricates course history
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import importlib.util,pathlib,copy
-          from scripts.stage155_evidence_commentary import enrich
-          cards={'runners':[
-            {'date':'2026-11-19','course':'Test Course','race_time':'2026-11-19T15:00:00Z','horse':'A','form':'21611','ofr':112,'course_distance_wins':2},
-            {'date':'2026-11-19','course':'Test Course','race_time':'2026-11-19T15:00:00Z','horse':'B','form':'67780','ofr':118},
-            {'date':'2026-11-19','course':'Test Course','race_time':'2026-11-19T15:00:00Z','horse':'C','form':'40235','ofr':108}]}
-          f={'day':'2026-11-19','races':[{'date':'2026-11-19','course':'Test Course','time':'15:00',
-            'race_type':'aw handicap','selection':{'horse':'A'},'runners':[
-            {'horse':'A','rank':1,'research_score':.22},
-            {'horse':'B','rank':2,'research_score':.18},
-            {'horse':'C','rank':3,'research_score':.1}]}]}
-          old=copy.deepcopy(f)
-          enrich(f,cards,pathlib.Path('reports/none'))
-          a,b=[x['commentary'] for x in f['races'][0]['runners'][:2]]
-          assert '2 verified wins over this course and distance' in a
-          assert 'no top-three finish' in b
-          assert 'course and distance' not in b
-          assert f['races'][0]['selection']==old['races'][0]['selection']
-          assert [(x['horse'],x['rank'],x['research_score']) for x in f['races'][0]['runners']]==[(x['horse'],x['rank'],x['research_score']) for x in old['races'][0]['runners']]
-          assert a!=b and 'heads B' in f['races'][0]['commentary']
-          print('STAGE155_FORM_COMPARISON_AND_NO_SELECTION_CHANGE_TEST_OK')
-          PY
-      - name: Commit prose-only changes without modifying the specialist selection rules
+      - name: Install commentary without changing any workflow files or scoring choices
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          cp scripts/stage155_evidence_commentary.py "$RUNNER_TEMP/stage155-module.py"
-          cp scripts/stage153_roi_combined.py "$RUNNER_TEMP/stage155-scorer.py"
-          cp collect-racecards.py "$RUNNER_TEMP/stage155-collector.py"
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git reset --hard origin/main
-            cp "$RUNNER_TEMP/stage155-module.py" scripts/stage155_evidence_commentary.py
-            cp "$RUNNER_TEMP/stage155-scorer.py" scripts/stage153_roi_combined.py
-            cp "$RUNNER_TEMP/stage155-collector.py" collect-racecards.py
+            python /tmp/stage155-original-install-corrected.py
+            python -m py_compile scripts/stage155_evidence_commentary.py scripts/stage153_roi_combined.py collect-racecards.py
+            python scripts/stage153_roi_combined.py self-test
+            python /tmp/stage155-original-test.py
             git add scripts/stage155_evidence_commentary.py scripts/stage153_roi_combined.py collect-racecards.py
-            if git diff --cached --quiet;then echo 'STAGE155_PROSE_ALREADY_INSTALLED';break;fi
-            git commit -m 'Stage155: specific runner evidence and non-generic model race commentary'
-            if git push origin HEAD:main;then echo 'STAGE155_PROSE_INSTALLED';break;fi
-            test "$attempt" -lt 5 || exit 1
+            if git diff --cached --quiet; then
+              echo 'STAGE155_ALREADY_INSTALLED'
+              break
+            fi
+            git commit -m 'Stage155: install evidence-led prose, leave frozen model rankings untouched'
+            if git push origin HEAD:main; then
+              echo 'STAGE155_GROUNDED_PROSE_INSTALLED'
+              break
+            fi
+            if [ "$attempt" = 5 ]; then
+              echo 'Failed to publish commentary changes after 5 attempts' >&2
+              exit 1
+            fi
             sleep "$((attempt*5))"
           done
-      - name: Restore independent pre-off horse history features if available
+      - name: Enrich current publication while preserving every horse ranking and selection
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p reports/stage155/source
-          python - <<'PY'
-          import subprocess,json,csv,pathlib
-          try:
-            feed=json.loads(pathlib.Path('data/strategy-roi-combined.json').read_text())
-            target=feed.get('day')
-            r=subprocess.run(['gh','run','list','--workflow','stage141-today-or-weight-paper.yml','--limit','15',
-              '--json','databaseId,conclusion,createdAt'],capture_output=True,text=True,check=True)
-            runs=[x for x in json.loads(r.stdout) if x.get('conclusion')=='success']
-            for run in runs:
-              rid=run['databaseId'];folder=pathlib.Path('reports/stage155/source')
-              p=subprocess.run(['gh','run','download',str(rid),'--name',f'stage141-today-hpr-or-weight-{rid}',
-                '--dir',str(folder)],capture_output=True,text=True)
-              if p.returncode!=0:continue
-              f=folder/'stage141-today-all-runners.csv'
-              if f.exists():
-                with f.open(encoding='utf-8-sig') as stream:
-                  if any(row['date']==target for row in csv.DictReader(stream)):
-                    print('STAGE155_CONTEXT_FROM_PREOFF_STAGE141_RUN',rid,target);break
-                f.unlink()
-          except (OSError,ValueError,KeyError,subprocess.SubprocessError) as e:
-            print('STAGE155_OPTIONAL_CONTEXT_UNAVAILABLE',str(e)[:250])
-          PY
-      - name: Apply grounded prose to the currently published selections without changing rankings
-        shell: bash
-        run: |
-          set -euo pipefail
-          for attempt in 1 2 3 4;do
+          for attempt in 1 2 3 4; do
             git fetch origin main
             git reset --hard origin/main
-            if ! test -s data/strategy-roi-combined.json;then
-              echo 'First Stage153 publication is not available yet; future scheduled runs will be enriched.'; exit 0
+            if [ ! -s data/strategy-roi-combined.json ]; then
+              echo 'No published combined feed; the installed hook will enrich the next Stage153 run.'
+              exit 0
             fi
+            cp data/strategy-roi-combined.json "$RUNNER_TEMP/stage155-before.json"
             python scripts/stage155_evidence_commentary.py \
-              --feed data/strategy-roi-combined.json --cards data/racecards.json --sources reports/stage155/source
+              --feed data/strategy-roi-combined.json \
+              --cards data/racecards.json \
+              --sources reports/stage155/source
+            python - <<'PY'
+          import json,os,pathlib
+          before=json.loads((pathlib.Path(os.environ['RUNNER_TEMP'])/'stage155-before.json').read_text())
+          after=json.loads(pathlib.Path('data/strategy-roi-combined.json').read_text())
+          def frozen(feed):
+              return [(r.get('date'),r.get('course'),r.get('time'),r.get('source_model'),
+                       r.get('selection'),r.get('selection_status'),
+                       [(h.get('horse'),h.get('rank'),h.get('research_score'),h.get('source_model'))
+                        for h in r.get('runners',[])]) for r in feed.get('races',[])]
+          assert frozen(before)==frozen(after),'Stage155 must not alter rank, score, source model or pick'
+          print('STAGE155_SELECTION_RANKS_SCORES_UNCHANGED',len(frozen(after)))
+          PY
             git add data/strategy-roi-combined.json
-            if git diff --cached --quiet;then echo 'STAGE155_PROSE_FEED_ALREADY_PUBLISHED';exit 0;fi
-            git commit -m 'Stage155: publish grounded horse-by-horse race verdicts'
-            if git push origin HEAD:main;then echo 'STAGE155_PROSE_FEED_PUBLISHED';exit 0;fi
+            if git diff --cached --quiet; then
+              echo 'STAGE155_FEED_ALREADY_ENRICHED'
+              exit 0
+            fi
+            git commit -m 'Stage155: publish grounded individual and race commentary'
+            if git push origin HEAD:main; then
+              echo 'STAGE155_COMMENTARY_PUBLISHED'
+              exit 0
+            fi
             sleep "$((attempt*5))"
           done
+          echo 'Failed to publish current feed after retries' >&2
           exit 1
