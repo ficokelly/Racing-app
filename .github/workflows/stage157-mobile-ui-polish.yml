@@ -1,0 +1,158 @@
+name: Stage157 — Mobile navigation and odds display polish
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: stage157-mobile-ui-polish
+  cancel-in-progress: false
+
+jobs:
+  polish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout current Racing Hot Pots
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Apply four UI improvements without editing racing data
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            python - <<'PY_STAGE157'
+          from pathlib import Path
+          
+          path = Path('index.html')
+          s = path.read_text(encoding='utf-8')
+          if 'Stage157: move notification history into More' in s:
+              required = ['data-dock-tab="hot"', 'rhp157-more-notifications',
+                          'rhp157-more-indicator', 'rhp157-first']
+              if not all(x in s for x in required):
+                  raise RuntimeError('Stage157 appears partially installed; refusing to overwrite current app.')
+              print('STAGE157_ALREADY_INSTALLED')
+              raise SystemExit(0)
+          
+          
+          def replace_once(old, new, label):
+              global s
+              count = s.count(old)
+              if count != 1:
+                  raise RuntimeError(f'{label}: expected one anchor, found {count}; nothing saved')
+              s = s.replace(old, new, 1)
+          
+          # Leave My Bets and all its saved data in the More menu; promote Hot Trainers to the dock.
+          replace_once(
+              '<button type="button" data-dock-tab="bets"><span aria-hidden="true">📁</span><small>My Bets</small></button>',
+              '<button type="button" data-dock-tab="hot"><span aria-hidden="true">🔥</span><small>Hot Trainers</small></button>',
+              'Hot Trainers bottom dock')
+          replace_once(
+              "!['racecards','markets','power','bets'].includes(activeTab)",
+              "!['racecards','markets','power','hot'].includes(activeTab)",
+              'More tab selection state')
+          
+          # Remove obsolete Model A percentages ONLY from Market Movers cards.
+          # Preserve the badge function for older independent historical analysis screens.
+          replace_once(
+              '${strategyWinBadge(x.horse,x.course,x.day||dateKey(x.starts),clock(x.starts))}',
+              '', 'Old Model A badge in Markets')
+          
+          # Hot Pots: use the same recorded baseline and current bookmaker from the Markets feed.
+          # Prices are DISPLAY ONLY, never an input to rankings or horse selection.
+          replace_once(
+              '''  return '<span class="rhp70-price" title="'+safe('Latest published odds from '+chosen.bookmaker+(alternative?' (alternative)':''))+'"><b>'+safe(fmt(chosen.current))+'</b><small>'+safe((alternative?'Alt · ':'Odds · ')+chosen.bookmaker)+'</small></span>';''',
+              '''  const earlier=Number(chosen.earlier),hasEarlier=Number.isFinite(earlier)&&earlier>1;
+            const earlierType=chosen.baselineLabel==='First recorded'?'First':chosen.baselineLabel==='API open (unverified)'?'API open':'Earlier';
+            return '<span class="rhp70-price" title="'+safe('Published bookmaker odds from '+chosen.bookmaker+(alternative?' (alternative)':'')+'; '+(hasEarlier?earlierType+' '+fmt(earlier):'earlier price unavailable'))+'"><small class="rhp157-first">'+safe(hasEarlier?earlierType+' '+fmt(earlier):'Earlier —')+'</small><b>'+safe(fmt(chosen.current))+'</b><small>'+safe((alternative?'Alt · ':'Latest · ')+chosen.bookmaker)+'</small></span>';''',
+              'Hot Pots earlier/current odds')
+          
+          style = '''
+          <style>
+          /* Stage157: discreet notification access and historical price labels on compact mobile screens. */
+          #section-buttons #rhp154-bell.rhp157-more-notifications{grid-column:1 / -1;display:flex!important;align-items:center;justify-content:center;gap:8px;width:100%;position:relative;min-height:52px;font-weight:700;box-sizing:border-box}
+          #section-buttons #rhp154-bell .rhp154-bell-word{display:inline!important}
+          #section-buttons #rhp154-bell .rhp154-badge{right:10px;top:5px}
+          #rhp-more-tab{position:relative}
+          #rhp157-more-indicator{position:absolute;top:3px;right:13px;border-radius:11px;background:#cf4d38;color:#fff;font-size:10px;font-weight:800;min-width:17px;line-height:17px;text-align:center;padding:0 2px}
+          #rhp157-more-indicator[hidden]{display:none!important}
+          .rhp70-pair-row .rhp70-price .rhp157-first{font-size:11px;line-height:1.25;white-space:nowrap;margin-bottom:2px;opacity:.92}
+          .rhp70-pair-row .rhp70-price b{font-size:17px}
+          @media(max-width:360px){#rhp-bottom-nav button small{font-size:10px}.rhp70-pair-row .rhp70-price .rhp157-first{font-size:10px}}
+          </style>
+          '''
+          replace_once('</head><body>', style + '</head><body>', 'Stage157 layout CSS')
+          
+          # The existing Stage154 script constructs the bell and owns ALL its click, unread,
+          # clear and notification history logic. Move the SAME element after deferred scripts
+          # finish loading; never recreate it or duplicate handlers.
+          move_bell = '''
+          <!-- Stage157: move notification history into More; mirror unread count on More. -->
+          <script>
+          window.addEventListener('load', function() {
+            const bell=document.getElementById('rhp154-bell');
+            const menu=document.getElementById('section-buttons');
+            if(!bell||!menu)return;
+            bell.classList.remove('rhp-header-settings');
+            bell.classList.add('rhp157-more-notifications');
+            const label=bell.querySelector('.rhp154-bell-word');
+            if(label)label.textContent='Notifications';
+            menu.prepend(bell);
+            const more=document.getElementById('rhp-more-tab');
+            const badge=document.getElementById('rhp154-badge');
+            if(!more||!badge)return;
+            let indicator=document.getElementById('rhp157-more-indicator');
+            if(!indicator){indicator=document.createElement('span');indicator.id='rhp157-more-indicator';indicator.hidden=true;more.appendChild(indicator);}
+            function syncUnread(){
+              const count=badge.hidden?0:parseInt(badge.textContent,10)||0;
+              indicator.textContent=count>99?'99+':String(count);
+              indicator.hidden=count===0;
+              more.setAttribute('aria-label',count?'More, '+count+' unread notifications':'More');
+            }
+            new MutationObserver(syncUnread).observe(badge,{attributes:true,childList:true,characterData:true,subtree:true});
+            syncUnread();
+          });
+          </script>
+          '''
+          replace_once('</body></html>', move_bell + '</body></html>', 'Stage157 notification relocation')
+          
+          # Cheap structural tests to catch accidentally edited business logic or markup.
+          assert s.count('data-dock-tab="hot"') == 1
+          assert s.count('data-dock-tab="bets"') == 0
+          assert 'data-section="bets"' in s  # My Bets remains in More.
+          assert s.count('rhp157-more-indicator') >= 3
+          assert 'strategyWinBadge(x.horse,x.course,x.day||dateKey(x.starts),clock(x.starts))' not in s
+          assert 'First recorded' in s and 'API open (unverified)' in s
+          assert 'function selectionPrice(race,horse,status)' in s
+          assert 'Stage157: move notification history into More' in s
+          path.write_text(s, encoding='utf-8')
+          print('STAGE157_PATCH_OK',len(s),'characters; model scores, rankings and bets unchanged')
+          PY_STAGE157
+            git diff --check
+            test -z "$(git diff --name-only -- . ':!.github')" || test "$(git diff --name-only)" = 'index.html'
+            git add index.html
+            if git diff --cached --quiet; then
+              echo 'STAGE157_ALREADY_PUBLISHED'
+              exit 0
+            fi
+            git commit -m 'Stage157: Hot Trainers dock, quieter updates, clean Markets, prior Hot Pots odds'
+            if git push origin HEAD:main; then
+              echo 'STAGE157_UI_PUBLISHED'
+              echo 'Updated: notification bell in More, Markets no Model A badge, Hot Pots first/current odds, Hot Trainers dock.' >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            if [ "$attempt" -eq 5 ]; then
+              echo 'Could not publish due to concurrent repository updates' >&2
+              exit 1
+            fi
+            sleep "$((attempt*5))"
+          done
