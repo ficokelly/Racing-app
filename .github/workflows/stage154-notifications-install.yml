@@ -1,0 +1,184 @@
+name: 'Stage154 — Hot Pots update notifications and history'
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows:
+      - 'Stage153 — ROI Specialists single Hot Pots model'
+    types: [completed]
+  schedule:
+    # Backup check: source-run event handles normal immediate publication.
+    - cron: '15,45 6-23 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: stage154-roi-update-notifications
+  cancel-in-progress: false
+
+jobs:
+  install:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 16
+    steps:
+      - name: Checkout live app
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Use Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install source-only notification delivery and in-app history
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'INSTALL_STAGE154'
+          from pathlib import Path
+          import gzip,base64,shutil,importlib.util,json,datetime as dt
+          payloads = {
+              'stage154_roi_notifications.py': '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',
+              'stage154_notification_ui.js': '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',
+              'stage154_notification_ui.css': 'H4sIAOYT/moC/5VVTa+rNhDd31/hKpvkCfJCAiQBqeqyy0pdVl0YPIB7wbaM83VR/nvHEAiQ9LVNpCjG45kz5xwP37+R3w3NwQt84hKaplDXPCnBIaaACtxUVooa+4Rw4VKlyK/SkN+kqclJMWqAFLw2Ut/It+8fa10oTOQmUJYN47Uq6S3iouQC3KyE60+8UlIbKkxMS54Llxuo6igFYUDHOVWRr65xhYUunJki8oPHsgCeFybyN7j+61Qbnt0QGZ4Spj+tZM0NlyLSUCLgM8S2olsXmovPaBMryhgXeXRQIxj3CWT3IjUbcAsp4P7xSwWM0+UTU7hHEKvmn891/d5HqSnLoRnw0aSW5clArNue3B32ZKSK3HDSu4dA40ff7f8Ei4B2NWX8VEeepaLvaauuxDKX0PQz1/IkWLRIM5/tDnEqS6mjRZZlcYaEuTX/gsjzMLhdXroCh80mblXqC7bZpKWPMnmJNsR+bZkz1UvX7byhqIDSWXje9rjzV7OG/yg4YyD+dBaPp0KibDylloS6352wPdYlkezW55MKRCPPoLMSsXQn7x9v8z5pzvgVWMxFDQbV/3K5YHBF2uwn7qtai7yz4nuPjTtMP5mW6o2qfcWRFjpP6HLj2O96P+KpLgBM82rczgBohWW4RZmdlJbpEpGfL3hF7ZPVKq7otRer32bnAvd3dj/u2XJvET0Z2a7rVEs0awIFPXM0hW2OcjFG+k7d7ZbudquHkcYBBq7GWcAhSzLc7+wZobMIMsHZxCndprPwvTAM09Xcy/u526z/SICdkDF3wWpwvL0RxMPx8GSzAMqcfkHTzg7/V+ha0RThgrkAiHYi2avXTpKLxpX9mZYkxbapqM65QNFHV+w4xtbDeQR6eOfxPtm+X2JIcjJGimaUajudgrvJMTgj7mbgxRLXHphR/Hz0bxLtw30r0XtXcCEwqlUl3DiHg3MMnbV3aB3Z9WbTb2b4SLEbN9SO9QdnyIOdgJPps/aDeQLDK2hmE0yiWNzcovU+nIercexr/iDo6x+naNOCihzcEt9pg3dyzVlrheMA27UD22KYnxyEOL5IcPzPCiRhgArMU/9cGy1FPsBKSpl+jh3nv8IhdUVHr+LuyJO2YP5OGHW3e5NN9QYOLGvxlOJn9BdoOdxEqJS5NUPNQ/xjYe4ffwOLwIUmkggAAA==',
+          }
+          root=Path('.')
+          def unpack(name,dest):
+              out=root/dest
+              out.parent.mkdir(parents=True,exist_ok=True)
+              out.write_bytes(gzip.decompress(base64.b64decode(payloads[name])))
+              print('STAGE154_SOURCE',dest, out.stat().st_size)
+          unpack('stage154_roi_notifications.py','scripts/stage154_roi_notifications.py')
+          unpack('stage154_notification_ui.js','scripts/stage154_notification_ui.js')
+          css=gzip.decompress(base64.b64decode(payloads['stage154_notification_ui.css'])).decode('utf-8')
+          html=Path('index.html')
+          content=html.read_text(encoding='utf-8')
+          marker='<!-- RHP_STAGE154_UPDATE_NOTIFICATIONS -->'
+          if marker not in content:
+              assert content.count('</head>')==1 and content.count('</body>')==1
+              content=content.replace('</head>','<style>\n'+css+'\n</style>\n</head>',1)
+              content=content.replace('</body>',marker+'\n<script src="./scripts/stage154_notification_ui.js?v=154" defer></script>\n</body>',1)
+              html.write_text(content,encoding='utf-8')
+              print('STAGE154_APP_NOTIFICATION_BUTTON_INSTALLED')
+          else: print('STAGE154_UI_ALREADY_PRESENT')
+          # Legacy delivery paths are made inert; original code is saved for audit only.
+          legacy={
+            'send-power-fav-alerts.py':'send-power-fav-alerts.py',
+            'send-power-fav-alerts-diagnostic.py':'send-power-fav-alerts-diagnostic.py',
+            'scripts/rhp_stage68_push.py':'rhp_stage68_push.py',
+          }
+          guard='# STAGE154_LEGACY_PUSH_DISABLED'
+          for name,archivename in legacy.items():
+              source=Path(name)
+              if not source.exists():continue
+              original=source.read_text(encoding='utf-8')
+              if guard in original:continue
+              backup=Path('scripts/legacy_push_archives')/archivename
+              backup.parent.mkdir(parents=True,exist_ok=True)
+              if not backup.exists():backup.write_text(original,encoding='utf-8')
+              source.write_text('#!/usr/bin/env python3\n'+guard+'\n'
+                  'print("Legacy notification sender disabled: Stage154 sends only ROI model review alerts.")\n',encoding='utf-8')
+              print('STAGE154_LEGACY_PUSH_OFF',name)
+          notifications=Path('data/roi-notifications.json')
+          state=Path('data/roi-notification-state.json')
+          notifications.parent.mkdir(exist_ok=True)
+          if not notifications.exists():notifications.write_text(json.dumps({'version':1,'events':[]},indent=2)+'\n')
+          if not state.exists():state.write_text(json.dumps({'days':{}},indent=2)+'\n')
+          # Verify notification diff is race-keyed and covers changes at either rank.
+          spec=importlib.util.spec_from_file_location('stage154',Path('scripts/stage154_roi_notifications.py'))
+          mod=importlib.util.module_from_spec(spec);spec.loader.exec_module(mod)
+          before={'x':{'course':'Kempton','time':'19:00','rank1':'A','rank2':'B'}}
+          after={'x':{'course':'Kempton','time':'19:00','rank1':'A','rank2':'C'}}
+          assert len(mod.change_rows(before,after))==1
+          assert len(mod.change_rows(after,after))==0
+          print('STAGE154_PYTHON_DIFF_TEST_OK')
+          INSTALL_STAGE154
+          python -m py_compile scripts/stage154_roi_notifications.py
+          node --check scripts/stage154_notification_ui.js
+      - name: Publish app code and disable old push senders
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html scripts/stage154_roi_notifications.py scripts/stage154_notification_ui.js scripts/legacy_push_archives \
+            send-power-fav-alerts.py send-power-fav-alerts-diagnostic.py scripts/rhp_stage68_push.py \
+            data/roi-notifications.json data/roi-notification-state.json
+          if git diff --cached --quiet;then echo 'STAGE154_SOURCE_ALREADY_INSTALLED';exit 0;fi
+          git commit -m 'Stage154: show ROI notification history, clear locally, disable legacy pushes'
+          for attempt in 1 2 3 4 5; do
+            if git pull --rebase origin main && git push origin HEAD:main;then
+              echo 'STAGE154_INSTALLED';exit 0
+            fi
+            git rebase --abort || true
+            sleep "$((attempt*5))"
+          done
+          echo 'Stage154 source push failed; no partial push assumed' >&2
+          exit 1
+      - name: Process any already-published fresh model update
+        env:
+          ONESIGNAL_API_KEY: ${{ secrets.ONESIGNAL_API_KEY }}
+          ONESIGNAL_SUBSCRIPTION_ID: ${{ secrets.ONESIGNAL_SUBSCRIPTION_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git reset --hard origin/main
+          python scripts/stage154_roi_notifications.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/roi-notification-state.json data/roi-notifications.json
+          if git diff --cached --quiet;then exit 0;fi
+          git commit -m 'Stage154: archive first available combined ROI review'
+          for attempt in 1 2 3 4; do
+            if git pull --rebase origin main && git push origin HEAD:main;then exit 0;fi
+            git rebase --abort || true
+            sleep "$((attempt*3))"
+          done
+          exit 1
+
+  notify:
+    if: ${{ github.event_name != 'workflow_dispatch' && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    steps:
+      - name: Checkout latest published Stage153 selections
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compare top two picks, send OneSignal push, record affected races
+        env:
+          ONESIGNAL_API_KEY: ${{ secrets.ONESIGNAL_API_KEY }}
+          ONESIGNAL_SUBSCRIPTION_ID: ${{ secrets.ONESIGNAL_SUBSCRIPTION_ID }}
+        run: |
+          set -euo pipefail
+          if [ ! -f scripts/stage154_roi_notifications.py ];then
+            echo 'Stage154 installer must be run manually once first' >&2;exit 1
+          fi
+          python scripts/stage154_roi_notifications.py
+      - name: Publish notification history and deduplication status
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/roi-notifications.json data/roi-notification-state.json
+          if git diff --cached --quiet;then echo 'NO_NEW_REVIEW_OR_DELIVERY';exit 0;fi
+          git commit -m 'Stage154: publish selection review notifications and changes'
+          for attempt in 1 2 3 4 5;do
+            if git pull --rebase origin main && git push origin HEAD:main;then
+              echo 'NOTIFICATION_HISTORY_PUBLISHED';exit 0
+            fi
+            git rebase --abort || true
+            sleep "$((attempt*4))"
+          done
+          exit 1
