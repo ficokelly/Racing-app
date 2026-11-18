@@ -1,0 +1,97 @@
+name: 'Stage155 — One-click installer compatibility repair'
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: stage155-installer-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Checkout latest main safely
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Patch only the four stale indentation anchors in Stage155
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            python - <<'PY'
+          from pathlib import Path
+          import json
+
+          workflow=Path('.github/workflows/stage155-evidence-commentary-install.yml')
+          scorer=Path('scripts/stage153_roi_combined.py')
+          route_map=Path('data/roi-racetype-route-map.json')
+          assert workflow.exists() and scorer.exists() and route_map.exists(), 'Stage155/156 dependencies missing'
+          routes=json.loads(route_map.read_text(encoding='utf-8')).get('routes',{})
+          assert len(routes)>=50, 'Stage156 route map missing; refusing to patch'
+          assert scorer.read_text(encoding='utf-8').count(
+              ' args.output.write_text(json.dumps(payload,indent=2,ensure_ascii=False)')==1, \
+              'Stage153 publication anchor changed; review before patching'
+
+          text=workflow.read_text(encoding='utf-8')
+          replacements=[
+              ("needle='  args.output.write_text(json.dumps(payload,indent=2,ensure_ascii=False)'",
+               "needle=' args.output.write_text(json.dumps(payload,indent=2,ensure_ascii=False)'"),
+              ("addition=('  '+mark+'\\n'", "addition=(' '+mark+'\\n'"),
+              ("'  _enrich_individual(payload, cards, args.sources)\\n'",
+               "' _enrich_individual(payload, cards, args.sources)\\n'"),
+              ("'  # Stage155 only changes prose; source-model runners, ranks, scores and picks are preserved.\\n'",
+               "' # Stage155 only changes prose; source-model runners, ranks, scores and picks are preserved.\\n'"),
+          ]
+          changed=0
+          for old,new in replacements:
+              if new in text and old not in text:
+                  print('ALREADY_FIXED', old[:75]);continue
+              if text.count(old)!=1:
+                  raise RuntimeError(f'Unexpected installer version: expected exactly one {old!r}, found {text.count(old)}')
+              text=text.replace(old,new,1)
+              changed+=1
+          workflow.write_text(text,encoding='utf-8')
+          print('STAGE155_INSTALLER_COMPATIBILITY_OK','anchors_changed',changed)
+          PY
+            git add .github/workflows/stage155-evidence-commentary-install.yml
+            if git diff --cached --quiet; then
+              echo 'STAGE155_INSTALLER_ALREADY_FIXED'
+              break
+            fi
+            git commit -m 'Stage155: fix grounded commentary installer for Stage156 scorer'
+            if git push origin HEAD:main; then
+              echo 'STAGE155_INSTALLER_FIXED'
+              break
+            fi
+            if test "$attempt" -eq 5; then
+              echo 'Failed to push workflow repair; check GitHub Actions workflow-file permissions' >&2
+              exit 1
+            fi
+            sleep "$((attempt * 3))"
+          done
+
+      - name: Start repaired Stage155 commentary installation
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run stage155-evidence-commentary-install.yml \
+            --repo "$REPO" --ref main
+          echo 'STAGE155_REPAIRED_INSTALLER_DISPATCHED'
+          echo 'Review the new Stage155 run for its prose-only verification and publication.' >> "$GITHUB_STEP_SUMMARY"
