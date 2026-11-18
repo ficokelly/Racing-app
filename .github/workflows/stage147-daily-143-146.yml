@@ -40,6 +40,25 @@ jobs:
           python-version: '3.11'
       - name: Install exact pinned ML dependencies
         run: python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2
+
+      # Stage147 previously failed if the last committed racecards were >4h old.
+      # Collect directly in THIS job immediately before validation/scoring.
+      # Only the runner's local copy is updated; we never push racecards or alter
+      # any frozen model or historical database. Fail closed if the API fails.
+      - name: Refresh today's racecards from Racing API before prediction
+        env:
+          RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
+          RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RACING_API_USERNAME:-}" ] || [ -z "${RACING_API_PASSWORD:-}" ]; then
+            echo 'Missing Racing API credentials; cannot safely score on stale cards.' >&2
+            exit 1
+          fi
+          python collect-racecards.py
+          test -s data/racecards.json
+          echo 'Refreshed racecards locally for this prediction run; no commit/push performed.'
+
       - name: Validate daily target and source code
         env:
           ASKED_DAY: ${{ inputs.selection_date }}
