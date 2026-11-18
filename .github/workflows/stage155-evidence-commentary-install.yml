@@ -95,7 +95,7 @@ jobs:
             python /tmp/stage155-original-install-corrected.py
             python -m py_compile scripts/stage155_evidence_commentary.py scripts/stage153_roi_combined.py collect-racecards.py
             python scripts/stage153_roi_combined.py self-test
-            python /tmp/stage155-original-test.py
+            PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}" python /tmp/stage155-original-test.py
             git add scripts/stage155_evidence_commentary.py scripts/stage153_roi_combined.py collect-racecards.py
             if git diff --cached --quiet; then
               echo 'STAGE155_ALREADY_INSTALLED'
