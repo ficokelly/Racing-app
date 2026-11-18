@@ -59,8 +59,9 @@ def original_frozen_weights():
 
 def main(args):
     date=args.date or today()
-    if date!=today():
-        raise RuntimeError('Only current Dublin calendar day is permitted; cannot backdate predictions')
+    now_dublin=dt.date.fromisoformat(today())
+    if date not in (now_dublin.isoformat(),(now_dublin+dt.timedelta(days=1)).isoformat()):
+        raise RuntimeError('Only today or tomorrow Dublin pre-off predictions are allowed')
     args.out.mkdir(parents=True,exist_ok=True)
     cards,cards_audit=L.today_cards(args.cards,date)
     if not cards:raise RuntimeError('No eligible GB/IE declared fields')
@@ -154,7 +155,7 @@ def main(args):
 
     bycard={c['id']:c for c in cards}
     future=sorted((r for r in base if r['date']==date),key=lambda r:bycard[str(r['race_id'])]['off'])
-    rank1=[];skipped=collections.Counter()
+    rank1=[];all_runner_rows=[];skipped=collections.Counter()
     for r in future:
         rid=str(r['race_id']);c=bycard[rid]
         if c['off']<=L.utcnow()+dt.timedelta(minutes=2):
@@ -170,6 +171,14 @@ def main(args):
             if len(scores)!=len(r['horse']) or not np.all(np.isfinite(scores)):
                 raise RuntimeError('Failed complete field for '+rid+' '+name)
             top=int(np.argmax(scores))
+            for rank,idx in enumerate(np.argsort(-scores,kind='stable'),1):
+                all_runner_rows.append({'date':date,'time_utc':c['off'].strftime('%H:%M'),
+                    'meeting':r['course'],'race_id':rid,'race_name':r['race_name'],
+                    'race_type':r['subtype'],'discipline':r['kind'],'model':name,
+                    'rank':rank,'horse':r['horse'][idx],
+                    'model_score_not_calibrated_probability':round(float(scores[idx]),6),
+                    'field_size':len(r['horse']),'prediction_asof':L.utcnow().isoformat(),
+                    'odds_used_for_current_prediction':False})
             rank1.append({'date':date,'time_utc':c['off'].strftime('%H:%M'),'meeting':r['course'],
                 'race_id':rid,'race_name':r['race_name'],'race_type':r['subtype'],'discipline':r['kind'],
                 'model':name,'rank':1,'horse':r['horse'][top],'field_size':len(r['horse']),
@@ -182,6 +191,14 @@ def main(args):
         if len(scores)!=len(r['horse']) or not np.all(np.isfinite(scores)):
             raise RuntimeError('Failed Stage143D field '+rid)
         top=int(np.argmax(scores))
+        for rank,idx in enumerate(np.argsort(-scores,kind='stable'),1):
+            all_runner_rows.append({'date':date,'time_utc':c['off'].strftime('%H:%M'),
+                'meeting':r['course'],'race_id':rid,'race_name':r['race_name'],
+                'race_type':r['subtype'],'discipline':r['kind'],'model':name,
+                'rank':rank,'horse':r['horse'][idx],
+                'model_score_not_calibrated_probability':round(float(scores[idx]),6),
+                'field_size':len(r['horse']),'prediction_asof':L.utcnow().isoformat(),
+                'odds_used_for_current_prediction':False})
         rank1.append({'date':date,'time_utc':c['off'].strftime('%H:%M'),'meeting':r['course'],
             'race_id':rid,'race_name':r['race_name'],'race_type':r['subtype'],'discipline':r['kind'],
             'model':name,'rank':1,'horse':r['horse'][top],'field_size':len(r['horse']),
@@ -193,6 +210,7 @@ def main(args):
     grouped=collections.Counter((r['model'],r['race_id']) for r in rank1)
     if any(n!=1 for n in grouped.values()):raise RuntimeError('Duplicate model/race picks')
     L.csvwrite(args.out/'stage152-strongest-roi-specialists-rank1.csv',rank1)
+    L.csvwrite(args.out/'stage152-strongest-roi-specialists-all-runners.csv',all_runner_rows)
     audit={'date':date,'status':'PREOFF_PAPER_ONLY', 'models':list(MODELS),
            'matched_model_count':len(MODELS),'rank1_rows':len(rank1),
            'unique_races':len({r['race_id'] for r in rank1}),

@@ -31,8 +31,9 @@ def now(): return dt.datetime.now(dt.timezone.utc)
 
 
 def verify_today(date, cards_audit):
-    if date!=TODAY or dt.datetime.now(DUBLIN).date().isoformat()!=TODAY:
-        raise RuntimeError('Live paper scorer refuses non-today target (Dublin local date)')
+    now_local=dt.datetime.now(DUBLIN).date()
+    if date not in (now_local.isoformat(),(now_local+dt.timedelta(days=1)).isoformat()):
+        raise RuntimeError('Live paper scorer permits today or tomorrow only (Dublin local date)')
     if cards_audit['snapshot_hours_old']>4.0:
         raise RuntimeError('Racecard data >4 hours old. Refresh racecards before scoring.')
 
@@ -56,7 +57,9 @@ def validate_no_current_train(train, live, date):
 def main(a):
     import stage141_today_or_weight_paper as L
     import stage146_full_field_trend_fusion as F
-    date=a.date or now().date().isoformat()
+    global TRAIN_THROUGH
+    date=a.date or now().astimezone(DUBLIN).date().isoformat()
+    TRAIN_THROUGH=previous_quarter_end(date)
     a.out.mkdir(parents=True,exist_ok=True)
     cards,cards_audit=L.today_cards(a.cards,date)
     verify_today(date,cards_audit)

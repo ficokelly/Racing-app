@@ -52,8 +52,9 @@ def check_original_d():
 
 def score_today(args):
     date = args.date or today()
-    if date != today():
-        raise RuntimeError('Only current Dublin calendar date can be selected: no backdated results')
+    now_dublin=dt.date.fromisoformat(today())
+    if date not in (now_dublin.isoformat(),(now_dublin+dt.timedelta(days=1)).isoformat()):
+        raise RuntimeError('Only today or tomorrow Dublin pre-off predictions are allowed')
     args.out.mkdir(parents=True, exist_ok=True)
     cards, cards_audit = L.today_cards(args.cards, date)
     if not cards:

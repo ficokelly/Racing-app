@@ -101,7 +101,8 @@ def csvwrite(path,rows):
 
 def run(args):
     date=args.date or utcnow().date().isoformat()
-    if date!=utcnow().date().isoformat():raise RuntimeError('No backdated paper selections')
+    now_dublin=dt.datetime.now(__import__('zoneinfo').ZoneInfo('Europe/Dublin')).date()
+    if date not in (now_dublin.isoformat(),(now_dublin+dt.timedelta(days=1)).isoformat()):raise RuntimeError('Only today/tomorrow Dublin pre-off predictions are allowed')
     args.out.mkdir(parents=True,exist_ok=True)
     cards,audit=today_cards(args.cards,date)
     scratch,ref,history_latest=scratch_archive(args.db,args.reference,cards,date,args.out)
