@@ -26,6 +26,24 @@ ROUTES={
  'auction restricted':'STAGE143_TYPE_EVIDENCE',
  'aw handicap':'D_FORM_WEIGHT_GRADE__ROI',
 }
+# Stage156: alternative specialist arms are a research comparison, not promises of profitability.
+# Route only unsupported race types; preserve previously deployed Stage153 decisions.
+ROUTE_MAP_FILE=pathlib.Path(__file__).resolve().parent.parent/'data'/'roi-racetype-route-map.json'
+def load_route_map():
+ try:
+  payload=json.loads(ROUTE_MAP_FILE.read_text())
+  routes=payload.get('routes',{})
+  assert len(routes)>=50, 'Incomplete route catalogue'
+  assert all(v.get('model') and v.get('historical_races',0)>0 for v in routes.values())
+  return routes
+ except (OSError,ValueError,AssertionError) as e:
+  raise RuntimeError('Stage156 research type route map missing or incomplete: '+str(e)) from e
+
+# Load the type map during import, including specialist names required for source ingestion.
+STAGE156_ROUTES=load_route_map()
+for code,settings in STAGE156_ROUTES.items():
+ if code not in ROUTES:ROUTES[code]=settings['model']
+
 FILES=(
  'stage141-today-all-runners.csv',
  'stage151-d142-core-form-weight-all-runners.csv',
@@ -95,7 +113,7 @@ def off_of(row):
  except ValueError:return None
 
 def read_sources(dirs,target):
- grouped=collections.defaultdict(list); stats=collections.Counter()
+ grouped=collections.defaultdict(list); stats=collections.Counter(); route_by_race={}
  for dirname in dirs:
   root=pathlib.Path(dirname)
   for filename in FILES:
@@ -118,9 +136,19 @@ def read_sources(dirs,target):
       when=off_of(row)
       if when is None:stats['invalid_time']+=1;continue
       meeting=row.get('meeting') or row.get('course')
-      key=(when.strftime('%Y-%m-%d %H:%M'),normalize(meeting),model)
+      stamp=when.strftime('%Y-%m-%d %H:%M')
+      course_key=normalize(meeting)
+      key=(stamp,course_key,model)
       grouped[key].append(row);stats['rows']+=1
- return grouped,stats
+      # Stage147 provides one canonical historical 50-type route for every race.
+      # It is pre-off metadata, not a result/odds input.
+      route=str(row.get('route') or '').strip()
+      if route and model.startswith(('STAGE143_','STAGE146_')):
+       race_key=(stamp,course_key)
+       if race_key in route_by_race and route_by_race[race_key]!=route:
+        stats['route_conflicts']+=1
+       else:route_by_race[race_key]=route
+ return grouped,stats,route_by_race
 
 def declared(cards,target):
  grouped=collections.defaultdict(list)
@@ -179,7 +207,7 @@ def build(args):
  cards=json.loads(args.cards.read_text())
  grouped=declared(cards,target)
  if not grouped:raise RuntimeError('No declared fields available for target date')
- sources,read_stats=read_sources(args.sources,target)
+ sources,read_stats,route_by_race=read_sources(args.sources,target)
  prior={}
  if args.output.exists():
   try:
@@ -198,9 +226,28 @@ def build(args):
   active=[v for v in entries if not nonrunner(v)]
   subtype=type_for(entries)
   model=ROUTES.get(subtype)
+  extended_route=route_by_race.get((stamp,course_key))
+  # Junior NH hurdles are age-restricted juvenile-type events. Stage147's broad
+  # OTHER_OPEN tag would otherwise mask the narrower, limited evidence; proxy is flagged.
+  title=str(entries[0].get('race_name') or '').casefold()
+  junior_proxy=('junior' in title and 'hurdle' in title)
+  if junior_proxy:extended_route='HURDLE_JUVENILE'
+  # Preserve existing mapped race types, but recover every other type via
+  # Stage147's exact quarter-tested race classification, never from SP/odds.
+  newly_routed=model is None and extended_route in STAGE156_ROUTES
+  if newly_routed:
+   subtype=extended_route
+   model=STAGE156_ROUTES[extended_route]['model']
+  evidence=STAGE156_ROUTES.get(extended_route,{})
+  research_status=(str(evidence.get('evidence_grade') or 'provisional_small_sample')
+                   if newly_routed else 'existing_previously_tested_route')
   race={'date':target,'course':course,'time':clock,'race_time':iso(off),
      'race_name':entries[0].get('race_name'),'race_type':subtype or 'unmapped',
      'field_size':len(active),'source_model':model,'model':'ROI Specialists',
+     'research_status':research_status,'junior_hurdle_proxy':junior_proxy,
+     'historical_races':evidence.get('historical_races'),
+     'historical_roi_pct':evidence.get('historical_sp_roi_pct'),
+     'historical_strike_pct':evidence.get('win_strike_pct'),
      'runners':[],'selection':None,'selection_status':'ASSESSMENT_PENDING',
      'published_at':iso(now),'nap_nb':None,'commentary':None}
   if off<=now:
@@ -250,10 +297,15 @@ def build(args):
   race['commentary']=(f'{leader} tops this {subtype} assessment, with {second_name} rated next best. '
     +lead_sent+' As for the danger, '+second_sent+' These are relative research ratings, not betting probabilities.')
   races.append(race);counts['ranked']+=1
+ # Provisional sample rankings can be shown but must never receive confident NAP/NB labels.
+ for r in races:
+  if r.get('selection') and r.get('research_status')=='provisional_small_sample':
+   r['commentary']=(f"Limited historical evidence: only {r.get('historical_races')} completed races in this specific category. "
+     'This is a provisional research ranking, not a validated race-type advantage. '+r['commentary'])
  # Per specialist, NAP/NB only where meaningful gaps exist; an empty day need not force either.
  bymodel=collections.defaultdict(list)
  for r in races:
-  if r['selection'] and r['race_time'] and parse_time(r['race_time'])>now:
+  if r['selection'] and r['race_time'] and parse_time(r['race_time'])>now and r.get('research_status')!='provisional_small_sample':
    gap=r.get('confidence_evidence',{}).get('relative_gap',0)
    if r['field_size']>=5 and gap>=.13:bymodel[r['source_model']].append((gap,r))
  for name,ranked in bymodel.items():
@@ -325,8 +377,11 @@ def selftest():
  for title,expected in cases:
   assert type_for([x(title,course='Dundalk' if expected.startswith('aw') or expected=='auction restricted' else 'Hexham')])==expected,(title,expected)
  assert type_for([x('Flat Handicap',course='Ascot')]) is None
- assert set(ROUTES)==set(ROUTES)
- print('STAGE153_SELF_TEST_OK')
+ assert len(STAGE156_ROUTES)==50
+ assert STAGE156_ROUTES['AW_NOVICE']['model']=='STAGE143_TYPE_INTERACTIONS'
+ assert STAGE156_ROUTES['AW_LISTED_PATTERN']['evidence_grade']=='provisional_small_sample'
+ assert STAGE156_ROUTES['HURDLE_JUVENILE']['model']=='D_FORM_WEIGHT_GRADE__ROI'
+ print('STAGE153_SELF_TEST_OK', 'stage156_routes',len(STAGE156_ROUTES))
 
 if __name__=='__main__':
  p=argparse.ArgumentParser();p.add_argument('mode',choices=('self-test','build','settle'))
