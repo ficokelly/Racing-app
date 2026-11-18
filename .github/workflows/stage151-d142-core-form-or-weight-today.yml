@@ -1,0 +1,141 @@
+name: 'Stage151 — D142 Full History Core Form OR Weight Rank 1 (paper)'
+
+on:
+  workflow_dispatch:
+    inputs:
+      selection_date:
+        description: 'Today in Dublin YYYY-MM-DD; leave empty for today'
+        required: false
+        type: string
+        default: ''
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/stage151-d142-core-form-or-weight-today.yml'
+      - 'scripts/stage151_d142_core_form_or_weight_today.py'
+  schedule:
+    # 04:13 UTC daily, ahead of the first UK/Irish races. Uses Dublin's actual
+    # calendar day in the job rather than treating UTC as local year-round.
+    - cron: '18 4 * * *'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage151-d142-core-form-or-weight-paper
+  cancel-in-progress: false
+
+jobs:
+  d142-full-history-today:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 190
+    env:
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      PYTHONPATH: '.:scripts'
+      OUT: reports/stage151-d142/paper
+      DB: reports/stage151-d142/source/stage2/historical_ukie_staging.sqlite
+      REF: reports/stage151-d142/source/stage4/all_races_with_reference_event_ids.csv
+    steps:
+      - name: Checkout unchanged models, app and today's declared cards
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pinned Stage142 modelling dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 \
+            scikit-learn==1.6.1 joblib==1.4.2
+
+      - name: Verify date, model variant, code and recorded racecards
+        env:
+          ASKED_DAY: ${{ inputs.selection_date }}
+        run: |
+          set -euo pipefail
+          CURRENT_DAY="$(TZ=Europe/Dublin date +%F)"
+          TARGET="${ASKED_DAY:-$CURRENT_DAY}"
+          if [ "$TARGET" != "$CURRENT_DAY" ]; then
+            echo "Refusing non-today paper predictions. Requested=$TARGET Dublin=$CURRENT_DAY" >&2
+            exit 1
+          fi
+          echo "TARGET_DAY=$TARGET" >> "$GITHUB_ENV"
+          python -m py_compile \
+            scripts/stage151_d142_core_form_or_weight_today.py \
+            scripts/stage142_full_history_core_2026.py \
+            scripts/stage141_today_or_weight_paper.py
+          python scripts/stage151_d142_core_form_or_weight_today.py self-test
+          python scripts/stage142_full_history_core_2026.py self-test
+          test -s data/racecards.json
+          test -s reports/stage30/stage30-summary.json
+
+      - name: Restore verified immutable 1988+ database and named event identities
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage151-d142/source/{stage2,stage4} "$OUT"
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage2-historical-staging-database \
+            --dir reports/stage151-d142/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage4-reference-named-events-and-winners \
+            --dir reports/stage151-d142/source/stage4
+          test -s "$DB"
+          test -s "$REF"
+
+      - name: Score all future races with exact D142 long core/form/OR/weight variant
+        run: |
+          set -euo pipefail
+          python -u scripts/stage151_d142_core_form_or_weight_today.py today \
+            --db "$DB" \
+            --reference "$REF" \
+            --cards data/racecards.json \
+            --date "$TARGET_DAY" \
+            --out "$OUT"
+          test -s "$OUT/stage151-d142-core-form-weight-rank1.csv"
+          test -s "$OUT/stage151-d142-core-form-weight-audit.json"
+
+      - name: Display Rank 1 only in GitHub Actions summary
+        if: always()
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import csv, json, pathlib
+          p=pathlib.Path('reports/stage151-d142/paper')
+          f=p/'stage151-d142-core-form-weight-rank1.csv'
+          print('# D142 Core + Form + OR + Weight — today’s Rank 1 selections')
+          print('Model **D142_LONG_CORE_FORM_OR_WEIGHT**: Stage142 extended 1988+ core/form, HPR, OR and actual carried weights. Research paper only.')
+          if not f.exists():
+              print('No safe predictions published. Check the failed step and audit; do not substitute another model.')
+          else:
+              rows=list(csv.DictReader(f.open(encoding='utf-8')))
+              print('| Time (UTC) | Meeting | Race type | Rank 1 horse |')
+              print('|---|---|---|---|')
+              for r in rows:
+                  print('|',' | '.join(r[k].replace('|','/') for k in ('time_utc','meeting','race_type','horse')),'|')
+              a=json.loads((p/'stage151-d142-core-form-weight-audit.json').read_text())
+              print('**Predictions:**',len(rows),'races. **Trained through:**',a['trained_through'],'.')
+              print('**Historical results available through:**',a['historical_source_through'],'.')
+              print('Raw model scores are not calibrated win percentages. Check updated non-runners.')
+          PY
+
+      - name: Save Rank 1 selections, full field and provenance audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage151-d142-core-form-weight-today-${{ github.run_id }}
+          path: |
+            reports/stage151-d142/paper/stage151-d142-core-form-weight-rank1.csv
+            reports/stage151-d142/paper/stage151-d142-core-form-weight-all-runners.csv
+            reports/stage151-d142/paper/stage151-d142-core-form-weight-audit.json
+          if-no-files-found: warn
+          retention-days: 90
