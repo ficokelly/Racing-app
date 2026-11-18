@@ -53,9 +53,10 @@ jobs:
           USER_DATE: ${{ inputs.selection_date }}
         run: |
           set -euo pipefail
-          DAY="$(date -u +%F)"
+          DAY="$(TZ=Europe/Dublin date +%F)"
           TARGET="${USER_DATE:-$DAY}"
-          if [ "$DAY" != "$TARGET" ]; then
+          NEXT="$(TZ=Europe/Dublin date -d tomorrow +%F)"
+          if [ "$DAY" != "$TARGET" ] && [ "$NEXT" != "$TARGET" ]; then
             echo 'Refusing non-preoff historical date: requested' "$TARGET" 'actual' "$DAY" >&2
             exit 1
           fi
