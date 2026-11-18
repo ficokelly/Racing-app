@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "day": "2026-11-17",
-  "generated_at": "2026-11-17T18:30:15.991293+00:00",
+  "day": "2026-11-18",
+  "generated_at": "2026-11-18T01:18:40.259852+00:00",
   "policy": "stage40-paper-only-edge20pct-and-4pp-v1",
   "state": "RESEARCH_ONLY_CALIBRATION_UNVALIDATED",
   "calibration": {
@@ -14,27 +14,25 @@
   "readme": "Forecasts independent of odds; bookmaker break-even and vig-free market are separate. Uncalibrated model EV is not a proven betting edge.",
   "price_feed_status": "NO_FRESH_PRICE_SNAPSHOT",
   "price_feed_audit": {
-    "age_minutes": 116.7,
-    "collected_at": "2026-11-17T16:33:33.796040+00:00",
-    "ignored_rows": {
-      "old_bookmaker_quote": 123
-    },
-    "indexed_races": 8
+    "age_minutes": 100.0,
+    "collected_at": "2026-11-17T23:38:42.027741+00:00",
+    "ignored_rows": {},
+    "indexed_races": 25
   },
   "races": [
     {
-      "date": "2026-11-17",
-      "course": "Carlisle",
-      "time": "11:50",
-      "race_time": "2026-11-17T11:50:00+00:00",
-      "race_id": "rac_32304640407",
-      "race_name": "Margaret Long Memorial Maiden Hurdle Race (GBB Race)",
+      "date": "2026-11-18",
+      "course": "Hexham",
+      "time": "12:33",
+      "race_time": "2026-11-18T12:33:00+00:00",
+      "race_id": "rac_32304700454",
+      "race_name": "British Stallion Studs EBF 'National Hunt' Novices' Hurdle Race (Qualifier) (GBB Race)",
       "race_type": "Hurdle",
-      "field_size": 14,
-      "non_runners_excluded": 1,
+      "field_size": 9,
+      "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": false,
+      "preoff_at_generation": true,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -52,8 +50,29 @@
           "model_probability_available": false
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Lord du Gouet",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Lord du Gouet",
+              "rank": 1,
+              "score": 0.18804
+            },
+            {
+              "horse": "Loopy Mag",
+              "rank": 2,
+              "score": 0.15404
+            },
+            {
+              "horse": "Eagle Warrior",
+              "rank": 3,
+              "score": 0.0278
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -64,18 +83,328 @@
       "stage39_context": []
     },
     {
-      "date": "2026-11-17",
-      "course": "Limerick",
-      "time": "12:10",
-      "race_time": "2026-11-17T12:10:00+00:00",
-      "race_id": "rac_32304686895",
-      "race_name": "Conference & Banqueting Facilities At Limerick Racecourse Maiden Hurdle",
+      "date": "2026-11-18",
+      "course": "Ffos Las",
+      "time": "12:48",
+      "race_time": "2026-11-18T12:48:00+00:00",
+      "race_id": "rac_32305041366",
+      "race_name": "Dandara Maiden Hurdle Race (Div I) (GBB Race)",
       "race_type": "Hurdle",
+      "field_size": 10,
+      "non_runners_excluded": 0,
+      "priced_runners": 0,
+      "full_bookmakers": [],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Blinded By Grace",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Blinded By Grace",
+              "rank": 1,
+              "score": 0.36769
+            },
+            {
+              "horse": "Jevon",
+              "rank": 2,
+              "score": 0.36077
+            },
+            {
+              "horse": "No Walkover",
+              "rank": 3,
+              "score": 0.25718
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-18",
+      "course": "Hexham",
+      "time": "13:03",
+      "race_time": "2026-11-18T13:03:00+00:00",
+      "race_id": "rac_32304702391",
+      "race_name": "Weatherbys And Birdie Calendars 'Chasing Excellence' Beginners' Steeple Chase (GBB Race)",
+      "race_type": "Chase",
+      "field_size": 4,
+      "non_runners_excluded": 0,
+      "priced_runners": 0,
+      "full_bookmakers": [],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Julius des Pictons",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Julius des Pictons",
+              "rank": 1,
+              "score": -0.17482
+            },
+            {
+              "horse": "Fishery Lane",
+              "rank": 2,
+              "score": -0.32748
+            },
+            {
+              "horse": "Derryhassen Paddy",
+              "rank": 3,
+              "score": -0.38275
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-18",
+      "course": "Ffos Las",
+      "time": "13:18",
+      "race_time": "2026-11-18T13:18:00+00:00",
+      "race_id": "rac_32304727572",
+      "race_name": "Dandara Maiden Hurdle Race (Div II) (GBB Race)",
+      "race_type": "Hurdle",
+      "field_size": 9,
+      "non_runners_excluded": 0,
+      "priced_runners": 0,
+      "full_bookmakers": [],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Diamond Street",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Diamond Street",
+              "rank": 1,
+              "score": 0.3626
+            },
+            {
+              "horse": "Poets Express",
+              "rank": 2,
+              "score": 0.17212
+            },
+            {
+              "horse": "Intrastellar",
+              "rank": 3,
+              "score": 0.16137
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-18",
+      "course": "Hexham",
+      "time": "13:33",
+      "race_time": "2026-11-18T13:33:00+00:00",
+      "race_id": "rac_32305037492",
+      "race_name": "Paul Ferguson's Jumpers To Follow Handicap Hurdle Race (Div I)",
+      "race_type": "Hurdle",
+      "field_size": 10,
+      "non_runners_excluded": 1,
+      "priced_runners": 0,
+      "full_bookmakers": [],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "De Deli Counter",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "De Deli Counter",
+              "rank": 1,
+              "score": 0.426
+            },
+            {
+              "horse": "Wind Your Neck In",
+              "rank": 2,
+              "score": 0.16862
+            },
+            {
+              "horse": "Fearless Dragon",
+              "rank": 3,
+              "score": 0.07022
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-18",
+      "course": "Ffos Las",
+      "time": "13:48",
+      "race_time": "2026-11-18T13:48:00+00:00",
+      "race_id": "rac_32304729509",
+      "race_name": "Golwg Gwendraeth Beginners' Steeple Chase (GBB Race)",
+      "race_type": "Chase",
+      "field_size": 5,
+      "non_runners_excluded": 0,
+      "priced_runners": 0,
+      "full_bookmakers": [],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Old Park Star",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Old Park Star",
+              "rank": 1,
+              "score": 0.20405
+            },
+            {
+              "horse": "Sober Glory",
+              "rank": 2,
+              "score": -0.19344
+            },
+            {
+              "horse": "Carlenrig",
+              "rank": 3,
+              "score": -0.20185
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-18",
+      "course": "Dundalk (AW)",
+      "time": "14:00",
+      "race_time": "2026-11-18T14:00:00+00:00",
+      "race_id": "rac_32304739194",
+      "race_name": "Irish Stallion Farms EBF Auction Maiden",
+      "race_type": "Flat",
       "field_size": 17,
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": false,
+      "preoff_at_generation": true,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -93,30 +422,43 @@
           "model_probability_available": false
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
+          "status": "STALE_OR_INCOMPLETE_RANKING",
           "model_probability_available": false
         },
         "Z": {
-          "status": "NO_CURRENT_RANKING",
+          "status": "STALE_OR_INCOMPLETE_RANKING",
           "model_probability_available": false
         }
       },
       "paper_candidates": [],
-      "stage39_context": []
+      "stage39_context": [
+        {
+          "period": "2025_ALREADY_REVIEWED",
+          "roi_pct": -30.573,
+          "races": 66,
+          "priced_bets": 64
+        },
+        {
+          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
+          "roi_pct": -52.566,
+          "races": 27,
+          "priced_bets": 24
+        }
+      ]
     },
     {
-      "date": "2026-11-17",
-      "course": "Carlisle",
-      "time": "12:20",
-      "race_time": "2026-11-17T12:20:00+00:00",
-      "race_id": "rac_32304642344",
-      "race_name": "Vesta Wealth Galloping Gains 'Chasing Excellence' Novices' Steeple Chase (GBB Race)",
-      "race_type": "Chase",
-      "field_size": 6,
+      "date": "2026-11-18",
+      "course": "Hexham",
+      "time": "14:08",
+      "race_time": "2026-11-18T14:08:00+00:00",
+      "race_id": "rac_32304704328",
+      "race_name": "Paul Ferguson's Jumpers To Follow Handicap Hurdle Race (Div II)",
+      "race_type": "Hurdle",
+      "field_size": 10,
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": false,
+      "preoff_at_generation": true,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -134,8 +476,29 @@
           "model_probability_available": false
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Je Mr Dawson",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Je Mr Dawson",
+              "rank": 1,
+              "score": 0.16812
+            },
+            {
+              "horse": "Pepite de Saphir",
+              "rank": 2,
+              "score": 0.0598
+            },
+            {
+              "horse": "Shadow Chaser",
+              "rank": 3,
+              "score": 0.04467
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -146,18 +509,18 @@
       "stage39_context": []
     },
     {
-      "date": "2026-11-17",
-      "course": "Limerick",
-      "time": "12:40",
-      "race_time": "2026-11-17T12:40:00+00:00",
-      "race_id": "rac_32304688832",
-      "race_name": "Adare Manor Opportunity Maiden Hurdle",
-      "race_type": "Hurdle",
+      "date": "2026-11-18",
+      "course": "Ffos Las",
+      "time": "14:18",
+      "race_time": "2026-11-18T14:18:00+00:00",
+      "race_id": "rac_32304731446",
+      "race_name": "Edwina Jones 80th Birthday Celebrations Novices' Handicap Steeple Chase",
+      "race_type": "Chase",
       "field_size": 15,
-      "non_runners_excluded": 2,
+      "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": false,
+      "preoff_at_generation": true,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -175,8 +538,29 @@
           "model_probability_available": false
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Gustoso",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Gustoso",
+              "rank": 1,
+              "score": 0.62857
+            },
+            {
+              "horse": "Wannabe",
+              "rank": 2,
+              "score": 0.5628
+            },
+            {
+              "horse": "Walk Tall",
+              "rank": 3,
+              "score": 0.53982
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -187,18 +571,72 @@
       "stage39_context": []
     },
     {
-      "date": "2026-11-17",
-      "course": "Carlisle",
-      "time": "12:50",
-      "race_time": "2026-11-17T12:50:00+00:00",
-      "race_id": "rac_32304987130",
-      "race_name": "Crown & Thistle Novices' Hurdle Race (Go North Night Nurse Series Qualifier) (Div I) (GBB Race)",
-      "race_type": "Hurdle",
-      "field_size": 10,
+      "date": "2026-11-18",
+      "course": "Dundalk (AW)",
+      "time": "14:30",
+      "race_time": "2026-11-18T14:30:00+00:00",
+      "race_id": "rac_32305039429",
+      "race_name": "Dundalk Stadium Gift Vouchers Available Online Handicap (Div I)",
+      "race_type": "Flat",
+      "field_size": 17,
+      "non_runners_excluded": 0,
+      "priced_runners": 0,
+      "full_bookmakers": [],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "STALE_OR_INCOMPLETE_RANKING",
+          "model_probability_available": false
+        },
+        "Z": {
+          "status": "STALE_OR_INCOMPLETE_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": [
+        {
+          "period": "2025_ALREADY_REVIEWED",
+          "roi_pct": -30.573,
+          "races": 66,
+          "priced_bets": 64
+        },
+        {
+          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
+          "roi_pct": -52.566,
+          "races": 27,
+          "priced_bets": 24
+        }
+      ]
+    },
+    {
+      "date": "2026-11-18",
+      "course": "Hexham",
+      "time": "14:38",
+      "race_time": "2026-11-18T14:38:00+00:00",
+      "race_id": "rac_32304706265",
+      "race_name": "B K Racing Long Distance Handicap Steeple Chase (Go North Red Rum Series Qualifier) (GBB Race)",
+      "race_type": "Chase",
+      "field_size": 7,
       "non_runners_excluded": 1,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": false,
+      "preoff_at_generation": true,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -216,90 +654,29 @@
           "model_probability_available": false
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": []
-    },
-    {
-      "date": "2026-11-17",
-      "course": "Limerick",
-      "time": "13:10",
-      "race_time": "2026-11-17T13:10:00+00:00",
-      "race_id": "rac_32304690769",
-      "race_name": "Panoramic Restaurant @ Limerick Races Mares Handicap Hurdle",
-      "race_type": "Hurdle",
-      "field_size": 9,
-      "non_runners_excluded": 2,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Betterforeveryone",
           "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": []
-    },
-    {
-      "date": "2026-11-17",
-      "course": "Carlisle",
-      "time": "13:25",
-      "race_time": "2026-11-17T13:25:00+00:00",
-      "race_id": "rac_32304644281",
-      "race_name": "Crown & Thistle Novices' Hurdle Race (Go North Night Nurse Series Qualifier) (Div II) (GBB Race)",
-      "race_type": "Hurdle",
-      "field_size": 9,
-      "non_runners_excluded": 1,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Betterforeveryone",
+              "rank": 1,
+              "score": 0.13657
+            },
+            {
+              "horse": "President Scottie",
+              "rank": 2,
+              "score": -0.04021
+            },
+            {
+              "horse": "Wal Buck's",
+              "rank": 3,
+              "score": -0.04945
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -310,305 +687,18 @@
       "stage39_context": []
     },
     {
-      "date": "2026-11-17",
-      "course": "Limerick",
-      "time": "13:40",
-      "race_time": "2026-11-17T13:40:00+00:00",
-      "race_id": "rac_32304692706",
-      "race_name": "Follow Us On Instagram Handicap Hurdle",
-      "race_type": "Hurdle",
-      "field_size": 9,
-      "non_runners_excluded": 1,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": []
-    },
-    {
-      "date": "2026-11-17",
-      "course": "Carlisle",
-      "time": "13:55",
-      "race_time": "2026-11-17T13:55:00+00:00",
-      "race_id": "rac_32304646218",
-      "race_name": "Settle With Claims Care Consultants Handicap Hurdle Race",
-      "race_type": "Hurdle",
-      "field_size": 11,
-      "non_runners_excluded": 1,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": []
-    },
-    {
-      "date": "2026-11-17",
-      "course": "Limerick",
-      "time": "14:10",
-      "race_time": "2026-11-17T14:10:00+00:00",
-      "race_id": "rac_32304985193",
-      "race_name": "Mr Binman Christmas Racing Festival 26th - 29th December Handicap Hurdle (Div I)",
+      "date": "2026-11-18",
+      "course": "Ffos Las",
+      "time": "14:48",
+      "race_time": "2026-11-18T14:48:00+00:00",
+      "race_id": "rac_32304733383",
+      "race_name": "Support Your Oncourse Bookmakers Maiden Hurdle Race (GBB Race)",
       "race_type": "Hurdle",
       "field_size": 13,
-      "non_runners_excluded": 4,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": []
-    },
-    {
-      "date": "2026-11-17",
-      "course": "Carlisle",
-      "time": "14:25",
-      "race_time": "2026-11-17T14:25:00+00:00",
-      "race_id": "rac_32304648155",
-      "race_name": "DJ Bell Celebration Handicap Hurdle Race (Go North Sea Pigeon Series Qualifier)",
-      "race_type": "Hurdle",
-      "field_size": 16,
-      "non_runners_excluded": 1,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": []
-    },
-    {
-      "date": "2026-11-17",
-      "course": "Limerick",
-      "time": "14:40",
-      "race_time": "2026-11-17T14:40:00+00:00",
-      "race_id": "rac_32304694643",
-      "race_name": "Mr Binman Christmas Racing Festival 26th - 29th December Handicap Hurdle (Div II)",
-      "race_type": "Hurdle",
-      "field_size": 15,
-      "non_runners_excluded": 2,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": []
-    },
-    {
-      "date": "2026-11-17",
-      "course": "Carlisle",
-      "time": "15:00",
-      "race_time": "2026-11-17T15:00:00+00:00",
-      "race_id": "rac_32304650092",
-      "race_name": "Home Is Where The Heart Is Handicap Hurdle Race",
-      "race_type": "Hurdle",
-      "field_size": 10,
-      "non_runners_excluded": 7,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": []
-    },
-    {
-      "date": "2026-11-17",
-      "course": "Limerick",
-      "time": "15:15",
-      "race_time": "2026-11-17T15:15:00+00:00",
-      "race_id": "rac_32304696580",
-      "race_name": "Follow Us On Facebook @ Limerick Races Handicap Hurdle",
-      "race_type": "Hurdle",
-      "field_size": 11,
-      "non_runners_excluded": 6,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": []
-    },
-    {
-      "date": "2026-11-17",
-      "course": "Carlisle",
-      "time": "15:30",
-      "race_time": "2026-11-17T15:30:00+00:00",
-      "race_id": "rac_32304652029",
-      "race_name": "Light Up A Life Conditional Jockeys' Handicap Steeple Chase (Go North One Man Series Qualifier)",
-      "race_type": "Chase",
-      "field_size": 6,
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": false,
+      "preoff_at_generation": true,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -626,8 +716,29 @@
           "model_probability_available": false
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Merry Away",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Merry Away",
+              "rank": 1,
+              "score": 0.6563
+            },
+            {
+              "horse": "Funny Hunny",
+              "rank": 2,
+              "score": 0.63894
+            },
+            {
+              "horse": "Doagh",
+              "rank": 3,
+              "score": 0.57477
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -638,18 +749,18 @@
       "stage39_context": []
     },
     {
-      "date": "2026-11-17",
-      "course": "Limerick",
-      "time": "15:50",
-      "race_time": "2026-11-17T15:50:00+00:00",
-      "race_id": "rac_32304698517",
-      "race_name": "Limerick (Ladies Pro/Am) Flat Race",
-      "race_type": "NH Flat",
-      "field_size": 8,
-      "non_runners_excluded": 4,
+      "date": "2026-11-18",
+      "course": "Dundalk (AW)",
+      "time": "15:00",
+      "race_time": "2026-11-18T15:00:00+00:00",
+      "race_id": "rac_32304741131",
+      "race_name": "Dundalk Stadium Gift Vouchers Available Online Handicap (Div II)",
+      "race_type": "Flat",
+      "field_size": 16,
+      "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": false,
+      "preoff_at_generation": true,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -667,8 +778,83 @@
           "model_probability_available": false
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
+          "status": "STALE_OR_INCOMPLETE_RANKING",
           "model_probability_available": false
+        },
+        "Z": {
+          "status": "STALE_OR_INCOMPLETE_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": [
+        {
+          "period": "2025_ALREADY_REVIEWED",
+          "roi_pct": -30.573,
+          "races": 66,
+          "priced_bets": 64
+        },
+        {
+          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
+          "roi_pct": -52.566,
+          "races": 27,
+          "priced_bets": 24
+        }
+      ]
+    },
+    {
+      "date": "2026-11-18",
+      "course": "Hexham",
+      "time": "15:08",
+      "race_time": "2026-11-18T15:08:00+00:00",
+      "race_id": "rac_32304708202",
+      "race_name": "QuinnBet Handicap Steeple Chase",
+      "race_type": "Chase",
+      "field_size": 12,
+      "non_runners_excluded": 0,
+      "priced_runners": 0,
+      "full_bookmakers": [],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Scairp Dubh",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Scairp Dubh",
+              "rank": 1,
+              "score": 0.55131
+            },
+            {
+              "horse": "Colonel Jack",
+              "rank": 2,
+              "score": 0.36583
+            },
+            {
+              "horse": "Drop Kick",
+              "rank": 3,
+              "score": 0.30948
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -679,21 +865,304 @@
       "stage39_context": []
     },
     {
-      "date": "2026-11-17",
-      "course": "Southwell (AW)",
-      "time": "16:30",
-      "race_time": "2026-11-17T16:30:00+00:00",
-      "race_id": "rac_32304653966",
-      "race_name": "Midnite: Built For 2026 Not 2006 Handicap Stakes (Rider Restricted Race)",
+      "date": "2026-11-18",
+      "course": "Ffos Las",
+      "time": "15:18",
+      "race_time": "2026-11-18T15:18:00+00:00",
+      "race_id": "rac_32304735320",
+      "race_name": "3A's Leisure Novices' Handicap Hurdle Race",
+      "race_type": "Hurdle",
+      "field_size": 11,
+      "non_runners_excluded": 0,
+      "priced_runners": 0,
+      "full_bookmakers": [],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "For Old Times Sake",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "For Old Times Sake",
+              "rank": 1,
+              "score": 0.22086
+            },
+            {
+              "horse": "Teletime",
+              "rank": 2,
+              "score": 0.1779
+            },
+            {
+              "horse": "No Boundaries",
+              "rank": 3,
+              "score": 0.08088
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-18",
+      "course": "Dundalk (AW)",
+      "time": "15:30",
+      "race_time": "2026-11-18T15:30:00+00:00",
+      "race_id": "rac_32304743068",
+      "race_name": "Irishinjuredjockeys.com Nursery Handicap",
+      "race_type": "Flat",
+      "field_size": 12,
+      "non_runners_excluded": 0,
+      "priced_runners": 0,
+      "full_bookmakers": [],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Maxims Of Equity",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Maxims Of Equity",
+              "rank": 1,
+              "score": 0.25163
+            },
+            {
+              "horse": "Mutamarid Lsk",
+              "rank": 2,
+              "score": 0.11792
+            },
+            {
+              "horse": "Annie Tips",
+              "rank": 3,
+              "score": 0.1016
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-z-stage38-frozen-stage34-candidate-paper-v1",
+          "leader": "Maxims Of Equity",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Maxims Of Equity",
+              "rank": 1,
+              "score": 0.232642
+            },
+            {
+              "horse": "Mutamarid Lsk",
+              "rank": 2,
+              "score": 0.138857
+            },
+            {
+              "horse": "Annie Tips",
+              "rank": 3,
+              "score": 0.091198
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model Z value or expected ROI.",
+          "specialist_status": "NO_SELECTION"
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": [
+        {
+          "period": "2025_ALREADY_REVIEWED",
+          "roi_pct": -30.573,
+          "races": 66,
+          "priced_bets": 64
+        },
+        {
+          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
+          "roi_pct": -52.566,
+          "races": 27,
+          "priced_bets": 24
+        }
+      ]
+    },
+    {
+      "date": "2026-11-18",
+      "course": "Hexham",
+      "time": "15:38",
+      "race_time": "2026-11-18T15:38:00+00:00",
+      "race_id": "rac_32304710139",
+      "race_name": "QuinnBet Open National Hunt Flat Race (Category 1 Elimination) (GBB Race)",
+      "race_type": "NH Flat",
+      "field_size": 7,
+      "non_runners_excluded": 0,
+      "priced_runners": 0,
+      "full_bookmakers": [],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Max Potential",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Max Potential",
+              "rank": 1,
+              "score": -0.03308
+            },
+            {
+              "horse": "Browney Bank",
+              "rank": 2,
+              "score": -0.0539
+            },
+            {
+              "horse": "Rio Blue",
+              "rank": 3,
+              "score": -0.09041
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-18",
+      "course": "Ffos Las",
+      "time": "15:48",
+      "race_time": "2026-11-18T15:48:00+00:00",
+      "race_id": "rac_32304737257",
+      "race_name": "Welsh Cottage Christmas Cakes Handicap Steeple Chase",
+      "race_type": "Chase",
+      "field_size": 10,
+      "non_runners_excluded": 0,
+      "priced_runners": 0,
+      "full_bookmakers": [],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Unleash The Beast",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Unleash The Beast",
+              "rank": 1,
+              "score": 0.20698
+            },
+            {
+              "horse": "Seasett",
+              "rank": 2,
+              "score": 0.14813
+            },
+            {
+              "horse": "Owl of Athens",
+              "rank": 3,
+              "score": 0.07137
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": []
+    },
+    {
+      "date": "2026-11-18",
+      "course": "Dundalk (AW)",
+      "time": "16:00",
+      "race_time": "2026-11-18T16:00:00+00:00",
+      "race_id": "rac_32304745005",
+      "race_name": "Now Racing Every Wednesday At Dundalk Maiden",
       "race_type": "Flat",
       "field_size": 13,
-      "non_runners_excluded": 1,
+      "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": false,
+      "preoff_at_generation": true,
       "models": {
         "A": {
-          "status": "MODEL_PUBLISHED_AFTER_OFF_OR_UNDATED",
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
           "leader": null,
           "model_probability_available": false
         },
@@ -708,8 +1177,126 @@
           "model_probability_available": false
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Otsana",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Otsana",
+              "rank": 1,
+              "score": 0.4985
+            },
+            {
+              "horse": "Transatlantico",
+              "rank": 2,
+              "score": 0.4436
+            },
+            {
+              "horse": "Subtle Shade",
+              "rank": 3,
+              "score": 0.43206
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-z-stage38-frozen-stage34-candidate-paper-v1",
+          "leader": "Otsana",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Otsana",
+              "rank": 1,
+              "score": 0.492832
+            },
+            {
+              "horse": "Stooked",
+              "rank": 2,
+              "score": 0.418756
+            },
+            {
+              "horse": "Subtle Shade",
+              "rank": 3,
+              "score": 0.411624
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model Z value or expected ROI.",
+          "specialist_status": "NO_SELECTION"
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": [
+        {
+          "period": "2025_ALREADY_REVIEWED",
+          "roi_pct": -30.573,
+          "races": 66,
+          "priced_bets": 64
+        },
+        {
+          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
+          "roi_pct": -52.566,
+          "races": 27,
+          "priced_bets": 24
+        }
+      ]
+    },
+    {
+      "date": "2026-11-18",
+      "course": "Kempton (AW)",
+      "time": "16:25",
+      "race_time": "2026-11-18T16:25:00+00:00",
+      "race_id": "rac_32305043303",
+      "race_name": "Unibet/British Stallion Studs EBF Restricted Novice Stakes (For Horses In Bands B, C And D) (Rider Restricted Race) (Div I) (GBB Race)",
+      "race_type": "Flat",
+      "field_size": 12,
+      "non_runners_excluded": 0,
+      "priced_runners": 0,
+      "full_bookmakers": [],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
           "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Tredegar Square",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Tredegar Square",
+              "rank": 1,
+              "score": 0.36917
+            },
+            {
+              "horse": "Saxon Crest",
+              "rank": 2,
+              "score": 0.28656
+            },
+            {
+              "horse": "Brave Country",
+              "rank": 3,
+              "score": 0.27668
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -717,76 +1304,265 @@
         }
       },
       "paper_candidates": [],
-      "stage39_context": []
+      "stage39_context": [
+        {
+          "period": "2025_ALREADY_REVIEWED",
+          "roi_pct": -16.548,
+          "races": 83,
+          "priced_bets": 79
+        },
+        {
+          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
+          "roi_pct": -12.36,
+          "races": 48,
+          "priced_bets": 46
+        }
+      ]
     },
     {
-      "date": "2026-11-17",
-      "course": "Southwell (AW)",
+      "date": "2026-11-18",
+      "course": "Dundalk (AW)",
+      "time": "16:30",
+      "race_time": "2026-11-18T16:30:00+00:00",
+      "race_id": "rac_32304746942",
+      "race_name": "Christmas Party Nights At Dundalk Stadium Handicap",
+      "race_type": "Flat",
+      "field_size": 15,
+      "non_runners_excluded": 1,
+      "priced_runners": 0,
+      "full_bookmakers": [],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "STALE_OR_INCOMPLETE_RANKING",
+          "model_probability_available": false
+        },
+        "Z": {
+          "status": "STALE_OR_INCOMPLETE_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": [
+        {
+          "period": "2025_ALREADY_REVIEWED",
+          "roi_pct": -30.573,
+          "races": 66,
+          "priced_bets": 64
+        },
+        {
+          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
+          "roi_pct": -52.566,
+          "races": 27,
+          "priced_bets": 24
+        }
+      ]
+    },
+    {
+      "date": "2026-11-18",
+      "course": "Kempton (AW)",
       "time": "17:00",
-      "race_time": "2026-11-17T17:00:00+00:00",
-      "race_id": "rac_32304655903",
-      "race_name": "AW Trials Day - Lingfield 2nd Jan 2027 Nursery Handicap Stakes (Rider Restricted Race)",
+      "race_time": "2026-11-18T17:00:00+00:00",
+      "race_id": "rac_32304712076",
+      "race_name": "Unibet/British Stallion Studs EBF Restricted Novice Stakes (For Horses In Bands B, C And D) (Rider Restricted Race) (Div II) (GBB Race)",
+      "race_type": "Flat",
+      "field_size": 12,
+      "non_runners_excluded": 0,
+      "priced_runners": 0,
+      "full_bookmakers": [],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Angel Footsteps",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Angel Footsteps",
+              "rank": 1,
+              "score": 0.38117
+            },
+            {
+              "horse": "King's Flight",
+              "rank": 2,
+              "score": 0.32399
+            },
+            {
+              "horse": "Platinum Force",
+              "rank": 3,
+              "score": 0.31832
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": [
+        {
+          "period": "2025_ALREADY_REVIEWED",
+          "roi_pct": -16.548,
+          "races": 83,
+          "priced_bets": 79
+        },
+        {
+          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
+          "roi_pct": -12.36,
+          "races": 48,
+          "priced_bets": 46
+        }
+      ]
+    },
+    {
+      "date": "2026-11-18",
+      "course": "Dundalk (AW)",
+      "time": "17:07",
+      "race_time": "2026-11-18T17:07:00+00:00",
+      "race_id": "rac_32304748879",
+      "race_name": "Safer Gambling Week 2026 Fillies Maiden",
+      "race_type": "Flat",
+      "field_size": 9,
+      "non_runners_excluded": 0,
+      "priced_runners": 0,
+      "full_bookmakers": [],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Rhapsodic",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Rhapsodic",
+              "rank": 1,
+              "score": 0.0755
+            },
+            {
+              "horse": "Kigalienne",
+              "rank": 2,
+              "score": -0.1465
+            },
+            {
+              "horse": "Dyker Heights",
+              "rank": 3,
+              "score": -0.24248
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-z-stage38-frozen-stage34-candidate-paper-v1",
+          "leader": "Rhapsodic",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Rhapsodic",
+              "rank": 1,
+              "score": 0.043133
+            },
+            {
+              "horse": "Kigalienne",
+              "rank": 2,
+              "score": -0.170513
+            },
+            {
+              "horse": "Dyker Heights",
+              "rank": 3,
+              "score": -0.233193
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model Z value or expected ROI.",
+          "specialist_status": "PAPER_ONLY"
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": [
+        {
+          "period": "2025_ALREADY_REVIEWED",
+          "roi_pct": -30.573,
+          "races": 66,
+          "priced_bets": 64
+        },
+        {
+          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
+          "roi_pct": -52.566,
+          "races": 27,
+          "priced_bets": 24
+        }
+      ]
+    },
+    {
+      "date": "2026-11-18",
+      "course": "Kempton (AW)",
+      "time": "17:30",
+      "race_time": "2026-11-18T17:30:00+00:00",
+      "race_id": "rac_32304714013",
+      "race_name": "Unibet 40,000+ Live Streamed Events Nursery Handicap Stakes (Rider Restricted Race)",
       "race_type": "Flat",
       "field_size": 5,
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": false,
+      "preoff_at_generation": true,
       "models": {
         "A": {
-          "status": "PRICE_COMPARED_EXPERIMENTAL",
-          "model_version": "stage16-own-data-temporal-v3-stage25-starters",
-          "leader": "Roxa Love",
-          "model_probability_available": true,
-          "model_win_pct": 33.15,
-          "calibration_status": "INSUFFICIENT_FUTURE_OUTCOMES",
-          "runners": [
-            {
-              "horse": "Roxa Love",
-              "horse_id": "hrs_65190615",
-              "probability": 0.331544,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Dowman",
-              "horse_id": "hrs_63323687",
-              "probability": 0.265097,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Urumita",
-              "horse_id": "hrs_17391345699",
-              "probability": 0.148411,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Bladey Lady",
-              "horse_id": "hrs_64555715",
-              "probability": 0.129203,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Undercover Affair",
-              "horse_id": "hrs_64073086",
-              "probability": 0.125745,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            }
-          ]
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
         },
         "B": {
           "status": "INCOMPLETE_PROVISIONAL_RANKING",
@@ -794,330 +1570,31 @@
           "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
-          "status": "PRICE_COMPARED_EXPERIMENTAL",
-          "model_version": "model-c-v2-stage25-verified-starters-2026-11",
-          "leader": "Roxa Love",
-          "model_probability_available": true,
-          "model_win_pct": 30.71,
-          "calibration_status": "NO_APPROVED_FORWARD_CALIBRATION",
-          "runners": [
-            {
-              "horse": "Roxa Love",
-              "horse_id": "hrs_65190615",
-              "probability": 0.307062,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
-            },
-            {
-              "horse": "Dowman",
-              "horse_id": "hrs_63323687",
-              "probability": 0.239864,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
-            },
-            {
-              "horse": "Bladey Lady",
-              "horse_id": "hrs_64555715",
-              "probability": 0.161311,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
-            },
-            {
-              "horse": "Urumita",
-              "horse_id": "hrs_17391345699",
-              "probability": 0.153481,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
-            },
-            {
-              "horse": "Undercover Affair",
-              "horse_id": "hrs_64073086",
-              "probability": 0.138283,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
-            }
-          ]
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
           "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": []
-    },
-    {
-      "date": "2026-11-17",
-      "course": "Southwell (AW)",
-      "time": "17:30",
-      "race_time": "2026-11-17T17:30:00+00:00",
-      "race_id": "rac_32304657840",
-      "race_name": "Make The Move To Midnite Handicap Stakes (Rider Restricted Race) (GBBPlus Race)",
-      "race_type": "Flat",
-      "field_size": 11,
-      "non_runners_excluded": 2,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "PRICE_COMPARED_EXPERIMENTAL",
-          "model_version": "stage16-own-data-temporal-v3-stage25-starters",
-          "leader": "Almekarem",
-          "model_probability_available": true,
-          "model_win_pct": 18.9,
-          "calibration_status": "INSUFFICIENT_FUTURE_OUTCOMES",
-          "runners": [
-            {
-              "horse": "Almekarem",
-              "horse_id": "hrs_53359579",
-              "probability": 0.188987,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Gloryous",
-              "horse_id": "hrs_40919431",
-              "probability": 0.167892,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Redbud Sixteen",
-              "horse_id": "hrs_54875415",
-              "probability": 0.120903,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Yaa Min",
-              "horse_id": "hrs_46515455",
-              "probability": 0.103346,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Optician",
-              "horse_id": "hrs_29917909",
-              "probability": 0.07947,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Aravalli",
-              "horse_id": "hrs_57718017",
-              "probability": 0.078167,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Fahidi",
-              "horse_id": "hrs_55091897",
-              "probability": 0.074447,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Skipper",
-              "horse_id": "hrs_36234506",
-              "probability": 0.061397,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "First Ambition",
-              "horse_id": "hrs_46169627",
-              "probability": 0.049933,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Without Compromise",
-              "horse_id": "hrs_47807319",
-              "probability": 0.045853,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Enziya",
-              "horse_id": "hrs_46265366",
-              "probability": 0.029606,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            }
-          ]
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "PRICE_COMPARED_EXPERIMENTAL",
-          "model_version": "model-c-v2-stage25-verified-starters-2026-11",
-          "leader": "Almekarem",
-          "model_probability_available": true,
-          "model_win_pct": 18.06,
-          "calibration_status": "NO_APPROVED_FORWARD_CALIBRATION",
-          "runners": [
-            {
-              "horse": "Almekarem",
-              "horse_id": "hrs_53359579",
-              "probability": 0.180598,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Gloryous",
-              "horse_id": "hrs_40919431",
-              "probability": 0.173416,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Redbud Sixteen",
-              "horse_id": "hrs_54875415",
-              "probability": 0.138786,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Yaa Min",
-              "horse_id": "hrs_46515455",
-              "probability": 0.093058,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Aravalli",
-              "horse_id": "hrs_57718017",
-              "probability": 0.089589,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Skipper",
-              "horse_id": "hrs_36234506",
-              "probability": 0.076209,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Fahidi",
-              "horse_id": "hrs_55091897",
-              "probability": 0.070457,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Optician",
-              "horse_id": "hrs_29917909",
-              "probability": 0.063165,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Without Compromise",
-              "horse_id": "hrs_47807319",
-              "probability": 0.043685,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "First Ambition",
-              "horse_id": "hrs_46169627",
-              "probability": 0.039747,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Enziya",
-              "horse_id": "hrs_46265366",
-              "probability": 0.03129,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            }
-          ]
         },
         "D": {
           "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
           "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
-          "leader": "Almekarem",
+          "leader": "Paper View",
           "model_probability_available": false,
           "leader_price": null,
           "top_three": [
             {
-              "horse": "Almekarem",
+              "horse": "Paper View",
               "rank": 1,
-              "score": 0.39602
+              "score": -0.40667
             },
             {
-              "horse": "Yaa Min",
+              "horse": "Divine Whisper",
               "rank": 2,
-              "score": 0.33924
+              "score": -0.41067
             },
             {
-              "horse": "Gloryous",
+              "horse": "Lady Blanche",
               "rank": 3,
-              "score": 0.29851
+              "score": -0.44786
             }
           ],
           "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
@@ -1128,555 +1605,82 @@
         }
       },
       "paper_candidates": [],
-      "stage39_context": []
+      "stage39_context": [
+        {
+          "period": "2025_ALREADY_REVIEWED",
+          "roi_pct": -16.548,
+          "races": 83,
+          "priced_bets": 79
+        },
+        {
+          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
+          "roi_pct": -12.36,
+          "races": 48,
+          "priced_bets": 46
+        }
+      ]
     },
     {
-      "date": "2026-11-17",
-      "course": "Southwell (AW)",
+      "date": "2026-11-18",
+      "course": "Dundalk (AW)",
+      "time": "17:40",
+      "race_time": "2026-11-18T17:40:00+00:00",
+      "race_id": "rac_32304750816",
+      "race_name": "Book Online At DundalkStadium.com Handicap",
+      "race_type": "Flat",
+      "field_size": 17,
+      "non_runners_excluded": 0,
+      "priced_runners": 0,
+      "full_bookmakers": [],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "STALE_OR_INCOMPLETE_RANKING",
+          "model_probability_available": false
+        },
+        "Z": {
+          "status": "STALE_OR_INCOMPLETE_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": [
+        {
+          "period": "2025_ALREADY_REVIEWED",
+          "roi_pct": -30.573,
+          "races": 66,
+          "priced_bets": 64
+        },
+        {
+          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
+          "roi_pct": -52.566,
+          "races": 27,
+          "priced_bets": 24
+        }
+      ]
+    },
+    {
+      "date": "2026-11-18",
+      "course": "Kempton (AW)",
       "time": "18:00",
-      "race_time": "2026-11-17T18:00:00+00:00",
-      "race_id": "rac_32304659777",
-      "race_name": "AWC Season 14 Has Begun Fillies' Novice Stakes (Rider Restricted Race) (GBB/GBBPlus Race)",
-      "race_type": "Flat",
-      "field_size": 9,
-      "non_runners_excluded": 1,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "PRICE_COMPARED_EXPERIMENTAL",
-          "model_version": "stage16-own-data-temporal-v3-stage25-starters",
-          "leader": "Danseuse",
-          "model_probability_available": true,
-          "model_win_pct": 20.4,
-          "calibration_status": "INSUFFICIENT_FUTURE_OUTCOMES",
-          "runners": [
-            {
-              "horse": "Danseuse",
-              "horse_id": "hrs_64812951",
-              "probability": 0.203973,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Seacole",
-              "horse_id": "hrs_65451652",
-              "probability": 0.187105,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Allaire",
-              "horse_id": "hrs_59645460",
-              "probability": 0.165281,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Maneater",
-              "horse_id": "hrs_46975159",
-              "probability": 0.139744,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Triumph",
-              "horse_id": "hrs_63908677",
-              "probability": 0.087062,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Sparkling Water",
-              "horse_id": "hrs_51124234",
-              "probability": 0.075295,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Don't Hurry Love",
-              "horse_id": "hrs_55634285",
-              "probability": 0.064601,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Saaffya",
-              "horse_id": "hrs_17391432268",
-              "probability": 0.045751,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Pure Theory",
-              "horse_id": "hrs_43507429",
-              "probability": 0.031188,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            }
-          ]
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "PRICE_COMPARED_EXPERIMENTAL",
-          "model_version": "model-c-v2-stage25-verified-starters-2026-11",
-          "leader": "Danseuse",
-          "model_probability_available": true,
-          "model_win_pct": 17.79,
-          "calibration_status": "NO_APPROVED_FORWARD_CALIBRATION",
-          "runners": [
-            {
-              "horse": "Danseuse",
-              "horse_id": "hrs_64812951",
-              "probability": 0.177871,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
-            },
-            {
-              "horse": "Allaire",
-              "horse_id": "hrs_59645460",
-              "probability": 0.166755,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
-            },
-            {
-              "horse": "Seacole",
-              "horse_id": "hrs_65451652",
-              "probability": 0.160549,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
-            },
-            {
-              "horse": "Maneater",
-              "horse_id": "hrs_46975159",
-              "probability": 0.139889,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
-            },
-            {
-              "horse": "Sparkling Water",
-              "horse_id": "hrs_51124234",
-              "probability": 0.106367,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
-            },
-            {
-              "horse": "Triumph",
-              "horse_id": "hrs_63908677",
-              "probability": 0.092685,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
-            },
-            {
-              "horse": "Saaffya",
-              "horse_id": "hrs_17391432268",
-              "probability": 0.062505,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
-            },
-            {
-              "horse": "Don't Hurry Love",
-              "horse_id": "hrs_55634285",
-              "probability": 0.056572,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
-            },
-            {
-              "horse": "Pure Theory",
-              "horse_id": "hrs_43507429",
-              "probability": 0.036807,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
-            }
-          ]
-        },
-        "D": {
-          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
-          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
-          "leader": "Seacole",
-          "model_probability_available": false,
-          "leader_price": null,
-          "top_three": [
-            {
-              "horse": "Seacole",
-              "rank": 1,
-              "score": 0.26629
-            },
-            {
-              "horse": "Don't Hurry Love",
-              "rank": 2,
-              "score": 0.1927
-            },
-            {
-              "horse": "Danseuse",
-              "rank": 3,
-              "score": 0.11259
-            }
-          ],
-          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": []
-    },
-    {
-      "date": "2026-11-17",
-      "course": "Southwell (AW)",
-      "time": "18:30",
-      "race_time": "2026-11-17T18:30:00+00:00",
-      "race_id": "rac_32304661714",
-      "race_name": "AWC Finals Day At Newcastle 26th March Handicap Stakes (Rider Restricted Race)",
-      "race_type": "Flat",
-      "field_size": 13,
-      "non_runners_excluded": 1,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": false,
-      "models": {
-        "A": {
-          "status": "PRICE_COMPARED_EXPERIMENTAL",
-          "model_version": "stage16-own-data-temporal-v3-stage25-starters",
-          "leader": "Silent City",
-          "model_probability_available": true,
-          "model_win_pct": 12.36,
-          "calibration_status": "INSUFFICIENT_FUTURE_OUTCOMES",
-          "runners": [
-            {
-              "horse": "Silent City",
-              "horse_id": "hrs_53476080",
-              "probability": 0.123571,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Moving Shadow",
-              "horse_id": "hrs_55882449",
-              "probability": 0.111521,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Down To The Kid",
-              "horse_id": "hrs_25908813",
-              "probability": 0.11012,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Raging Raj",
-              "horse_id": "hrs_51491517",
-              "probability": 0.100167,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Anthropologist",
-              "horse_id": "hrs_40433974",
-              "probability": 0.082748,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Tex",
-              "horse_id": "hrs_44785916",
-              "probability": 0.081091,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Jimmy Speaking",
-              "horse_id": "hrs_35553322",
-              "probability": 0.065636,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Hale End",
-              "horse_id": "hrs_29987811",
-              "probability": 0.061427,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "BillyB",
-              "horse_id": "hrs_26509693",
-              "probability": 0.059643,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Zryan",
-              "horse_id": "hrs_35812490",
-              "probability": 0.059075,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "One Smack Mac",
-              "horse_id": "hrs_412692826",
-              "probability": 0.051201,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Priapos",
-              "horse_id": "hrs_42452536",
-              "probability": 0.049607,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Vixey",
-              "horse_id": "hrs_32076093",
-              "probability": 0.044194,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            }
-          ]
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "PRICE_COMPARED_EXPERIMENTAL",
-          "model_version": "model-c-v2-stage25-verified-starters-2026-11",
-          "leader": "Silent City",
-          "model_probability_available": true,
-          "model_win_pct": 14.56,
-          "calibration_status": "NO_APPROVED_FORWARD_CALIBRATION",
-          "runners": [
-            {
-              "horse": "Silent City",
-              "horse_id": "hrs_53476080",
-              "probability": 0.14563,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Moving Shadow",
-              "horse_id": "hrs_55882449",
-              "probability": 0.140558,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Raging Raj",
-              "horse_id": "hrs_51491517",
-              "probability": 0.110457,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Tex",
-              "horse_id": "hrs_44785916",
-              "probability": 0.092509,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Down To The Kid",
-              "horse_id": "hrs_25908813",
-              "probability": 0.089799,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Anthropologist",
-              "horse_id": "hrs_40433974",
-              "probability": 0.071974,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Hale End",
-              "horse_id": "hrs_29987811",
-              "probability": 0.071949,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Jimmy Speaking",
-              "horse_id": "hrs_35553322",
-              "probability": 0.056881,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "One Smack Mac",
-              "horse_id": "hrs_412692826",
-              "probability": 0.05019,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Vixey",
-              "horse_id": "hrs_32076093",
-              "probability": 0.045392,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Zryan",
-              "horse_id": "hrs_35812490",
-              "probability": 0.04382,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "BillyB",
-              "horse_id": "hrs_26509693",
-              "probability": 0.041446,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Priapos",
-              "horse_id": "hrs_42452536",
-              "probability": 0.039394,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            }
-          ]
-        },
-        "D": {
-          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
-          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
-          "leader": "Moving Shadow",
-          "model_probability_available": false,
-          "leader_price": null,
-          "top_three": [
-            {
-              "horse": "Moving Shadow",
-              "rank": 1,
-              "score": 0.56199
-            },
-            {
-              "horse": "Down To The Kid",
-              "rank": 2,
-              "score": 0.48732
-            },
-            {
-              "horse": "Silent City",
-              "rank": 3,
-              "score": 0.43443
-            }
-          ],
-          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": []
-    },
-    {
-      "date": "2026-11-17",
-      "course": "Southwell (AW)",
-      "time": "19:00",
-      "race_time": "2026-11-17T19:00:00+00:00",
-      "race_id": "rac_32304989067",
-      "race_name": "All-Weather Championship Is Back Handicap Stakes (Rider Restricted Race) (Div I)",
+      "race_time": "2026-11-18T18:00:00+00:00",
+      "race_id": "rac_32304715950",
+      "race_name": "Unibet's New VAR Goal Guarantee Nursery Handicap Stakes (Rider Restricted Race)",
       "race_type": "Flat",
       "field_size": 11,
       "non_runners_excluded": 0,
@@ -1685,113 +1689,9 @@
       "preoff_at_generation": true,
       "models": {
         "A": {
-          "status": "PRICE_COMPARED_EXPERIMENTAL",
-          "model_version": "stage16-own-data-temporal-v3-stage25-starters",
-          "leader": "Flowstate",
-          "model_probability_available": true,
-          "model_win_pct": 13.85,
-          "calibration_status": "INSUFFICIENT_FUTURE_OUTCOMES",
-          "runners": [
-            {
-              "horse": "Flowstate",
-              "horse_id": "hrs_42326613",
-              "probability": 0.138527,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Bay Breeze",
-              "horse_id": "hrs_24846409",
-              "probability": 0.12831,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Red Hat Eagle",
-              "horse_id": "hrs_32613483",
-              "probability": 0.110301,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Phoenix of Dreams",
-              "horse_id": "hrs_38058132",
-              "probability": 0.108887,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Ziggy's Condor",
-              "horse_id": "hrs_35336882",
-              "probability": 0.108432,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Coolree",
-              "horse_id": "hrs_30469901",
-              "probability": 0.099518,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Packetofbiscuits",
-              "horse_id": "hrs_39960368",
-              "probability": 0.074686,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Legacy Rock",
-              "horse_id": "hrs_54494797",
-              "probability": 0.068969,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Yaahobby",
-              "horse_id": "hrs_24735053",
-              "probability": 0.058629,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Whatever Bruce",
-              "horse_id": "hrs_65678291",
-              "probability": 0.053201,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Folkene",
-              "horse_id": "hrs_51766743",
-              "probability": 0.05054,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            }
-          ]
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
         },
         "B": {
           "status": "INCOMPLETE_PROVISIONAL_RANKING",
@@ -1799,135 +1699,31 @@
           "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
-          "status": "PRICE_COMPARED_EXPERIMENTAL",
-          "model_version": "model-c-v2-stage25-verified-starters-2026-11",
-          "leader": "Bay Breeze",
-          "model_probability_available": true,
-          "model_win_pct": 15.2,
-          "calibration_status": "NO_APPROVED_FORWARD_CALIBRATION",
-          "runners": [
-            {
-              "horse": "Bay Breeze",
-              "horse_id": "hrs_24846409",
-              "probability": 0.151972,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
-            },
-            {
-              "horse": "Phoenix of Dreams",
-              "horse_id": "hrs_38058132",
-              "probability": 0.125724,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
-            },
-            {
-              "horse": "Flowstate",
-              "horse_id": "hrs_42326613",
-              "probability": 0.124572,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
-            },
-            {
-              "horse": "Red Hat Eagle",
-              "horse_id": "hrs_32613483",
-              "probability": 0.108716,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
-            },
-            {
-              "horse": "Coolree",
-              "horse_id": "hrs_30469901",
-              "probability": 0.107206,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
-            },
-            {
-              "horse": "Ziggy's Condor",
-              "horse_id": "hrs_35336882",
-              "probability": 0.087943,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
-            },
-            {
-              "horse": "Whatever Bruce",
-              "horse_id": "hrs_65678291",
-              "probability": 0.067425,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
-            },
-            {
-              "horse": "Packetofbiscuits",
-              "horse_id": "hrs_39960368",
-              "probability": 0.062131,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
-            },
-            {
-              "horse": "Yaahobby",
-              "horse_id": "hrs_24735053",
-              "probability": 0.058945,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
-            },
-            {
-              "horse": "Legacy Rock",
-              "horse_id": "hrs_54494797",
-              "probability": 0.05358,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
-            },
-            {
-              "horse": "Folkene",
-              "horse_id": "hrs_51766743",
-              "probability": 0.051786,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
-            }
-          ]
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
         },
         "D": {
           "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
           "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
-          "leader": "Flowstate",
+          "leader": "Divine Rhythm",
           "model_probability_available": false,
           "leader_price": null,
           "top_three": [
             {
-              "horse": "Flowstate",
+              "horse": "Divine Rhythm",
               "rank": 1,
-              "score": 0.24375
+              "score": 0.36934
             },
             {
-              "horse": "Whatever Bruce",
+              "horse": "You're Sensational",
               "rank": 2,
-              "score": 0.17882
+              "score": 0.29068
             },
             {
-              "horse": "Phoenix of Dreams",
+              "horse": "Somers Isles",
               "rank": 3,
-              "score": 0.13982
+              "score": 0.16878
             }
           ],
           "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
@@ -1938,112 +1734,189 @@
         }
       },
       "paper_candidates": [],
-      "stage39_context": []
+      "stage39_context": [
+        {
+          "period": "2025_ALREADY_REVIEWED",
+          "roi_pct": -16.548,
+          "races": 83,
+          "priced_bets": 79
+        },
+        {
+          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
+          "roi_pct": -12.36,
+          "races": 48,
+          "priced_bets": 46
+        }
+      ]
     },
     {
-      "date": "2026-11-17",
-      "course": "Southwell (AW)",
+      "date": "2026-11-18",
+      "course": "Kempton (AW)",
+      "time": "18:30",
+      "race_time": "2026-11-18T18:30:00+00:00",
+      "race_id": "rac_32304717887",
+      "race_name": "Juddmonte EBF Restricted Maiden Stakes (For Horses In Bands B, C And D) (Rider Restricted Race) (GBB/GBBPlus Race)",
+      "race_type": "Flat",
+      "field_size": 14,
+      "non_runners_excluded": 0,
+      "priced_runners": 0,
+      "full_bookmakers": [],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Lady Margo",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Lady Margo",
+              "rank": 1,
+              "score": 0.64847
+            },
+            {
+              "horse": "Radical Bay",
+              "rank": 2,
+              "score": 0.44589
+            },
+            {
+              "horse": "Gilder Roy",
+              "rank": 3,
+              "score": 0.40841
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": [
+        {
+          "period": "2025_ALREADY_REVIEWED",
+          "roi_pct": -16.548,
+          "races": 83,
+          "priced_bets": 79
+        },
+        {
+          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
+          "roi_pct": -12.36,
+          "races": 48,
+          "priced_bets": 46
+        }
+      ]
+    },
+    {
+      "date": "2026-11-18",
+      "course": "Kempton (AW)",
+      "time": "19:00",
+      "race_time": "2026-11-18T19:00:00+00:00",
+      "race_id": "rac_32304719824",
+      "race_name": "Try Unibet's New VAR Goal Guarantee Handicap Stakes (London Mile Series Qualifier) (Rider Restricted Race)",
+      "race_type": "Flat",
+      "field_size": 14,
+      "non_runners_excluded": 0,
+      "priced_runners": 0,
+      "full_bookmakers": [],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Palladas",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Palladas",
+              "rank": 1,
+              "score": 0.72677
+            },
+            {
+              "horse": "Wise Prince",
+              "rank": 2,
+              "score": 0.66062
+            },
+            {
+              "horse": "Brasil Power",
+              "rank": 3,
+              "score": 0.51571
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": [
+        {
+          "period": "2025_ALREADY_REVIEWED",
+          "roi_pct": -16.548,
+          "races": 83,
+          "priced_bets": 79
+        },
+        {
+          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
+          "roi_pct": -12.36,
+          "races": 48,
+          "priced_bets": 46
+        }
+      ]
+    },
+    {
+      "date": "2026-11-18",
+      "course": "Kempton (AW)",
       "time": "19:30",
-      "race_time": "2026-11-17T19:30:00+00:00",
-      "race_id": "rac_32304663651",
-      "race_name": "All-Weather Championship Is Back Handicap Stakes (Rider Restricted Race) (Div II)",
+      "race_time": "2026-11-18T19:30:00+00:00",
+      "race_id": "rac_32304721761",
+      "race_name": "Unibet Interactive Handicap Stakes (London Stayers' Series Qualifier) (GBBPlus Race)",
       "race_type": "Flat",
-      "field_size": 9,
-      "non_runners_excluded": 1,
+      "field_size": 7,
+      "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
       "preoff_at_generation": true,
       "models": {
         "A": {
-          "status": "PRICE_COMPARED_EXPERIMENTAL",
-          "model_version": "stage16-own-data-temporal-v3-stage25-starters",
-          "leader": "Edmond Halley",
-          "model_probability_available": true,
-          "model_win_pct": 19.23,
-          "calibration_status": "INSUFFICIENT_FUTURE_OUTCOMES",
-          "runners": [
-            {
-              "horse": "Edmond Halley",
-              "horse_id": "hrs_41189694",
-              "probability": 0.192272,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Strong Voice",
-              "horse_id": "hrs_57255681",
-              "probability": 0.162577,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Glorious Kitty",
-              "horse_id": "hrs_41305166",
-              "probability": 0.105937,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Anton Mauve",
-              "horse_id": "hrs_54494265",
-              "probability": 0.10528,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Maldevious",
-              "horse_id": "hrs_43796683",
-              "probability": 0.097185,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Comprador",
-              "horse_id": "hrs_59025372",
-              "probability": 0.093766,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Oh So Perfect",
-              "horse_id": "hrs_54555529",
-              "probability": 0.091725,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "It'sneverjustone",
-              "horse_id": "hrs_41876849",
-              "probability": 0.084624,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Lerwick",
-              "horse_id": "hrs_31550428",
-              "probability": 0.066634,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            }
-          ]
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
         },
         "B": {
           "status": "INCOMPLETE_PROVISIONAL_RANKING",
@@ -2051,117 +1924,31 @@
           "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
-          "status": "PRICE_COMPARED_EXPERIMENTAL",
-          "model_version": "model-c-v2-stage25-verified-starters-2026-11",
-          "leader": "Strong Voice",
-          "model_probability_available": true,
-          "model_win_pct": 15.83,
-          "calibration_status": "NO_APPROVED_FORWARD_CALIBRATION",
-          "runners": [
-            {
-              "horse": "Strong Voice",
-              "horse_id": "hrs_57255681",
-              "probability": 0.158318,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Edmond Halley",
-              "horse_id": "hrs_41189694",
-              "probability": 0.150986,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Anton Mauve",
-              "horse_id": "hrs_54494265",
-              "probability": 0.12253,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Maldevious",
-              "horse_id": "hrs_43796683",
-              "probability": 0.114368,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Glorious Kitty",
-              "horse_id": "hrs_41305166",
-              "probability": 0.099489,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Oh So Perfect",
-              "horse_id": "hrs_54555529",
-              "probability": 0.095128,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Lerwick",
-              "horse_id": "hrs_31550428",
-              "probability": 0.088081,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Comprador",
-              "horse_id": "hrs_59025372",
-              "probability": 0.087093,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "It'sneverjustone",
-              "horse_id": "hrs_41876849",
-              "probability": 0.084008,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            }
-          ]
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
         },
         "D": {
           "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
           "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
-          "leader": "Oh So Perfect",
+          "leader": "Zachary Hickes",
           "model_probability_available": false,
           "leader_price": null,
           "top_three": [
             {
-              "horse": "Oh So Perfect",
+              "horse": "Zachary Hickes",
               "rank": 1,
-              "score": 0.07205
+              "score": -0.01195
             },
             {
-              "horse": "Anton Mauve",
+              "horse": "Environment Amigo",
               "rank": 2,
-              "score": 0.05355
+              "score": -0.04244
             },
             {
-              "horse": "Edmond Halley",
+              "horse": "Squire Danagher",
               "rank": 3,
-              "score": 0.01789
+              "score": -0.06967
             }
           ],
           "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
@@ -2172,195 +1959,28 @@
         }
       },
       "paper_candidates": [],
-      "stage39_context": []
+      "stage39_context": [
+        {
+          "period": "2025_ALREADY_REVIEWED",
+          "roi_pct": -16.548,
+          "races": 83,
+          "priced_bets": 79
+        },
+        {
+          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
+          "roi_pct": -12.36,
+          "races": 48,
+          "priced_bets": 46
+        }
+      ]
     },
     {
-      "date": "2026-11-17",
-      "course": "Southwell (AW)",
+      "date": "2026-11-18",
+      "course": "Kempton (AW)",
       "time": "20:00",
-      "race_time": "2026-11-17T20:00:00+00:00",
-      "race_id": "rac_32304665588",
-      "race_name": "ARC All Weather Bonus Is Back Novice Stakes (Rider Restricted Race) (GBB Race)",
-      "race_type": "Flat",
-      "field_size": 6,
-      "non_runners_excluded": 1,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": true,
-      "models": {
-        "A": {
-          "status": "PRICE_COMPARED_EXPERIMENTAL",
-          "model_version": "stage16-own-data-temporal-v3-stage25-starters",
-          "leader": "Hayate",
-          "model_probability_available": true,
-          "model_win_pct": 43.71,
-          "calibration_status": "INSUFFICIENT_FUTURE_OUTCOMES",
-          "runners": [
-            {
-              "horse": "Hayate",
-              "horse_id": "hrs_17389673770",
-              "probability": 0.437133,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Miss Deeds",
-              "horse_id": "hrs_17394051241",
-              "probability": 0.139794,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Dubai Jimmy",
-              "horse_id": "hrs_17395521871",
-              "probability": 0.124738,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Lehbab Prince",
-              "horse_id": "hrs_64812937",
-              "probability": 0.105981,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Gut Reaction",
-              "horse_id": "hrs_17391507364",
-              "probability": 0.104118,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Blue Cascade",
-              "horse_id": "hrs_17394672869",
-              "probability": 0.088235,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            }
-          ]
-        },
-        "B": {
-          "status": "INCOMPLETE_PROVISIONAL_RANKING",
-          "model_probability_available": false,
-          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
-        },
-        "C": {
-          "status": "PRICE_COMPARED_EXPERIMENTAL",
-          "model_version": "model-c-v2-stage25-verified-starters-2026-11",
-          "leader": "Hayate",
-          "model_probability_available": true,
-          "model_win_pct": 45.18,
-          "calibration_status": "NO_APPROVED_FORWARD_CALIBRATION",
-          "runners": [
-            {
-              "horse": "Hayate",
-              "horse_id": "hrs_17389673770",
-              "probability": 0.451805,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
-            },
-            {
-              "horse": "Miss Deeds",
-              "horse_id": "hrs_17394051241",
-              "probability": 0.136541,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
-            },
-            {
-              "horse": "Dubai Jimmy",
-              "horse_id": "hrs_17395521871",
-              "probability": 0.113136,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
-            },
-            {
-              "horse": "Lehbab Prince",
-              "horse_id": "hrs_64812937",
-              "probability": 0.10935,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
-            },
-            {
-              "horse": "Gut Reaction",
-              "horse_id": "hrs_17391507364",
-              "probability": 0.098099,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
-            },
-            {
-              "horse": "Blue Cascade",
-              "horse_id": "hrs_17394672869",
-              "probability": 0.091069,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
-            }
-          ]
-        },
-        "D": {
-          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
-          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
-          "leader": "Lehbab Prince",
-          "model_probability_available": false,
-          "leader_price": null,
-          "top_three": [
-            {
-              "horse": "Lehbab Prince",
-              "rank": 1,
-              "score": -0.16293
-            },
-            {
-              "horse": "Hayate",
-              "rank": 2,
-              "score": -0.23221
-            },
-            {
-              "horse": "Gut Reaction",
-              "rank": 3,
-              "score": -0.24629
-            }
-          ],
-          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": []
-    },
-    {
-      "date": "2026-11-17",
-      "course": "Southwell (AW)",
-      "time": "20:30",
-      "race_time": "2026-11-17T20:30:00+00:00",
-      "race_id": "rac_32304667525",
-      "race_name": "Midnite A Next Generation Betting App Handicap Stakes (Rider Restricted Race)",
+      "race_time": "2026-11-18T20:00:00+00:00",
+      "race_id": "rac_32304723698",
+      "race_name": "Unibet 3 Uniboosts A Day Handicap Stakes (Rider Restricted Race)",
       "race_type": "Flat",
       "field_size": 13,
       "non_runners_excluded": 1,
@@ -2369,131 +1989,9 @@
       "preoff_at_generation": true,
       "models": {
         "A": {
-          "status": "PRICE_COMPARED_EXPERIMENTAL",
-          "model_version": "stage16-own-data-temporal-v3-stage25-starters",
-          "leader": "Methgal",
-          "model_probability_available": true,
-          "model_win_pct": 19.93,
-          "calibration_status": "INSUFFICIENT_FUTURE_OUTCOMES",
-          "runners": [
-            {
-              "horse": "Methgal",
-              "horse_id": "hrs_39962125",
-              "probability": 0.199258,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Courageous Sioux",
-              "horse_id": "hrs_50434699",
-              "probability": 0.101061,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Aberama Gold",
-              "horse_id": "hrs_18518801",
-              "probability": 0.099607,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Goldwork",
-              "horse_id": "hrs_50433481",
-              "probability": 0.084739,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Perfect Location",
-              "horse_id": "hrs_52709671",
-              "probability": 0.075379,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Ormolulu",
-              "horse_id": "hrs_34775160",
-              "probability": 0.068916,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Numero Vingt",
-              "horse_id": "hrs_56278257",
-              "probability": 0.06336,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Project Wallace",
-              "horse_id": "hrs_53960249",
-              "probability": 0.058754,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Judgment Call",
-              "horse_id": "hrs_24065300",
-              "probability": 0.054246,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Slot",
-              "horse_id": "hrs_56127722",
-              "probability": 0.054219,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Amazonian Dream",
-              "horse_id": "hrs_24065412",
-              "probability": 0.053023,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Invincible Speed",
-              "horse_id": "hrs_35149212",
-              "probability": 0.049618,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Big Cyril",
-              "horse_id": "hrs_41597045",
-              "probability": 0.037819,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            }
-          ]
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
         },
         "B": {
           "status": "INCOMPLETE_PROVISIONAL_RANKING",
@@ -2501,153 +1999,31 @@
           "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
-          "status": "PRICE_COMPARED_EXPERIMENTAL",
-          "model_version": "model-c-v2-stage25-verified-starters-2026-11",
-          "leader": "Methgal",
-          "model_probability_available": true,
-          "model_win_pct": 16.62,
-          "calibration_status": "NO_APPROVED_FORWARD_CALIBRATION",
-          "runners": [
-            {
-              "horse": "Methgal",
-              "horse_id": "hrs_39962125",
-              "probability": 0.166211,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Courageous Sioux",
-              "horse_id": "hrs_50434699",
-              "probability": 0.145999,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Perfect Location",
-              "horse_id": "hrs_52709671",
-              "probability": 0.090805,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Aberama Gold",
-              "horse_id": "hrs_18518801",
-              "probability": 0.088918,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Project Wallace",
-              "horse_id": "hrs_53960249",
-              "probability": 0.074486,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Amazonian Dream",
-              "horse_id": "hrs_24065412",
-              "probability": 0.067152,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Goldwork",
-              "horse_id": "hrs_50433481",
-              "probability": 0.066788,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Ormolulu",
-              "horse_id": "hrs_34775160",
-              "probability": 0.065671,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Slot",
-              "horse_id": "hrs_56127722",
-              "probability": 0.056491,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Numero Vingt",
-              "horse_id": "hrs_56278257",
-              "probability": 0.055151,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Judgment Call",
-              "horse_id": "hrs_24065300",
-              "probability": 0.045617,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Big Cyril",
-              "horse_id": "hrs_41597045",
-              "probability": 0.042153,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            },
-            {
-              "horse": "Invincible Speed",
-              "horse_id": "hrs_35149212",
-              "probability": 0.034557,
-              "price": null,
-              "value": null,
-              "paper_screen_passed": false,
-              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
-            }
-          ]
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
         },
         "D": {
           "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
           "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
-          "leader": "Courageous Sioux",
+          "leader": "Enacting",
           "model_probability_available": false,
           "leader_price": null,
           "top_three": [
             {
-              "horse": "Courageous Sioux",
+              "horse": "Enacting",
               "rank": 1,
-              "score": 0.49128
+              "score": 0.52859
             },
             {
-              "horse": "Methgal",
+              "horse": "I'm Workin On It",
               "rank": 2,
-              "score": 0.38378
+              "score": 0.48318
             },
             {
-              "horse": "Numero Vingt",
+              "horse": "Comic Hero",
               "rank": 3,
-              "score": 0.26683
+              "score": 0.48298
             }
           ],
           "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
@@ -2658,21 +2034,108 @@
         }
       },
       "paper_candidates": [],
-      "stage39_context": []
+      "stage39_context": [
+        {
+          "period": "2025_ALREADY_REVIEWED",
+          "roi_pct": -16.548,
+          "races": 83,
+          "priced_bets": 79
+        },
+        {
+          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
+          "roi_pct": -12.36,
+          "races": 48,
+          "priced_bets": 46
+        }
+      ]
+    },
+    {
+      "date": "2026-11-18",
+      "course": "Kempton (AW)",
+      "time": "20:30",
+      "race_time": "2026-11-18T20:30:00+00:00",
+      "race_id": "rac_32304725635",
+      "race_name": "Unibet More Extra Place Races Handicap Stakes (Rider Restricted Race)",
+      "race_type": "Flat",
+      "field_size": 13,
+      "non_runners_excluded": 0,
+      "priced_runners": 0,
+      "full_bookmakers": [],
+      "preoff_at_generation": true,
+      "models": {
+        "A": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "B": {
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
+        },
+        "C": {
+          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "leader": null,
+          "model_probability_available": false
+        },
+        "D": {
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Crown Of Crowns",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Crown Of Crowns",
+              "rank": 1,
+              "score": 0.71074
+            },
+            {
+              "horse": "Harlington",
+              "rank": 2,
+              "score": 0.45519
+            },
+            {
+              "horse": "Snooker McCrew",
+              "rank": 3,
+              "score": 0.41376
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
+        },
+        "Z": {
+          "status": "NO_CURRENT_RANKING",
+          "model_probability_available": false
+        }
+      },
+      "paper_candidates": [],
+      "stage39_context": [
+        {
+          "period": "2025_ALREADY_REVIEWED",
+          "roi_pct": -16.548,
+          "races": 83,
+          "priced_bets": 79
+        },
+        {
+          "period": "2026_RECORDED_RESULTS_TO_SOURCE_CUTOFF",
+          "roi_pct": -12.36,
+          "races": 48,
+          "priced_bets": 46
+        }
+      ]
     }
   ],
   "coverage": {
-    "A_pending_or_stale": 17,
-    "C_pending_or_stale": 17,
-    "races_assessed": 25,
-    "A_valid_fullfield": 8,
-    "C_valid_fullfield": 8,
-    "D_current_rankings": 7
+    "A_pending_or_stale": 31,
+    "C_pending_or_stale": 31,
+    "D_current_rankings": 26,
+    "races_assessed": 31,
+    "Z_current_rankings": 3
   },
   "new_paper_candidates": 0,
-  "new_forward_forecasts": 9,
+  "new_forward_forecasts": 29,
   "settlements_updated": 0,
-  "forecast_settlements_updated": 30,
+  "forecast_settlements_updated": 24,
   "paper_performance": {
     "A": {
       "settled_priced": 0,
