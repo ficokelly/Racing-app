@@ -30,6 +30,9 @@ RUNNER_FIELDS = (
     "form", "age", "lbs", "draw", "number", "ofr", "headgear",
     "owner", "sex", "last_run", "sire", "dam", "silk_url", "silks",
     "comment", "spotlight", "performance_rating", "speed_rating",
+    "course_wins", "distance_wins", "course_distance_wins", "course_and_distance_wins",
+    "cd_wins", "aw_wins", "turf_wins", "last_handicap_winning_mark",
+    "course_winner", "distance_winner", "course_distance_winner", "cd_winner",
     "runner_status", "status", "is_non_runner", "is_withdrawn",
     "is_reserve", "reserve_pending", "reserve_status", "reserve_number",
 )

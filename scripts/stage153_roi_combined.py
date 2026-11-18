@@ -326,6 +326,9 @@ def build(args):
           'odds_used_to_select':False,
           'warning':'Research only; historical ROI is not a promise. No specialist = no fabricated selection.'}
  args.output.parent.mkdir(parents=True,exist_ok=True)
+ from stage155_evidence_commentary import enrich as _enrich_individual
+ _enrich_individual(payload, cards, args.sources)
+ # Stage155 only changes prose; source-model runners, ranks, scores and picks are preserved.
  args.output.write_text(json.dumps(payload,indent=2,ensure_ascii=False)+'\n')
  print('STAGE153_ASSEMBLED',json.dumps({'day':target,'races':len(races),'counts':dict(counts)}))
  if not counts['ranked'] and not counts['preserved_post_off']:
