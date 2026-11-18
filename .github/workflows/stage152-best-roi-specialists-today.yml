@@ -1,0 +1,157 @@
+name: 'Stage152 - Highest ROI specialist arms daily pre-off Rank 1'
+
+on:
+  workflow_dispatch:
+    inputs:
+      selection_date:
+        description: 'Dublin local date YYYY-MM-DD, blank for today'
+        required: false
+        type: string
+        default: ''
+  schedule:
+    - cron: '14 5 * * *'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage152-specialist-roi-paper
+  cancel-in-progress: false
+
+jobs:
+  rank-one:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 230
+    env:
+      PYTHONUNBUFFERED: '1'
+      PYTHONPATH: '.:scripts'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      OUT: reports/stage152-specialists/paper
+      DB: reports/stage152-specialists/source/stage2/historical_ukie_staging.sqlite
+      REF: reports/stage152-specialists/source/stage4/all_races_with_reference_event_ids.csv
+    steps:
+      - name: Checkout read-only existing models and racecards
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pinned historical research dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check \
+            numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 \
+            scikit-learn==1.6.1 joblib==1.4.2
+
+      - name: Validate target day, original code and historical variant integrity
+        env:
+          ASKED_DATE: ${{ inputs.selection_date }}
+        run: |
+          set -euo pipefail
+          CURRENT="$(TZ=Europe/Dublin date +%F)"
+          TARGET="${ASKED_DATE:-$CURRENT}"
+          if [ "$TARGET" != "$CURRENT" ]; then
+            echo "No backdated/post-race picks: asked=$TARGET actual=$CURRENT" >&2
+            exit 1
+          fi
+          echo "TARGET_DAY=$TARGET" >> "$GITHUB_ENV"
+          python -m py_compile \
+            scripts/stage152_best_roi_specialists_today.py \
+            scripts/stage141_grade_weight_2026.py \
+            scripts/stage142_full_history_core_2026.py \
+            scripts/stage143_frozen_d_specialist_weights_2026.py
+          python scripts/stage152_best_roi_specialists_today.py self-test
+          python scripts/stage141_grade_weight_2026.py self-test
+          python scripts/stage142_full_history_core_2026.py self-test
+          python scripts/stage143_frozen_d_specialist_weights_2026.py self-test
+          test -s reports/stage30/stage30-summary.json
+
+      - name: Refresh racecards from original source in this isolated job
+        env:
+          RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
+          RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -n "$RACING_API_USERNAME" ] && [ -n "$RACING_API_PASSWORD" ]; then
+            python collect-racecards.py
+          else
+            echo 'API credential not available, validating retained racecards snapshot' >&2
+          fi
+          python - <<'PY'
+          import datetime as dt,json
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+          obj=json.loads(Path('data/racecards.json').read_text())
+          stamp=dt.datetime.fromisoformat(obj['collected_at'].replace('Z','+00:00'))
+          age=(dt.datetime.now(dt.timezone.utc)-stamp).total_seconds()/3600.
+          today=dt.datetime.now(ZoneInfo('Europe/Dublin')).date().isoformat()
+          if not 0<=age<=4:raise RuntimeError(f'Cards {age:.2f} hours old; please refresh racecards')
+          if not any(str(x.get('date'))==today for x in obj.get('runners',[])):
+            raise RuntimeError('No declared target-date runners')
+          print('STAGE152_RACECARDS_ASOF',stamp.isoformat(),'AGE_HOURS',round(age,2))
+          PY
+
+      - name: Restore unchanged verified GB/IE history and reference event mapping
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage152-specialists/source/{stage2,stage4} "$OUT"
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage2-historical-staging-database \
+            --dir reports/stage152-specialists/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" \
+            --name stage4-reference-named-events-and-winners \
+            --dir reports/stage152-specialists/source/stage4
+          test -s "$DB" && test -s "$REF"
+
+      - name: Predict with exact Stage141, Stage142 and Stage143D ROI specialist arms
+        run: |
+          set -euo pipefail
+          python -u scripts/stage152_best_roi_specialists_today.py today \
+            --db "$DB" --reference "$REF" --cards data/racecards.json \
+            --date "$TARGET_DAY" --out "$OUT"
+          test -s "$OUT/stage152-strongest-roi-specialists-rank1.csv"
+          test -s "$OUT/stage152-strongest-roi-specialists-audit.json"
+
+      - name: Show verified Rank 1 horses for all four specialist arms
+        if: always()
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import csv,pathlib,json
+          p=pathlib.Path('reports/stage152-specialists/paper')
+          f=p/'stage152-strongest-roi-specialists-rank1.csv'
+          print('# Stage 152 — current-day highest-ROI research specialist predictions')
+          print('Original Stage141, Stage142 and Stage143D recipes; all bets are paper-only.')
+          if not f.is_file():
+              print('No verified prediction file created. Inspect the failing step; never substitute another model.')
+          else:
+              rows=list(csv.DictReader(f.open(encoding='utf-8')))
+              print('| UTC time | Meeting | Race type | Rank 1 horse | Model |')
+              print('|---|---|---|---|---|')
+              for r in rows:
+                  print('|',' | '.join(str(r.get(k,'')).replace('|','/') for k in
+                      ('time_utc','meeting','race_type','horse','model')),'|')
+              a=json.loads((p/'stage152-strongest-roi-specialists-audit.json').read_text())
+              print('Races:',a['unique_races'],'historical form through',a['historical_database_through'])
+              print('Raw scores are not calibrated chances; no present-day betting odds are prediction inputs.')
+          PY
+
+      - name: Preserve full verified results and historical provenance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage152-best-roi-specialists-${{ github.run_id }}
+          path: |
+            reports/stage152-specialists/paper/stage152-strongest-roi-specialists-rank1.csv
+            reports/stage152-specialists/paper/stage152-strongest-roi-specialists-audit.json
+            reports/stage152-specialists/paper/stage143-firstrecorded-debut-audit.json
+          retention-days: 90
+          if-no-files-found: warn
