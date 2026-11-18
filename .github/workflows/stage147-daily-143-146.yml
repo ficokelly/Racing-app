@@ -71,6 +71,7 @@ jobs:
             echo 'Cannot backdate or forecast paper models using today-only declared cards' >&2
             exit 1
           fi
+          export TARGET_DAY="$TARGET"  # available to Python in this same step
           echo "TARGET_DAY=$TARGET" >> "$GITHUB_ENV"
           python -m py_compile scripts/stage147_daily_143_146.py scripts/stage146_full_field_trend_fusion.py scripts/stage141_today_or_weight_paper.py
           python scripts/stage147_daily_143_146.py self-test
