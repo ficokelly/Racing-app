@@ -66,7 +66,8 @@ jobs:
           set -euo pipefail
           export CURRENT_DAY="$(TZ=Europe/Dublin date +%F)"
           TARGET="${ASKED_DAY:-$CURRENT_DAY}"
-          if [ "$TARGET" != "$CURRENT_DAY" ]; then
+          NEXT_DAY="$(TZ=Europe/Dublin date -d tomorrow +%F)"
+          if [ "$TARGET" != "$CURRENT_DAY" ] && [ "$TARGET" != "$NEXT_DAY" ]; then
             echo 'Cannot backdate or forecast paper models using today-only declared cards' >&2
             exit 1
           fi
@@ -77,13 +78,13 @@ jobs:
           test -s data/racecards.json
           test -s scripts/stage143_race_type_specialist_config.json
           python - <<'PY'
-          import json,datetime as dt
+          import json,datetime as dt,os
           from pathlib import Path
           from zoneinfo import ZoneInfo
           j=json.loads(Path('data/racecards.json').read_text())
           stamp=dt.datetime.fromisoformat(j['collected_at'].replace('Z','+00:00'))
           age=(dt.datetime.now(dt.timezone.utc)-stamp.astimezone(dt.timezone.utc)).total_seconds()
-          date=dt.datetime.now(ZoneInfo('Europe/Dublin')).date().isoformat()
+          date=os.environ['TARGET_DAY']
           assert 0<=age<=4*3600, f'Stale cards {age/3600:.2f}h; refresh before scoring'
           assert any(x.get('date')==date for x in j.get('runners',[])), 'No declared races for target date'
           print('STAGE147_CARDS_ASOF',j['collected_at'],'AGE_MIN',round(age/60,1))
@@ -132,7 +133,8 @@ jobs:
         with:
           name: stage147-daily-143-146-${{ github.run_id }}
           path: |
-            reports/stage147-143-146/paper/*.csv
+            reports/stage147-143-146/paper/stage146-today-rank1-rank2.csv
+            reports/stage147-143-146/paper/stage146-today-all-runners.csv
             reports/stage147-143-146/paper/stage146-today-audit.json
           retention-days: 90
           if-no-files-found: warn

@@ -64,7 +64,8 @@ jobs:
           set -euo pipefail
           CURRENT_DAY="$(TZ=Europe/Dublin date +%F)"
           TARGET="${ASKED_DAY:-$CURRENT_DAY}"
-          if [ "$TARGET" != "$CURRENT_DAY" ]; then
+          NEXT_DAY="$(TZ=Europe/Dublin date -d tomorrow +%F)"
+          if [ "$TARGET" != "$CURRENT_DAY" ] && [ "$TARGET" != "$NEXT_DAY" ]; then
             echo "Refusing non-today paper predictions. Requested=$TARGET Dublin=$CURRENT_DAY" >&2
             exit 1
           fi
