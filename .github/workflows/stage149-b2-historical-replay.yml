@@ -1,0 +1,316 @@
+name: "Stage149 - B2 historical replay 2023-2026"
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/stage149-b2-historical-replay.yml"
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage149-b2-research
+  cancel-in-progress: false
+jobs:
+  backtest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PYTHONUNBUFFERED: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      DB: reports/stage149/source/stage2/historical_ukie_staging.sqlite
+      REF: reports/stage149/source/stage4/all_races_with_reference_event_ids.csv
+      OUT: reports/stage149/results
+    steps:
+      - name: Checkout read-only research
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies used by the existing historical reader
+        run: |
+          python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2
+      - name: Prepare Stage149 standalone B2 replay engine
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > scripts/stage149_b2_historical_replay.py <<'PYCODE'
+          #!/usr/bin/env python3
+          """B2 unmodified scoring formula applied to dated historical records.
+
+          WARNING: the raw win-rate input features are reconstructed, not verified
+          identical to Stage16's contemporaneous historical-feature definitions.
+          This is a retrospective prior-calendar-day-only paper simulation, NOT a
+          set of originally committed predictions. No live model files are modified.
+          """
+          import argparse
+          import collections
+          import csv
+          import json
+          import math
+          import pathlib
+          import sys
+
+          sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+          import stage148_daily_ab as B
+          import stage108_model_g2 as G
+          import stage30_gap_aware_abcd as D
+          import stage137_frozen_d_race_type_walkforward as R
+
+          C = collections.Counter
+          FIRST, LAST = '2023-01-01', '2026-11-10'
+
+          def rate(s, key):
+              a = s.get(key)
+              return a[1] / a[0] if a and a[0] else 0.0
+
+          def add(s, key, won):
+              if key:
+                  s[key][0] += 1
+                  s[key][1] += int(won)
+
+          def sp(x):
+              try:
+                  v = float(x)
+                  return v if 1 < v < 10001 else None
+              except (ValueError, TypeError):
+                  return None
+
+          def distance_band(x):
+              try:
+                  v = float(x)
+                  return int(v + .5) if 3 <= v <= 40 else None
+              except (ValueError, TypeError):
+                  return None
+
+          def classify(first, race_name):
+              kind, aw, _ = G.category(dict(race_name=race_name,
+                                            race_type=first[3], surface=first[4],
+                                            course=first[2]))
+              disc = ('NH' if kind in ('hurdle', 'chase', 'nhflat') else
+                      'AW' if kind == 'flat' and aw is True else
+                      'FLAT' if kind == 'flat' and aw is False else 'UNKNOWN')
+              typ = 'NH_FLAT' if kind == 'nhflat' else (kind or 'unknown').upper()
+              name = race_name.lower()
+              subtype = typ + '_' + (
+                  'HANDICAP' if 'handicap' in name else
+                  'MAIDEN' if 'maiden' in name else
+                  'NOVICE' if 'novice' in name else 'OTHER')
+              return disc, typ, subtype
+
+          def replay(database, reference_file, output):
+              output.mkdir(parents=True, exist_ok=True)
+              ref, refaudit = G.load_reference(reference_file,
+                                               first='1988-01-01', last=LAST)
+              trainers = collections.defaultdict(lambda: [0, 0])
+              trainer_course = collections.defaultdict(lambda: [0, 0])
+              horse_course = collections.defaultdict(lambda: [0, 0])
+              horse_distance = collections.defaultdict(lambda: [0, 0])
+              starts = C()
+              pending, last_day, picks = [], None, []
+              audit, universe = C(), C()
+
+              def mature_previous_day():
+                  for horse, trainer, course, distance, winner in pending:
+                      add(trainers, trainer, winner)
+                      add(trainer_course, (trainer, course) if trainer else None, winner)
+                      if horse:
+                          starts[horse] += 1
+                          add(horse_course, (horse, course), winner)
+                          if distance is not None:
+                              add(horse_distance, (horse, distance), winner)
+                  pending.clear()
+
+              for entries in R.read_races(database,
+                                          first='1988-01-01', last=LAST):
+                  day = entries[0][1]
+                  if last_day is not None and day != last_day:
+                      mature_previous_day()
+                  last_day = day
+                  rid = str(entries[0][0])
+                  reference = ref.get(rid)
+                  if not reference:
+                      audit['no_exact_reference'] += 1
+                      continue
+                  source_day, venue, race_type, name, region = reference
+                  if (source_day != day or
+                      D.track(venue) != D.track(entries[0][2]) or
+                      region not in ('GB', 'IRELAND')):
+                      audit['invalid_reference'] += 1
+                      continue
+                  runners = [r for r in entries if D.started(r)]
+                  if len(runners) < 2 or sum(r[12] == 1 for r in runners) != 1:
+                      audit['ineligible_result'] += 1
+                      continue
+                  course, distance = D.track(entries[0][2]), distance_band(entries[0][5])
+                  field = []
+                  for r in runners:
+                      ident = G.identity(dict(horse=r[9], horse_source_id=r[11],
+                                              sire=r[18], dam=r[19]))
+                      trainer = G.norm(r[14])
+                      field.append((r, ident, trainer, r[12] == 1))
+                  if FIRST <= day <= LAST:
+                      universe[day[:4]] += 1
+                      if (any(not ident for r, ident, trainer, won in field) or
+                          len(set(ident for r, ident, trainer, won in field)) != len(field)):
+                          audit['incomplete_or_duplicate_identity_field'] += 1
+                      else:
+                          values = []
+                          for r, ident, trainer, won in field:
+                              features = dict(
+                                  trainer_historical_rate=rate(trainers, trainer),
+                                  trainer_course_historical_rate=rate(trainer_course, (trainer, course)),
+                                  course_prior_wins_rate=rate(horse_course, (ident, course)),
+                                  prior_distance_wins_rate=(rate(horse_distance, (ident, distance))
+                                                            if distance is not None else 0.0),
+                                  prior_starts=starts[ident])
+                              # Import the untouched, committed Stage148 B2 scoring function.
+                              values.append((B.b2_score(features), starts[ident], r, won))
+                          values.sort(key=lambda v: (-v[0], -v[1], G.norm(v[2][9])))
+                          discipline, race_type, subtype = classify(entries[0], name)
+                          for rank, (score, previous_starts, r, won) in enumerate(values[:2], 1):
+                              picks.append(dict(year=day[:4], date=day, race_id=rid,
+                                  course=entries[0][2], region=region, race_name=name,
+                                  discipline=discipline, race_type=race_type, subtype=subtype,
+                                  rank=rank, horse=r[9], b2_score=score,
+                                  prior_starts=previous_starts, winner=int(won),
+                                  sp_decimal=sp(r[20]) or '', research_only=True))
+                          audit['scored_races'] += 1
+                  # Same-day results are NOT used until the next calendar day.
+                  pending.extend((ident, trainer, course, distance, won)
+                                 for r, ident, trainer, won in field)
+
+              if not picks:
+                  raise RuntimeError('No verified B2 historical races; inspect archive')
+              with (output/'stage149-b2-rank1-rank2.csv').open('w', newline='') as f:
+                  writer = csv.DictWriter(f, fieldnames=list(picks[0]))
+                  writer.writeheader()
+                  writer.writerows(picks)
+              stats = []
+              for year in ('2023', '2024', '2025', '2026', 'ALL'):
+                  annual = [x for x in picks if year == 'ALL' or x['year'] == year]
+                  for dimension in ('OVERALL', 'DISCIPLINE', 'RACE_TYPE', 'SUBTYPE'):
+                      categories = (['ALL'] if dimension == 'OVERALL' else
+                                    sorted({x[dimension.lower()] for x in annual}))
+                      for category in categories:
+                          subset = (annual if dimension == 'OVERALL' else
+                                    [x for x in annual if x[dimension.lower()] == category])
+                          for rank in ('1', '2', 'BOTH'):
+                              selected = [x for x in subset if rank == 'BOTH' or str(x['rank']) == rank]
+                              if not selected:
+                                  continue
+                              priced = [x for x in selected if x['sp_decimal'] != '']
+                              returned = sum(float(x['sp_decimal']) for x in priced if x['winner'])
+                              stats.append(dict(period=year, dimension=dimension, group=category,
+                                  rank=rank, selections=len(selected), winners=sum(x['winner'] for x in selected),
+                                  strike_pct=round(100*sum(x['winner'] for x in selected)/len(selected), 2),
+                                  priced_bets=len(priced), priced_winners=sum(x['winner'] for x in priced),
+                                  sp_coverage_pct=round(100*len(priced)/len(selected), 2),
+                                  sp_roi_pct=round(100*(returned/len(priced)-1), 2) if priced else '',
+                                  sp_profit_units=round(returned-len(priced), 2)))
+              with (output/'stage149-b2-breakdowns.csv').open('w', newline='') as f:
+                  writer = csv.DictWriter(f, fieldnames=list(stats[0]))
+                  writer.writeheader()
+                  writer.writerows(stats)
+              report = dict(version='stage149-b2-replay-v1', test_start=FIRST, test_end=LAST,
+                  source_earliest='1988-01-01', source_last='2026-11-10',
+                  unchanged_B2_function='scripts/stage148_daily_ab.py:b2_score',
+                  feature_rates='Reconstructed raw prior win/start rates, NOT proven identical to historical Stage16 feature inputs',
+                  trainer_rate='all prior races', horse_course_rate='exact prior course',
+                  horse_distance_rate='nearest whole furlong on prior dates',
+                  odds_used_in_scoring=False, same_day_or_future_results_used_in_scoring=False,
+                  complete_horse_career_guaranteed=False, retrospective_only=True,
+                  originally_precommitted_historical_selections=False,
+                  universe_by_year=dict(universe), race_audit=dict(audit),
+                  race_reference_audit=refaudit, summary=stats)
+              (output/'stage149-b2-audit.json').write_text(json.dumps(report, indent=2, default=str)+'\n')
+              print('STAGE149_COMPLETE', json.dumps({
+                  'annual': [x for x in stats if x['dimension'] == 'OVERALL' and x['rank'] == '1'],
+                  'discipline': [x for x in stats if x['period'] == 'ALL' and x['dimension'] == 'DISCIPLINE' and x['rank'] == '1'],
+                  'audit': dict(audit)}, default=str), flush=True)
+
+          def selftest():
+              a = dict(trainer_historical_rate=.2, trainer_course_historical_rate=.1,
+                       course_prior_wins_rate=.3, prior_distance_wins_rate=.4, prior_starts=10)
+              expected = round(100*(.28*.2+.20*.1+.23*.3+.29*.4)+3*math.log1p(10)/math.log1p(20), 6)
+              assert B.b2_score(a) == expected
+              assert rate({'horse':[4,1]}, 'horse') == .25
+              assert distance_band(10.6) == 11 and sp(1) is None
+              print('STAGE149_SELFTEST_OK')
+
+          if __name__ == '__main__':
+              ap = argparse.ArgumentParser()
+              ap.add_argument('command', choices=('selftest', 'backtest'))
+              ap.add_argument('--db', type=pathlib.Path)
+              ap.add_argument('--reference', type=pathlib.Path)
+              ap.add_argument('--out', type=pathlib.Path)
+              args = ap.parse_args()
+              if args.command == 'selftest':
+                  selftest()
+              else:
+                  if not args.db or not args.reference or not args.out:
+                      ap.error('backtest needs --db --reference --out')
+                  replay(args.db, args.reference, args.out)
+          PYCODE
+          python -m py_compile scripts/stage149_b2_historical_replay.py
+          python scripts/stage149_b2_historical_replay.py selftest
+      - name: Restore dated source races and exact race identities
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage149/source/{stage2,stage4} "$OUT"
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage2-historical-staging-database --dir reports/stage149/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage4-reference-named-events-and-winners --dir reports/stage149/source/stage4
+          test -s "$DB" && test -s "$REF"
+          python - <<'CHECK'
+          import sqlite3,os
+          c=sqlite3.connect('file:'+os.path.abspath(os.environ['DB'])+'?mode=ro',uri=True)
+          assert c.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+          start,end=c.execute('select min(race_date), max(race_date) from historical_races').fetchone()
+          assert start <= '1988-12-31' and end >= '2026-11-10',(start,end)
+          print('VERIFIED_ARCHIVED_HISTORY',start,end,flush=True)
+          CHECK
+      - name: Replay unchanged B2 formula with previous-day historical form only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/stage149_b2_historical_replay.py backtest --db "$DB" --reference "$REF" --out "$OUT"
+          test -s "$OUT/stage149-b2-audit.json"
+          test -s "$OUT/stage149-b2-breakdowns.csv"
+          test -s "$OUT/stage149-b2-rank1-rank2.csv"
+      - name: Publish annual and discipline comparison summary
+        if: always()
+        shell: bash
+        run: |
+          python - <<'SUMMARY' >> "$GITHUB_STEP_SUMMARY"
+          import json,pathlib,os
+          p=pathlib.Path(os.environ['OUT'])/'stage149-b2-audit.json'
+          print('# B2 historical replay — 2023 to 10 November 2026')
+          if not p.exists():
+              print('The replay did not complete. Inspect the failed step; no return figures are claimed.')
+              raise SystemExit()
+          d=json.loads(p.read_text())
+          print('Same scoring formula as Stage148. Prior-only reconstructed form rates are not yet proven identical to original Stage16 features. Historical SP settlement, research only.')
+          print('| Period | Discipline | Rank | Selections | Winners | Strike rate % | SP ROI % | SP coverage % |')
+          print('|---|---|---|---:|---:|---:|---:|---:|')
+          for x in d['summary']:
+              if x['dimension']=='OVERALL' or (x['dimension']=='DISCIPLINE' and x['rank']=='1'):
+                  print('|',x['period'],'|',x['group'],'|',x['rank'],'|',x['selections'],'|',x['winners'],'|',x['strike_pct'],'|',x['sp_roi_pct'],'|',x['sp_coverage_pct'],'|')
+          print('Rank 1 and 2 selections, racing subtype results and data coverage evidence are in the uploaded artifact.')
+          SUMMARY
+      - name: Upload all per-race selections, SP performance and audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage149-b2-historical-results-${{ github.run_id }}
+          path: |
+            reports/stage149/results/*.csv
+            reports/stage149/results/*.json
+          retention-days: 90
+          if-no-files-found: warn
