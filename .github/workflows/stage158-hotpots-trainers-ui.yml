@@ -145,8 +145,8 @@ jobs:
           
           # 3) Expand rank 1/2 horses in-place using the same source facts as Racecards,
           # and offer the same full racecard overlay with this horse expanded and scrolled into view.
-          a=s.indexOf(' function pairHTML(race){')
-          b=s.indexOf(' function openRaceButton(race){',a)
+          a=s.find(' function pairHTML(race){')
+          b=s.find(' function openRaceButton(race){',a)
           if a<0 or b<a: raise RuntimeError('pairHTML block not found')
           pair=s[a:b]
           def pair_once(old,new,label):
