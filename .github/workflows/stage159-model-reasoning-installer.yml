@@ -1,0 +1,564 @@
+name: 'Stage159 — Explain actual model inputs in Hot Pots commentary'
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: stage159-explainability-install
+  cancel-in-progress: false
+
+jobs:
+  install:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout current app (including Stage 158)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install independent input explanations (no model retraining or selection edits)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p scripts
+          cat > scripts/stage159_explainability.py <<'STAGE159_STAGE159_EXPLAINABILITY'
+          """Explain pre-off frozen ranking inputs without changing predictions or using results/odds.
+          
+          A signed group measure is NOT a causal explanation of the underlying historical process.
+          For tree learners it is a controlled field-median substitution sensitivity; groups
+          can interact and measures are not additive. For linear logistic models it is the
+          exact additive log-odds contribution relative to the field mean. For eight-pillar
+          linear scores it is the exact weighted contribution relative to the field mean.
+          """
+          from __future__ import annotations
+          import math
+          import re
+          import warnings
+          import numpy as np
+          
+          PILLARS=('Ability','Trainer','Jockey','Course','Draw','Distance','Ground','Jumping')
+          GROUPS={
+           'ability and HPR':('Ability',), 'trainer history':('Trainer',),
+           'jockey history':('Jockey',), 'course record':('Course',),
+           'draw record':('Draw',), 'distance record':('Distance',),
+           'ground record':('Ground',), 'jumping record':('Jumping',),
+           'eight-pillar historical rating':('frozen_d_score',),
+           'recent form and consistency':('horse_form_quality3','horse_form_trend','horse_runs','last_run_days','same_code_form3','form_quality_confident'),
+           'beaten distances and race comments':('horse_beaten3','horse_beaten_per_mile3','horse_comment_phrase3','horse_comment_nlp3','horse_nlp_coverage','horse_jumping_comment3','horse_interference3'),
+           'past race class and opposition':('past_grade_strength3','past_known_tier_fraction','past_opposition_median3','past_vs_current_tier_delta','prior_rivals_nextout_quality3','prior_rivals_nextout_winrate3','prior_rivals_nextout_count3','prior_rivals_nextout_coverage3'),
+           'official rating and carried weight':('official_rating','weight_lbs','relative_official_rating','relative_weight_lbs'),
+           'race experience and conditions':('current_tier_strength','current_tier_known','current_opposition_median','current_opposition_known','current_race_experience_stage','current_handicap','current_gr1','current_gr2','current_gr3','field_size','maiden_to_handicap','novice_to_handicap','beginner_to_handicap','last3_maiden_fraction','last3_novice_fraction','nlp_model_trained_comments'),
+          }
+          
+          
+          def group_for_name(name: str):
+              n=str(name or '').strip(); lower=n.casefold()
+              for label,features in GROUPS.items():
+                  if n in features: return label
+              if lower in {p.casefold() for p in PILLARS}:return lower+' history'
+              # G5 and historical-trend fusion input names differ from the frozen 50-feature model.
+              if any(x in lower for x in ('rival','nextout','network','graph','opposition')):return 'quality of previous rivals'
+              if any(x in lower for x in ('trainer','stable')):return 'trainer history'
+              if any(x in lower for x in ('jockey','rider')):return 'jockey history'
+              if any(x in lower for x in ('course','track')):return 'course record'
+              if 'draw' in lower or 'stall' in lower:return 'draw record'
+              if any(x in lower for x in ('distance','furlong','trip')):return 'distance record'
+              if any(x in lower for x in ('ground','going')):return 'ground record'
+              if any(x in lower for x in ('jump','hurdle','chase')):return 'jumping record'
+              if any(x in lower for x in ('official','rating','weight','handicap','or_','_or')):return 'official rating and carried weight'
+              if any(x in lower for x in ('trend','form','run','finish','beaten','recent','comment')):return 'recent form and consistency'
+              if any(x in lower for x in ('hpr','ability','speed','class','grade','tier','strength')):return 'ability and race-class history'
+              if any(x in lower for x in ('experience','debut','sire','dam','breed','race_type')):return 'experience and breeding'
+              return 'other model inputs'
+          
+          
+          def _feature_groups(names):
+              result={}
+              for i,name in enumerate(names):result.setdefault(group_for_name(name),[]).append(i)
+              # Opaque miscellaneous variables do not warrant a specific causal story.
+              result.pop('other model inputs',None)
+              return result
+          
+          
+          def _pack(deltas,method,units,limit=4):
+              good=sorted(((label,float(value)) for label,value in deltas.items()
+                           if math.isfinite(float(value)) and float(value)>1e-5),key=lambda z:-z[1])[:limit]
+              bad=sorted(((label,float(value)) for label,value in deltas.items()
+                          if math.isfinite(float(value)) and float(value)<-1e-5),key=lambda z:z[1])[:2]
+              return {'method':method,'units':units,'positive':[[name,round(val,5)] for name,val in good],
+                      'negative':[[name,round(val,5)] for name,val in bad],
+                      'all_groups_tested':len(deltas)}
+          
+          
+          def forest_sensitivity(x,raw_scores,estimator,names):
+              """Frozen-estimator sensitivity to replacing one group with field median.
+          
+              This is a local counterfactual sensitivity, not feature SHAP, not a
+              decomposition of the score, and it must not be called a causal attribution.
+              """
+              x=np.asarray(x,dtype=float)
+              scores=np.asarray(raw_scores,dtype=float)
+              if x.ndim!=2 or len(scores)!=len(x) or len(names)!=x.shape[1]:
+                  raise ValueError('Stage159 sensitivity requires complete aligned pre-off fields')
+              with warnings.catch_warnings():
+                  warnings.simplefilter('ignore',RuntimeWarning)
+                  med=np.nanmedian(x,axis=0)
+              deltas=[{} for _ in range(len(x))]
+              for label,ids in _feature_groups(names).items():
+                  valid=[i for i in ids if math.isfinite(float(med[i]))]
+                  if not valid:continue
+                  changed=x.copy();changed[:,valid]=med[valid]
+                  alternate=estimator.predict_proba(changed)[:,1]
+                  if len(alternate)!=len(scores) or not np.all(np.isfinite(alternate)):
+                      raise RuntimeError('Model sensitivity returned invalid outputs')
+                  for i in range(len(x)):
+                      deltas[i][label]=scores[i]-alternate[i]
+              return [_pack(d,'tree_median_sensitivity','raw model score') for d in deltas]
+          
+          
+          def logistic_contributions(x,scaler,estimator,names):
+              """Exact additive logistic contributions to log-odds vs race-field mean."""
+              arr=np.asarray(x,dtype=float)
+              if arr.ndim!=2 or arr.shape[1]!=len(names):raise ValueError('Unaligned logistic feature matrix')
+              if not np.all(np.isfinite(arr)):raise ValueError('Nonfinite logistic input')
+              coef=np.asarray(estimator.coef_[0],dtype=float)
+              scale=np.asarray(scaler.scale_,dtype=float)
+              if len(coef)!=len(names) or len(scale)!=len(names):raise ValueError('Logistic coefficient count mismatch')
+              contribution=(arr-np.mean(arr,axis=0))*(coef/scale)
+              groups=_feature_groups(names)
+              return [_pack({label:float(np.sum(contribution[i,ids])) for label,ids in groups.items()},
+                            'exact_logistic_logodds','log-odds') for i in range(len(arr))]
+          
+          
+          def weighted_pillar_contributions(pillars,weights,names=PILLARS):
+              """Exact additive weighted eight-pillar score contributions vs field mean."""
+              x=np.asarray(pillars,dtype=float);w=np.asarray(weights,dtype=float)
+              if x.ndim!=2 or x.shape[1]!=8 or w.shape!=(8,) or not np.all(np.isfinite(x)):
+                  raise ValueError('Pillar contribution input invalid')
+              parts=(x-np.mean(x,axis=0))*w
+              return [_pack({str(names[k]).lower()+' pillar':float(parts[i,k]) for k in range(8)},
+                            'exact_eight_pillar_additive','weighted score') for i in range(len(x))]
+          
+          
+          
+          def _safe(method, fn, n):
+              try:
+                  return fn()
+              except Exception as exc:
+                  import sys
+                  print('STAGE159_EXPLANATION_WITHHELD',method,type(exc).__name__,str(exc)[:250],file=sys.stderr,flush=True)
+                  return [{'method':'unattributed_fallback','units':'none','positive':[],
+                           'negative':[],'all_groups_tested':0} for _ in range(n)]
+          
+          
+          def safe_forest(x,raw_scores,estimator,names):
+              return _safe('nonlinear_group_sensitivity',lambda:forest_sensitivity(x,raw_scores,estimator,names),len(x))
+          
+          
+          def safe_logistic(x,scaler,estimator,names):
+              return _safe('exact_logistic',lambda:logistic_contributions(x,scaler,estimator,names),len(x))
+          
+          
+          def safe_pillars(x,weights):
+              return _safe('exact_weighted_eight_pillars',lambda:weighted_pillar_contributions(x,weights),len(x))
+          
+          
+          def self_test():
+              class Stub:
+                  def predict_proba(self,x):
+                      a=np.asarray(x,dtype=float)[:,0];p=1/(1+np.exp(-a))
+                      return np.column_stack([1-p,p])
+              x=np.array([[2.,.1],[1.,.2],[0.,.3]])
+              p=Stub().predict_proba(x)[:,1]
+              out=forest_sensitivity(x,p,Stub(),['Ability','Trainer'])
+              assert out[0]['positive'][0][0]=='ability and HPR' and out[0]['method']=='tree_median_sensitivity'
+              class L:coef_=np.array([[2.,-1.]])
+              class Scaler:scale_=np.array([1.,2.])
+              lin=logistic_contributions(x,Scaler(),L(),['Ability','Trainer'])
+              assert lin[0]['method']=='exact_logistic_logodds' and lin[0]['positive'][0][0]=='ability and HPR'
+              weighted=weighted_pillar_contributions(np.stack([np.ones(8),np.zeros(8)]),np.ones(8)/8)
+              assert weighted[0]['method']=='exact_eight_pillar_additive'
+              assert np.allclose(np.sum((np.stack([np.ones(8),np.zeros(8)])-0.5)*np.ones(8)/8,axis=1),[.5,-.5])
+              return True
+          
+          if __name__=='__main__':
+              self_test()
+              print('Stage159 explainability synthetic checks passed')
+          STAGE159_STAGE159_EXPLAINABILITY
+          cat > scripts/stage159_narrative.py <<'STAGE159_STAGE159_NARRATIVE'
+          """Stage159: truthful driver-led prose for frozen daily specialist rankings.
+          
+          Only source-run input-group impacts recorded at scoring time can be described as
+          model drivers. Racecard observations may be supporting context, NEVER asserted to
+          be the reason for a model ranking without driver evidence. No odds/results used.
+          """
+          from __future__ import annotations
+          import collections
+          import math
+          import re
+          
+          
+          METHODS={
+           'tree_median_sensitivity': 'For this non-linear model, each input group was replaced with a neutral value from this race to check how its score responds. These sensitivity checks are not causal or additive.',
+           'exact_logistic_logodds': 'These are exact fitted-model log-odds contributions relative to the average runner in this race; the model can also include interaction terms.',
+           'exact_eight_pillar_additive': 'These are the exact weighted contributions of the eight original racing pillars, measured against the average runner in this race.',
+          }
+          
+          
+          def fmt(v):
+              try:
+                  n=float(v)
+                  return f'{n:.3f}' if math.isfinite(n) else 'unavailable'
+              except (TypeError,ValueError):return 'unavailable'
+          
+          
+          def join(items):
+              if not items:return ''
+              if len(items)==1:return items[0]
+              if len(items)==2:return items[0]+' and '+items[1]
+              return ', '.join(items[:-1])+', and '+items[-1]
+          
+          
+          def pretty_group(label):
+              return str(label).replace('_',' ').lower()
+          
+          
+          def parse_drivers(horse):
+              data=horse.get('model_drivers')
+              if not isinstance(data,dict) or data.get('method') not in METHODS:return None
+              def pairs(key):
+                  out=[]
+                  for item in data.get(key,[])[:6]:
+                      if not isinstance(item,list) or len(item)!=2:continue
+                      try:
+                          amount=float(item[1]);name=pretty_group(item[0])
+                          if math.isfinite(amount) and name and abs(amount)>1e-5:out.append((name,amount))
+                      except (TypeError,ValueError):pass
+                  return out
+              return {'method':data['method'],'positive':pairs('positive'),'negative':pairs('negative')}
+          
+          
+          def names(parts,limit=3):return join([s for s,_ in parts[:limit]])
+          
+          
+          def score_text(h):return fmt(h.get('research_score'))
+          
+          
+          def supportive(facts,limit=2):
+              # Facts derived from racecards, *not* claimed to drive the specialist.
+              parts=[v.strip() for v in facts if isinstance(v,str) and len(v.strip())>4]
+              return join(parts[:limit])
+          
+          
+          def form_evidence(c):
+              raw=c.get('form') or c.get('recent_form') or c.get('form_figures') or ''
+              if isinstance(raw,list):raw=''.join(str(x) for x in raw)
+              digits=re.findall(r'[1-9FUP0]',str(raw).upper())
+              if not digits:return ''
+              tail=digits[-4:]
+              if tail[-1]=='1':return 'a victory on the most recent form figure'
+              if tail[-1]=='2':return 'a second-place finish last time'
+              if tail[-1]=='3':return 'a third-place finish last time'
+              if tail[-1] in ('F','U','P'):return 'a non-completion on the latest recorded outing'
+              wins=tail.count('1')
+              return f'{wins} win'+('s' if wins!=1 else '')+f' in the last {len(tail)} listed form figures' if wins else ''
+          
+          
+          def factual_context(c):
+              evidence=[]
+              form=form_evidence(c)
+              if form:evidence.append(form)
+              try:
+                  rating=float(c.get('ofr') or c.get('official_rating'))
+                  if math.isfinite(rating):evidence.append(f'an official rating of {rating:g}')
+              except (TypeError,ValueError):pass
+              try:
+                  last=int(c.get('days_since_last_run') or c.get('last_run'))
+                  if last>60:evidence.append(f'{last} days since its last run')
+              except (TypeError,ValueError):pass
+              return evidence
+          
+          
+          def horse_sentence(h,leader,field_size,third,card):
+              name=str(h['horse']);rank=int(h.get('rank') or 0)
+              data=parse_drivers(h)
+              prefix=f'{name} is ranked #{rank} of {field_size} by the selected specialist (model rating {score_text(h)}).'
+              if rank==1 and third:
+                  prefix=f'{name} leads this field with a model rating of {score_text(h)}.'
+              if rank==2:prefix=f'{name} is second with a model rating of {score_text(h)}, behind {leader["horse"]} ({score_text(leader)}).'
+              if data:
+                  pos=data['positive'];neg=data['negative']
+                  bits=[prefix]
+                  if pos:
+                      if data['method']=='tree_median_sensitivity':bits.append(f'The biggest score-raising sensitivities are {names(pos)} when those inputs are compared with a field-median replacement.')
+                      elif data['method']=='exact_eight_pillar_additive':bits.append(f'The strongest positive weighted pillars relative to the field are {names(pos)}.')
+                      else:bits.append(f'The strongest positive fitted-model contributions relative to this field are {names(pos)}.')
+                  else:bits.append('No single logged input group shows a substantial positive advantage over the field reference, so the ranking cannot be assigned to one verified factor.')
+                  if neg:bits.append(f'Weaker factors within the same model comparison include {names(neg,2)}.')
+                  if rank>=3:bits.append(f'The combined rating still falls below {leader["horse"]}, even where individual inputs look favourable.')
+                  if rank in (1,2):
+                      factual=supportive(factual_context(card),2)
+                      if factual:bits.append(f'Separately, the racecard records {factual}; those facts are not necessarily the features responsible for the model difference.')
+                  return ' '.join(bits)
+              # A published rank with no feature impacts is not a licence to invent a cause.
+              facts=supportive(factual_context(card),2)
+              return (prefix+(' The available racecard also shows '+facts+'.' if facts else '')+
+                      ' Feature-level model impacts were not saved for this specialist run, so an exact reason for its rank cannot yet be verified.')
+          
+          
+          def race_sentence(race,ranked):
+              first,second=ranked[:2]
+              one=first['horse'];two=second['horse'];third=ranked[2] if len(ranked)>2 else None
+              group=str(race.get('race_type') or 'race').replace('_',' ').lower()
+              intro=(f'{race.get("nap_nb")} — ' if race.get('nap_nb') else '')+(f'The {group} specialist puts {one} first (rating {score_text(first)}), '
+                     f'followed by {two} ({score_text(second)})'+
+                     (f' and {third["horse"]} ({score_text(third)})' if third else '')+'.')
+              d1=parse_drivers(first);d2=parse_drivers(second)
+              if d1 and d2:
+                  a,b=d1['positive'],d2['positive']
+                  bits=[intro]
+                  if a:bits.append(f'The leading model inputs supporting {one} are {names(a,3)}.')
+                  if b:bits.append(f'{two} earns its place chiefly through {names(b,3)}.')
+                  shared={name for name,_ in a}&{name for name,_ in b}
+                  if shared and len(shared)<len(a)+len(b):
+                      bits.append('Both horses have some positive signals in common, but their overall combination and strength differ.')
+                  if third:
+                      bits.append(f'The next-best score belongs to {third["horse"]}; the model still rates both leaders higher on its full set of inputs.')
+                  bits.append(METHODS[d1['method']])
+                  return ' '.join(bits)
+              return (intro+' The published model output confirms their order but does not yet contain '
+                      'complete feature-level impacts for both leaders. Racecard trends alone cannot establish why '
+                      'the trained model preferred these two over the field.')
+          
+          
+          def upgrade(feed,cards):
+              # Check all published selections/scores before and after this prose-only pass.
+              snapshot=lambda:[(r.get('date'),r.get('course'),r.get('time'),
+                                r.get('selection',{}).get('horse') if isinstance(r.get('selection'),dict) else None,
+                                [(h.get('horse'),h.get('rank'),h.get('research_score')) for h in r.get('runners',[])])
+                               for r in feed.get('races',[])]
+              before=snapshot()
+              card_map={}
+              for c in cards.get('runners',[]):
+                  if not isinstance(c,dict):continue
+                  key=(str(c.get('date') or '')[:10],clean(c.get('course')),clock(c.get('race_time')),clean(c.get('horse')))
+                  card_map[key]=c
+              audited=collections.Counter()
+              for race in feed.get('races',[]):
+                  if not race.get('selection') or len(race.get('runners',[]))<2:continue
+                  peers=sorted(race['runners'],key=lambda h:int(h.get('rank') or 999))
+                  lead=peers[0];third=peers[2] if len(peers)>2 else None
+                  for h in peers:
+                      key=(str(race.get('date') or '')[:10],clean(race.get('course')),str(race.get('time') or '')[:5],clean(h.get('horse')))
+                      h['commentary']=horse_sentence(h,lead,len(peers),third,card_map.get(key,{}))
+                      if h is lead and race.get('nap_nb'):h['commentary']=str(race['nap_nb'])+' — '+h['commentary']
+                      h['commentary_method']=parse_drivers(h)['method'] if parse_drivers(h) else 'unattributed_fallback'
+                      audited['drivers' if parse_drivers(h) else 'unattributed']+=1
+                  race['commentary']=race_sentence(race,peers)
+                  race['commentary_status']='stage159-input-attribution-v1'
+                  audited['races']+=1
+              assert before==snapshot(),'Stage159 prose modified an existing model rank, score or selection'
+              feed['stage159_commentary_audit']={'version':'input-attribution-v1',**dict(audited),
+                                                'commentary_never_changes_selection':True,
+                                                'nonlinear_sensitivity_is_not_causation':True}
+              return dict(audited)
+          
+          
+          def clean(v):return ''.join(x for x in str(v or '').lower() if x.isalnum())
+          def clock(v):
+              s=str(v or '')
+              if 'T' in s:s=s.split('T',1)[1]
+              return s[:5]
+          
+          
+          def self_test():
+              rows=[{'horse':'A','rank':1,'research_score':0.7,'model_drivers':{'method':'tree_median_sensitivity','positive':[['recent form and consistency',0.04]],'negative':[['draw record',-0.01]]}},
+                    {'horse':'B','rank':2,'research_score':0.5,'model_drivers':{'method':'tree_median_sensitivity','positive':[['trainer history',0.03]],'negative':[]}},
+                    {'horse':'C','rank':3,'research_score':0.3}]
+              data={'races':[{'date':'2026-11-19','course':'Thurles','time':'12:08','race_type':'beginners chase','selection':{'horse':'A'},'runners':rows}]}
+              upgrade(data,{'runners':[]})
+              assert 'recent form' in data['races'][0]['commentary']
+              assert 'trainer history' in data['races'][0]['commentary']
+              assert data['races'][0]['runners'][0]['rank']==1
+              return True
+          
+          if __name__=='__main__':
+              self_test();print('Stage159 commentary synthetic checks passed')
+          STAGE159_STAGE159_NARRATIVE
+          cat > scripts/stage159_patch.py <<'STAGE159_STAGE159_PATCH'
+          """Stage159 installer patch (idempotent, fail-closed, no change to frozen predictors)."""
+          from __future__ import annotations
+          import pathlib
+          import re
+          
+          ROOT=pathlib.Path('.')
+          SCRIPT=ROOT/'scripts'
+          MARK='STAGE159_MODEL_INPUT_DRIVERS_V1'
+          FILES=('stage141_today_or_weight_paper.py','stage151_d142_core_form_or_weight_today.py',
+                 'stage152_best_roi_specialists_today.py','stage147_daily_143_146.py',
+                 'stage128_g5_today_paper.py','stage153_roi_combined.py')
+          
+          
+          def change(s,old,new,label,expect=1):
+              got=s.count(old)
+              if got!=expect:raise RuntimeError(f'{label}: expected {expect} anchors, got {got}. No changes are written.')
+              return s.replace(old,new)
+          
+          
+          def add_import(s):
+              return change(s,'import numpy as np','import numpy as np\nimport stage159_explainability as E', 'explainability import')
+          
+          
+          def stage141(s):
+              s=add_import(s)
+              s=change(s,"        prob,bank=S.predict_bank(banks,H.hpr_ability_137(M.copy_race(r,weights=True,official=True)))", """        stage159_inputs=H.hpr_ability_137(M.copy_race(r,weights=True,official=True))
+                  prob,bank=S.predict_bank(banks,stage159_inputs)
+                  stage159_drivers=E.safe_forest(stage159_inputs['xf'],prob,banks[bank],S.FEATURES)""",'stage141 original predictions')
+              s=change(s,"               'bank':bank,'decision_utc':utcnow().isoformat(),'odds_used':False,'result_known':False}",
+                 "               'bank':bank,'driver_json':json.dumps(stage159_drivers[ix],separators=(',',':')),\n               'decision_utc':utcnow().isoformat(),'odds_used':False,'result_known':False}",'stage141 preoff provenance')
+              return s
+          
+          
+          def stage151(s):
+              s=add_import(s)
+              s=change(s,"        scores, bank = S.predict_bank(banks, H.hpr_ability_137(model_race))", """        stage159_inputs=H.hpr_ability_137(model_race)
+                  scores, bank = S.predict_bank(banks, stage159_inputs)
+                  stage159_drivers=E.safe_forest(stage159_inputs['xf'],scores,banks[bank],S.FEATURES)""",'stage151 original predictions')
+              s=change(s,"                'raw_score_not_calibrated_win_pct': round(float(scores[idx]), 6),",
+                    "                'raw_score_not_calibrated_win_pct': round(float(scores[idx]), 6),\n                'driver_json': json.dumps(stage159_drivers[idx],separators=(',',':')),",'stage151 driver field')
+              return s
+          
+          
+          def stage152(s):
+              s=add_import(s)
+              s=change(s,"            scores,branch=S.predict_bank(bank,H.hpr_ability_137(inputs))", """            stage159_inputs=H.hpr_ability_137(inputs)
+                      scores,branch=S.predict_bank(bank,stage159_inputs)
+                      stage159_drivers=E.safe_forest(stage159_inputs['xf'],scores,bank[branch],S.FEATURES)""",'stage152 ML scoring')
+              first=s.index('        for name,inputs,bank in variants:')
+              second=s.index("        name=P.W_G+'__ROI'",first)
+              before=s[first:second]
+              needle="                    'field_size':len(r['horse']),'prediction_asof':L.utcnow().isoformat(),\n                    'odds_used_for_current_prediction':False})"
+              after=change(before,needle,
+                "                    'field_size':len(r['horse']),'prediction_asof':L.utcnow().isoformat(),\n                    'driver_json':json.dumps(stage159_drivers[int(idx)],separators=(',',':')),\n                    'odds_used_for_current_prediction':False})",'stage152 ML runner CSV')
+              s=s[:first]+after+s[second:]
+              s=change(s,"        scores=r['scores'][P.W_G]@weights", """        scores=r['scores'][P.W_G]@weights
+                  stage159_pillars=E.safe_pillars(r['scores'][P.W_G],weights)""",'stage152 exact additive scoring')
+              first=s.index("        name=P.W_G+'__ROI'")
+              second=s.index('    if not rank1:',first)
+              before=s[first:second]
+              needle2="                'field_size':len(r['horse']),'prediction_asof':L.utcnow().isoformat(),\n                'odds_used_for_current_prediction':False})"
+              after=change(before,needle2,
+                "                'field_size':len(r['horse']),'prediction_asof':L.utcnow().isoformat(),\n                'driver_json':json.dumps(stage159_pillars[int(idx)],separators=(',',':')),\n                'odds_used_for_current_prediction':False})",'stage152 additive runner CSV')
+              s=s[:first]+after+s[second:]
+              return s
+          
+          
+          def stage147(s):
+              s=add_import(s)
+              s=change(s,"        predictions=F.predict(live,routing,config,bank,nonlinear=nonlinear,with_trend=with_trend)","""        predictions=F.predict(live,routing,config,bank,nonlinear=nonlinear,with_trend=with_trend)
+                  # The family-specific logistic model is linear in its scaled input features.
+                  # These are exact within-race log-odds contributions, not guessed causes.
+                  stage159_X,_,stage159_meta,_,stage159_names=F.fused_matrix(live,routing,config,nonlinear=nonlinear,with_trend=with_trend)
+                  stage159_lookup={(str(rid),int(ix)):k for k,(rid,ix) in enumerate(stage159_meta)}
+                  stage159_drivers={}
+                  for stage159_race in live:
+                      stage159_rid=str(stage159_race['race_id'])
+                      stage159_indices=[stage159_lookup[(stage159_rid,k)] for k in range(len(stage159_race['horse']))]
+                      stage159_family=routing[stage159_rid]['family']
+                      stage159_scaler,stage159_clf=bank.get(stage159_family,bank['__GLOBAL__'])
+                      stage159_drivers[stage159_rid]=E.safe_logistic(stage159_X[stage159_indices],stage159_scaler,stage159_clf,stage159_names)""",'stage147 logistic predictions')
+              s=change(s,"                    'trend_horse_score':round(float(race['trend_features'][k][0]),5) if with_trend else '',",
+                    "                    'trend_horse_score':round(float(race['trend_features'][k][0]),5) if with_trend else '',\n                    'driver_json':json.dumps(stage159_drivers[rid][k],separators=(',',':')),",'stage147 runner CSV')
+              return s
+          
+          
+          def stage128(s):
+              s=add_import(s)
+              s=change(s,"        p['raw_probability']=model['estimator'].predict_proba(x)[:,1]", """        p['raw_probability']=model['estimator'].predict_proba(x)[:,1]
+                  # Record input sensitivity BEFORE normalized race scores/reordering.
+                  stage159_items=['']*len(p)
+                  for stage159_rid,stage159_positions in p.groupby('race_id',sort=False).indices.items():
+                      stage159_ix=np.asarray(stage159_positions,dtype=int)
+                      stage159_mat=x.iloc[stage159_ix].to_numpy(dtype=float)
+                      stage159_scores=p.iloc[stage159_ix]['raw_probability'].to_numpy(dtype=float)
+                      stage159_impacts=E.safe_forest(stage159_mat,stage159_scores,model['estimator'],cols)
+                      for stage159_pos,stage159_impact in zip(stage159_ix,stage159_impacts):
+                          stage159_items[int(stage159_pos)]=json.dumps(stage159_impact,separators=(',',':'))
+                  p['driver_json']=stage159_items""",'stage128 G5 ranking input')
+              return s
+          
+          
+          def stage153(s):
+              s=change(s,"      'source_model':model,'trainer':c.get('trainer'),'jockey':c.get('jockey'),",
+                "      'source_model':model,'trainer':c.get('trainer'),'jockey':c.get('jockey'),\n      'model_drivers':json.loads(pred['driver_json']) if pred.get('driver_json') else None,",'stage153 preserve frozen preoff evidence')
+              s=change(s," _enrich_individual(payload, cards, args.sources)\n # Stage155 only changes prose; source-model runners, ranks, scores and picks are preserved.",
+                 " _enrich_individual(payload, cards, args.sources)\n from stage159_narrative import upgrade as _explain_picks\n _explain_picks(payload, cards)\n # Stage155 + Stage159 only change prose and evidence metadata; all frozen rankings, scores and picks remain unchanged.", 'stage153 explain before publish')
+              return s
+          
+          PATCHES={'stage141_today_or_weight_paper.py':stage141,
+                   'stage151_d142_core_form_or_weight_today.py':stage151,
+                   'stage152_best_roi_specialists_today.py':stage152,
+                   'stage147_daily_143_146.py':stage147,
+                   'stage128_g5_today_paper.py':stage128,
+                   'stage153_roi_combined.py':stage153}
+          
+          
+          def main():
+              cache={}
+              for name in FILES:
+                  path=SCRIPT/name
+                  old=path.read_text(encoding='utf-8')
+                  if MARK in old:
+                      print('ALREADY_APPLIED',name)
+                      continue
+                  new=PATCHES[name](old)
+                  # Only after all patches validate will any file be overwritten.
+                  compile(new,str(path),'exec')
+                  cache[path]=new+'\n# '+MARK+'\n'
+              for p,s in cache.items():
+                  p.write_text(s,encoding='utf-8')
+                  print('STAGE159_PATCHED',str(p),len(s))
+              return len(cache)
+          
+          if __name__=='__main__':
+              print('STAGE159_FILES_CHANGED',main())
+          STAGE159_STAGE159_PATCH
+          python -m py_compile scripts/stage159_explainability.py scripts/stage159_narrative.py scripts/stage159_patch.py
+          python scripts/stage159_explainability.py
+          python scripts/stage159_narrative.py
+          python scripts/stage159_patch.py
+          python -m py_compile scripts/stage141_today_or_weight_paper.py scripts/stage151_d142_core_form_or_weight_today.py scripts/stage152_best_roi_specialists_today.py scripts/stage147_daily_143_146.py scripts/stage128_g5_today_paper.py scripts/stage153_roi_combined.py
+          python scripts/stage153_roi_combined.py self-test
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/stage141_today_or_weight_paper.py scripts/stage151_d142_core_form_or_weight_today.py scripts/stage152_best_roi_specialists_today.py scripts/stage147_daily_143_146.py scripts/stage128_g5_today_paper.py scripts/stage153_roi_combined.py scripts/stage159_explainability.py scripts/stage159_narrative.py scripts/stage159_patch.py
+          if git diff --cached --quiet; then echo STAGE159_ALREADY_INSTALLED; else
+            git commit -m "Stage159: publish real model input sensitivities and specific race commentaries"
+            if ! git push origin HEAD:main; then
+              git fetch origin main
+              git rebase origin/main
+              git push origin HEAD:main
+            fi
+          fi
+          echo STAGE159_INSTALLED_SOURCE_MODELS_UNCHANGED
+      - name: Start fresh today-specific specialist reassessment
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TARGET_DAY="$(TZ=Europe/Dublin date +%F)"
+          echo "Stage159 installed. Requesting Stage153 source models to publish reason codes for ${TARGET_DAY}."
+          gh workflow run stage153-roi-combined.yml --ref main -f "selection_date=${TARGET_DAY}"
+          echo "Reassessment dispatched; source models must finish before updated commentary appears."
