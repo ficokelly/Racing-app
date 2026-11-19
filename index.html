@@ -637,6 +637,23 @@ body.rhp154-open{overflow:hidden}
 .rhp70-pair-row .rhp70-price b{font-size:17px}
 @media(max-width:360px){#rhp-bottom-nav button small{font-size:10px}.rhp70-pair-row .rhp70-price .rhp157-first{font-size:10px}}
 </style>
+
+<style id="RHP_STAGE158_TRAINER_AND_HOTPOTS_UI">
+.rhp158-filter-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:14px 0 10px;align-items:end}
+.rhp158-filter-grid label{display:grid;gap:6px;font-size:12px;color:var(--rhp-muted)}
+.rhp158-filter-grid select{width:100%;max-width:100%;min-width:0;background:var(--rhp-card);border:1px solid var(--rhp-edge);border-radius:10px;padding:11px 7px;color:var(--rhp-ink);font:inherit}
+.rhp158-filter-grid button{grid-column:1 / -1}
+.rhp158-pair-item{min-width:0}
+.rhp158-pair-item .rhp70-pair-row{margin:0}
+.rhp158-horse-button{border:0;background:none;text-align:left;padding:4px 0;color:var(--rhp-ink);font:inherit;font-weight:750;font-size:15px;cursor:pointer;white-space:normal}
+.rhp158-horse-button span{font-size:12px;color:var(--rhp-muted)}
+.rhp158-horse-button[aria-expanded="true"] span{display:inline-block;transform:rotate(180deg)}
+.rhp158-horse-button:focus-visible{outline:2px solid var(--rhp-focus);outline-offset:3px}
+.rhp158-horse-details{margin:0 0 6px;padding:12px;border:1px solid var(--rhp-edge);border-top:0;border-radius:0 0 12px 12px;background:var(--rhp-tint);font-size:13px;line-height:1.5}
+.rhp158-horse-details[hidden]{display:none!important}
+.rhp158-horse-details p{margin:7px 0}
+@media(max-width:375px){.rhp158-horse-button{font-size:13px}.rhp158-filter-grid select{font-size:13px}}
+</style>
 </head><body><header><div class="top"><div><div class="brand"><span class="brand-icon">♞</span><span class="brand-words">Racing <span>Hot Pots</span></span></div><div class="sub">UK & IRELAND ◆ RACING INTELLIGENCE</div></div><div class="live" id="status">Checking feed</div></div></header><main><div id="rhp-nav-overlay" class="hidden" role="dialog" aria-modal="true" aria-label="Racing Hot Pots sections"><div class="rhp-nav-sheet"><div class="rhp-nav-sheet-head"><strong>All sections</strong><button type="button" id="rhp-nav-close" class="action small outline" aria-label="Close sections menu">✕</button></div><nav id="section-buttons" aria-label="Racing Hot Pots sections"><div class="nav-column"><button type="button" data-section="racecards">🏇 Racecards</button><button type="button" data-section="markets">📈 Market Movers</button><button type="button" data-section="watchlist">⭐ Watchlist</button><button type="button" data-section="hot">🔥 Hot Trainers</button></div><div class="nav-column"><button type="button" data-section="power">🎯 Hot Pots</button><button type="button" data-section="powerresults">📊 Hot Pots Results</button><button type="button" data-section="models">📊 Models</button><button type="button" data-section="bets">📁 My Bets</button><button type="button" data-section="pnl">📊 P&amp;L</button><a class="model-z-nav" href="./model-z.html" aria-label="Model Z paper portfolio">🧪 Model Z · Paper</a><a class="model-z-nav" href="./price-aware.html" aria-label="Price-aware paper value research">💶 Value · Paper</a></div><a class="form-price-nav" href="./form-price.html" aria-label="Form versus bookmaker prices">💡 Form vs Price</a></nav></div></div><div class="rhp-main-toolbar"><h1 id="pageTitle">📈 Market Movers</h1><button type="button" id="rhp-advanced-shortcut" class="rhp-header-settings" aria-label="Open advanced controls">⚙ <span>Settings</span></button></div><div class="rhp-update-line"><div class="muted" id="asof">Loading odds…</div><button type="button" class="action outline" id="rhp-refresh-odds" aria-label="Refresh latest published odds">↻ Refresh Odds</button></div>
 <div id="bet-overlay" class="hidden" role="dialog" aria-modal="true" aria-label="Add to My Bets"><div id="bet-dialog"><div id="bet-dialog-header"><strong>Add to My Bets</strong><button type="button" class="action small outline" id="close-bet">✕ Close</button></div><div id="bet-modal-content"></div></div></div>
 <!-- HOT_POTS_MODELS_V1 -->
@@ -1028,7 +1045,7 @@ function indexFormNames(raw){
 
 function renderBands(){for(const [type,target] of [['trainer','trainer-bands'],['jockey','jockey-bands']]){$(target).innerHTML=bands.map(b=>`<label><input type="checkbox" data-band="${type}" value="${b[0]}" ${(type==='trainer'?selectedTrainer:selectedJockey).has(b[0])?'checked':''}>${b[1]}</label>`).join('');const selected=type==='trainer'?selectedTrainer:selectedJockey;$(type+'-summary').textContent=selected.size?selected.size+' selected':'All ranges';}}
 function bandMatch(row,type,selected){if(!selected.size)return true;const stat=formStats(row,type);if(!stat)return selected.has('unknown');const pct=stat.pct;return bands.some(([id,_,lo,hi])=>selected.has(id)&&id!=='unknown'&&(id==='0-5'?pct<=5:id==='25+'?pct>25:pct>lo&&pct<=hi));}
-function formText(x,type){const v=formStats(x,type);return v?`${v.wins}/${v.runs} (${v.pct.toFixed(1)}% over ${v.availableDays}${v.availableDays===1?' day':' days'}${v.availableDays<v.selectedDays?' of selected '+v.selectedDays+' days':''})`:'Unknown (insufficient verified results)';}
+function formText(x,type){const v=formStats(x,type);return v?`${v.wins}/${v.runs} (${v.pct.toFixed(1)}% over ${v.availableDays}${v.availableDays===1?' day':' days'}${v.availableDays<v.selectedDays?' of selected '+v.selectedDays+' days':''}${v.partialCoverage?' · partial results coverage':''})`:'Unknown (insufficient verified results)';}
 const powerSelectedDays={power:'today',strategya:'today',strategyb:'today'};
 const powerRaceTypes=new Set(['all']);
 let aw2TrackStats={};
@@ -1109,15 +1126,53 @@ function hotOptionList(stats,todayRunners){
  $('hot-selected-count').textContent=hotSelected.size?hotSelected.size+' selected':'Top 10 automatically selected';$('hot-filter-summary').textContent=hotSelected.size?hotSelected.size+' selected':'Top 10 automatic';
 }
 // Match a Hot Trainers racecard runner to the same race in the bookmaker feed.
+
+// Stage158: independent historical bookmaker quotes for Hot Trainers only.
+// The active Markets feed can roll to tomorrow before today's trainer races leave the screen.
+let rhp158HistoricHotRows=[];
+function rhp158BuildHistoricHotRows(history){
+ const groups=new Map(),dates=new Set([marketDateFor('today'),marketDateFor('tomorrow')]);
+ for(const snap of (Array.isArray(history)?history:[])){
+  if(!snap||!Array.isArray(snap.prices))continue;
+  for(const p of snap.prices){
+   if(!p||p.stale===true||!p.horse||!p.course||!p.race_time||!p.bookmaker)continue;
+   const day=dateKey(p.race_time),price=Number(p.decimal_odds);
+   if(!dates.has(day)||!Number.isFinite(price)||price<=1)continue;
+   const at=p.collected_at||snap.collected_at,ts=Date.parse(at),off=Date.parse(p.race_time);
+   if(!Number.isFinite(ts)||!Number.isFinite(off)||ts>off)continue;
+   const identity=[day,courseMatchKey(p.course),horseMatchKey(p.horse),bookName(p.bookmaker)].join('|');
+   if(!groups.has(identity))groups.set(identity,{sample:p,points:new Map()});
+   groups.get(identity).points.set(ts,{at,od:price});
+  }
+ }
+ const answer=[];
+ for(const {sample,points} of groups.values()){
+  const ordered=[...points.entries()].sort((a,b)=>a[0]-b[0]).map(x=>x[1]);
+  if(!ordered.length)continue;
+  const first=ordered[0].od,current=ordered[ordered.length-1].od;
+  answer.push({id:key(sample),horse:sample.horse,course:sample.course,starts:sample.race_time,
+   day:dateKey(sample.race_time),time:clock(sample.race_time),bookmaker:bookName(sample.bookmaker),
+   current,earlier:first,baselineLabel:'First recorded',points:ordered,
+   move:first>1?(first-current)/(first-1)*100:null,historicPreoff:true});
+ }
+ return answer;
+}
+
 function hotPriceRow(r){
  const day=r.date||dateKey(r.race_time);
- const candidates=rows.filter(x=>horseMatchKey(x.horse)===horseMatchKey(r.horse)&&courseMatchKey(x.course)===courseMatchKey(r.course)&&x.day===day);
- // Prefer the nearest advertised off time, then the richest recorded price history.
+ const matches=x=>horseMatchKey(x.horse)===horseMatchKey(r.horse)&&courseMatchKey(x.course)===courseMatchKey(r.course)&&x.day===day;
+ // Current-date prices first. On an older date, show only archived quotes
+ // for this exact horse/course/day, never tomorrow's prices.
+ const live=rows.filter(matches);
+ const candidates=live.length?live:rhp158HistoricHotRows.filter(matches);
+ // Prefer the nearest advertised off time, then the selected bookmaker and richest history.
  const rt=Date.parse(r.race_time);
  return candidates.sort((a,b)=>{
   const ad=Math.abs(Date.parse(a.starts)-rt),bd=Math.abs(Date.parse(b.starts)-rt);
   const aa=Number.isFinite(ad)?ad:Infinity,bb=Number.isFinite(bd)?bd:Infinity;
-  return aa-bb||b.points.length-a.points.length||a.current-b.current;
+  const preferred=bookName(rhpGlobalBook||'Paddy Power');
+  const ap=a.bookmaker===preferred?0:1,bp=b.bookmaker===preferred?0:1;
+  return aa-bb||ap-bp||(b.points?.length||0)-(a.points?.length||0)||a.current-b.current;
  })[0]||null;
 }
 function hotSpark(row){
@@ -1133,10 +1188,16 @@ function hotSpark(row){
  return `<div class="graph" style="padding:9px;margin:9px 0"><div class="foot"><strong style="color:${col}">${label} · ${fmt(a)} → ${fmt(z)}</strong><span>${pts.length} observations</span></div><svg viewBox="0 0 320 110" role="img" aria-label="Odds over time; downward means shortening and upward means drifting" style="width:100%;height:auto"><polyline class="${delta < -0.001 ? 'rhp-shortening-line' : delta > 0.001 ? 'rhp-drifting-line' : 'rhp-unchanged-line'}" points="${points}" stroke="${col}" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>${rhpGraphTimeAxis(pts,8,312).replaceAll('y="134"','y="93"')}</svg><div class="hint">Down = shorter odds (backed/shortening), up = drifting. Price moves alone do not prove betting volume.</div></div>`;
 }
 function hotWatchButton(r){const idx=racecardRunners.indexOf(r),row=hotPriceRow(r),k=watchKey({horse:r.horse,course:r.course,day:r.date||dateKey(r.race_time)});const exists=watchlist.some(w=>w.key===k);return `<button type="button" class="action small outline" data-hot-watch="${idx}" ${exists?'disabled':''}>${exists?'★ On Watchlist':'☆ Add to Watchlist'}</button>`}
+
+function rhp158HotRaceButton(r){
+ const day=r.date||dateKey(r.race_time),payload=encodeURIComponent(JSON.stringify({course:r.course,day,time:clock(r.race_time)}));
+ return `<button type="button" class="action small outline" data-rhp-open-race="${payload}">View Race</button>`;
+}
+
 function hotRunnerOdds(r){
  const row=hotPriceRow(r);
- if(!row)return `<div class="hint" style="margin-top:8px">First recorded odds: unavailable · Latest odds: unavailable · <strong>Bookmaker:</strong> unavailable</div><div class="hint">View Race unavailable — no matching bookmaker race in the current feed.</div>${hotSpark(null)}<div class="actions" style="margin-top:10px">${hotWatchButton(r)}</div>`;
- return `<div class="odds" style="grid-template-columns:1fr 1fr"><div><small>First recorded odds</small><b>${fmt(row.points.length?row.points[0].od:row.earlier)}</b></div><div><small>Latest odds</small><b>${fmt(row.current)}</b>${strategyWinBadge(r.horse,r.course,r.date||dateKey(r.race_time),clock(r.race_time))}</div></div><div class="foot"><span>Bookmaker</span><strong>${safe(row.bookmaker)}</strong></div>${hotSpark(row)}<div class="actions" style="margin-top:10px"><button type="button" class="action small outline" data-view-race="${safe(row.id)}">View Race</button>${hotWatchButton(r)}</div>`;
+ if(!row)return `<div class="hint" style="margin-top:8px">No verified bookmaker quote saved for this horse and race date. Earlier and last odds are unavailable.</div>${hotSpark(null)}<div class="actions" style="margin-top:10px">${rhp158HotRaceButton(r)}${hotWatchButton(r)}</div>`;
+ return `<div class="odds" style="grid-template-columns:1fr 1fr"><div><small>First recorded odds</small><b>${fmt(row.points.length?row.points[0].od:row.earlier)}</b></div><div><small>${row.historicPreoff?'Last saved pre-off odds':'Latest odds'}</small><b>${fmt(row.current)}</b></div></div><div class="foot"><span>Bookmaker</span><strong>${safe(row.bookmaker)}</strong></div>${hotSpark(row)}<div class="actions" style="margin-top:10px">${rhp158HotRaceButton(r)}${hotWatchButton(r)}</div>`;
 }
 function hotFilteredRunners(todayRunners){
  const type=$('hot-race-type').value,meeting=$('hot-meeting').value,time=$('hot-race-time').value;
@@ -1152,7 +1213,7 @@ function hotRefreshRaceFilters(todayRunners){
 function renderHot(){
  const {info,stats}=hotStats(),today=dateKey(new Date(Date.now()+(hotSelectedDay==='tomorrow'?86400000:0)).toISOString()),dayLabel=hotSelectedDay==='tomorrow'?'tomorrow':'today';
  document.querySelectorAll('[data-hot-day]').forEach(b=>b.classList.toggle('active',b.dataset.hotDay===hotSelectedDay));
- $('hot-coverage').textContent=info?`Results through ${formData.as_of} · ${info.days} of ${hotDays} selected days verified${info.days<hotDays?' (partial coverage)':''}.`:'Trainer statistics unavailable. Check that data/strike-rates.json is published and refresh the app.';
+ $('hot-coverage').textContent=info?`Matched results through ${formData.as_of} · ${info.days}/${hotDays} calendar dates represented (NOT proof of complete race coverage). ${info.period?.identity_gaps?.trainer||0} starters without linked trainer data and ${info.period?.identity_gaps?.jockey||0} without linked jockey data. Strike rates use matched API results only and may differ from complete racing publications.`:'Trainer statistics unavailable. Check that data/strike-rates.json is published and refresh the app.';
  const allTodayRunners=racecardRunners.filter(r=>{const d=String(r.date||'').slice(0,10)||dateKey(r.race_time);return d===today;});
  hotRefreshRaceFilters(allTodayRunners);
  const todayRunners=hotFilteredRunners(allTodayRunners);
@@ -1172,7 +1233,7 @@ function renderHot(){
   const st=stats.find(x=>hotTrainerMatch(r,x));
   return `<article class="horse"><div class="name">${safe(r.horse)}</div><div class="meta">${safe(when(r.race_time))} · ${safe(r.course)}</div><div class="hint" style="margin-top:10px">Trainer: ${safe(r.trainer)} · ${st?st.pct.toFixed(1)+'% ('+st.wins+'/'+st.runs+')':'Strike rate unavailable'}</div><div class="hint">Jockey: ${safe(r.jockey||'Not available')}</div>${hotRunnerOdds(r)}${commentaryHorseDetails(r.horse,r.course,r.date||dateKey(r.race_time),clock(r.race_time))}${row?`<div class="hint" style="margin-top:7px">${row.move===null?'Price movement unavailable':row.move>0.001?'↘ Shortening '+row.move.toFixed(1)+'%':row.move<-.001?'↗ Drifting '+Math.abs(row.move).toFixed(1)+'%':'Odds unchanged'} · ${safe(row.bookmaker)}</div><details><summary>Full odds history</summary>${miniGraph(row.points)}<div class="historyline">${row.points.map(p=>`${safe(when(p.at))} — ${fmt(p.od)}`).join('<br>')||'No saved prices'}</div></details>`:'<div class="hint" style="margin-top:7px">No saved odds history to graph for this runner.</div>'}</article>`;
  }).join(''):`<div class="empty">${hotSelected.size?`No runners ${dayLabel} for your selected trainers.`:`None of the current top 10 ranked trainers have runners on ${dayLabel}’s racecards. Select other trainers above to see their horses.`}</div>`;
- $('hot-ranking-count').textContent=`${ranked.length} trainers qualify${hotTodayOnly?" with runners ${dayLabel}":""} · showing ${hotExpanded?'up to 100':'top 10'}.`;
+ $('hot-ranking-count').textContent=`${ranked.length} trainers qualify${hotTodayOnly?` with runners ${dayLabel}`:""} · showing ${hotExpanded?'up to 100':'top 10'}.`;
  $('hot-ranking').innerHTML=ranked.length?ranked.slice(0,hotExpanded?100:10).map((x,i)=>{const runners=todayRunners.filter(r=>hotTrainerMatch(r,x)).sort((a,b)=>Date.parse(a.race_time)-Date.parse(b.race_time));const unique=[...new Map(runners.map(r=>[[r.horse,r.race_time,r.course].join('|'),r])).values()];return `<details class="summarycard"><summary><strong>${i+1}. ${safe(x.name)}</strong><span class="tag down" style="float:right">${x.pct.toFixed(1)}%</span><div class="hint">${x.wins} wins / ${x.runs} runs · ${info.days} verified days · <strong>${unique.length} runners ${dayLabel}</strong></div></summary><div style="margin-top:10px">${unique.length?unique.map(r=>`<div class="summarycard"><strong>${safe(r.horse)}</strong><div class="hint">${safe(when(r.race_time))} · ${safe(r.course)}</div>${hotRunnerOdds(r)}${commentaryHorseDetails(r.horse,r.course,r.date||dateKey(r.race_time),clock(r.race_time))}</div>`).join(''):`<p class="hint">No runners ${dayLabel} on available racecards.</p>`}</div></details>`}).join(''):`<div class="empty">No trainers meet the selected minimum runs and runners-${dayLabel} filters.</div>`;
  $('hot-more').textContent=hotExpanded?'Show top 10':'Show more';
  $('hot-more').disabled=ranked.length<=10;
@@ -1775,7 +1836,7 @@ async function loadFeed(){loadForm();loadFinishedRaceFeed();try{const q='?v='+Da
    if(h.ok){const rawHistory=await h.json();if(Array.isArray(rawHistory))hist=rawHistory}
   }catch(e){}
  }
- if(!Array.isArray(hist)||!Array.isArray(latest.prices))throw Error('Invalid JSON feed');rows=build(latest,hist);rhpSyncBookControl();rhpApplyBookPreference(rhpGlobalBook,{redraw:false});supplementRacecardsFromMarket();autoWatchQualifiers();historyCount=hist.length;const rhpOddsAgeMinutes=(Date.now()-Date.parse(latest.collected_at))/60000;$('status').textContent=Number.isFinite(rhpOddsAgeMinutes)&&rhpOddsAgeMinutes>=20?'⚠ ODDS STALE · '+Math.floor(rhpOddsAgeMinutes)+'m':'● ODDS SYNCED';$('asof').textContent=`Last collected: ${when(latest.collected_at)} (Irish time) · ${latest.races_returned} races · ${latest.prices_collected} bookmaker quotes · ${hist.length} snapshots`;
+ if(!Array.isArray(hist)||!Array.isArray(latest.prices))throw Error('Invalid JSON feed');rows=build(latest,hist);rhp158HistoricHotRows=rhp158BuildHistoricHotRows(hist);rhpSyncBookControl();rhpApplyBookPreference(rhpGlobalBook,{redraw:false});supplementRacecardsFromMarket();autoWatchQualifiers();historyCount=hist.length;const rhpOddsAgeMinutes=(Date.now()-Date.parse(latest.collected_at))/60000;$('status').textContent=Number.isFinite(rhpOddsAgeMinutes)&&rhpOddsAgeMinutes>=20?'⚠ ODDS STALE · '+Math.floor(rhpOddsAgeMinutes)+'m':'● ODDS SYNCED';$('asof').textContent=`Last collected: ${when(latest.collected_at)} (Irish time) · ${latest.races_returned} races · ${latest.prices_collected} bookmaker quotes · ${hist.length} snapshots`;
  const dates=[...new Set(rows.map(x=>x.day).filter(Boolean))].sort().reverse();selectedDate=['today','tomorrow'].map(marketDateFor).includes(selectedDate)?selectedDate:marketDateFor('today');selOpts('race-date',[['all','All available dates'],...dates.map(d=>[d,d])],selectedDate);refreshSelects();renderPersonFilters('markets');renderPersonFilters('power');renderMarkets();await loadAw2Stats();renderPower();renderStrategyA();renderStrategyB();renderHot();rcSetupFilters();restoreRefreshFiltersAfterFeed();renderRacecards();showTab(activeTab,true);if(refreshScrollPosition!==null){const pos=refreshScrollPosition;refreshScrollPosition=null;requestAnimationFrame(()=>setTimeout(()=>window.scrollTo(0,pos),160))}}catch(e){$('status').textContent='NO DATA';$('asof').textContent='Could not load odds feed: '+e.message;}}
 // Within each card/list area, opening one collapsible card closes its siblings.
 // Filter panels and expanded sections inside a horse remain independent.
@@ -2725,6 +2786,7 @@ restoreRefreshFiltersAfterFeed=function(){
 (function(){
  'use strict';
  let view='all'; // all races, or model selections; race-type filters apply to both
+ let rhp158Meeting='all',rhp158Time='all';
  const getRace=(course,day,time)=>s38find(stage38D,course,day,time);
  const ordered=race=>[...(race?.runners||[])].filter(x=>Number.isInteger(Number(x.rank))&&Number(x.rank)>0).sort((a,b)=>Number(a.rank)-Number(b.rank));
  const norm=x=>horseMatchKey(x||'');
@@ -2793,13 +2855,25 @@ restoreRefreshFiltersAfterFeed=function(){
   const earlierType=chosen.baselineLabel==='First recorded'?'First':chosen.baselineLabel==='API open (unverified)'?'API open':'Earlier';
   return '<span class="rhp70-price" title="'+safe('Published bookmaker odds from '+chosen.bookmaker+(alternative?' (alternative)':'')+'; '+(hasEarlier?earlierType+' '+fmt(earlier):'earlier price unavailable'))+'"><small class="rhp157-first">'+safe(hasEarlier?earlierType+' '+fmt(earlier):'Earlier —')+'</small><b>'+safe(fmt(chosen.current))+'</b><small>'+safe((alternative?'Alt · ':'Latest · ')+chosen.bookmaker)+'</small></span>';
  }
+ function rhp158HorseDetails(race,x){
+  const card=(racecardRunners||[]).find(c=>(c.date||dateKey(c.race_time))===race.date&&courseMatchKey(c.course)===courseMatchKey(race.course)&&clock(c.race_time)===race.time&&norm(c.horse)===norm(x.horse));
+  const form=card?rcForm(card):'',rating=card?rcField(card,'ofr','or','official_rating'):null;
+  const quote=card?hotPriceRow(card):null;
+  const payload=encodeURIComponent(JSON.stringify({course:race.course,day:race.date,time:race.time,horse:x.horse}));
+  return `<div class="rhp158-horse-details" hidden><p class="rhp-horse-comment"><strong>Horse summary:</strong> ${safe(x.commentary||'Individual race analysis is not yet published.')}</p>`+
+   `<p class="hint"><strong>Recent form:</strong> ${safe(form||'Not supplied')} · <strong>Official rating:</strong> ${rating!==null?safe(rating):'Not supplied'} · <strong>Age:</strong> ${card?safe(card.age||'—'):'—'}</p>`+
+   `<p class="hint"><strong>Trainer:</strong> ${safe(card?.trainer||'Not supplied')} · <strong>Jockey:</strong> ${safe(card?.jockey||'Not supplied')}</p>`+
+   `<p class="hint"><strong>Bookmaker odds:</strong> ${quote?safe(quote.bookmaker)+' · '+safe(fmt(quote.earlier))+' → '+safe(fmt(quote.current)):'No verified quote on this date'}</p>`+
+   (quote?hotSpark(quote):'')+
+   `<button type="button" class="action small outline" data-rhp158-open-horse="${payload}">Open full racecard for ${safe(x.horse)}</button></div>`;
+ }
  function pairHTML(race){
   const ranks=ordered(race),top=ranks.slice(0,2);
   if(!top.length)return '<p class="hint">Waiting for a published rank #1 and #2. No ranking is being guessed from odds.</p>';
   const rows=top.map(x=>{
    const status=cardState(race,x.horse),nr=status==='nr';
    const selected=race.selection_status==='RESEARCH_ONLY'&&norm(race.selection?.horse)===norm(x.horse);
-   return `<div class="rhp70-pair-row${nr?' is-nr':''}"><span class="rhp70-rank">#${safe(x.rank)}</span><div class="rhp70-horse"><strong>${safe(x.horse)}</strong>${nr?' <span class="rhp70-nr">NR · withdrawn</span>':''}${selected?' <span class="rhp70-pick">Model selection</span>':''}<small>${safe(x.rank===1?'Highest in this published ranking':'Second in this published ranking')}${nr?' · pending reassessment':''}</small></div>${selectionPrice(race,x.horse,status)}</div>`;
+   return `<div class="rhp158-pair-item"><div class="rhp70-pair-row${nr?' is-nr':''}"><span class="rhp70-rank">#${safe(x.rank)}</span><div class="rhp70-horse"><button type="button" class="rhp158-horse-button" data-rhp158-toggle aria-expanded="false" title="Expand horse form and commentary">${safe(x.horse)} <span aria-hidden="true">⌄</span></button>${nr?' <span class="rhp70-nr">NR · withdrawn</span>':''}${selected?' <span class="rhp70-pick">Model selection</span>':''}<small>${safe(x.rank===1?'Highest in this published ranking':'Second in this published ranking')}${nr?' · pending reassessment':''}</small></div>${selectionPrice(race,x.horse,status)}</div>${rhp158HorseDetails(race,x)}</div>`;
   });
   const withdrawnInTwo=top.some(x=>cardState(race,x.horse)==='nr');
   if(withdrawnInTwo){
@@ -2823,6 +2897,11 @@ restoreRefreshFiltersAfterFeed=function(){
    const container=document.createElement('div');container.id='rhp70-view-selector';container.className='rhp70-view-selector';container.setAttribute('role','group');container.setAttribute('aria-label','Hot Pots view');
    container.innerHTML='<button type="button" data-rhp70-view="all">All races · #1 & #2</button><button type="button" data-rhp70-view="selections">Model selections</button>';
    panel.insertBefore(container,$('strategy-day-switch'));
+  }
+  if(panel&&!$('rhp158-hot-pots-filters')){
+   const filter=document.createElement('div');filter.id='rhp158-hot-pots-filters';filter.className='rhp158-filter-grid';
+   filter.innerHTML='<label>Meeting<select id="rhp158-hp-meeting" aria-label="Filter Hot Pots by meeting"><option value="all">All meetings</option></select></label><label>Race time (Irish)<select id="rhp158-hp-time" aria-label="Filter Hot Pots by race time"><option value="all">All race times</option></select></label><button type="button" class="action small outline" data-rhp158-reset-hot>Reset filters</button>';
+   $('strategy-day-switch').insertAdjacentElement('afterend',filter);
   }
   const old=$('power-type-toggle')?.closest('.panel');if(old)old.hidden=true;
   document.querySelectorAll('.form-price-nav,.stage41-link').forEach(x=>x.remove());
@@ -2851,7 +2930,15 @@ restoreRefreshFiltersAfterFeed=function(){
    if(!known.has(key))known.set(key,{course:c.course,date:day,time,race_time:c.race_time,race_name:c.race_name||'',race_type:c.race_type||c.type||'',runners:[],selection:null,selection_status:'ASSESSMENT_PENDING'});
   }
   const all=[...known.values()],type=abViewState.selections.type||'all';
-  const shown=all.filter(r=>(type==='all'||raceGroup(r)===type)&&(view==='all'||r.selection_status==='RESEARCH_ONLY'&&!!r.selection))
+  const available=all.filter(r=>(type==='all'||raceGroup(r)===type)&&(view==='all'||r.selection_status==='RESEARCH_ONLY'&&!!r.selection));
+  const meetingSelect=$('rhp158-hp-meeting'),timeSelect=$('rhp158-hp-time');
+  const meetings=[...new Set(available.map(r=>r.course).filter(Boolean))].sort();
+  if(!meetings.includes(rhp158Meeting))rhp158Meeting='all';
+  if(meetingSelect){meetingSelect.innerHTML='<option value="all">All meetings</option>'+meetings.map(m=>`<option value="${safe(m)}">${safe(m)}</option>`).join('');meetingSelect.value=rhp158Meeting;}
+  const times=[...new Set(available.filter(r=>rhp158Meeting==='all'||r.course===rhp158Meeting).map(r=>r.time).filter(Boolean))].sort();
+  if(!times.includes(rhp158Time))rhp158Time='all';
+  if(timeSelect){timeSelect.innerHTML='<option value="all">All race times</option>'+times.map(t=>`<option value="${safe(t)}">${safe(t)}</option>`).join('');timeSelect.value=rhp158Time;}
+  const shown=available.filter(r=>(rhp158Meeting==='all'||r.course===rhp158Meeting)&&(rhp158Time==='all'||r.time===rhp158Time))
    .sort((a,b)=>String(a.race_time||a.time).localeCompare(String(b.race_time||b.time))||String(a.course).localeCompare(String(b.course)));
   const picks=all.filter(r=>r.selection_status==='RESEARCH_ONLY').length,missing=all.filter(r=>r.selection_status==='ASSESSMENT_PENDING').length;
   const msg=$('strategy-model-message');
@@ -2859,6 +2946,28 @@ restoreRefreshFiltersAfterFeed=function(){
   host.innerHTML=shown.length?shown.map(display).join(''):`<div class="panel">${all.length?'No races match this view.':'No racing data for this date yet.'} Choose another filter or date.</div>`;
  };
  renderPower=renderStrategySelections;
+ document.addEventListener('change',e=>{
+  if(e.target.id==='rhp158-hp-meeting'){rhp158Meeting=e.target.value;rhp158Time='all';renderStrategySelections();}
+  if(e.target.id==='rhp158-hp-time'){rhp158Time=e.target.value;renderStrategySelections();}
+ });
+ document.addEventListener('click',e=>{
+  if(e.target.closest('[data-rhp158-reset-hot]')){rhp158Meeting='all';rhp158Time='all';renderStrategySelections();return;}
+  const toggle=e.target.closest('[data-rhp158-toggle]');
+  if(toggle){e.preventDefault();const item=toggle.closest('.rhp158-pair-item'),detail=item?.querySelector('.rhp158-horse-details');if(detail){detail.hidden=!detail.hidden;toggle.setAttribute('aria-expanded',String(!detail.hidden));}return;}
+  const open=e.target.closest('[data-rhp158-open-horse]');
+  if(!open)return;
+  e.preventDefault();e.stopImmediatePropagation();
+  let target;try{target=JSON.parse(decodeURIComponent(open.dataset.rhp158OpenHorse))}catch(_){return}
+  if(!target?.course||!target?.day||!target?.time||!target?.horse)return;
+  $('race-info').textContent=`${target.course} · ${target.day} · ${target.time} · ${target.horse}`;
+  renderRacecards({course:target.course,day:target.day,time:target.time});
+  const host=$('race-runner-list');
+  if(!host.querySelector('.panel'))host.innerHTML='<div class="empty">Full archived racecard unavailable for this event.</div>';
+  const card=[...host.querySelectorAll('details.summarycard')].find(el=>norm(el.querySelector('summary strong')?.textContent)===norm(target.horse));
+  if(card)card.open=true;
+  $('race-overlay').classList.remove('hidden');document.body.style.overflow='hidden';
+  if(card)requestAnimationFrame(()=>card.scrollIntoView({block:'center',behavior:'instant'}));
+ },true);
  document.addEventListener('click',e=>{
   const btn=e.target.closest('[data-rhp70-view]');if(!btn||!['all','selections'].includes(btn.dataset.rhp70View))return;
   e.preventDefault();e.stopImmediatePropagation();view=btn.dataset.rhp70View;renderStrategySelections();
