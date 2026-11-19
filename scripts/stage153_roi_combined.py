@@ -7,7 +7,7 @@ Preserve a race's first published picks when the race is off; revised declared
 fields need a fresh underlying specialist prediction before publication.
 """
 from __future__ import annotations
-import argparse, collections, csv, datetime as dt, json, math, pathlib, re
+import argparse, collections, csv, datetime as dt, json, math, pathlib, re, subprocess
 from zoneinfo import ZoneInfo
 UTC=dt.timezone.utc
 DUBLIN=ZoneInfo('Europe/Dublin')
@@ -199,12 +199,51 @@ def prose(horse,card,pred,rank,leader,other,group,source):
          'Verified individual form reasons are not available in this data snapshot, so no specific form claim is made.']
  return ' '.join(parts)
 
+# STAGE160_LATE_CARD_RECONCILIATION
+def load_latest_published_cards(snapshot, target):
+ """Use newer published declarations, without altering source-model scores.
+ Stage147 refreshes independently; a late non-runner (Mont Star on
+ 2026-11-19, Thurles 14:25) must not stay active in Stage153's initial card.
+ If no trustworthy newer publication exists, retain the original
+ field and keep fail-closed exact-field checks.
+ """
+ def collected(payload):
+  t=parse_time(payload.get('collected_at'))
+  return t
+ try:
+  result=subprocess.run(['git','fetch','-q','origin','main'],
+                        capture_output=True,text=True,timeout=45)
+  if result.returncode:
+   print('STAGE160_CARD_FETCH_UNAVAILABLE',result.stderr[-180:],flush=True)
+   return snapshot
+  output=subprocess.run(['git','show','origin/main:data/racecards.json'],
+                        capture_output=True,text=True,timeout=30)
+  if output.returncode:
+   print('STAGE160_CARD_READ_UNAVAILABLE',output.stderr[-180:],flush=True)
+   return snapshot
+  fresh=json.loads(output.stdout)
+  before=collected(snapshot);after=collected(fresh)
+  if before is None or after is None or after<=before:
+   return snapshot
+  if after>utcnow()+dt.timedelta(minutes=2):
+   print('STAGE160_FUTURE_CARD_REJECTED',iso(after),flush=True)
+   return snapshot
+  if not any(r.get('date')==target for r in fresh.get('runners',[])):
+   print('STAGE160_NO_TARGET_RACES_IN_NEW_CARD',target,flush=True)
+   return snapshot
+  print('STAGE160_REFRESHED_DECLARATIONS',iso(before),'TO',iso(after),flush=True)
+  return fresh
+ except (OSError,ValueError,subprocess.SubprocessError) as error:
+  print('STAGE160_CARD_RECONCILIATION_WARNING',str(error)[:200],flush=True)
+  return snapshot
+
 def build(args):
  now=utcnow();target=args.date or now.astimezone(DUBLIN).date().isoformat()
  local=now.astimezone(DUBLIN).date()
  if target not in {local.isoformat(),(local+dt.timedelta(days=1)).isoformat()}:
   raise RuntimeError('Only current or tomorrow Dublin date may receive new predictions')
  cards=json.loads(args.cards.read_text())
+ cards=load_latest_published_cards(cards,target)
  grouped=declared(cards,target)
  if not grouped:raise RuntimeError('No declared fields available for target date')
  sources,read_stats,route_by_race=read_sources(args.sources,target)
@@ -261,7 +300,11 @@ def build(args):
   byhorse={normalize(x['horse']):x for x in ranked}
   eligible={normalize(x['horse']) for x in active}
   if len(byhorse)!=len(eligible) or set(byhorse)!=eligible:
-   race['reason']='Specialist has not produced a complete assessment of this declared field (or a non-runner changed)'
+   race['field_reconciliation']={'latest_card_asof':cards.get('collected_at'),
+   'declared_active':len(eligible),'source_scored':len(byhorse),
+   'missing_from_source':sorted(eligible-set(byhorse)),
+   'source_not_active':sorted(set(byhorse)-eligible)}
+   race['reason']='Specialist source field differs from latest declarations; see field_reconciliation'
    races.append(race);counts['unscored_or_changed']+=1;continue
   # A model may produce scores that are NOT calibrated probabilities; rank exactly by its frozen decision.
   ranked=sorted(ranked,key=lambda v:int(v.get('rank') or 9999))
