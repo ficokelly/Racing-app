@@ -1,0 +1,69 @@
+name: "Stage 160 - Markets bookmaker filter"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/stage160-markets-bookmaker-filter.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: stage160-markets-bookmaker-filter
+  cancel-in-progress: false
+
+jobs:
+  show-market-bookmaker:
+    name: Show Markets bookmaker selector
+    if: github.repository == 'ficokelly/Racing-app'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reveal existing bookmaker dropdown in Markets
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('index.html')
+          html = path.read_text(encoding='utf-8')
+          old = '<div class="field rhp-legacy-control" aria-hidden="true"><label for="bookie">Bookmaker</label><select id="bookie" tabindex="-1">'
+          new = '<div class="field full"><label for="bookie">Bookmaker</label><select id="bookie" aria-label="Filter Markets by bookmaker">'
+
+          if old in html:
+              if html.count(old) != 1:
+                  raise SystemExit('Unexpected duplicate Markets bookmaker filter; no changes made.')
+              html = html.replace(old, new, 1)
+              path.write_text(html, encoding='utf-8')
+              print('Revealed Bookmaker filter inside Markets.')
+          elif new in html:
+              print('Bookmaker filter already visible; no change needed.')
+          else:
+              raise SystemExit('Markets markup has changed; stopping without modifying the page.')
+
+          # Ensure existing app-wide preference and Markets-only override still exist.
+          checks = (
+              "const RHP_GLOBAL_BOOK_KEY='rhp-global-bookmaker-v1'",
+              'selectedBook=rhpGlobalBook',
+              "$('bookie').onchange=e=>{selectedBook=e.target.value;",
+              "function scoped(){return rows.filter",
+          )
+          for text in checks:
+              if text not in html:
+                  raise SystemExit(f'Existing bookmaker behaviour not found: {text}; review required.')
+          PY
+
+      - name: Commit UI-only update
+        shell: bash
+        run: |
+          if git diff --quiet -- index.html; then
+            echo "Already up to date; nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Show bookmaker filter in Markets using app-wide default"
+          git push
