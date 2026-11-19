@@ -1,0 +1,265 @@
+name: 'Stage158 — Hot Trainers and Hot Pots UI fixes'
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rhp-stage158-ui-only
+  cancel-in-progress: false
+
+jobs:
+  install:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout current Racing Hot Pots
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Fix trainer odds, race popup, ranked-horse expansion and filters
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            python - <<'PYCODE'
+          #!/usr/bin/env python3
+          """Stage158: only patch Racing Hot Pots UI; never modify model decisions or source results."""
+          from pathlib import Path
+          
+          path=Path('index.html')
+          s=path.read_text(encoding='utf-8')
+          if 'RHP_STAGE158_TRAINER_AND_HOTPOTS_UI' in s:
+              print('STAGE158_ALREADY_APPLIED')
+              raise SystemExit(0)
+          
+          def once(old,new,name):
+              global s
+              count=s.count(old)
+              if count!=1: raise RuntimeError(f'{name}: expected one anchor, got {count}; no changes written')
+              s=s.replace(old,new,1)
+          
+          # 1) Rebuild day-matched trainer price rows from real, stored, pre-off bookmaker snapshots.
+          # No fallback from a different race or day and no fabricated price.
+          helper='''
+          // Stage158: independent historical bookmaker quotes for Hot Trainers only.
+          // The active Markets feed can roll to tomorrow before today's trainer races leave the screen.
+          let rhp158HistoricHotRows=[];
+          function rhp158BuildHistoricHotRows(history){
+           const groups=new Map(),dates=new Set([marketDateFor('today'),marketDateFor('tomorrow')]);
+           for(const snap of (Array.isArray(history)?history:[])){
+            if(!snap||!Array.isArray(snap.prices))continue;
+            for(const p of snap.prices){
+             if(!p||p.stale===true||!p.horse||!p.course||!p.race_time||!p.bookmaker)continue;
+             const day=dateKey(p.race_time),price=Number(p.decimal_odds);
+             if(!dates.has(day)||!Number.isFinite(price)||price<=1)continue;
+             const at=p.collected_at||snap.collected_at,ts=Date.parse(at),off=Date.parse(p.race_time);
+             if(!Number.isFinite(ts)||!Number.isFinite(off)||ts>off)continue;
+             const identity=[day,courseMatchKey(p.course),horseMatchKey(p.horse),bookName(p.bookmaker)].join('|');
+             if(!groups.has(identity))groups.set(identity,{sample:p,points:new Map()});
+             groups.get(identity).points.set(ts,{at,od:price});
+            }
+           }
+           const answer=[];
+           for(const {sample,points} of groups.values()){
+            const ordered=[...points.entries()].sort((a,b)=>a[0]-b[0]).map(x=>x[1]);
+            if(!ordered.length)continue;
+            const first=ordered[0].od,current=ordered[ordered.length-1].od;
+            answer.push({id:key(sample),horse:sample.horse,course:sample.course,starts:sample.race_time,
+             day:dateKey(sample.race_time),time:clock(sample.race_time),bookmaker:bookName(sample.bookmaker),
+             current,earlier:first,baselineLabel:'First recorded',points:ordered,
+             move:first>1?(first-current)/(first-1)*100:null,historicPreoff:true});
+           }
+           return answer;
+          }
+          '''
+          once('// Match a Hot Trainers racecard runner to the same race in the bookmaker feed.','// Match a Hot Trainers racecard runner to the same race in the bookmaker feed.\n'+helper,'historical price helper')
+          old=''' const candidates=rows.filter(x=>horseMatchKey(x.horse)===horseMatchKey(r.horse)&&courseMatchKey(x.course)===courseMatchKey(r.course)&&x.day===day);
+           // Prefer the nearest advertised off time, then the richest recorded price history.'''
+          new=''' const matches=x=>horseMatchKey(x.horse)===horseMatchKey(r.horse)&&courseMatchKey(x.course)===courseMatchKey(r.course)&&x.day===day;
+           // Current-date prices first. On an older date, show only archived quotes
+           // for this exact horse/course/day, never tomorrow's prices.
+           const live=rows.filter(matches);
+           const candidates=live.length?live:rhp158HistoricHotRows.filter(matches);
+           // Prefer the nearest advertised off time, then the selected bookmaker and richest history.'''
+          once(old,new,'historic price fallback')
+          once('''  return aa-bb||b.points.length-a.points.length||a.current-b.current;''','''  const preferred=bookName(rhpGlobalBook||'Paddy Power');
+            const ap=a.bookmaker===preferred?0:1,bp=b.bookmaker===preferred?0:1;
+            return aa-bb||ap-bp||(b.points?.length||0)-(a.points?.length||0)||a.current-b.current;''','prefer bookmaker')
+          once('''rows=build(latest,hist);rhpSyncBookControl();''','''rows=build(latest,hist);rhp158HistoricHotRows=rhp158BuildHistoricHotRows(hist);rhpSyncBookControl();''','wire historical odds')
+          
+          # Show the pop-up racecard whether or not a bookie returned prices.
+          popup='''
+          function rhp158HotRaceButton(r){
+           const day=r.date||dateKey(r.race_time),payload=encodeURIComponent(JSON.stringify({course:r.course,day,time:clock(r.race_time)}));
+           return `<button type="button" class="action small outline" data-rhp-open-race="${payload}">View Race</button>`;
+          }
+          '''
+          once('function hotRunnerOdds(r){',popup+'\nfunction hotRunnerOdds(r){','trainer race popup helper')
+          once(''' if(!row)return `<div class="hint" style="margin-top:8px">First recorded odds: unavailable · Latest odds: unavailable · <strong>Bookmaker:</strong> unavailable</div><div class="hint">View Race unavailable — no matching bookmaker race in the current feed.</div>${hotSpark(null)}<div class="actions" style="margin-top:10px">${hotWatchButton(r)}</div>`;''',''' if(!row)return `<div class="hint" style="margin-top:8px">No verified bookmaker quote saved for this horse and race date. Earlier and last odds are unavailable.</div>${hotSpark(null)}<div class="actions" style="margin-top:10px">${rhp158HotRaceButton(r)}${hotWatchButton(r)}</div>`;''','trainer no-price popup')
+          once('''<small>Latest odds</small><b>${fmt(row.current)}</b>${strategyWinBadge(r.horse,r.course,r.date||dateKey(r.race_time),clock(r.race_time))}''','''<small>${row.historicPreoff?'Last saved pre-off odds':'Latest odds'}</small><b>${fmt(row.current)}</b>''','trainer price label')
+          once('''<button type="button" class="action small outline" data-view-race="${safe(row.id)}">View Race</button>${hotWatchButton(r)}''','''${rhp158HotRaceButton(r)}${hotWatchButton(r)}''','trainer available-price popup')
+          
+          # Also disclose source incompleteness anywhere trainer and jockey rates appear,
+          # including Racecards and Markets; never silently imply every real starter is represented.
+          once("function formText(x,type){const v=formStats(x,type);return v?`${v.wins}/${v.runs} (${v.pct.toFixed(1)}% over ${v.availableDays}${v.availableDays===1?' day':' days'}${v.availableDays<v.selectedDays?' of selected '+v.selectedDays+' days':''})`:'Unknown (insufficient verified results)';}","function formText(x,type){const v=formStats(x,type);return v?`${v.wins}/${v.runs} (${v.pct.toFixed(1)}% over ${v.availableDays}${v.availableDays===1?' day':' days'}${v.availableDays<v.selectedDays?' of selected '+v.selectedDays+' days':''}${v.partialCoverage?' · partial results coverage':''})`:'Unknown (insufficient verified results)';}",'display truthful form source')
+          
+          # Source coverage has 14 dated result files, but is explicitly NOT complete;
+          # a full-calendar label must not imply complete GB/IE trainer/jockey coverage.
+          once("$('hot-coverage').textContent=info?`Results through ${formData.as_of} · ${info.days} of ${hotDays} selected days verified${info.days<hotDays?' (partial coverage)':''}.`:'Trainer statistics unavailable. Check that data/strike-rates.json is published and refresh the app.';",'''$('hot-coverage').textContent=info?`Matched results through ${formData.as_of} · ${info.days}/${hotDays} calendar dates represented (NOT proof of complete race coverage). ${info.period?.identity_gaps?.trainer||0} starters without linked trainer data and ${info.period?.identity_gaps?.jockey||0} without linked jockey data. Strike rates use matched API results only and may differ from complete racing publications.`:'Trainer statistics unavailable. Check that data/strike-rates.json is published and refresh the app.';''','truthful trainer coverage')
+          once('''hotTodayOnly?" with runners ${dayLabel}":""''','''hotTodayOnly?` with runners ${dayLabel}`:""''','literal day label fix')
+          
+          # 2) Hot Pots: meeting + off-time filters in both views, with no scoring logic changes.
+          once("let view='all'; // all races, or model selections; race-type filters apply to both", "let view='all'; // all races, or model selections; race-type filters apply to both\n let rhp158Meeting='all',rhp158Time='all';",'Hot Pots filter state')
+          anchor="  const old=$('power-type-toggle')?.closest('.panel');if(old)old.hidden=true;"
+          insert='''  if(panel&&!$('rhp158-hot-pots-filters')){
+             const filter=document.createElement('div');filter.id='rhp158-hot-pots-filters';filter.className='rhp158-filter-grid';
+             filter.innerHTML='<label>Meeting<select id="rhp158-hp-meeting" aria-label="Filter Hot Pots by meeting"><option value="all">All meetings</option></select></label><label>Race time (Irish)<select id="rhp158-hp-time" aria-label="Filter Hot Pots by race time"><option value="all">All race times</option></select></label><button type="button" class="action small outline" data-rhp158-reset-hot>Reset filters</button>';
+             $('strategy-day-switch').insertAdjacentElement('afterend',filter);
+            }
+          '''
+          once(anchor,insert+anchor,'Hot Pots filter controls')
+          old='''  const all=[...known.values()],type=abViewState.selections.type||'all';
+            const shown=all.filter(r=>(type==='all'||raceGroup(r)===type)&&(view==='all'||r.selection_status==='RESEARCH_ONLY'&&!!r.selection))
+             .sort((a,b)=>String(a.race_time||a.time).localeCompare(String(b.race_time||b.time))||String(a.course).localeCompare(String(b.course)));'''
+          new='''  const all=[...known.values()],type=abViewState.selections.type||'all';
+            const available=all.filter(r=>(type==='all'||raceGroup(r)===type)&&(view==='all'||r.selection_status==='RESEARCH_ONLY'&&!!r.selection));
+            const meetingSelect=$('rhp158-hp-meeting'),timeSelect=$('rhp158-hp-time');
+            const meetings=[...new Set(available.map(r=>r.course).filter(Boolean))].sort();
+            if(!meetings.includes(rhp158Meeting))rhp158Meeting='all';
+            if(meetingSelect){meetingSelect.innerHTML='<option value="all">All meetings</option>'+meetings.map(m=>`<option value="${safe(m)}">${safe(m)}</option>`).join('');meetingSelect.value=rhp158Meeting;}
+            const times=[...new Set(available.filter(r=>rhp158Meeting==='all'||r.course===rhp158Meeting).map(r=>r.time).filter(Boolean))].sort();
+            if(!times.includes(rhp158Time))rhp158Time='all';
+            if(timeSelect){timeSelect.innerHTML='<option value="all">All race times</option>'+times.map(t=>`<option value="${safe(t)}">${safe(t)}</option>`).join('');timeSelect.value=rhp158Time;}
+            const shown=available.filter(r=>(rhp158Meeting==='all'||r.course===rhp158Meeting)&&(rhp158Time==='all'||r.time===rhp158Time))
+             .sort((a,b)=>String(a.race_time||a.time).localeCompare(String(b.race_time||b.time))||String(a.course).localeCompare(String(b.course)));'''
+          once(old,new,'Hot Pots filter logic')
+          
+          # 3) Expand rank 1/2 horses in-place using the same source facts as Racecards,
+          # and offer the same full racecard overlay with this horse expanded and scrolled into view.
+          a=s.indexOf(' function pairHTML(race){')
+          b=s.indexOf(' function openRaceButton(race){',a)
+          if a<0 or b<a: raise RuntimeError('pairHTML block not found')
+          pair=s[a:b]
+          def pair_once(old,new,label):
+           global pair
+           if pair.count(old)!=1: raise RuntimeError(f'{label}: expected one pairHTML anchor, got {pair.count(old)}')
+           pair=pair.replace(old,new,1)
+          helper=''' function rhp158HorseDetails(race,x){
+            const card=(racecardRunners||[]).find(c=>(c.date||dateKey(c.race_time))===race.date&&courseMatchKey(c.course)===courseMatchKey(race.course)&&clock(c.race_time)===race.time&&norm(c.horse)===norm(x.horse));
+            const form=card?rcForm(card):'',rating=card?rcField(card,'ofr','or','official_rating'):null;
+            const quote=card?hotPriceRow(card):null;
+            const payload=encodeURIComponent(JSON.stringify({course:race.course,day:race.date,time:race.time,horse:x.horse}));
+            return `<div class="rhp158-horse-details" hidden><p class="rhp-horse-comment"><strong>Horse summary:</strong> ${safe(x.commentary||'Individual race analysis is not yet published.')}</p>`+
+             `<p class="hint"><strong>Recent form:</strong> ${safe(form||'Not supplied')} · <strong>Official rating:</strong> ${rating!==null?safe(rating):'Not supplied'} · <strong>Age:</strong> ${card?safe(card.age||'—'):'—'}</p>`+
+             `<p class="hint"><strong>Trainer:</strong> ${safe(card?.trainer||'Not supplied')} · <strong>Jockey:</strong> ${safe(card?.jockey||'Not supplied')}</p>`+
+             `<p class="hint"><strong>Bookmaker odds:</strong> ${quote?safe(quote.bookmaker)+' · '+safe(fmt(quote.earlier))+' → '+safe(fmt(quote.current)):'No verified quote on this date'}</p>`+
+             (quote?hotSpark(quote):'')+
+             `<button type="button" class="action small outline" data-rhp158-open-horse="${payload}">Open full racecard for ${safe(x.horse)}</button></div>`;
+           }
+          '''
+          pair=helper+pair
+          pair_once('''return `<div class="rhp70-pair-row${nr?' is-nr':''}"><span class="rhp70-rank">#${safe(x.rank)}</span><div class="rhp70-horse"><strong>${safe(x.horse)}</strong>''','''return `<div class="rhp158-pair-item"><div class="rhp70-pair-row${nr?' is-nr':''}"><span class="rhp70-rank">#${safe(x.rank)}</span><div class="rhp70-horse"><button type="button" class="rhp158-horse-button" data-rhp158-toggle aria-expanded="false" title="Expand horse form and commentary">${safe(x.horse)} <span aria-hidden="true">⌄</span></button>''','inline horse click')
+          pair_once('''${selectionPrice(race,x.horse,status)}</div>`;''','''${selectionPrice(race,x.horse,status)}</div>${rhp158HorseDetails(race,x)}</div>`;''','inline details position')
+          s=s[:a]+pair+s[b:]
+          
+          # Register delegated listeners once within the existing Stage70 closure.
+          anchor=''' renderPower=renderStrategySelections;
+           document.addEventListener('click',e=>{'''
+          addition=''' renderPower=renderStrategySelections;
+           document.addEventListener('change',e=>{
+            if(e.target.id==='rhp158-hp-meeting'){rhp158Meeting=e.target.value;rhp158Time='all';renderStrategySelections();}
+            if(e.target.id==='rhp158-hp-time'){rhp158Time=e.target.value;renderStrategySelections();}
+           });
+           document.addEventListener('click',e=>{
+            if(e.target.closest('[data-rhp158-reset-hot]')){rhp158Meeting='all';rhp158Time='all';renderStrategySelections();return;}
+            const toggle=e.target.closest('[data-rhp158-toggle]');
+            if(toggle){e.preventDefault();const item=toggle.closest('.rhp158-pair-item'),detail=item?.querySelector('.rhp158-horse-details');if(detail){detail.hidden=!detail.hidden;toggle.setAttribute('aria-expanded',String(!detail.hidden));}return;}
+            const open=e.target.closest('[data-rhp158-open-horse]');
+            if(!open)return;
+            e.preventDefault();e.stopImmediatePropagation();
+            let target;try{target=JSON.parse(decodeURIComponent(open.dataset.rhp158OpenHorse))}catch(_){return}
+            if(!target?.course||!target?.day||!target?.time||!target?.horse)return;
+            $('race-info').textContent=`${target.course} · ${target.day} · ${target.time} · ${target.horse}`;
+            renderRacecards({course:target.course,day:target.day,time:target.time});
+            const host=$('race-runner-list');
+            if(!host.querySelector('.panel'))host.innerHTML='<div class="empty">Full archived racecard unavailable for this event.</div>';
+            const card=[...host.querySelectorAll('details.summarycard')].find(el=>norm(el.querySelector('summary strong')?.textContent)===norm(target.horse));
+            if(card)card.open=true;
+            $('race-overlay').classList.remove('hidden');document.body.style.overflow='hidden';
+            if(card)requestAnimationFrame(()=>card.scrollIntoView({block:'center',behavior:'instant'}));
+           },true);
+           document.addEventListener('click',e=>{'''
+          once(anchor,addition,'filter and horse events')
+          
+          css='''
+          <style id="RHP_STAGE158_TRAINER_AND_HOTPOTS_UI">
+          .rhp158-filter-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:14px 0 10px;align-items:end}
+          .rhp158-filter-grid label{display:grid;gap:6px;font-size:12px;color:var(--rhp-muted)}
+          .rhp158-filter-grid select{width:100%;max-width:100%;min-width:0;background:var(--rhp-card);border:1px solid var(--rhp-edge);border-radius:10px;padding:11px 7px;color:var(--rhp-ink);font:inherit}
+          .rhp158-filter-grid button{grid-column:1 / -1}
+          .rhp158-pair-item{min-width:0}
+          .rhp158-pair-item .rhp70-pair-row{margin:0}
+          .rhp158-horse-button{border:0;background:none;text-align:left;padding:4px 0;color:var(--rhp-ink);font:inherit;font-weight:750;font-size:15px;cursor:pointer;white-space:normal}
+          .rhp158-horse-button span{font-size:12px;color:var(--rhp-muted)}
+          .rhp158-horse-button[aria-expanded="true"] span{display:inline-block;transform:rotate(180deg)}
+          .rhp158-horse-button:focus-visible{outline:2px solid var(--rhp-focus);outline-offset:3px}
+          .rhp158-horse-details{margin:0 0 6px;padding:12px;border:1px solid var(--rhp-edge);border-top:0;border-radius:0 0 12px 12px;background:var(--rhp-tint);font-size:13px;line-height:1.5}
+          .rhp158-horse-details[hidden]{display:none!important}
+          .rhp158-horse-details p{margin:7px 0}
+          @media(max-width:375px){.rhp158-horse-button{font-size:13px}.rhp158-filter-grid select{font-size:13px}}
+          </style>
+          '''
+          once('</head><body>',css+'</head><body>','Stage158 style')
+          # Scoring, rank, winning probability and result feeds are strictly untouched.
+          for required in ['rhp158BuildHistoricHotRows(hist)','rhp158HotRaceButton(r)','rhp158-hp-meeting','rhp158-open-horse','rhp158-horse-button','RHP_STAGE158_TRAINER_AND_HOTPOTS_UI']:
+           if required not in s: raise RuntimeError('Missing Stage158 patch element: '+required)
+          path.write_text(s,encoding='utf-8')
+          print('STAGE158_PATCH_SUCCESS_UI_ONLY bytes',len(s),'filters horse-details archived-odds trainer-coverage')
+          PYCODE
+            # Validate every existing inline JavaScript block, not just the new patch.
+            python - <<'PYCODE'
+          from pathlib import Path
+          import re,subprocess,tempfile
+          html=Path('index.html').read_text(encoding='utf-8')
+          blocks=re.findall(r'<script\b[^>]*>([\s\S]*?)</script\s*>',html,re.I)
+          n=0
+          for source in blocks:
+              if not source.strip():continue
+              with tempfile.NamedTemporaryFile(mode='w',suffix='.js',encoding='utf-8',delete=False) as file:
+                  file.write(source)
+                  path=file.name
+              try:
+                  result=subprocess.run(['node','--check',path],capture_output=True,text=True)
+                  if result.returncode:raise RuntimeError('JS script '+str(n)+' invalid: '+result.stderr[-1200:])
+              finally:Path(path).unlink(missing_ok=True)
+              n+=1
+          assert 'data-dock-tab="hot"' in html
+          assert 'RHP_STAGE158_TRAINER_AND_HOTPOTS_UI' in html
+          assert 'rhp158BuildHistoricHotRows(hist)' in html
+          print('STAGE158_JS_VALIDATED',n,'blocks')
+          PYCODE
+            git add index.html
+            if git diff --cached --quiet; then
+              echo 'STAGE158_ALREADY_PUBLISHED'
+              exit 0
+            fi
+            git commit -m 'Stage158: trainer price history and race overlays; Hot Pots horse details and meeting/time filters'
+            if git push origin HEAD:main; then
+              echo 'STAGE158_PUBLISHED_UI_ONLY'
+              exit 0
+            fi
+            if [ "$attempt" = 5 ]; then
+              echo 'Stage158 could not publish due to concurrent changes to main' >&2
+              exit 1
+            fi
+            sleep "$((attempt*4))"
+          done
