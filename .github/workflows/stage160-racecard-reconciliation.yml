@@ -95,7 +95,7 @@ jobs:
              'declared_active':len(eligible),'source_scored':len(byhorse),
              'missing_from_source':sorted(eligible-set(byhorse)),
              'source_not_active':sorted(set(byhorse)-eligible)}
-           race['reason']='Specialist source field differs from latest declarations; see field_reconciliation'"""
+             race['reason']='Specialist source field differs from latest declarations; see field_reconciliation'"""
               assert s.count(old)==1, 'Unexpected Stage153 field mismatch check; no changes written'
               s=s.replace(old,new,1)
               ast.parse(s)
