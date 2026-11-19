@@ -287,6 +287,7 @@ def build(args):
       'official_rating':num(c.get('ofr')),'age':c.get('age'),
       'weight':c.get('lbs'), 'draw':c.get('draw'),
       'source_model':model,'trainer':c.get('trainer'),'jockey':c.get('jockey'),
+      'model_drivers':json.loads(pred['driver_json']) if pred.get('driver_json') else None,
       'commentary':prose(c['horse'],c,pred,rank,leader,second_name,subtype,model)})
   race['selection']={'horse':race['runners'][0]['horse'],'kind':'RECORDED_PRE_OFF',
                      'published_at':race['evidence_asof'],'pre_off_valid':True}
@@ -328,7 +329,9 @@ def build(args):
  args.output.parent.mkdir(parents=True,exist_ok=True)
  from stage155_evidence_commentary import enrich as _enrich_individual
  _enrich_individual(payload, cards, args.sources)
- # Stage155 only changes prose; source-model runners, ranks, scores and picks are preserved.
+ from stage159_narrative import upgrade as _explain_picks
+ _explain_picks(payload, cards)
+ # Stage155 + Stage159 only change prose and evidence metadata; all frozen rankings, scores and picks remain unchanged.
  args.output.write_text(json.dumps(payload,indent=2,ensure_ascii=False)+'\n')
  print('STAGE153_ASSEMBLED',json.dumps({'day':target,'races':len(races),'counts':dict(counts)}))
  if not counts['ranked'] and not counts['preserved_post_off']:
@@ -397,3 +400,5 @@ if __name__=='__main__':
  if a.mode=='self-test':selftest()
  elif a.mode=='build':build(a)
  else:settle(a)
+
+# STAGE159_MODEL_INPUT_DRIVERS_V1

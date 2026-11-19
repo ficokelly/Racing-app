@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse, collections, csv, datetime as dt, json, pathlib, math
 from zoneinfo import ZoneInfo
 import numpy as np
+import stage159_explainability as E
 
 DUBLIN=ZoneInfo('Europe/Dublin')
 TODAY=dt.datetime.now(DUBLIN).date().isoformat()
@@ -145,6 +146,17 @@ def main(a):
     for modelid,nonlinear,with_trend in recipes:
         bank,fit=F.fitted_bank(train,routing,config,nonlinear=nonlinear,with_trend=with_trend)
         predictions=F.predict(live,routing,config,bank,nonlinear=nonlinear,with_trend=with_trend)
+        # The family-specific logistic model is linear in its scaled input features.
+        # These are exact within-race log-odds contributions, not guessed causes.
+        stage159_X,_,stage159_meta,_,stage159_names=F.fused_matrix(live,routing,config,nonlinear=nonlinear,with_trend=with_trend)
+        stage159_lookup={(str(rid),int(ix)):k for k,(rid,ix) in enumerate(stage159_meta)}
+        stage159_drivers={}
+        for stage159_race in live:
+            stage159_rid=str(stage159_race['race_id'])
+            stage159_indices=[stage159_lookup[(stage159_rid,k)] for k in range(len(stage159_race['horse']))]
+            stage159_family=routing[stage159_rid]['family']
+            stage159_scaler,stage159_clf=bank.get(stage159_family,bank['__GLOBAL__'])
+            stage159_drivers[stage159_rid]=E.safe_logistic(stage159_X[stage159_indices],stage159_scaler,stage159_clf,stage159_names)
         runmeta.append({'model':modelid,**fit})
         for race in sorted(live,key=lambda r:byid[str(r['race_id'])]['off']):
             rid=str(race['race_id']);off=byid[rid]['off']
@@ -165,6 +177,7 @@ def main(a):
                     'prior_races_for_trend':trend['history'],
                     'trend_signals':trend['historical_features'] if with_trend else '',
                     'trend_horse_score':round(float(race['trend_features'][k][0]),5) if with_trend else '',
+                    'driver_json':json.dumps(stage159_drivers[rid][k],separators=(',',':')),
                     'field_size':len(race['horse']),
                     'trained_through':TRAIN_THROUGH,
                     'historical_results_through':source_latest,
@@ -223,3 +236,5 @@ if __name__=='__main__':
         if any(getattr(args,z) is None for z in ('db','reference','cards','config','out')):
             raise RuntimeError('Missing required pre-off archive or racecards')
         main(args)
+
+# STAGE159_MODEL_INPUT_DRIVERS_V1

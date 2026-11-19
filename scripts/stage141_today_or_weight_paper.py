@@ -10,6 +10,7 @@ The source historical DB, live app, frozen D and original Stage141 stay untouche
 """
 import argparse, collections, csv, datetime as dt, json, pathlib, shutil, sqlite3
 import numpy as np
+import stage159_explainability as E
 import import_historical_ukie as I
 import stage30_gap_aware_abcd as D
 import stage108_model_g2 as G
@@ -135,7 +136,9 @@ def run(args):
         off=byid[rid]['off']
         if off<=utcnow()+dt.timedelta(minutes=2):
             skips['already_off_or_imminent']+=1;continue
-        prob,bank=S.predict_bank(banks,H.hpr_ability_137(M.copy_race(r,weights=True,official=True)))
+        stage159_inputs=H.hpr_ability_137(M.copy_race(r,weights=True,official=True))
+        prob,bank=S.predict_bank(banks,stage159_inputs)
+        stage159_drivers=E.safe_forest(stage159_inputs['xf'],prob,banks[bank],S.FEATURES)
         if not np.all(np.isfinite(prob)) or len(prob)!=len(r['horse']):raise RuntimeError('Invalid score '+rid)
         order=np.argsort(-prob,kind='stable')
         for rank,ix in enumerate(order,1):
@@ -150,7 +153,8 @@ def run(args):
                'last_handicap_winning_mark':round(float(r['or_features'][ix,11]),1) if np.isfinite(r['or_features'][ix,11]) else '',
                'back_to_winning_mark_good_form':int(r['or_features'][ix,20]) if np.isfinite(r['or_features'][ix,20]) else '',
                'field_size':len(order),'model':'D137_HPR_ABILITY_OR_WEIGHT',
-               'bank':bank,'decision_utc':utcnow().isoformat(),'odds_used':False,'result_known':False}
+               'bank':bank,'driver_json':json.dumps(stage159_drivers[ix],separators=(',',':')),
+               'decision_utc':utcnow().isoformat(),'odds_used':False,'result_known':False}
             full.append(z)
             if rank<=2:top.append(z)
     if not top:raise RuntimeError('No races remain before the off after scoring')
@@ -179,3 +183,5 @@ if __name__=='__main__':
     p.add_argument('--out',required=True,type=pathlib.Path)
     p.add_argument('--date',default='')
     run(p.parse_args())
+
+# STAGE159_MODEL_INPUT_DRIVERS_V1

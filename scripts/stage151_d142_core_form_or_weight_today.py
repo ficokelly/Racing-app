@@ -17,6 +17,7 @@ import pathlib
 from zoneinfo import ZoneInfo
 
 import numpy as np
+import stage159_explainability as E
 import stage30_gap_aware_abcd as D
 import stage137_frozen_d_race_type_walkforward as S
 import stage139_hpr_137_138_walkforward as H
@@ -128,7 +129,9 @@ def score_today(args):
             continue
         # EXACT BOTH_WEIGHT arm from scripts/stage142_full_history_core_2026.py
         model_race = T.variant(r, by_extended[rid], core=True, form=True, weights=True)
-        scores, bank = S.predict_bank(banks, H.hpr_ability_137(model_race))
+        stage159_inputs=H.hpr_ability_137(model_race)
+        scores, bank = S.predict_bank(banks, stage159_inputs)
+        stage159_drivers=E.safe_forest(stage159_inputs['xf'],scores,banks[bank],S.FEATURES)
         if len(scores) != len(r['horse']) or not np.all(np.isfinite(scores)):
             raise RuntimeError('Invalid or incomplete full-field scores for '+rid)
         order = np.argsort(-scores, kind='stable')
@@ -146,6 +149,7 @@ def score_today(args):
                 'rank': rank,
                 'model': MODEL,
                 'raw_score_not_calibrated_win_pct': round(float(scores[idx]), 6),
+                'driver_json': json.dumps(stage159_drivers[idx],separators=(',',':')),
                 'field_size': len(order),
                 'trained_through': cutoff,
                 'prediction_asof': L.utcnow().isoformat(),
@@ -212,3 +216,5 @@ if __name__ == '__main__':
         if not all((a.db, a.reference, a.cards, a.out)):
             p.error('The today command needs --db, --reference, --cards and --out')
         score_today(a)
+
+# STAGE159_MODEL_INPUT_DRIVERS_V1

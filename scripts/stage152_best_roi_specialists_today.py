@@ -22,6 +22,7 @@ import json
 import pathlib
 from zoneinfo import ZoneInfo
 import numpy as np
+import stage159_explainability as E
 import stage30_gap_aware_abcd as D
 import stage137_frozen_d_race_type_walkforward as S
 import stage139_hpr_137_138_walkforward as H
@@ -167,7 +168,9 @@ def main(args):
             (T.BOTH,T.variant(r,longmap[rid],core=True,form=True,weights=False),fit_both)
         ]
         for name,inputs,bank in variants:
-            scores,branch=S.predict_bank(bank,H.hpr_ability_137(inputs))
+            stage159_inputs=H.hpr_ability_137(inputs)
+            scores,branch=S.predict_bank(bank,stage159_inputs)
+            stage159_drivers=E.safe_forest(stage159_inputs['xf'],scores,bank[branch],S.FEATURES)
             if len(scores)!=len(r['horse']) or not np.all(np.isfinite(scores)):
                 raise RuntimeError('Failed complete field for '+rid+' '+name)
             top=int(np.argmax(scores))
@@ -178,6 +181,7 @@ def main(args):
                     'rank':rank,'horse':r['horse'][idx],
                     'model_score_not_calibrated_probability':round(float(scores[idx]),6),
                     'field_size':len(r['horse']),'prediction_asof':L.utcnow().isoformat(),
+                    'driver_json':json.dumps(stage159_drivers[int(idx)],separators=(',',':')),
                     'odds_used_for_current_prediction':False})
             rank1.append({'date':date,'time_utc':c['off'].strftime('%H:%M'),'meeting':r['course'],
                 'race_id':rid,'race_name':r['race_name'],'race_type':r['subtype'],'discipline':r['kind'],
@@ -188,6 +192,7 @@ def main(args):
         name=P.W_G+'__ROI'
         weights,level,group,details=P.choose_bank(bank143,r,frozen)
         scores=r['scores'][P.W_G]@weights
+        stage159_pillars=E.safe_pillars(r['scores'][P.W_G],weights)
         if len(scores)!=len(r['horse']) or not np.all(np.isfinite(scores)):
             raise RuntimeError('Failed Stage143D field '+rid)
         top=int(np.argmax(scores))
@@ -198,6 +203,7 @@ def main(args):
                 'rank':rank,'horse':r['horse'][idx],
                 'model_score_not_calibrated_probability':round(float(scores[idx]),6),
                 'field_size':len(r['horse']),'prediction_asof':L.utcnow().isoformat(),
+                'driver_json':json.dumps(stage159_pillars[int(idx)],separators=(',',':')),
                 'odds_used_for_current_prediction':False})
         rank1.append({'date':date,'time_utc':c['off'].strftime('%H:%M'),'meeting':r['course'],
             'race_id':rid,'race_name':r['race_name'],'race_type':r['subtype'],'discipline':r['kind'],
@@ -252,3 +258,5 @@ if __name__=='__main__':
         if any(v is None for v in (args.db,args.reference,args.cards,args.out)):
             ap.error('today requires --db --reference --cards --out')
         main(args)
+
+# STAGE159_MODEL_INPUT_DRIVERS_V1

@@ -18,6 +18,7 @@ import sqlite3
 
 import joblib
 import numpy as np
+import stage159_explainability as E
 import pandas as pd
 
 import stage108_model_g2 as G
@@ -268,6 +269,16 @@ def run(args):
         x=data.reindex(columns=cols).apply(pd.to_numeric,errors='coerce').astype(float)
         p=data.copy()
         p['raw_probability']=model['estimator'].predict_proba(x)[:,1]
+        # Record input sensitivity BEFORE normalized race scores/reordering.
+        stage159_items=['']*len(p)
+        for stage159_rid,stage159_positions in p.groupby('race_id',sort=False).indices.items():
+            stage159_ix=np.asarray(stage159_positions,dtype=int)
+            stage159_mat=x.iloc[stage159_ix].to_numpy(dtype=float)
+            stage159_scores=p.iloc[stage159_ix]['raw_probability'].to_numpy(dtype=float)
+            stage159_impacts=E.safe_forest(stage159_mat,stage159_scores,model['estimator'],cols)
+            for stage159_pos,stage159_impact in zip(stage159_ix,stage159_impacts):
+                stage159_items[int(stage159_pos)]=json.dumps(stage159_impact,separators=(',',':'))
+        p['driver_json']=stage159_items
         p=G.softmax_races(p,1.)
         p=G.ranks(p)
         p['model']=name
@@ -334,3 +345,5 @@ def main():
     return self_test() if args.mode=='self-test' else run(args)
 
 if __name__=='__main__':main()
+
+# STAGE159_MODEL_INPUT_DRIVERS_V1
