@@ -1,0 +1,128 @@
+name: 'Stage160 — Fix stale racecard mismatch in combined model'
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: stage160-reconcile-installer
+  cancel-in-progress: false
+
+jobs:
+  install:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout current app and Stage159 scores
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Fix Stage153 to use the newest published non-runner statuses
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            python - <<'PY'
+          from pathlib import Path
+          import ast
+          p=Path('scripts/stage153_roi_combined.py')
+          s=p.read_text(encoding='utf-8')
+          marker='STAGE160_LATE_CARD_RECONCILIATION'
+          if marker not in s:
+              old='import argparse, collections, csv, datetime as dt, json, math, pathlib, re'
+              new=old+', subprocess'
+              assert s.count(old)==1, 'Unexpected current Stage153 import; no changes written'
+              s=s.replace(old,new,1)
+              anchor='def build(args):'
+              assert s.count(anchor)==1, 'Unexpected Stage153 build function; no changes written'
+              extra='''# STAGE160_LATE_CARD_RECONCILIATION
+          def load_latest_published_cards(snapshot, target):
+           """Use newer published declarations, without altering source-model scores.
+           Stage147 refreshes independently; a late non-runner (Mont Star on
+           2026-11-19, Thurles 14:25) must not stay active in Stage153's initial card.
+           If no trustworthy newer publication exists, retain the original
+           field and keep fail-closed exact-field checks.
+           """
+           def collected(payload):
+            t=parse_time(payload.get('collected_at'))
+            return t
+           try:
+            result=subprocess.run(['git','fetch','-q','origin','main'],
+                                  capture_output=True,text=True,timeout=45)
+            if result.returncode:
+             print('STAGE160_CARD_FETCH_UNAVAILABLE',result.stderr[-180:],flush=True)
+             return snapshot
+            output=subprocess.run(['git','show','origin/main:data/racecards.json'],
+                                  capture_output=True,text=True,timeout=30)
+            if output.returncode:
+             print('STAGE160_CARD_READ_UNAVAILABLE',output.stderr[-180:],flush=True)
+             return snapshot
+            fresh=json.loads(output.stdout)
+            before=collected(snapshot);after=collected(fresh)
+            if before is None or after is None or after<=before:
+             return snapshot
+            if after>utcnow()+dt.timedelta(minutes=2):
+             print('STAGE160_FUTURE_CARD_REJECTED',iso(after),flush=True)
+             return snapshot
+            if not any(r.get('date')==target for r in fresh.get('runners',[])):
+             print('STAGE160_NO_TARGET_RACES_IN_NEW_CARD',target,flush=True)
+             return snapshot
+            print('STAGE160_REFRESHED_DECLARATIONS',iso(before),'TO',iso(after),flush=True)
+            return fresh
+           except (OSError,ValueError,subprocess.SubprocessError) as error:
+            print('STAGE160_CARD_RECONCILIATION_WARNING',str(error)[:200],flush=True)
+            return snapshot
+
+          '''
+              s=s.replace(anchor,extra+anchor,1)
+              old=' cards=json.loads(args.cards.read_text())\n grouped=declared(cards,target)'
+              new=' cards=json.loads(args.cards.read_text())\n cards=load_latest_published_cards(cards,target)\n grouped=declared(cards,target)'
+              assert s.count(old)==1, 'Unexpected Stage153 card load; no changes written'
+              s=s.replace(old,new,1)
+              old="   race['reason']='Specialist has not produced a complete assessment of this declared field (or a non-runner changed)'"
+              new="""   race['field_reconciliation']={'latest_card_asof':cards.get('collected_at'),
+             'declared_active':len(eligible),'source_scored':len(byhorse),
+             'missing_from_source':sorted(eligible-set(byhorse)),
+             'source_not_active':sorted(set(byhorse)-eligible)}
+           race['reason']='Specialist source field differs from latest declarations; see field_reconciliation'"""
+              assert s.count(old)==1, 'Unexpected Stage153 field mismatch check; no changes written'
+              s=s.replace(old,new,1)
+              ast.parse(s)
+              p.write_text(s,encoding='utf-8')
+              print('STAGE160_PATCH_VERIFIED_ASSEMBLER_ONLY')
+          else:
+              print('STAGE160_ALREADY_INSTALLED')
+          PY
+            python -m py_compile scripts/stage153_roi_combined.py
+            python scripts/stage153_roi_combined.py self-test
+            git add scripts/stage153_roi_combined.py
+            if git diff --cached --quiet; then
+              echo 'STAGE160_ALREADY_PUBLISHED'
+              break
+            fi
+            git commit -m 'Stage160: reconcile latest declared runners after independent specialist scoring'
+            if git push origin HEAD:main; then
+              echo 'STAGE160_PATCH_PUBLISHED'
+              break
+            fi
+            test "$attempt" -lt 5 || { echo 'Concurrent repository update prevented publication'; exit 1; }
+            sleep "$((attempt*3))"
+          done
+      - name: Trigger fresh Stage153 assessment of today's live races
+        shell: bash
+        run: |
+          set -euo pipefail
+          DATE="$(TZ=Europe/Dublin date +%F)"
+          gh workflow run stage153-roi-combined.yml --ref main -f "selection_date=$DATE"
+          echo "STAGE160_TRIGGERED_FRESH_STAGE153 $DATE"
