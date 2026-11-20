@@ -1,7 +1,7 @@
 {
   "version": 1,
   "day": "2026-11-20",
-  "generated_at": "2026-11-20T00:44:21.642639+00:00",
+  "generated_at": "2026-11-20T17:45:44.488975+00:00",
   "policy": "stage40-paper-only-edge20pct-and-4pp-v1",
   "state": "RESEARCH_ONLY_CALIBRATION_UNVALIDATED",
   "calibration": {
@@ -14,10 +14,12 @@
   "readme": "Forecasts independent of odds; bookmaker break-even and vig-free market are separate. Uncalibrated model EV is not a proven betting edge.",
   "price_feed_status": "NO_FRESH_PRICE_SNAPSHOT",
   "price_feed_audit": {
-    "age_minutes": 91.9,
-    "collected_at": "2026-11-19T23:12:30.444321+00:00",
-    "ignored_rows": {},
-    "indexed_races": 25
+    "age_minutes": 105.6,
+    "collected_at": "2026-11-20T16:00:08.197955+00:00",
+    "ignored_rows": {
+      "source_marked_stale": 13
+    },
+    "indexed_races": 17
   },
   "races": [
     {
@@ -32,7 +34,7 @@
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -40,8 +42,9 @@
           "model_probability_available": false
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -85,7 +88,7 @@
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -93,8 +96,9 @@
           "model_probability_available": false
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -134,51 +138,11 @@
       "race_id": "rac_32304911587",
       "race_name": "Racing To School Reaches 25 Years Juvenile Hurdle Race (GBB Race)",
       "race_type": "Hurdle",
-      "field_size": 11,
-      "non_runners_excluded": 0,
-      "priced_runners": 0,
-      "full_bookmakers": [],
-      "preoff_at_generation": true,
-      "models": {
-        "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
-        },
-        "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        },
-        "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
-        }
-      },
-      "paper_candidates": [],
-      "stage39_context": []
-    },
-    {
-      "date": "2026-11-20",
-      "course": "Ascot",
-      "time": "12:10",
-      "race_time": "2026-11-20T12:10:00+00:00",
-      "race_id": "rac_32304899965",
-      "race_name": "Ladbrokes 'Chasing Excellence' Beginners' Steeple Chase (GBB Race)",
-      "race_type": "Chase",
-      "field_size": 2,
+      "field_size": 10,
       "non_runners_excluded": 1,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -186,8 +150,9 @@
           "model_probability_available": false
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -214,11 +179,11 @@
       "race_id": "rac_32304942579",
       "race_name": "McCarthy Construction Novices' Hurdle Race (Div II) (GBB Race)",
       "race_type": "Hurdle",
-      "field_size": 14,
-      "non_runners_excluded": 0,
+      "field_size": 13,
+      "non_runners_excluded": 1,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -226,8 +191,9 @@
           "model_probability_available": false
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -267,11 +233,11 @@
       "race_id": "rac_32304913524",
       "race_name": "Jumps Look Better On Racing TV Novices' Hurdle Race (GBB Race)",
       "race_type": "Hurdle",
-      "field_size": 9,
-      "non_runners_excluded": 0,
+      "field_size": 6,
+      "non_runners_excluded": 3,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -279,8 +245,9 @@
           "model_probability_available": false
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -307,11 +274,11 @@
       "race_id": "rac_32304898028",
       "race_name": "Ascot Promoting Safer Gambling Week 'National Hunt' Maiden Hurdle Race (GBB Race)",
       "race_type": "Hurdle",
-      "field_size": 8,
-      "non_runners_excluded": 0,
+      "field_size": 7,
+      "non_runners_excluded": 1,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -319,8 +286,9 @@
           "model_probability_available": false
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -351,7 +319,7 @@
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -359,8 +327,9 @@
           "model_probability_available": false
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -404,7 +373,7 @@
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -412,8 +381,9 @@
           "model_probability_available": false
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -440,11 +410,11 @@
       "race_id": "rac_32304901902",
       "race_name": "Bet With Ascot Donation Box Winners 'Introductory' Hurdle Race (GBB Race)",
       "race_type": "Hurdle",
-      "field_size": 6,
-      "non_runners_excluded": 0,
+      "field_size": 5,
+      "non_runners_excluded": 1,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -452,8 +422,9 @@
           "model_probability_available": false
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -480,11 +451,11 @@
       "race_id": "rac_32304946453",
       "race_name": "Albert Bartlett Triple Crown Series Handicap Hurdle Race (Qualifier)",
       "race_type": "Hurdle",
-      "field_size": 12,
-      "non_runners_excluded": 0,
+      "field_size": 11,
+      "non_runners_excluded": 1,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -492,8 +463,9 @@
           "model_probability_available": false
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -533,11 +505,11 @@
       "race_id": "rac_32304917398",
       "race_name": "Support The Injured Jockeys Fund Handicap Hurdle Race (Go North Brindisi Breeze Series Qualifier)",
       "race_type": "Hurdle",
-      "field_size": 9,
-      "non_runners_excluded": 0,
+      "field_size": 8,
+      "non_runners_excluded": 1,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -545,8 +517,9 @@
           "model_probability_available": false
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -577,7 +550,7 @@
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -585,8 +558,9 @@
           "model_probability_available": false
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -613,11 +587,11 @@
       "race_id": "rac_32304948390",
       "race_name": "Happy 80th Birthday Pamela Hall Handicap Steeple Chase (GBB Race)",
       "race_type": "Chase",
-      "field_size": 12,
-      "non_runners_excluded": 1,
+      "field_size": 11,
+      "non_runners_excluded": 2,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -625,8 +599,9 @@
           "model_probability_available": false
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -666,11 +641,11 @@
       "race_id": "rac_32304919335",
       "race_name": "Jodie Standing's Point-To-Point Recruits Handicap Steeple Chase (Challenger Staying Chase Series Qualifier) (GBB Race)",
       "race_type": "Chase",
-      "field_size": 5,
-      "non_runners_excluded": 0,
+      "field_size": 4,
+      "non_runners_excluded": 1,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -678,8 +653,9 @@
           "model_probability_available": false
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -710,7 +686,7 @@
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -718,8 +694,9 @@
           "model_probability_available": false
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -746,11 +723,11 @@
       "race_id": "rac_32304950327",
       "race_name": "David Lucas Best Prices Welsh Sport Handicap Hurdle Race",
       "race_type": "Hurdle",
-      "field_size": 12,
-      "non_runners_excluded": 0,
+      "field_size": 10,
+      "non_runners_excluded": 2,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -758,8 +735,9 @@
           "model_probability_available": false
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -799,11 +777,11 @@
       "race_id": "rac_32304921272",
       "race_name": "racingtv.com/freetrial Female Jockeys' Handicap Steeple Chase (Female Professional Jockeys And Amateur Riders' Race)",
       "race_type": "Chase",
-      "field_size": 9,
-      "non_runners_excluded": 0,
+      "field_size": 8,
+      "non_runners_excluded": 1,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -811,8 +789,9 @@
           "model_probability_available": false
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -839,11 +818,11 @@
       "race_id": "rac_32304907713",
       "race_name": "Ladbrokes 'Get Your Free Racing Bet Today' Handicap Steeple Chase (GBB Race)",
       "race_type": "Chase",
-      "field_size": 10,
-      "non_runners_excluded": 0,
+      "field_size": 9,
+      "non_runners_excluded": 1,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -851,8 +830,9 @@
           "model_probability_available": false
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -879,11 +859,11 @@
       "race_id": "rac_32304952264",
       "race_name": "Free £5 Bet At David Lucas Open National Hunt Flat Race (Category 1 Elimination) (GBB Race)",
       "race_type": "NH Flat",
-      "field_size": 12,
-      "non_runners_excluded": 0,
+      "field_size": 10,
+      "non_runners_excluded": 2,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -891,8 +871,9 @@
           "model_probability_available": false
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -923,7 +904,7 @@
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -931,8 +912,9 @@
           "model_probability_available": false
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -959,20 +941,21 @@
       "race_id": "rac_32304909650",
       "race_name": "Bet Responsibly With Ladbrokes Open National Hunt Flat Race (Category 1 Elimination) (GBB Race)",
       "race_type": "NH Flat",
-      "field_size": 7,
-      "non_runners_excluded": 0,
+      "field_size": 6,
+      "non_runners_excluded": 1,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "status": "MODEL_PUBLISHED_AFTER_OFF_OR_UNDATED",
           "leader": null,
           "model_probability_available": false
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
           "status": "NO_SAME_DAY_MODEL_FORECAST",
@@ -1003,25 +986,291 @@
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
+          "status": "PRICE_COMPARED_EXPERIMENTAL",
+          "model_version": "stage16-own-data-temporal-v3-stage25-starters",
+          "leader": "Wrist Art",
+          "model_probability_available": true,
+          "model_win_pct": 10.76,
+          "calibration_status": "INSUFFICIENT_FUTURE_OUTCOMES",
+          "runners": [
+            {
+              "horse": "Wrist Art",
+              "horse_id": "hrs_23119642",
+              "probability": 0.107639,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Borderline Madness",
+              "horse_id": "hrs_44384508",
+              "probability": 0.093089,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Book of Life",
+              "horse_id": "hrs_31966137",
+              "probability": 0.090109,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Maith Mar Or",
+              "horse_id": "hrs_55304221",
+              "probability": 0.084465,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "King David",
+              "horse_id": "hrs_36207430",
+              "probability": 0.083278,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Ignition",
+              "horse_id": "hrs_44294817",
+              "probability": 0.080257,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Offiah's Boy",
+              "horse_id": "hrs_41229790",
+              "probability": 0.076945,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Age of Time",
+              "horse_id": "hrs_36664558",
+              "probability": 0.075113,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Dumfries",
+              "horse_id": "hrs_30123513",
+              "probability": 0.072675,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Pitney",
+              "horse_id": "hrs_34471045",
+              "probability": 0.071077,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Shielas Well",
+              "horse_id": "hrs_42163240",
+              "probability": 0.069428,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Port Noir",
+              "horse_id": "hrs_18323963",
+              "probability": 0.05613,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Molly Valentine",
+              "horse_id": "hrs_29228640",
+              "probability": 0.039794,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            }
+          ]
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
+          "status": "PRICE_COMPARED_EXPERIMENTAL",
+          "model_version": "model-c-v2-stage25-verified-starters-2026-11",
+          "leader": "Wrist Art",
+          "model_probability_available": true,
+          "model_win_pct": 13.61,
+          "calibration_status": "NO_APPROVED_FORWARD_CALIBRATION",
+          "runners": [
+            {
+              "horse": "Wrist Art",
+              "horse_id": "hrs_23119642",
+              "probability": 0.136103,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Offiah's Boy",
+              "horse_id": "hrs_41229790",
+              "probability": 0.088634,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Borderline Madness",
+              "horse_id": "hrs_44384508",
+              "probability": 0.083923,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "King David",
+              "horse_id": "hrs_36207430",
+              "probability": 0.081488,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Ignition",
+              "horse_id": "hrs_44294817",
+              "probability": 0.080321,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Book of Life",
+              "horse_id": "hrs_31966137",
+              "probability": 0.0788,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Maith Mar Or",
+              "horse_id": "hrs_55304221",
+              "probability": 0.076069,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Pitney",
+              "horse_id": "hrs_34471045",
+              "probability": 0.074785,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Dumfries",
+              "horse_id": "hrs_30123513",
+              "probability": 0.07093,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Age of Time",
+              "horse_id": "hrs_36664558",
+              "probability": 0.065987,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Port Noir",
+              "horse_id": "hrs_18323963",
+              "probability": 0.061487,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Shielas Well",
+              "horse_id": "hrs_42163240",
+              "probability": 0.055573,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Molly Valentine",
+              "horse_id": "hrs_29228640",
+              "probability": 0.0459,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            }
+          ]
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Age of Time",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Age of Time",
+              "rank": 1,
+              "score": 0.30073
+            },
+            {
+              "horse": "Ignition",
+              "rank": 2,
+              "score": 0.27721
+            },
+            {
+              "horse": "Port Noir",
+              "rank": 3,
+              "score": 0.23568
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -1043,29 +1292,245 @@
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
+          "status": "PRICE_COMPARED_EXPERIMENTAL",
+          "model_version": "stage16-own-data-temporal-v3-stage25-starters",
+          "leader": "Premier View",
+          "model_probability_available": true,
+          "model_win_pct": 26.56,
+          "calibration_status": "INSUFFICIENT_FUTURE_OUTCOMES",
+          "runners": [
+            {
+              "horse": "Premier View",
+              "horse_id": "hrs_65642381",
+              "probability": 0.265626,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Rejoinder",
+              "horse_id": "hrs_65451442",
+              "probability": 0.164454,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Space Dreamer",
+              "horse_id": "hrs_65161439",
+              "probability": 0.132732,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Matriarchal",
+              "horse_id": "hrs_63323295",
+              "probability": 0.131109,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Sapphire Sun",
+              "horse_id": "hrs_17391290420",
+              "probability": 0.100617,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Invincible Irish",
+              "horse_id": "hrs_17389030239",
+              "probability": 0.058495,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Sorrento Sunset",
+              "horse_id": "hrs_17391301893",
+              "probability": 0.053467,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Mickian Thomas",
+              "horse_id": "hrs_17390956660",
+              "probability": 0.046905,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Boysofwallstreet",
+              "horse_id": "hrs_64847300",
+              "probability": 0.046595,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            }
+          ]
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
+          "status": "PRICE_COMPARED_EXPERIMENTAL",
+          "model_version": "model-c-v2-stage25-verified-starters-2026-11",
+          "leader": "Premier View",
+          "model_probability_available": true,
+          "model_win_pct": 24.52,
+          "calibration_status": "NO_APPROVED_FORWARD_CALIBRATION",
+          "runners": [
+            {
+              "horse": "Premier View",
+              "horse_id": "hrs_65642381",
+              "probability": 0.24523,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Matriarchal",
+              "horse_id": "hrs_63323295",
+              "probability": 0.157964,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Space Dreamer",
+              "horse_id": "hrs_65161439",
+              "probability": 0.143279,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Rejoinder",
+              "horse_id": "hrs_65451442",
+              "probability": 0.136853,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Sapphire Sun",
+              "horse_id": "hrs_17391290420",
+              "probability": 0.086406,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Sorrento Sunset",
+              "horse_id": "hrs_17391301893",
+              "probability": 0.062789,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Invincible Irish",
+              "horse_id": "hrs_17389030239",
+              "probability": 0.059997,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Mickian Thomas",
+              "horse_id": "hrs_17390956660",
+              "probability": 0.057134,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Boysofwallstreet",
+              "horse_id": "hrs_64847300",
+              "probability": 0.050347,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            }
+          ]
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Rejoinder",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Rejoinder",
+              "rank": 1,
+              "score": 0.21932
+            },
+            {
+              "horse": "Matriarchal",
+              "rank": 2,
+              "score": -0.01566
+            },
+            {
+              "horse": "Sapphire Sun",
+              "rank": 3,
+              "score": -0.0168
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-z-stage38-frozen-stage34-candidate-paper-v1",
+          "leader": "Rejoinder",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Rejoinder",
+              "rank": 1,
+              "score": 0.184165
+            },
+            {
+              "horse": "Sapphire Sun",
+              "rank": 2,
+              "score": -0.021803
+            },
+            {
+              "horse": "Matriarchal",
+              "rank": 3,
+              "score": -0.04617
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model Z value or expected ROI.",
+          "specialist_status": "PAPER_ONLY"
         }
       },
       "paper_candidates": [],
@@ -1092,29 +1557,151 @@
       "race_id": "rac_32304927083",
       "race_name": "Midnite: Built For 2026 Not 2006 Novice Stakes (GBB Race)",
       "race_type": "Flat",
-      "field_size": 6,
-      "non_runners_excluded": 0,
+      "field_size": 5,
+      "non_runners_excluded": 1,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
+          "status": "PRICE_COMPARED_EXPERIMENTAL",
+          "model_version": "stage16-own-data-temporal-v3-stage25-starters",
+          "leader": "Oliaku",
+          "model_probability_available": true,
+          "model_win_pct": 33.04,
+          "calibration_status": "INSUFFICIENT_FUTURE_OUTCOMES",
+          "runners": [
+            {
+              "horse": "Oliaku",
+              "horse_id": "hrs_52995215",
+              "probability": 0.330438,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Frantic",
+              "horse_id": "hrs_58133544",
+              "probability": 0.254863,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Butterfly Beach",
+              "horse_id": "hrs_53539528",
+              "probability": 0.234331,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Navona Grey",
+              "horse_id": "hrs_64590778",
+              "probability": 0.092983,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Beatrice Briannie",
+              "horse_id": "hrs_17394098176",
+              "probability": 0.087385,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            }
+          ]
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
+          "status": "PRICE_COMPARED_EXPERIMENTAL",
+          "model_version": "model-c-v2-stage25-verified-starters-2026-11",
+          "leader": "Oliaku",
+          "model_probability_available": true,
+          "model_win_pct": 30.49,
+          "calibration_status": "NO_APPROVED_FORWARD_CALIBRATION",
+          "runners": [
+            {
+              "horse": "Oliaku",
+              "horse_id": "hrs_52995215",
+              "probability": 0.30488,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Frantic",
+              "horse_id": "hrs_58133544",
+              "probability": 0.243272,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Butterfly Beach",
+              "horse_id": "hrs_53539528",
+              "probability": 0.219455,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Navona Grey",
+              "horse_id": "hrs_64590778",
+              "probability": 0.122015,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Beatrice Briannie",
+              "horse_id": "hrs_17394098176",
+              "probability": 0.110378,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            }
+          ]
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Frantic",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Frantic",
+              "rank": 1,
+              "score": -0.29645
+            },
+            {
+              "horse": "Oliaku",
+              "rank": 2,
+              "score": -0.33436
+            },
+            {
+              "horse": "Butterfly Beach",
+              "rank": 3,
+              "score": -0.41324
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -1136,28 +1723,187 @@
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "status": "MODEL_FIELD_CHANGED_OR_MISSING_NONRUNNER_REASSESSMENT",
           "leader": null,
           "model_probability_available": false
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
+          "status": "PRICE_COMPARED_EXPERIMENTAL",
+          "model_version": "model-c-v2-stage25-verified-starters-2026-11",
+          "leader": "Rodeeve",
+          "model_probability_available": true,
+          "model_win_pct": 10.5,
+          "calibration_status": "NO_APPROVED_FORWARD_CALIBRATION",
+          "runners": [
+            {
+              "horse": "Rodeeve",
+              "horse_id": "hrs_40746006",
+              "probability": 0.105018,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "El Fontenaro",
+              "horse_id": "hrs_412692735",
+              "probability": 0.094867,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "One Cool Bear",
+              "horse_id": "hrs_53960053",
+              "probability": 0.091303,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Steel Magnolia",
+              "horse_id": "hrs_47555445",
+              "probability": 0.078937,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Surpass And Shine",
+              "horse_id": "hrs_37110843",
+              "probability": 0.069302,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Subiaco",
+              "horse_id": "hrs_55061699",
+              "probability": 0.057791,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Zabriskie Point",
+              "horse_id": "hrs_35625681",
+              "probability": 0.056808,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "All Hail",
+              "horse_id": "hrs_53081217",
+              "probability": 0.055583,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Spirit Of Eagles",
+              "horse_id": "hrs_31451448",
+              "probability": 0.054959,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Sovereign Banter",
+              "horse_id": "hrs_42226079",
+              "probability": 0.052241,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "This Guy",
+              "horse_id": "hrs_51897622",
+              "probability": 0.049582,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "The Cosy Corner",
+              "horse_id": "hrs_55700785",
+              "probability": 0.04645,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Hasiyna",
+              "horse_id": "hrs_31188213",
+              "probability": 0.041076,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Are You In Or Out",
+              "horse_id": "hrs_37068157",
+              "probability": 0.039304,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Treasured Royal",
+              "horse_id": "hrs_55882253",
+              "probability": 0.036906,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Gonirianbotharleat",
+              "horse_id": "hrs_59862481",
+              "probability": 0.035131,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Inishmot Prince",
+              "horse_id": "hrs_27166538",
+              "probability": 0.034742,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            }
+          ]
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
+          "status": "STALE_OR_INCOMPLETE_RANKING",
           "model_probability_available": false
         },
         "Z": {
-          "status": "NO_CURRENT_RANKING",
+          "status": "STALE_OR_INCOMPLETE_RANKING",
           "model_probability_available": false
         }
       },
@@ -1189,25 +1935,255 @@
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
+          "status": "PRICE_COMPARED_EXPERIMENTAL",
+          "model_version": "stage16-own-data-temporal-v3-stage25-starters",
+          "leader": "Noble Light",
+          "model_probability_available": true,
+          "model_win_pct": 11.8,
+          "calibration_status": "INSUFFICIENT_FUTURE_OUTCOMES",
+          "runners": [
+            {
+              "horse": "Noble Light",
+              "horse_id": "hrs_17394902329",
+              "probability": 0.118022,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "My Amanah",
+              "horse_id": "hrs_17395553161",
+              "probability": 0.10495,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Rose Deer",
+              "horse_id": "hrs_17395702310",
+              "probability": 0.104446,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Velora",
+              "horse_id": "hrs_17393494279",
+              "probability": 0.099672,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Lady Phillips",
+              "horse_id": "hrs_17391779587",
+              "probability": 0.090798,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Sa Llagosta",
+              "horse_id": "hrs_17393332614",
+              "probability": 0.087218,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Lavender Bay",
+              "horse_id": "hrs_17393059348",
+              "probability": 0.085305,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Top Marks",
+              "horse_id": "hrs_17393060391",
+              "probability": 0.084912,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Time To Approach",
+              "horse_id": "hrs_17395560462",
+              "probability": 0.081526,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Edith The Fair",
+              "horse_id": "hrs_17395547946",
+              "probability": 0.075383,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Diablesa",
+              "horse_id": "hrs_17395695009",
+              "probability": 0.067768,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            }
+          ]
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
+          "status": "PRICE_COMPARED_EXPERIMENTAL",
+          "model_version": "model-c-v2-stage25-verified-starters-2026-11",
+          "leader": "Noble Light",
+          "model_probability_available": true,
+          "model_win_pct": 10.73,
+          "calibration_status": "NO_APPROVED_FORWARD_CALIBRATION",
+          "runners": [
+            {
+              "horse": "Noble Light",
+              "horse_id": "hrs_17394902329",
+              "probability": 0.10735,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Sa Llagosta",
+              "horse_id": "hrs_17393332614",
+              "probability": 0.105892,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Lavender Bay",
+              "horse_id": "hrs_17393059348",
+              "probability": 0.103591,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Top Marks",
+              "horse_id": "hrs_17393060391",
+              "probability": 0.100501,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "My Amanah",
+              "horse_id": "hrs_17395553161",
+              "probability": 0.093234,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Rose Deer",
+              "horse_id": "hrs_17395702310",
+              "probability": 0.091603,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Velora",
+              "horse_id": "hrs_17393494279",
+              "probability": 0.090571,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Lady Phillips",
+              "horse_id": "hrs_17391779587",
+              "probability": 0.083368,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Time To Approach",
+              "horse_id": "hrs_17395560462",
+              "probability": 0.078517,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Edith The Fair",
+              "horse_id": "hrs_17395547946",
+              "probability": 0.075725,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Diablesa",
+              "horse_id": "hrs_17395695009",
+              "probability": 0.069649,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            }
+          ]
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Rose Deer",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Rose Deer",
+              "rank": 1,
+              "score": 0.45532
+            },
+            {
+              "horse": "Velora",
+              "rank": 2,
+              "score": 0.43444
+            },
+            {
+              "horse": "Lady Phillips",
+              "rank": 3,
+              "score": 0.43441
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -1229,29 +2205,209 @@
       "non_runners_excluded": 0,
       "priced_runners": 0,
       "full_bookmakers": [],
-      "preoff_at_generation": true,
+      "preoff_at_generation": false,
       "models": {
         "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
+          "status": "PRICE_COMPARED_EXPERIMENTAL",
+          "model_version": "stage16-own-data-temporal-v3-stage25-starters",
+          "leader": "Bull Shark",
+          "model_probability_available": true,
+          "model_win_pct": 33.97,
+          "calibration_status": "INSUFFICIENT_FUTURE_OUTCOMES",
+          "runners": [
+            {
+              "horse": "Bull Shark",
+              "horse_id": "hrs_62168043",
+              "probability": 0.339726,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Marcescence",
+              "horse_id": "hrs_66655358",
+              "probability": 0.236079,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Prince Of Peppard",
+              "horse_id": "hrs_65973264",
+              "probability": 0.189093,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Closefield Beau",
+              "horse_id": "hrs_65869559",
+              "probability": 0.075483,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Cloughleagh Bridge",
+              "horse_id": "hrs_65519825",
+              "probability": 0.066426,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Angel Invincible",
+              "horse_id": "hrs_17393029101",
+              "probability": 0.06361,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Dear Theodosia",
+              "horse_id": "hrs_7000000518",
+              "probability": 0.029583,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            }
+          ]
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
+          "status": "PRICE_COMPARED_EXPERIMENTAL",
+          "model_version": "model-c-v2-stage25-verified-starters-2026-11",
+          "leader": "Bull Shark",
+          "model_probability_available": true,
+          "model_win_pct": 29.52,
+          "calibration_status": "NO_APPROVED_FORWARD_CALIBRATION",
+          "runners": [
+            {
+              "horse": "Bull Shark",
+              "horse_id": "hrs_62168043",
+              "probability": 0.295187,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Marcescence",
+              "horse_id": "hrs_66655358",
+              "probability": 0.246654,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Prince Of Peppard",
+              "horse_id": "hrs_65973264",
+              "probability": 0.191614,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Closefield Beau",
+              "horse_id": "hrs_65869559",
+              "probability": 0.08617,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Angel Invincible",
+              "horse_id": "hrs_17393029101",
+              "probability": 0.068296,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Cloughleagh Bridge",
+              "horse_id": "hrs_65519825",
+              "probability": 0.060812,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Dear Theodosia",
+              "horse_id": "hrs_7000000518",
+              "probability": 0.051267,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            }
+          ]
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Bull Shark",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Bull Shark",
+              "rank": 1,
+              "score": -0.16807
+            },
+            {
+              "horse": "Prince Of Peppard",
+              "rank": 2,
+              "score": -0.24696
+            },
+            {
+              "horse": "Cloughleagh Bridge",
+              "rank": 3,
+              "score": -0.27371
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-z-stage38-frozen-stage34-candidate-paper-v1",
+          "leader": "Bull Shark",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Bull Shark",
+              "rank": 1,
+              "score": -0.165894
+            },
+            {
+              "horse": "Prince Of Peppard",
+              "rank": 2,
+              "score": -0.259496
+            },
+            {
+              "horse": "Cloughleagh Bridge",
+              "rank": 3,
+              "score": -0.29759
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model Z value or expected ROI.",
+          "specialist_status": "NO_SELECTION"
         }
       },
       "paper_candidates": [],
@@ -1278,29 +2434,241 @@
       "race_id": "rac_32304929020",
       "race_name": "AWC Finals Day At Newcastle 26th March Maiden Fillies' Stakes (Div II) (GBB/GBBPlus Race)",
       "race_type": "Flat",
-      "field_size": 11,
-      "non_runners_excluded": 0,
+      "field_size": 10,
+      "non_runners_excluded": 1,
       "priced_runners": 0,
       "full_bookmakers": [],
       "preoff_at_generation": true,
       "models": {
         "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
+          "status": "PRICE_COMPARED_EXPERIMENTAL",
+          "model_version": "stage16-own-data-temporal-v3-stage25-starters",
+          "leader": "Zhuri",
+          "model_probability_available": true,
+          "model_win_pct": 26.15,
+          "calibration_status": "INSUFFICIENT_FUTURE_OUTCOMES",
+          "runners": [
+            {
+              "horse": "Zhuri",
+              "horse_id": "hrs_17392193658",
+              "probability": 0.261467,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Sayidah Iffraaj",
+              "horse_id": "hrs_17392141508",
+              "probability": 0.12349,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Mesolithic",
+              "horse_id": "hrs_17393702879",
+              "probability": 0.093314,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Ortenzian Twilight",
+              "horse_id": "hrs_17392822587",
+              "probability": 0.092897,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Lunar Storm",
+              "horse_id": "hrs_17392820501",
+              "probability": 0.090279,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Speaking Tree",
+              "horse_id": "hrs_17389234667",
+              "probability": 0.089765,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "El Kahlaa",
+              "horse_id": "hrs_17395696052",
+              "probability": 0.069415,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Catalistic",
+              "horse_id": "hrs_17391883887",
+              "probability": 0.065179,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Fifth Amendment",
+              "horse_id": "hrs_17393493236",
+              "probability": 0.059741,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Red Kateryna",
+              "horse_id": "hrs_17394304690",
+              "probability": 0.054453,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            }
+          ]
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
+          "status": "PRICE_COMPARED_EXPERIMENTAL",
+          "model_version": "model-c-v2-stage25-verified-starters-2026-11",
+          "leader": "Zhuri",
+          "model_probability_available": true,
+          "model_win_pct": 24.55,
+          "calibration_status": "NO_APPROVED_FORWARD_CALIBRATION",
+          "runners": [
+            {
+              "horse": "Zhuri",
+              "horse_id": "hrs_17392193658",
+              "probability": 0.245494,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Sayidah Iffraaj",
+              "horse_id": "hrs_17392141508",
+              "probability": 0.120333,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Ortenzian Twilight",
+              "horse_id": "hrs_17392822587",
+              "probability": 0.10427,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Lunar Storm",
+              "horse_id": "hrs_17392820501",
+              "probability": 0.100392,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Speaking Tree",
+              "horse_id": "hrs_17389234667",
+              "probability": 0.097774,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Mesolithic",
+              "horse_id": "hrs_17393702879",
+              "probability": 0.083313,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Catalistic",
+              "horse_id": "hrs_17391883887",
+              "probability": 0.079816,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Fifth Amendment",
+              "horse_id": "hrs_17393493236",
+              "probability": 0.063355,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "El Kahlaa",
+              "horse_id": "hrs_17395696052",
+              "probability": 0.054973,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Red Kateryna",
+              "horse_id": "hrs_17394304690",
+              "probability": 0.050282,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            }
+          ]
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Zhuri",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Zhuri",
+              "rank": 1,
+              "score": 0.47024
+            },
+            {
+              "horse": "Sayidah Iffraaj",
+              "rank": 2,
+              "score": 0.25214
+            },
+            {
+              "horse": "Speaking Tree",
+              "rank": 3,
+              "score": 0.1998
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -1325,26 +2693,296 @@
       "preoff_at_generation": true,
       "models": {
         "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
+          "status": "PRICE_COMPARED_EXPERIMENTAL",
+          "model_version": "stage16-own-data-temporal-v3-stage25-starters",
+          "leader": "Alissam",
+          "model_probability_available": true,
+          "model_win_pct": 16.38,
+          "calibration_status": "INSUFFICIENT_FUTURE_OUTCOMES",
+          "runners": [
+            {
+              "horse": "Alissam",
+              "horse_id": "hrs_58596475",
+              "probability": 0.163761,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Apache Outlaw",
+              "horse_id": "hrs_30123702",
+              "probability": 0.114652,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Celtic Motif",
+              "horse_id": "hrs_43667239",
+              "probability": 0.107886,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Chicago Pope",
+              "horse_id": "hrs_55061650",
+              "probability": 0.0906,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Eddie G",
+              "horse_id": "hrs_37576595",
+              "probability": 0.090268,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Tax Me Later",
+              "horse_id": "hrs_17391394720",
+              "probability": 0.079285,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Arryaaf",
+              "horse_id": "hrs_48290172",
+              "probability": 0.072121,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Kullazain",
+              "horse_id": "hrs_44481318",
+              "probability": 0.063277,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "City House",
+              "horse_id": "hrs_35895608",
+              "probability": 0.058412,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "El Rehaiby",
+              "horse_id": "hrs_57041544",
+              "probability": 0.055779,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Goal Exceeded",
+              "horse_id": "hrs_36387393",
+              "probability": 0.052791,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Send Harry",
+              "horse_id": "hrs_46013667",
+              "probability": 0.051167,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            }
+          ]
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
+          "status": "PRICE_COMPARED_EXPERIMENTAL",
+          "model_version": "model-c-v2-stage25-verified-starters-2026-11",
+          "leader": "Alissam",
+          "model_probability_available": true,
+          "model_win_pct": 14.35,
+          "calibration_status": "NO_APPROVED_FORWARD_CALIBRATION",
+          "runners": [
+            {
+              "horse": "Alissam",
+              "horse_id": "hrs_58596475",
+              "probability": 0.143513,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Celtic Motif",
+              "horse_id": "hrs_43667239",
+              "probability": 0.125368,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Chicago Pope",
+              "horse_id": "hrs_55061650",
+              "probability": 0.105542,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Tax Me Later",
+              "horse_id": "hrs_17391394720",
+              "probability": 0.10382,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Apache Outlaw",
+              "horse_id": "hrs_30123702",
+              "probability": 0.09563,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Arryaaf",
+              "horse_id": "hrs_48290172",
+              "probability": 0.08033,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Eddie G",
+              "horse_id": "hrs_37576595",
+              "probability": 0.075556,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Kullazain",
+              "horse_id": "hrs_44481318",
+              "probability": 0.061444,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Goal Exceeded",
+              "horse_id": "hrs_36387393",
+              "probability": 0.056596,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "City House",
+              "horse_id": "hrs_35895608",
+              "probability": 0.052102,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "El Rehaiby",
+              "horse_id": "hrs_57041544",
+              "probability": 0.051304,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Send Harry",
+              "horse_id": "hrs_46013667",
+              "probability": 0.048794,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            }
+          ]
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Alissam",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Alissam",
+              "rank": 1,
+              "score": 0.38788
+            },
+            {
+              "horse": "Celtic Motif",
+              "rank": 2,
+              "score": 0.3852
+            },
+            {
+              "horse": "Chicago Pope",
+              "rank": 3,
+              "score": 0.29141
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-z-stage38-frozen-stage34-candidate-paper-v1",
+          "leader": "Alissam",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Alissam",
+              "rank": 1,
+              "score": 0.372044
+            },
+            {
+              "horse": "Celtic Motif",
+              "rank": 2,
+              "score": 0.345647
+            },
+            {
+              "horse": "Chicago Pope",
+              "rank": 3,
+              "score": 0.249375
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model Z value or expected ROI.",
+          "specialist_status": "NO_SELECTION"
         }
       },
       "paper_candidates": [],
@@ -1378,22 +3016,252 @@
       "preoff_at_generation": true,
       "models": {
         "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
+          "status": "PRICE_COMPARED_EXPERIMENTAL",
+          "model_version": "stage16-own-data-temporal-v3-stage25-starters",
+          "leader": "Great Blasket",
+          "model_probability_available": true,
+          "model_win_pct": 26.74,
+          "calibration_status": "INSUFFICIENT_FUTURE_OUTCOMES",
+          "runners": [
+            {
+              "horse": "Great Blasket",
+              "horse_id": "hrs_30865961",
+              "probability": 0.26742,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Gunfighter",
+              "horse_id": "hrs_36386903",
+              "probability": 0.128246,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Tonal",
+              "horse_id": "hrs_34525995",
+              "probability": 0.11636,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Youarenotforgiven",
+              "horse_id": "hrs_23055879",
+              "probability": 0.094399,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Prince Rasam",
+              "horse_id": "hrs_36739843",
+              "probability": 0.087361,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Epictetus",
+              "horse_id": "hrs_31005954",
+              "probability": 0.070626,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Kalamunda",
+              "horse_id": "hrs_35164024",
+              "probability": 0.066348,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Dovey Moon",
+              "horse_id": "hrs_45791914",
+              "probability": 0.062281,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Hitched",
+              "horse_id": "hrs_32780041",
+              "probability": 0.040852,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "King Casper",
+              "horse_id": "hrs_43508563",
+              "probability": 0.033081,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Banner Beauty",
+              "horse_id": "hrs_45824485",
+              "probability": 0.033027,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            }
+          ]
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
+          "status": "PRICE_COMPARED_EXPERIMENTAL",
+          "model_version": "model-c-v2-stage25-verified-starters-2026-11",
+          "leader": "Great Blasket",
+          "model_probability_available": true,
+          "model_win_pct": 23.77,
+          "calibration_status": "NO_APPROVED_FORWARD_CALIBRATION",
+          "runners": [
+            {
+              "horse": "Great Blasket",
+              "horse_id": "hrs_30865961",
+              "probability": 0.237688,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Tonal",
+              "horse_id": "hrs_34525995",
+              "probability": 0.133016,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Gunfighter",
+              "horse_id": "hrs_36386903",
+              "probability": 0.112771,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Epictetus",
+              "horse_id": "hrs_31005954",
+              "probability": 0.098501,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Youarenotforgiven",
+              "horse_id": "hrs_23055879",
+              "probability": 0.087439,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Prince Rasam",
+              "horse_id": "hrs_36739843",
+              "probability": 0.078158,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Kalamunda",
+              "horse_id": "hrs_35164024",
+              "probability": 0.070231,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Dovey Moon",
+              "horse_id": "hrs_45791914",
+              "probability": 0.067903,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "King Casper",
+              "horse_id": "hrs_43508563",
+              "probability": 0.039718,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Hitched",
+              "horse_id": "hrs_32780041",
+              "probability": 0.037463,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Banner Beauty",
+              "horse_id": "hrs_45824485",
+              "probability": 0.037113,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            }
+          ]
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Great Blasket",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Great Blasket",
+              "rank": 1,
+              "score": 0.41004
+            },
+            {
+              "horse": "Tonal",
+              "rank": 2,
+              "score": 0.38963
+            },
+            {
+              "horse": "Hitched",
+              "rank": 3,
+              "score": 0.30038
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -1418,26 +3286,314 @@
       "preoff_at_generation": true,
       "models": {
         "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
+          "status": "PRICE_COMPARED_EXPERIMENTAL",
+          "model_version": "stage16-own-data-temporal-v3-stage25-starters",
+          "leader": "Golden Idol",
+          "model_probability_available": true,
+          "model_win_pct": 20.55,
+          "calibration_status": "INSUFFICIENT_FUTURE_OUTCOMES",
+          "runners": [
+            {
+              "horse": "Golden Idol",
+              "horse_id": "hrs_17392957134",
+              "probability": 0.205482,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Epic Arch",
+              "horse_id": "hrs_17390851317",
+              "probability": 0.105968,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Larry Curly Moe",
+              "horse_id": "hrs_17395084854",
+              "probability": 0.098484,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Pauseathought",
+              "horse_id": "hrs_17393548515",
+              "probability": 0.076226,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Warrior Of Siam",
+              "horse_id": "hrs_17395085897",
+              "probability": 0.075276,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Sovereign Jazz",
+              "horse_id": "hrs_17390258893",
+              "probability": 0.071022,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Victorious Star",
+              "horse_id": "hrs_17395783664",
+              "probability": 0.06863,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Saxonian",
+              "horse_id": "hrs_17392582697",
+              "probability": 0.060874,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Alfredo Delgado",
+              "horse_id": "hrs_17392601471",
+              "probability": 0.05291,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Bridgetown Boy",
+              "horse_id": "hrs_17394521634",
+              "probability": 0.050921,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Selosse",
+              "horse_id": "hrs_66304847",
+              "probability": 0.045889,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Unstoppable Army",
+              "horse_id": "hrs_17394009521",
+              "probability": 0.045095,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Theboysbirthday",
+              "horse_id": "hrs_17395782621",
+              "probability": 0.043224,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            }
+          ]
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
+          "status": "PRICE_COMPARED_EXPERIMENTAL",
+          "model_version": "model-c-v2-stage25-verified-starters-2026-11",
+          "leader": "Golden Idol",
+          "model_probability_available": true,
+          "model_win_pct": 16.91,
+          "calibration_status": "NO_APPROVED_FORWARD_CALIBRATION",
+          "runners": [
+            {
+              "horse": "Golden Idol",
+              "horse_id": "hrs_17392957134",
+              "probability": 0.169114,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Epic Arch",
+              "horse_id": "hrs_17390851317",
+              "probability": 0.11464,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Larry Curly Moe",
+              "horse_id": "hrs_17395084854",
+              "probability": 0.084299,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Saxonian",
+              "horse_id": "hrs_17392582697",
+              "probability": 0.076307,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Pauseathought",
+              "horse_id": "hrs_17393548515",
+              "probability": 0.076124,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Alfredo Delgado",
+              "horse_id": "hrs_17392601471",
+              "probability": 0.069917,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Sovereign Jazz",
+              "horse_id": "hrs_17390258893",
+              "probability": 0.068228,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Warrior Of Siam",
+              "horse_id": "hrs_17395085897",
+              "probability": 0.066893,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Victorious Star",
+              "horse_id": "hrs_17395783664",
+              "probability": 0.064202,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Selosse",
+              "horse_id": "hrs_66304847",
+              "probability": 0.062863,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Bridgetown Boy",
+              "horse_id": "hrs_17394521634",
+              "probability": 0.05434,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Theboysbirthday",
+              "horse_id": "hrs_17395782621",
+              "probability": 0.050277,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Unstoppable Army",
+              "horse_id": "hrs_17394009521",
+              "probability": 0.042796,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            }
+          ]
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Larry Curly Moe",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Larry Curly Moe",
+              "rank": 1,
+              "score": 0.4669
+            },
+            {
+              "horse": "Warrior Of Siam",
+              "rank": 2,
+              "score": 0.39196
+            },
+            {
+              "horse": "Golden Idol",
+              "rank": 3,
+              "score": 0.27681
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-z-stage38-frozen-stage34-candidate-paper-v1",
+          "leader": "Larry Curly Moe",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Larry Curly Moe",
+              "rank": 1,
+              "score": 0.47407
+            },
+            {
+              "horse": "Warrior Of Siam",
+              "rank": 2,
+              "score": 0.370969
+            },
+            {
+              "horse": "Golden Idol",
+              "rank": 3,
+              "score": 0.267781
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model Z value or expected ROI.",
+          "specialist_status": "NO_SELECTION"
         }
       },
       "paper_candidates": [],
@@ -1464,29 +3620,259 @@
       "race_id": "rac_32304932894",
       "race_name": "AWC Trials Day - Lingfield 2nd January 2027 Nursery Handicap Stakes",
       "race_type": "Flat",
-      "field_size": 12,
-      "non_runners_excluded": 0,
+      "field_size": 11,
+      "non_runners_excluded": 1,
       "priced_runners": 0,
       "full_bookmakers": [],
       "preoff_at_generation": true,
       "models": {
         "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
+          "status": "PRICE_COMPARED_EXPERIMENTAL",
+          "model_version": "stage16-own-data-temporal-v3-stage25-starters",
+          "leader": "Beechwood Glory",
+          "model_probability_available": true,
+          "model_win_pct": 19.41,
+          "calibration_status": "INSUFFICIENT_FUTURE_OUTCOMES",
+          "runners": [
+            {
+              "horse": "Beechwood Glory",
+              "horse_id": "hrs_66005100",
+              "probability": 0.19413,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Perfect Hope",
+              "horse_id": "hrs_65068962",
+              "probability": 0.158991,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Desert Legend",
+              "horse_id": "hrs_64324589",
+              "probability": 0.106519,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Printing Money",
+              "horse_id": "hrs_63810859",
+              "probability": 0.103417,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Star Bayside Boy",
+              "horse_id": "hrs_65678284",
+              "probability": 0.076722,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Better Nature",
+              "horse_id": "hrs_64780646",
+              "probability": 0.073127,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Kochella",
+              "horse_id": "hrs_65101862",
+              "probability": 0.065935,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Zambezi Shark",
+              "horse_id": "hrs_65610356",
+              "probability": 0.059348,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Caravel",
+              "horse_id": "hrs_65519664",
+              "probability": 0.05718,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Alfey Moon",
+              "horse_id": "hrs_64877274",
+              "probability": 0.056089,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Orfilia",
+              "horse_id": "hrs_17391206980",
+              "probability": 0.04854,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            }
+          ]
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
+          "status": "PRICE_COMPARED_EXPERIMENTAL",
+          "model_version": "model-c-v2-stage25-verified-starters-2026-11",
+          "leader": "Beechwood Glory",
+          "model_probability_available": true,
+          "model_win_pct": 15.52,
+          "calibration_status": "NO_APPROVED_FORWARD_CALIBRATION",
+          "runners": [
+            {
+              "horse": "Beechwood Glory",
+              "horse_id": "hrs_66005100",
+              "probability": 0.155206,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Perfect Hope",
+              "horse_id": "hrs_65068962",
+              "probability": 0.152939,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Printing Money",
+              "horse_id": "hrs_63810859",
+              "probability": 0.114625,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Desert Legend",
+              "horse_id": "hrs_64324589",
+              "probability": 0.113558,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Star Bayside Boy",
+              "horse_id": "hrs_65678284",
+              "probability": 0.09329,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Better Nature",
+              "horse_id": "hrs_64780646",
+              "probability": 0.074126,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Alfey Moon",
+              "horse_id": "hrs_64877274",
+              "probability": 0.066292,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Zambezi Shark",
+              "horse_id": "hrs_65610356",
+              "probability": 0.059593,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Orfilia",
+              "horse_id": "hrs_17391206980",
+              "probability": 0.058196,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Kochella",
+              "horse_id": "hrs_65101862",
+              "probability": 0.056183,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Caravel",
+              "horse_id": "hrs_65519664",
+              "probability": 0.055992,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            }
+          ]
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Printing Money",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Printing Money",
+              "rank": 1,
+              "score": 0.30333
+            },
+            {
+              "horse": "Star Bayside Boy",
+              "rank": 2,
+              "score": 0.24471
+            },
+            {
+              "horse": "Orfilia",
+              "rank": 3,
+              "score": 0.21291
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -1504,32 +3890,182 @@
       "race_id": "rac_32305054925",
       "race_name": "Irish Stallion Farms EBF Fillies Maiden",
       "race_type": "Flat",
-      "field_size": 17,
-      "non_runners_excluded": 0,
+      "field_size": 16,
+      "non_runners_excluded": 1,
       "priced_runners": 0,
       "full_bookmakers": [],
       "preoff_at_generation": true,
       "models": {
         "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "status": "MODEL_FIELD_CHANGED_OR_MISSING_NONRUNNER_REASSESSMENT",
           "leader": null,
           "model_probability_available": false
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
+          "status": "PRICE_COMPARED_EXPERIMENTAL",
+          "model_version": "model-c-v2-stage25-verified-starters-2026-11",
+          "leader": "Castilian Queen",
+          "model_probability_available": true,
+          "model_win_pct": 13.35,
+          "calibration_status": "NO_APPROVED_FORWARD_CALIBRATION",
+          "runners": [
+            {
+              "horse": "Castilian Queen",
+              "horse_id": "hrs_17391667986",
+              "probability": 0.133523,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Proper Naughty",
+              "horse_id": "hrs_62169219",
+              "probability": 0.131803,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Lady Chancalot",
+              "horse_id": "hrs_17391671115",
+              "probability": 0.080056,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Celestial Order",
+              "horse_id": "hrs_17393765459",
+              "probability": 0.064995,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Solar Palace",
+              "horse_id": "hrs_17395792008",
+              "probability": 0.057105,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Kathy M",
+              "horse_id": "hrs_17392574353",
+              "probability": 0.056764,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "An Tuath Nua",
+              "horse_id": "hrs_17393763373",
+              "probability": 0.054949,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Lochlane",
+              "horse_id": "hrs_17395789922",
+              "probability": 0.05448,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Arddin",
+              "horse_id": "hrs_17395785750",
+              "probability": 0.054196,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Fire In The Air",
+              "horse_id": "hrs_17395786793",
+              "probability": 0.053178,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Guide Me Home",
+              "horse_id": "hrs_17395787836",
+              "probability": 0.051709,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Kariata",
+              "horse_id": "hrs_17395788879",
+              "probability": 0.048184,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Carafinn",
+              "horse_id": "hrs_65101379",
+              "probability": 0.042435,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Silent Promise",
+              "horse_id": "hrs_17392277098",
+              "probability": 0.041316,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Seanbonekapone",
+              "horse_id": "hrs_17395790965",
+              "probability": 0.03904,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Whiptail",
+              "horse_id": "hrs_17395793051",
+              "probability": 0.036268,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            }
+          ]
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
+          "status": "STALE_OR_INCOMPLETE_RANKING",
           "model_probability_available": false
         },
         "Z": {
-          "status": "NO_CURRENT_RANKING",
+          "status": "STALE_OR_INCOMPLETE_RANKING",
           "model_probability_available": false
         }
       },
@@ -1557,29 +4093,223 @@
       "race_id": "rac_32304934831",
       "race_name": "All Weather Championship Handicap Stakes",
       "race_type": "Flat",
-      "field_size": 10,
-      "non_runners_excluded": 0,
+      "field_size": 9,
+      "non_runners_excluded": 1,
       "priced_runners": 0,
       "full_bookmakers": [],
       "preoff_at_generation": true,
       "models": {
         "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
+          "status": "PRICE_COMPARED_EXPERIMENTAL",
+          "model_version": "stage16-own-data-temporal-v3-stage25-starters",
+          "leader": "Asuka",
+          "model_probability_available": true,
+          "model_win_pct": 21.36,
+          "calibration_status": "INSUFFICIENT_FUTURE_OUTCOMES",
+          "runners": [
+            {
+              "horse": "Asuka",
+              "horse_id": "hrs_42912506",
+              "probability": 0.21357,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Rogue Messiah",
+              "horse_id": "hrs_55392750",
+              "probability": 0.133168,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Dandy Style",
+              "horse_id": "hrs_50435812",
+              "probability": 0.124812,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Carnival of Light",
+              "horse_id": "hrs_65774940",
+              "probability": 0.104296,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Secret Santa",
+              "horse_id": "hrs_52388539",
+              "probability": 0.104038,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Tremolo",
+              "horse_id": "hrs_45759490",
+              "probability": 0.093015,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Sea Baaeed",
+              "horse_id": "hrs_45568418",
+              "probability": 0.089404,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Sword",
+              "horse_id": "hrs_36499883",
+              "probability": 0.08688,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Mubasimah",
+              "horse_id": "hrs_57223096",
+              "probability": 0.050818,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            }
+          ]
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
+          "status": "PRICE_COMPARED_EXPERIMENTAL",
+          "model_version": "model-c-v2-stage25-verified-starters-2026-11",
+          "leader": "Asuka",
+          "model_probability_available": true,
+          "model_win_pct": 26.33,
+          "calibration_status": "NO_APPROVED_FORWARD_CALIBRATION",
+          "runners": [
+            {
+              "horse": "Asuka",
+              "horse_id": "hrs_42912506",
+              "probability": 0.263301,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Dandy Style",
+              "horse_id": "hrs_50435812",
+              "probability": 0.163226,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Rogue Messiah",
+              "horse_id": "hrs_55392750",
+              "probability": 0.129192,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Secret Santa",
+              "horse_id": "hrs_52388539",
+              "probability": 0.100229,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Carnival of Light",
+              "horse_id": "hrs_65774940",
+              "probability": 0.090687,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Sword",
+              "horse_id": "hrs_36499883",
+              "probability": 0.080557,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Tremolo",
+              "horse_id": "hrs_45759490",
+              "probability": 0.080196,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Sea Baaeed",
+              "horse_id": "hrs_45568418",
+              "probability": 0.04792,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Mubasimah",
+              "horse_id": "hrs_57223096",
+              "probability": 0.044693,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            }
+          ]
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Asuka",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Asuka",
+              "rank": 1,
+              "score": 0.33647
+            },
+            {
+              "horse": "Carnival of Light",
+              "rank": 2,
+              "score": 0.23351
+            },
+            {
+              "horse": "Tremolo",
+              "rank": 3,
+              "score": 0.19926
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -1604,26 +4334,314 @@
       "preoff_at_generation": true,
       "models": {
         "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
+          "status": "PRICE_COMPARED_EXPERIMENTAL",
+          "model_version": "stage16-own-data-temporal-v3-stage25-starters",
+          "leader": "Justenzia",
+          "model_probability_available": true,
+          "model_win_pct": 13.41,
+          "calibration_status": "INSUFFICIENT_FUTURE_OUTCOMES",
+          "runners": [
+            {
+              "horse": "Justenzia",
+              "horse_id": "hrs_45982377",
+              "probability": 0.134078,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Usuario Amigo",
+              "horse_id": "hrs_40805534",
+              "probability": 0.108962,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Soaring Sun",
+              "horse_id": "hrs_56625009",
+              "probability": 0.098283,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Autocrat",
+              "horse_id": "hrs_31069185",
+              "probability": 0.092249,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Flying Fortress",
+              "horse_id": "hrs_43951047",
+              "probability": 0.084533,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Dancing Steve",
+              "horse_id": "hrs_412712174",
+              "probability": 0.077684,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Walhaan",
+              "horse_id": "hrs_15441566",
+              "probability": 0.07444,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Stable Lane",
+              "horse_id": "hrs_59025323",
+              "probability": 0.070276,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Tero d'Rosa",
+              "horse_id": "hrs_53602164",
+              "probability": 0.06386,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Pepper Noir",
+              "horse_id": "hrs_38532179",
+              "probability": 0.055357,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Afloat",
+              "horse_id": "hrs_34360746",
+              "probability": 0.053196,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Tribal Moon",
+              "horse_id": "hrs_36665132",
+              "probability": 0.043633,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Suerte",
+              "horse_id": "hrs_43417969",
+              "probability": 0.043449,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            }
+          ]
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
+          "status": "PRICE_COMPARED_EXPERIMENTAL",
+          "model_version": "model-c-v2-stage25-verified-starters-2026-11",
+          "leader": "Justenzia",
+          "model_probability_available": true,
+          "model_win_pct": 13.99,
+          "calibration_status": "NO_APPROVED_FORWARD_CALIBRATION",
+          "runners": [
+            {
+              "horse": "Justenzia",
+              "horse_id": "hrs_45982377",
+              "probability": 0.139896,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Soaring Sun",
+              "horse_id": "hrs_56625009",
+              "probability": 0.114214,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Usuario Amigo",
+              "horse_id": "hrs_40805534",
+              "probability": 0.112066,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Autocrat",
+              "horse_id": "hrs_31069185",
+              "probability": 0.085736,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Walhaan",
+              "horse_id": "hrs_15441566",
+              "probability": 0.081487,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Dancing Steve",
+              "horse_id": "hrs_412712174",
+              "probability": 0.080116,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Stable Lane",
+              "horse_id": "hrs_59025323",
+              "probability": 0.072594,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Flying Fortress",
+              "horse_id": "hrs_43951047",
+              "probability": 0.067938,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Tero d'Rosa",
+              "horse_id": "hrs_53602164",
+              "probability": 0.065031,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Pepper Noir",
+              "horse_id": "hrs_38532179",
+              "probability": 0.050791,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Afloat",
+              "horse_id": "hrs_34360746",
+              "probability": 0.045838,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Suerte",
+              "horse_id": "hrs_43417969",
+              "probability": 0.04498,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Tribal Moon",
+              "horse_id": "hrs_36665132",
+              "probability": 0.039314,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            }
+          ]
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Autocrat",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Autocrat",
+              "rank": 1,
+              "score": 0.25847
+            },
+            {
+              "horse": "Walhaan",
+              "rank": 2,
+              "score": 0.19944
+            },
+            {
+              "horse": "Usuario Amigo",
+              "rank": 3,
+              "score": 0.18607
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-z-stage38-frozen-stage34-candidate-paper-v1",
+          "leader": "Autocrat",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Autocrat",
+              "rank": 1,
+              "score": 0.211479
+            },
+            {
+              "horse": "Walhaan",
+              "rank": 2,
+              "score": 0.196927
+            },
+            {
+              "horse": "Usuario Amigo",
+              "rank": 3,
+              "score": 0.179713
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model Z value or expected ROI.",
+          "specialist_status": "NO_SELECTION"
         }
       },
       "paper_candidates": [],
@@ -1657,22 +4675,288 @@
       "preoff_at_generation": true,
       "models": {
         "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
+          "status": "PRICE_COMPARED_EXPERIMENTAL",
+          "model_version": "stage16-own-data-temporal-v3-stage25-starters",
+          "leader": "My Mate Mackley",
+          "model_probability_available": true,
+          "model_win_pct": 10.99,
+          "calibration_status": "INSUFFICIENT_FUTURE_OUTCOMES",
+          "runners": [
+            {
+              "horse": "My Mate Mackley",
+              "horse_id": "hrs_58843904",
+              "probability": 0.109898,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Tomarlo",
+              "horse_id": "hrs_41410537",
+              "probability": 0.108839,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Love Alive",
+              "horse_id": "hrs_54525548",
+              "probability": 0.104434,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Solid Bond",
+              "horse_id": "hrs_40786172",
+              "probability": 0.101682,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Barry The Worm",
+              "horse_id": "hrs_53081427",
+              "probability": 0.088825,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Our Planet",
+              "horse_id": "hrs_45662183",
+              "probability": 0.084446,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Rianka",
+              "horse_id": "hrs_64072414",
+              "probability": 0.072742,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Eldeyaar",
+              "horse_id": "hrs_28577640",
+              "probability": 0.072273,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Sir Rodneyredblood",
+              "horse_id": "hrs_18809490",
+              "probability": 0.064574,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Nordic Glory",
+              "horse_id": "hrs_24386250",
+              "probability": 0.050814,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Twilight Madness",
+              "horse_id": "hrs_22440453",
+              "probability": 0.050014,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Sweet Desire",
+              "horse_id": "hrs_55484576",
+              "probability": 0.046673,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Penny's Spirit",
+              "horse_id": "hrs_47313784",
+              "probability": 0.044786,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            }
+          ]
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
+          "status": "PRICE_COMPARED_EXPERIMENTAL",
+          "model_version": "model-c-v2-stage25-verified-starters-2026-11",
+          "leader": "Solid Bond",
+          "model_probability_available": true,
+          "model_win_pct": 11.39,
+          "calibration_status": "NO_APPROVED_FORWARD_CALIBRATION",
+          "runners": [
+            {
+              "horse": "Solid Bond",
+              "horse_id": "hrs_40786172",
+              "probability": 0.113925,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "My Mate Mackley",
+              "horse_id": "hrs_58843904",
+              "probability": 0.112862,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Barry The Worm",
+              "horse_id": "hrs_53081427",
+              "probability": 0.10897,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Tomarlo",
+              "horse_id": "hrs_41410537",
+              "probability": 0.09994,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Rianka",
+              "horse_id": "hrs_64072414",
+              "probability": 0.093241,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Love Alive",
+              "horse_id": "hrs_54525548",
+              "probability": 0.085098,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Eldeyaar",
+              "horse_id": "hrs_28577640",
+              "probability": 0.080686,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Nordic Glory",
+              "horse_id": "hrs_24386250",
+              "probability": 0.069165,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Our Planet",
+              "horse_id": "hrs_45662183",
+              "probability": 0.061412,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Sir Rodneyredblood",
+              "horse_id": "hrs_18809490",
+              "probability": 0.053065,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Twilight Madness",
+              "horse_id": "hrs_22440453",
+              "probability": 0.043809,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Sweet Desire",
+              "horse_id": "hrs_55484576",
+              "probability": 0.04153,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Penny's Spirit",
+              "horse_id": "hrs_47313784",
+              "probability": 0.036296,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            }
+          ]
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Nordic Glory",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Nordic Glory",
+              "rank": 1,
+              "score": 0.38361
+            },
+            {
+              "horse": "Barry The Worm",
+              "rank": 2,
+              "score": 0.35708
+            },
+            {
+              "horse": "Tomarlo",
+              "rank": 3,
+              "score": 0.30104
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -1697,25 +4981,184 @@
       "preoff_at_generation": true,
       "models": {
         "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
+          "status": "MODEL_FIELD_CHANGED_OR_MISSING_NONRUNNER_REASSESSMENT",
           "leader": null,
           "model_probability_available": false
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
+          "status": "PRICE_COMPARED_EXPERIMENTAL",
+          "model_version": "model-c-v2-stage25-verified-starters-2026-11",
+          "leader": "Star Mind",
+          "model_probability_available": true,
+          "model_win_pct": 10.56,
+          "calibration_status": "NO_APPROVED_FORWARD_CALIBRATION",
+          "runners": [
+            {
+              "horse": "Star Mind",
+              "horse_id": "hrs_37123597",
+              "probability": 0.105637,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Spy",
+              "horse_id": "hrs_27027315",
+              "probability": 0.10396,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Preparations",
+              "horse_id": "hrs_40260703",
+              "probability": 0.097771,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Grey Fable",
+              "horse_id": "hrs_30017484",
+              "probability": 0.086041,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Young Churchill",
+              "horse_id": "hrs_40260626",
+              "probability": 0.078046,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "All Is Bright",
+              "horse_id": "hrs_57315916",
+              "probability": 0.067797,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Esticky End",
+              "horse_id": "hrs_21686623",
+              "probability": 0.064644,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Showyoutheropes",
+              "horse_id": "hrs_51866388",
+              "probability": 0.057696,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Trovao Dourado",
+              "horse_id": "hrs_7000002520",
+              "probability": 0.045569,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Tintinabulla",
+              "horse_id": "hrs_64073205",
+              "probability": 0.045043,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Doctor Grace",
+              "horse_id": "hrs_31188206",
+              "probability": 0.041937,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Jazz Forever",
+              "horse_id": "hrs_32909982",
+              "probability": 0.039983,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Lisnadill",
+              "horse_id": "hrs_47282347",
+              "probability": 0.039666,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Captain Hanley",
+              "horse_id": "hrs_47064955",
+              "probability": 0.035305,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Just Another Eagle",
+              "horse_id": "hrs_35650223",
+              "probability": 0.032491,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Lady Crossing",
+              "horse_id": "hrs_51865912",
+              "probability": 0.029413,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            },
+            {
+              "horse": "Barretstown",
+              "horse_id": "hrs_21837641",
+              "probability": 0.028998,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "MODEL_C_INDEPENDENT_SAFETY_FILTER_BLOCKED"
+            }
+          ]
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
+          "status": "STALE_OR_INCOMPLETE_RANKING",
           "model_probability_available": false
         },
         "Z": {
-          "status": "NO_CURRENT_RANKING",
+          "status": "STALE_OR_INCOMPLETE_RANKING",
           "model_probability_available": false
         }
       },
@@ -1750,22 +5193,288 @@
       "preoff_at_generation": true,
       "models": {
         "A": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
+          "status": "PRICE_COMPARED_EXPERIMENTAL",
+          "model_version": "stage16-own-data-temporal-v3-stage25-starters",
+          "leader": "Super Hit",
+          "model_probability_available": true,
+          "model_win_pct": 12.41,
+          "calibration_status": "INSUFFICIENT_FUTURE_OUTCOMES",
+          "runners": [
+            {
+              "horse": "Super Hit",
+              "horse_id": "hrs_36529045",
+              "probability": 0.124058,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "The Dark Baron",
+              "horse_id": "hrs_42615769",
+              "probability": 0.116064,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Exotic Baby",
+              "horse_id": "hrs_56219436",
+              "probability": 0.088452,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Made All",
+              "horse_id": "hrs_37027032",
+              "probability": 0.0877,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Chesneys Charm",
+              "horse_id": "hrs_42226226",
+              "probability": 0.085698,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Mc'ted",
+              "horse_id": "hrs_24676218",
+              "probability": 0.083996,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Born A Rebel",
+              "horse_id": "hrs_37407405",
+              "probability": 0.080141,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "San Juanito",
+              "horse_id": "hrs_47162094",
+              "probability": 0.068605,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Rua Mor",
+              "horse_id": "hrs_56843682",
+              "probability": 0.063735,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "King Chaos",
+              "horse_id": "hrs_44264423",
+              "probability": 0.056835,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Pulsar Star",
+              "horse_id": "hrs_55454140",
+              "probability": 0.05405,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Sant Alessio",
+              "horse_id": "hrs_37563883",
+              "probability": 0.046873,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Urban Road",
+              "horse_id": "hrs_28221466",
+              "probability": 0.043792,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            }
+          ]
         },
         "B": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "INCOMPLETE_PROVISIONAL_RANKING",
+          "model_probability_available": false,
+          "explanation": "Some runners have no supported model rank; a whole-field winner cannot be claimed."
         },
         "C": {
-          "status": "NO_SAME_DAY_MODEL_FORECAST",
-          "leader": null,
-          "model_probability_available": false
+          "status": "PRICE_COMPARED_EXPERIMENTAL",
+          "model_version": "model-c-v2-stage25-verified-starters-2026-11",
+          "leader": "The Dark Baron",
+          "model_probability_available": true,
+          "model_win_pct": 11.05,
+          "calibration_status": "NO_APPROVED_FORWARD_CALIBRATION",
+          "runners": [
+            {
+              "horse": "The Dark Baron",
+              "horse_id": "hrs_42615769",
+              "probability": 0.110452,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Made All",
+              "horse_id": "hrs_37027032",
+              "probability": 0.108771,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Super Hit",
+              "horse_id": "hrs_36529045",
+              "probability": 0.09913,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Mc'ted",
+              "horse_id": "hrs_24676218",
+              "probability": 0.089334,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Exotic Baby",
+              "horse_id": "hrs_56219436",
+              "probability": 0.089225,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Chesneys Charm",
+              "horse_id": "hrs_42226226",
+              "probability": 0.077686,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Born A Rebel",
+              "horse_id": "hrs_37407405",
+              "probability": 0.076612,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Rua Mor",
+              "horse_id": "hrs_56843682",
+              "probability": 0.073915,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "King Chaos",
+              "horse_id": "hrs_44264423",
+              "probability": 0.064864,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Pulsar Star",
+              "horse_id": "hrs_55454140",
+              "probability": 0.06197,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "San Juanito",
+              "horse_id": "hrs_47162094",
+              "probability": 0.059344,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Sant Alessio",
+              "horse_id": "hrs_37563883",
+              "probability": 0.05153,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            },
+            {
+              "horse": "Urban Road",
+              "horse_id": "hrs_28221466",
+              "probability": 0.037167,
+              "price": null,
+              "value": null,
+              "paper_screen_passed": false,
+              "screen_reason": "NO_CURRENT_MATCHED_PRICE_OR_PROBABILITY"
+            }
+          ]
         },
         "D": {
-          "status": "NO_CURRENT_RANKING",
-          "model_probability_available": false
+          "status": "RANK_ONLY_NO_VALUE_PROBABILITY",
+          "model_version": "model-d-stage38-2023-24-frozen-gap-aware",
+          "leader": "Super Hit",
+          "model_probability_available": false,
+          "leader_price": null,
+          "top_three": [
+            {
+              "horse": "Super Hit",
+              "rank": 1,
+              "score": 0.43609
+            },
+            {
+              "horse": "Mc'ted",
+              "rank": 2,
+              "score": 0.41906
+            },
+            {
+              "horse": "The Dark Baron",
+              "rank": 3,
+              "score": 0.40823
+            }
+          ],
+          "explanation": "No calibrated win chance; cannot compute Model D value or expected ROI."
         },
         "Z": {
           "status": "NO_CURRENT_RANKING",
@@ -1777,14 +5486,19 @@
     }
   ],
   "coverage": {
-    "A_pending_or_stale": 39,
-    "C_pending_or_stale": 39,
-    "races_assessed": 39
+    "A_pending_or_stale": 24,
+    "C_pending_or_stale": 21,
+    "races_assessed": 38,
+    "invalid_race_field": 1,
+    "A_valid_fullfield": 14,
+    "C_valid_fullfield": 17,
+    "D_current_rankings": 14,
+    "Z_current_rankings": 5
   },
   "new_paper_candidates": 0,
-  "new_forward_forecasts": 0,
+  "new_forward_forecasts": 32,
   "settlements_updated": 0,
-  "forecast_settlements_updated": 6,
+  "forecast_settlements_updated": 0,
   "paper_performance": {
     "A": {
       "settled_priced": 0,
