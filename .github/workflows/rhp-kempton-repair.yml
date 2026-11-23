@@ -1,0 +1,70 @@
+name: 'Repair Kempton Hot Pots duplicates and missing prices'
+
+# Upload this workflow to .github/workflows on main.
+# The upload itself triggers the first repair; it can also be re-run manually.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/rhp-kempton-repair.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rhp-kempton-hotpots-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout current Racing-app main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Repair and publish the actual live app
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            test -f hotpots_kempton_fix.py || { echo 'Missing existing hotpots_kempton_fix.py'; exit 1; }
+            python3 hotpots_kempton_fix.py index.html
+            python3 - <<'PY'
+          from pathlib import Path
+          text=Path('index.html').read_text(encoding='utf-8')
+          checks={
+              'Canonical Kempton + Kempton Park': "key==='kemptonpark'?'kempton':key",
+              'Awaiting ranking when there are no published ranks': "hasRanking?'Ranked only':'Awaiting ranking'",
+              'Ranking only counted when a rank is published': 'publishedRankingCount=all.filter(r=>ordered(r).length>0).length',
+              'Unranked explanation checked before model qualification': "if(!race||!ordered(race).length)return race?.reason",
+          }
+          missing=[name for name, needle in checks.items() if needle not in text]
+          if missing: raise SystemExit('Failed validation: '+', '.join(missing))
+          assert 'function courseMatchKey(c){return personKey' not in text, 'Old course identity still present'
+          print('Verified all four repair invariants')
+          PY
+            git add index.html
+            if git diff --cached --quiet; then
+              echo 'SUCCESS: repair was already present on the main branch.'
+              exit 0
+            fi
+            git commit -m 'Fix Kempton duplicate Hot Pots races, odds and ranking status'
+            if git push origin HEAD:main; then
+              echo 'SUCCESS: repaired index.html is now published on main.'
+              exit 0
+            fi
+            echo "Concurrent update detected; retrying with latest main ($attempt/5)."
+            sleep "$((attempt * 3))"
+          done
+          echo 'FAILED: could not publish after five attempts.'
+          exit 1
