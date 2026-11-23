@@ -704,7 +704,7 @@ let rows=[],allRows=[],activeTab='racecards',moveFilter='all',selectedDate='all'
 let slip=[],bets=[],watchlist=[];
 const WATCH_STORAGE='rhp-watchlist-v1';
 function watchKey(x){return [personKey(x.horse),courseMatchKey(x.course),x.day||dateKey(x.starts)].join('|')}
-function courseMatchKey(c){return personKey(String(c||'').replace(/\s*\((?:AW|all[ -]?weather)\)\s*$/i,'').trim())}
+function courseMatchKey(c){const key=personKey(String(c||'').replace(/\s*\((?:AW|all[ -]?weather)\)\s*$/i,'').trim());return key==='kemptonpark'?'kempton':key}
 function saveWatch(){try{localStorage.setItem(WATCH_STORAGE,JSON.stringify(watchlist));return true}catch(e){alert('Watchlist could not be saved to this device.');return false}}
 function loadWatch(){try{const a=JSON.parse(localStorage.getItem(WATCH_STORAGE)||'[]');watchlist=Array.isArray(a)?a:[]}catch(e){watchlist=[]}}
 function watchMatch(x){return watchlist.find(w=>w.key===watchKey(x))}
@@ -2811,7 +2811,7 @@ restoreRefreshFiltersAfterFeed=function(){
  const typeLabel={flat:'Flat turf',aw:'All-weather',jumps:'Jumps',unknown:'Race type not confirmed'};
  const kindText=race=>typeLabel[raceGroup(race)]||typeLabel.unknown;
  function modelDecision(race){
-  if(!race)return 'This race is on the card, but Hot Pots has not published its rankings yet.';
+  if(!race||!ordered(race).length)return race?.reason||'This race is on the card, but Hot Pots has not published its rankings yet.';
   const d=race.decision||{};
   if(race.selection_status==='RESEARCH_ONLY')return 'The top-rated horse also passed the extra checks for a model selection. This is a research pick, not a guaranteed winner.';
   if(d.frozen_d_agreement===false)return 'The two parts of the model disagree on the strongest horse. Hot Pots ranks the field but makes no selection.';
@@ -2887,8 +2887,9 @@ restoreRefreshFiltersAfterFeed=function(){
  }
  function display(race){
   const selected=race?.selection_status==='RESEARCH_ONLY'&&!!race.selection;
+  const hasRanking=ordered(race).length>0;
   const raceTitle=String(race.race_name||'').trim()||kindText(race)+' race';
-  return `<article class="panel rhp70-race"><div class="rhp70-head"><div><h3>${safe(race.time)} · ${safe(race.course)}</h3><p class="hint">${safe(raceTitle)} · ${safe(kindText(race))}</p></div><span class="rhp70-pill">${selected?'Model selection':'Ranked only'}</span></div>`+
+  return `<article class="panel rhp70-race"><div class="rhp70-head"><div><h3>${safe(race.time)} · ${safe(race.course)}</h3><p class="hint">${safe(raceTitle)} · ${safe(kindText(race))}</p></div><span class="rhp70-pill">${selected?'Model selection':hasRanking?'Ranked only':'Awaiting ranking'}</span></div>`+
    pairHTML(race)+priorRankingNote(race)+`<p class="rhp70-explain">${safe(modelDecision(race))}</p>`+openRaceButton(race)+'</article>';
  }
  function ensureControls(){
@@ -2941,8 +2942,9 @@ restoreRefreshFiltersAfterFeed=function(){
   const shown=available.filter(r=>(rhp158Meeting==='all'||r.course===rhp158Meeting)&&(rhp158Time==='all'||r.time===rhp158Time))
    .sort((a,b)=>String(a.race_time||a.time).localeCompare(String(b.race_time||b.time))||String(a.course).localeCompare(String(b.course)));
   const picks=all.filter(r=>r.selection_status==='RESEARCH_ONLY').length,missing=all.filter(r=>r.selection_status==='ASSESSMENT_PENDING').length;
+  const publishedRankingCount=all.filter(r=>ordered(r).length>0).length;
   const msg=$('strategy-model-message');
-  if(msg)msg.textContent=`${day} · ${scored.length} races ranked · ${picks} research selections · ${missing?missing+' race(s) awaiting ranking · ':''}${shown.length} shown.`;
+  if(msg)msg.textContent=`${day} · ${publishedRankingCount} races ranked · ${picks} research selections · ${missing?missing+' race(s) awaiting ranking · ':''}${shown.length} shown.`;
   host.innerHTML=shown.length?shown.map(display).join(''):`<div class="panel">${all.length?'No races match this view.':'No racing data for this date yet.'} Choose another filter or date.</div>`;
  };
  renderPower=renderStrategySelections;
