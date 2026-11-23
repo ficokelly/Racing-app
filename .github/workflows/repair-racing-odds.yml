@@ -1,0 +1,140 @@
+name: Repair bookmaker odds visibility and refresh timings
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pages: write
+
+concurrency:
+  group: rhp-odds-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out Racing app
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fix bookmaker IDs, missed scheduled refreshes and empty feed safety
+        shell: bash
+        run: |
+          python3 - <<'PYREPAIR'
+          from pathlib import Path
+          import json
+
+          # Refuse to guess structure: abort if source has changed.
+          def replace_exact(path, old, new, label):
+              p = Path(path)
+              source = p.read_text(encoding='utf-8')
+              n = source.count(old)
+              if n != 1:
+                  raise RuntimeError(f'{label}: expected exactly one match in {path}, found {n}; no file changed')
+              return source.replace(old, new, 1)
+
+          app = Path('index.html').read_text(encoding='utf-8')
+          old = "const bookName=b=>/^(william[ _-]?hill|williamhill(?:_uk)?)$/i.test(String(b||''))?'William Hill':String(b||'');"
+          new = r"""const bookName=b=>{const raw=String(b||'').trim(),id=raw.toLowerCase().replace(/[\s_-]/g,'');const names={paddypower:'Paddy Power',williamhill:'William Hill',williamhilluk:'William Hill',betwayuk:'Betway',ladbrokesuk:'Ladbrokes',pointsbetau:'PointsBet AU',tabtouch:'Tabtouch'};return names[id]||raw;};"""
+          assert app.count(old)==1, 'App bookmaker normalization changed; unsafe to patch automatically'
+          app = app.replace(old,new,1)
+          old_pref = "function rhpReadBookPreference(){try{return localStorage.getItem(RHP_GLOBAL_BOOK_KEY)||'Paddy Power'}catch(e){return 'Paddy Power'}}"
+          new_pref = "function rhpReadBookPreference(){try{return bookName(localStorage.getItem(RHP_GLOBAL_BOOK_KEY)||'Paddy Power')}catch(e){return 'Paddy Power'}}"
+          assert app.count(old_pref)==1, 'Saved bookmaker preference function changed; aborting'
+          app = app.replace(old_pref,new_pref,1)
+
+          primary = Path('.github/workflows/racing-hot-pots-five-minute.yml').read_text(encoding='utf-8')
+          old_cron = "- cron: '*/5 7-22 * * *'"
+          new_cron = "- cron: '1-59/5 7-22 * * *'"
+          assert primary.count(old_cron)==1, 'Primary odds schedule changed; aborting'
+          primary=primary.replace(old_cron,new_cron,1)
+
+          backup = Path('.github/workflows/stage153-odds-fallback.yml').read_text(encoding='utf-8')
+          old_backup = "- cron: '2-59/5 7-22 * * *'"
+          new_backup = "- cron: '4-59/5 7-22 * * *'"
+          assert backup.count(old_backup)==1, 'Fallback odds schedule changed; aborting'
+          backup=backup.replace(old_backup,new_backup,1)
+
+          # A healthy feed must not be erased by a temporary empty response.
+          collector = Path('collect-odds.py').read_text(encoding='utf-8')
+          old_collector = 'LATEST_FILE.write_text(\n    json.dumps(snapshot, indent=2),\n    encoding="utf-8"\n)'
+          new_collector = """if not records:
+              raise RuntimeError("Odds provider returned zero valid prices; preserving last known published snapshot")
+
+          LATEST_FILE.write_text(
+              json.dumps(snapshot, indent=2),
+              encoding="utf-8"
+          )"""
+          assert collector.count(old_collector)==1, 'Collector save guard changed; aborting'
+          collector = collector.replace(old_collector,new_collector,1)
+
+          # Quality assurance before saving any changes.
+          assert "paddypower:'Paddy Power'" in app
+          assert "bookName(localStorage.getItem(RHP_GLOBAL_BOOK_KEY)" in app
+          assert "1-59/5 7-22" in primary
+          assert "4-59/5 7-22" in backup
+          for filename, content in [('index.html',app),('.github/workflows/racing-hot-pots-five-minute.yml',primary),('.github/workflows/stage153-odds-fallback.yml',backup),('collect-odds.py',collector)]:
+              Path(filename).write_text(content,encoding='utf-8')
+              print('Patched', filename)
+
+          # Data-quality report; no paid odds API request.
+          latest = Path('data/latest-odds.json')
+          if latest.exists():
+              payload = json.loads(latest.read_text())
+              quotes = payload.get('prices') or []
+              by_book={}
+              for quote in quotes:
+                  code=quote.get('bookmaker','unknown')
+                  row=by_book.setdefault(code,{'quotes':0,'races':set()})
+                  row['quotes']+=1
+                  if quote.get('race_id'): row['races'].add(quote['race_id'])
+              for code, value in sorted(by_book.items()):
+                  print('Bookmaker', code, 'quotes',value['quotes'],'races',len(value['races']))
+              print('Latest collection timestamp',payload.get('collected_at'))
+
+          PYREPAIR
+      - name: Validate app scripts and Python collector
+        run: |
+          python3 -m py_compile collect-odds.py
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          text=Path('index.html').read_text()
+          scripts=re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>',text,re.I|re.S)
+          for n, script in enumerate(scripts):
+              Path(f'/tmp/odds-app-script-{n}.js').write_text(script)
+          print('Extracted',len(scripts),'inline scripts')
+          PY
+          for f in /tmp/odds-app-script-*.js; do node --check "$f"; done
+          git diff --check
+      - name: Publish repairs
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html collect-odds.py .github/workflows/racing-hot-pots-five-minute.yml .github/workflows/stage153-odds-fallback.yml
+          if git diff --cached --quiet; then echo 'No repairs needed'; exit 0; fi
+          git commit -m 'Repair bookmaker name matching and stagger odds refreshes'
+          for attempt in 1 2 3 4; do
+            if git pull --rebase origin main && git push origin HEAD:main; then exit 0; fi
+            git rebase --abort || true
+            sleep "$((attempt*3))"
+          done
+          echo 'Unable to publish changes due to concurrent repository writes.' >&2
+          exit 1
+      - name: Request GitHub Pages rebuild
+        if: success()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          code=$(curl --silent --show-error --location --output /tmp/pages-build.json --write-out '%{http_code}'             -X POST             -H "Accept: application/vnd.github+json"             -H "Authorization: Bearer ${GH_TOKEN}"             -H "X-GitHub-Api-Version: 2022-11-28"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/pages/builds")
+          if [ "$code" = '201' ]; then
+            echo 'GitHub Pages rebuild requested.'
+          else
+            echo "::warning::Source fixed, but Pages rebuild request returned HTTP $code; run a Pages build manually if necessary."
+          fi
