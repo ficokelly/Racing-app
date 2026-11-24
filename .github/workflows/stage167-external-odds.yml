@@ -1,11 +1,13 @@
-name: Stage167 - External five-minute odds refresh
-
+name: Stage167 - External scheduled odds refresh
 on:
   workflow_dispatch:
-
+    inputs:
+      force:
+        description: Force a refresh now, even if this scheduled slot is already covered
+        type: boolean
+        default: false
 permissions:
   contents: write
-
 jobs:
   odds:
     runs-on: ubuntu-latest
@@ -18,22 +20,33 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-      - name: Check odds freshness
+      - name: Check Dublin schedule slot and published odds freshness
         id: guard
+        env:
+          FORCE: ${{ inputs.force }}
         run: |
           python - <<'PY'
           import datetime as dt, json, os
           from pathlib import Path
+          from zoneinfo import ZoneInfo
+          now = dt.datetime.now(dt.timezone.utc)
+          local = now.astimezone(ZoneInfo('Europe/Dublin'))
+          peak = 11 <= local.hour < 17
+          slot = local.replace(minute=(local.minute // 5 * 5 if peak else 0), second=0, microsecond=0).astimezone(dt.timezone.utc)
+          stamp = dt.datetime.min.replace(tzinfo=dt.timezone.utc)
+          age = 1e6
           try:
               x = json.loads(Path('data/latest-odds.json').read_text())
               stamp = dt.datetime.fromisoformat(x['collected_at'].replace('Z', '+00:00'))
-              age = (dt.datetime.now(dt.timezone.utc) - stamp).total_seconds() / 60
+              age = (now - stamp).total_seconds() / 60
               if not x.get('prices') or age < -2: age = 1e6
           except (OSError, ValueError, TypeError, KeyError): age = 1e6
-          print(f'ODDS_AGE_MIN={age:.1f}')
-          if age >= 15: print(f'::warning::Published odds are {age:.1f} minutes old')
+          force = os.environ.get('FORCE', '').lower() == 'true'
+          needed = force or age == 1e6 or stamp < slot
+          print(f'DUBLIN={local.isoformat()} PEAK={peak} SLOT={slot.isoformat()} ODDS_AGE_MIN={age:.1f} COLLECT={needed}')
+          if age >= (15 if peak else 75): print(f'::warning::Published odds are {age:.1f} minutes old')
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-              f.write(f'collect={str(age >= 4).lower()}\n')
+              f.write(f'collect={str(needed).lower()}\n')
           PY
       - name: Collect and validate fresh odds
         if: steps.guard.outputs.collect == 'true'

@@ -1,5 +1,4 @@
-name: Racing Hot Pots - Five Minute Data Updates
-
+name: Racing Hot Pots - Results and Racecards Maintenance
 on:
   workflow_dispatch:
   workflow_call:
@@ -11,18 +10,16 @@ on:
       PUNTERSEDGE_API_KEY:
         required: true
   schedule:
-    - cron: '1-59/5 7-22 * * *'
-      timezone: 'Europe/Dublin'
     - cron: '3,18,33,48 7-22 * * *'
       timezone: 'Europe/Dublin'
-
 permissions:
   contents: write
   actions: write
-
 jobs:
   odds:
-    if: github.event_name != 'schedule' || github.event.schedule != '3,18,33,48 7-22 * * *' || inputs.fallback == true
+    # Manual maintenance runs and manually invoked fallback retain an odds refresh.
+    # Scheduled odds are exclusively owned by Stage167's external triggers.
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     concurrency:
@@ -42,17 +39,22 @@ jobs:
           python - <<'PY'
           import datetime as dt, json, os
           from pathlib import Path
+          from zoneinfo import ZoneInfo
+          now=dt.datetime.now(dt.timezone.utc)
+          local=now.astimezone(ZoneInfo('Europe/Dublin'))
+          peak=11<=local.hour<17
+          slot=local.replace(minute=(local.minute//5*5 if peak else 0),second=0,microsecond=0).astimezone(dt.timezone.utc)
+          stamp=dt.datetime.min.replace(tzinfo=dt.timezone.utc)
           try:
               x=json.loads(Path('data/latest-odds.json').read_text())
               stamp=dt.datetime.fromisoformat(x['collected_at'].replace('Z','+00:00'))
-              age=(dt.datetime.now(dt.timezone.utc)-stamp).total_seconds()/60
+              age=(now-stamp).total_seconds()/60
               if not x.get('prices') or age < -2: age=1e6
-          except (OSError,ValueError,TypeError,KeyError): age=1e6
+          except (OSError, ValueError, TypeError, KeyError): age=1e6
           fallback=os.environ['FALLBACK'].lower()=='true'
-          threshold=9 if fallback else 4
-          needed=age>=threshold or (os.environ['EVENT']=='workflow_dispatch' and not fallback)
+          needed=age==1e6 or stamp<slot or (os.environ['EVENT']=='workflow_dispatch' and not fallback)
           print(f'ODDS_AGE_MIN={age:.1f} FALLBACK={fallback} COLLECT={needed}')
-          if age>=15: print(f'::warning::Published odds are {age:.1f} minutes old')
+          if age>=(15 if peak else 75): print(f'::warning::Published odds are {age:.1f} minutes old')
           with open(os.environ['GITHUB_OUTPUT'],'a') as f: f.write(f'collect={str(needed).lower()}\n')
           PY
       - name: Collect one fresh odds snapshot
@@ -101,7 +103,7 @@ jobs:
           hist={v['collected_at']:v for v in hist if isinstance(v,dict) and v.get('collected_at')}
           hist[new['collected_at']]=new
           p.write_text(json.dumps(new,indent=2)+'\n')
-          h.write_text(json.dumps(sorted(hist.values(),key=stamp),separators=(',',':'))+'\n')
+          h.write_text(json.dumps(sorted(hist.values(),key=stamp),separators=(',', ':'))+'\n')
           print('ODDS_PUBLISH',new['collected_at'],'quotes',len(new['prices']))
           PY
             if git diff --quiet -- data/latest-odds.json data/odds-history.json; then exit 0; fi
@@ -113,7 +115,6 @@ jobs:
           done
           echo '::error::Odds publication failed after five attempts'
           exit 1
-
   maintenance:
     if: inputs.fallback != true && (github.event_name == 'workflow_dispatch' || github.event.schedule == '3,18,33,48 7-22 * * *')
     runs-on: ubuntu-latest

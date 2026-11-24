@@ -1,15 +1,9 @@
-name: 'Stage153 — Odds freshness watchdog and fallback'
-
+name: 'Stage153 — Manual odds freshness fallback'
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '4-59/5 7-22 * * *'
-      timezone: 'Europe/Dublin'
-
 permissions:
   contents: write
   actions: write
-
 jobs:
   fallback:
     uses: ./.github/workflows/racing-hot-pots-five-minute.yml
