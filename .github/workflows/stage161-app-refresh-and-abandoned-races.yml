@@ -1,0 +1,275 @@
+name: 'Stage161 — Abandoned races and smooth app refresh'
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: stage161-app-repair
+  cancel-in-progress: false
+
+jobs:
+  install:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install and verify app and race-status repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/stage161_patch.py" <<'PY'
+          from pathlib import Path
+          import ast,json,datetime as dt,re
+
+          def replace(s,old,new):
+              if s.count(old)!=1: raise RuntimeError(f'Expected one anchor, got {s.count(old)}: {old[:100]}')
+              return s.replace(old,new,1)
+
+          p=Path('scripts/stage153_roi_combined.py'); s=p.read_text()
+          if 'STAGE161_ABANDONED_RACES' not in s:
+              s=replace(s,'def nonrunner(r):', '''# STAGE161_ABANDONED_RACES: require explicit consistent race-level status.
+          def abandoned_race(entries):
+           return bool(entries) and all(normalize(r.get('race_status')) in {'abandoned','cancelled','canceled','void'} for r in entries)
+
+          def nonrunner(r):''')
+              s=replace(s,' races=[];counts=collections.Counter()',' races=[];abandoned=[];counts=collections.Counter()')
+              s=replace(s,"  old=prior.get((stamp.split()[0]+' '+clock,course_key))",'''  if abandoned_race(entries):
+             abandoned.append({**prior.get((target+' '+clock,course_key),{}),'date':target,'course':course,'time':clock,'race_time':iso(off),'race_status':'abandoned',
+              'racecard_asof':cards.get('collected_at')})
+             counts['abandoned']+=1
+             continue
+            old=prior.get((stamp.split()[0]+' '+clock,course_key))''')
+              s=replace(s,"'coverage':dict(counts),'source_rows':dict(read_stats)","'coverage':dict(counts),'abandoned_races':abandoned,'source_rows':dict(read_stats)")
+              s=replace(s," payload={'version':1,'model':'ROI Specialists'"," if args.output.exists():\n  try:\n   previous_audit=json.loads(args.output.read_text()).get('abandoned_races',[])\n   audit={(r.get('date'),normalize(r.get('course')),r.get('time')):r for r in previous_audit}\n   for r in abandoned:audit.setdefault((r.get('date'),normalize(r.get('course')),r.get('time')),r)\n   abandoned=list(audit.values())\n  except (ValueError,OSError):pass\n payload={'version':1,'model':'ROI Specialists'")
+              s=replace(s," if not counts['ranked'] and not counts['preserved_post_off']:"," if not counts['ranked'] and not counts['preserved_post_off'] and counts['abandoned']!=len(grouped):")
+              s=replace(s,' assert len(STAGE156_ROUTES)==50', ''' assert abandoned_race([{'race_status':'abandoned'},{'race_status':'cancelled'}])
+           assert not abandoned_race([{'race_status':'abandoned'},{'race_status':'declared'}])
+           assert not abandoned_race([{}])
+           assert len(STAGE156_ROUTES)==50''')
+              ast.parse(s);p.write_text(s)
+
+          p=Path('index.html');s=p.read_text()
+          if 'STAGE161_IN_PLACE_REFRESH' not in s:
+              s=replace(s,'function loadRacecardIndex(raw){', '''// STAGE161_IN_PLACE_REFRESH / explicit abandoned race suppression.
+          const rhpAbandonedKeys=new Set();
+          function rhpRaceKey(course,day,time){return courseMatchKey(course)+'|'+day+'|'+time}
+          function rhpIsAbandoned(course,day,time){return rhpAbandonedKeys.has(rhpRaceKey(course,day,time))}
+          function rhpRememberAbandoned(cards){
+           const grouped=new Map();
+           for(const r of cards||[]){if(!r?.course||!r?.race_time)continue;const k=rhpRaceKey(r.course,r.date||dateKey(r.race_time),clock(r.race_time));
+            const a=grouped.get(k)||[];a.push(String(r.race_status||'').toLowerCase().replace(/[^a-z]/g,''));grouped.set(k,a);}
+           for(const [k,a] of grouped){if(a.every(v=>['abandoned','cancelled','canceled','void'].includes(v)))rhpAbandonedKeys.add(k);else if(a.some(v=>['declared','open','scheduled','active'].includes(v)))rhpAbandonedKeys.delete(k);}
+          }
+          function rhpMergeLiveCards(live,history){
+           const current=Array.isArray(live?.runners)?live.runners:[];rhpRememberAbandoned(current);
+           const merged=new Map();for(const r of history||[]){if(r&&r.horse&&r.course)merged.set(racecardKey(r.horse,r.course,r.date||dateKey(r.race_time)),r)}
+           for(const r of current){if(r&&r.horse&&r.course){const k=racecardKey(r.horse,r.course,r.date||dateKey(r.race_time));merged.set(k,{...(merged.get(k)||{}),...r})}}
+           loadRacecardIndex({runners:[...merged.values()]});
+          }
+          function loadRacecardIndex(raw){''')
+              s=replace(s,'racecardRunners=normalized;\n for(const r of normalized){','racecardRunners=normalized.filter(r=>!rhpIsAbandoned(r.course,r.date||dateKey(r.race_time),clock(r.race_time)));\n for(const r of racecardRunners){')
+              s=replace(s,'if(!x?.horse||!x?.course||!x?.starts||!x?.day)continue;','if(!x?.horse||!x?.course||!x?.starts||!x?.day||rhpIsAbandoned(x.course,x.day,x.time))continue;')
+              s=replace(s,"const current=Array.isArray(latest.prices)?latest.prices:[];","const current=(Array.isArray(latest.prices)?latest.prices:[]).filter(p=>p&&!rhpIsAbandoned(p.course,dateKey(p.race_time),clock(p.race_time)));")
+              s=replace(s,'const scored=feed.races.filter(x=>x.date===day);','const scored=feed.races.filter(x=>x.date===day&&!rhpIsAbandoned(x.course,x.date,x.time||clock(x.race_time)));')
+              s=replace(s,'const all=(stage38DResults?.selections||[]);','const all=(stage38DResults?.selections||[]).filter(r=>!rhpIsAbandoned(r.course,r.date,r.time||clock(r.race_time)));')
+              # Keep initial loading behavior, but cache its large datasets for the background updater.
+              s=replace(s,'async function loadFeed(){loadForm();loadFinishedRaceFeed();try{','let rhpInitialFeedBusy=false,rhpLiveOdds=null,rhpLiveHistory=[],rhpCardHistory=[],rhpLiveCards=null;\nasync function loadFeed(){rhpInitialFeedBusy=true;loadForm();loadFinishedRaceFeed();try{')
+              a=s.index('const current=Array.isArray(live.runners)?live.runners:[];const merged=new Map();')
+              b=s.index('}catch(e){loadRacecardIndex(null)}',a)
+              s=s[:a]+"rhpLiveCards=live;rhpCardHistory=history;rhpMergeLiveCards(live,history)"+s[b:]
+              s=replace(s,"throw Error('Invalid JSON feed');rows=build(latest,hist);","throw Error('Invalid JSON feed');rhpLiveOdds=latest;rhpLiveHistory=hist;rows=build(latest,hist);")
+              s=replace(s,"$('asof').textContent='Could not load odds feed: '+e.message;}}","$('asof').textContent='Could not load odds feed: '+e.message;}finally{rhpInitialFeedBusy=false;}}")
+              # Avoid resetting the tab/closing popups when returning from the iOS background.
+              s=replace(s,"window.addEventListener('pageshow',event=>{if(event.persisted && !new URL(window.location.href).searchParams.has('tab'))showTab('racecards');});","window.addEventListener('pageshow',event=>{if(event.persisted)checkPublishedData();});")
+              s=replace(s,'const AUTO_REFRESH_INTERVAL_MS=45000;','const AUTO_REFRESH_INTERVAL_MS=90000;')
+              # Replace the old global HEAD + reload handler. Legacy declarations can remain for compatibility.
+              a=s.index('let autoRefreshSignatures=null,autoRefreshBusy=false,autoRefreshLastCheck=0;')
+              b=s.index('function restoreAutoRefreshView(){',a)
+              s=s[:a]+'''let autoRefreshBusy=false,autoRefreshLastCheck=0;
+          const rhpLiveSignatures=new Map();
+          const rhpLiveFiles=['latest-odds.json','racecards.json','strategy-roi-combined.json','strategy-roi-combined-results.json','race-results.json'];
+          async function rhpFetchTimed(url,method='GET'){
+           const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),12000);
+           try{const r=await fetch(url,{method,cache:'no-cache',signal:controller.signal});if(!r.ok)throw Error('Unavailable '+url);if(method==='HEAD')return r.headers.get('etag')||r.headers.get('last-modified')||null;return await r.json();}finally{clearTimeout(timer)}
+          }
+          async function rhpFetchChanged(file,force){
+           const sources=file==='latest-odds.json'?[RHP_FAST_ODDS_BASE+file,'./data/'+file]:['./data/'+file];
+           for(const url of sources){try{
+            let signature=null;try{signature=await rhpFetchTimed(url,'HEAD')}catch(e){}
+            if(!force&&signature&&rhpLiveSignatures.get(url)===signature)return null;
+            const data=await rhpFetchTimed(url);if(!data||typeof data!=='object')continue;
+            const valid=file==='latest-odds.json'?Array.isArray(data.prices):file==='racecards.json'?Array.isArray(data.runners):file==='strategy-roi-combined.json'?Array.isArray(data.races):file==='strategy-roi-combined-results.json'?Array.isArray(data.selections):Array.isArray(data.races)||Array.isArray(data.results);
+            if(!valid)continue;
+            return {file,url,signature,data};
+           }catch(e){}}
+           return null;
+          }
+          function rhpLiveViewSnapshot(){
+           return {tab:activeTab,scroll:window.scrollY,horse:[...document.querySelectorAll('.rhp158-horse-details:not([hidden]) [data-rhp158-open-horse]')].map(el=>el.dataset.rhp158OpenHorse),
+            details:[...document.querySelectorAll('section:not(.hidden) details[open]')].map(el=>({id:el.id,summary:el.querySelector('summary')?.textContent?.trim()})),
+            controls:Object.fromEntries(['rc-meeting','rc-time','rc-type','rc-odds','hot-meeting','hot-race-time','hot-race-type','rhp158-hp-meeting','rhp158-hp-time'].map(id=>[id,$(id)?.value]))};
+          }
+          function rhpLiveRedraw(){
+           const state=rhpLiveViewSnapshot();
+           if(activeTab==='power')renderStrategySelections();
+           else if(activeTab==='racecards'){rcSetupFilters();setFromSaved($('rc-meeting'),state.controls['rc-meeting']);rcSetupFilters();setFromSaved($('rc-time'),state.controls['rc-time']);renderRacecards();}
+           else if(activeTab==='markets'){refreshSelects();renderPersonFilters('markets');renderMarkets();}
+           else if(activeTab==='hot')renderHot();
+           else if(activeTab==='powerresults')renderPowerResults();
+           else if(activeTab==='watchlist')renderWatch();
+           for(const el of document.querySelectorAll('.rhp158-horse-details [data-rhp158-open-horse]'))if(state.horse.includes(el.dataset.rhp158OpenHorse)){const d=el.closest('.rhp158-horse-details');d.hidden=false;d.parentElement.querySelector('[data-rhp158-toggle]')?.setAttribute('aria-expanded','true')}
+           for(const el of document.querySelectorAll('section:not(.hidden) details'))if(state.details.some(x=>x.id?x.id===el.id:x.summary&&x.summary===el.querySelector('summary')?.textContent?.trim()))el.open=true;
+           if(activeTab===state.tab&&Math.abs(window.scrollY-state.scroll)>2)window.scrollTo(0,state.scroll);
+          }
+          async function checkPublishedData(force=false){
+           if(autoRefreshBusy||rhpInitialFeedBusy||document.visibilityState==='hidden'||!navigator.onLine)return;
+           if(!force&&Date.now()-autoRefreshLastCheck<75000)return;
+           // Do not rebuild an open race/bet popup or a control the user is editing.
+           if(!force&&(['race-overlay','bet-overlay'].some(id=>$(id)&&!$(id).classList.contains('hidden'))||document.activeElement?.matches('input,select,textarea')))return;
+           autoRefreshBusy=true;const btn=$('rhp-refresh-odds');if(force&&btn){btn.disabled=true;btn.textContent='↻ Refreshing…'}
+           try{
+            const received=(await Promise.all(rhpLiveFiles.map(f=>rhpFetchChanged(f,force)))).filter(Boolean);
+            let changed=false,marketChanged=false;
+            for(const {file,url,signature,data} of received){
+             if(file==='latest-odds.json'){
+              if(!rhpLiveOdds||Date.parse(data.collected_at)>Date.parse(rhpLiveOdds.collected_at)){rhpLiveOdds=data;marketChanged=true;changed=true;
+               if(!rhpLiveHistory.some(h=>h.collected_at===data.collected_at))rhpLiveHistory.push(data);}
+             }else if(file==='racecards.json'){
+              if(!rhpLiveCards||Date.parse(data.collected_at)>Date.parse(rhpLiveCards.collected_at)){rhpLiveCards=data;rhpMergeLiveCards(data,rhpCardHistory);marketChanged=true;changed=true;}
+             }else if(file==='strategy-roi-combined.json'){
+              if(!stage38D||Date.parse(data.generated_at)>Date.parse(stage38D.generated_at)||data.generated_at===stage38D.generated_at&&data.race_status_corrected_at!==stage38D.race_status_corrected_at){stage38D=data;changed=true;}
+             }else if(file==='strategy-roi-combined-results.json'){
+              if(!stage38DResults||data.updated_at!==stage38DResults.updated_at){stage38DResults=data;changed=true;}
+             }else if(file==='race-results.json'){loadFinishedRaces(data);changed=true;}
+             if(signature)rhpLiveSignatures.set(url,signature);
+            }
+            if(marketChanged&&rhpLiveOdds){rows=build(rhpLiveOdds,rhpLiveHistory);rhp158HistoricHotRows=rhp158BuildHistoricHotRows(rhpLiveHistory);rhpSyncBookControl();rhpApplyBookPreference(rhpGlobalBook,{redraw:false});supplementRacecardsFromMarket();}
+            if(rhpLiveOdds){const age=(Date.now()-Date.parse(rhpLiveOdds.collected_at))/60000;$('status').textContent=age>=20?'⚠ ODDS STALE · '+Math.floor(age)+'m':'● ODDS SYNCED';$('asof').textContent=`Last collected: ${when(rhpLiveOdds.collected_at)} (Irish time) · ${rhpLiveOdds.races_returned} races · ${rhpLiveOdds.prices_collected} bookmaker quotes`;}
+            if(changed)rhpLiveRedraw();
+           }catch(e){console.warn('Live refresh retained previous view',e)}finally{autoRefreshBusy=false;autoRefreshLastCheck=Date.now();if(force&&btn){btn.disabled=false;btn.textContent='↻ Refresh odds'}}
+          }
+          '''+s[b:]
+              a=s.index("$('rhp-refresh-odds').addEventListener('click',()=>{")
+              b=s.index('// Open Racecards on every fresh app launch.',a)
+              s=s[:a]+"$('rhp-refresh-odds').addEventListener('click',()=>checkPublishedData(true));\n"+s[b:]
+              s=replace(s,"showTab('racecards');\nrestoreAutoRefreshView();","try{const last=sessionStorage.getItem('rhp-selected-section');if(['markets','racecards','watchlist','power','hot','powerresults','bets','pnl'].includes(last))activeTab=last}catch(e){}\nrestoreAutoRefreshView();\nshowTab(activeTab||'racecards',true);")
+              s=replace(s,"if(document.visibilityState==='visible'&&Date.now()-autoRefreshLastCheck>15000)checkPublishedData();","if(document.visibilityState==='visible'&&Date.now()-autoRefreshLastCheck>=AUTO_REFRESH_INTERVAL_MS)checkPublishedData();")
+              s=s.replace('A changed data file triggers a page reload; unchanged files never reload the page.','Changed live data is refreshed in place; never reload the page.')
+              s=s.replace('Manual refresh uses the existing state-preserving reload path, not a new API call.','Manual refresh updates the published feeds in place, not the bookmaker API.')
+              if 'window.location.reload()' in s: raise RuntimeError('Unexpected full reload remains')
+              p.write_text(s)
+
+          # Immediately correct today's published combined feed without re-running frozen scorers.
+          # Keep abandoned records in a separate audit field and do not touch historical days.
+          p=Path('data/strategy-roi-combined.json');cards=json.loads(Path('data/racecards.json').read_text());feed=json.loads(p.read_text())
+          from collections import defaultdict
+          from zoneinfo import ZoneInfo
+          now=dt.datetime.now(ZoneInfo('Europe/Dublin'));allowed={now.date().isoformat(),(now.date()+dt.timedelta(days=1)).isoformat()}
+          def k(r):
+              course=re.sub(r'\s*\((?:AW|all[ -]?weather)\)\s*$','',str(r.get('course','')),flags=re.I)
+              time=str(r.get('race_time') or '')
+              if time:
+                  try: time=dt.datetime.fromisoformat(time.replace('Z','+00:00')).astimezone(dt.timezone.utc).strftime('%H:%M')
+                  except ValueError: time=str(r.get('time',''))
+              else: time=str(r.get('time',''))
+              return (r.get('date'),re.sub(r'[^a-z0-9]','',course.lower()),time)
+          groups=defaultdict(list)
+          for r in cards.get('runners',[]):
+              if r.get('date') in allowed: groups[k(r)].append(r)
+          closed={key for key,entries in groups.items() if entries and all(str(r.get('race_status','')).lower() in {'abandoned','cancelled','canceled','void'} for r in entries)}
+          removed=[r for r in feed.get('races',[]) if k(r) in closed]
+          if removed:
+              before=feed.get('races',[]);feed['races']=[r for r in before if k(r) not in closed]
+              audit=feed.setdefault('abandoned_races',[]);existing={k(r) for r in audit}
+              for r in removed:
+                  if k(r) not in existing:audit.append({**r,'race_status':'abandoned','racecard_asof':cards.get('collected_at')})
+              day=feed.get('day');today=[r for r in feed['races'] if r.get('date')==day];abandoned=sum(1 for key in closed if key[0]==day)
+              feed['coverage']={'ranked':sum(bool(r.get('runners')) for r in today),'unscored_or_changed':sum(not r.get('runners') for r in today),'abandoned':abandoned}
+              # Keep original model generation time and pick timestamps; mark only presentation correction.
+              feed['race_status_corrected_at']=now.isoformat();p.write_text(json.dumps(feed,indent=2,ensure_ascii=False)+'\n')
+              print('STAGE161_REMOVED_ABANDONED',len(removed))
+          else:print('STAGE161_NO_ABANDONED_ROWS_TO_REMOVE')
+
+          # Prevent stale queued selection alerts for explicitly abandoned races; retain history.
+          p=Path('scripts/stage154_roi_notifications.py');s=p.read_text()
+          if 'STAGE161_ABANDONED_ALERTS' not in s:
+              s=replace(s,'def first_two(race):','''# STAGE161_ABANDONED_ALERTS
+           def_placeholder
+          '''.replace(' def_placeholder','''def abandoned_alert_keys():
+              groups = {}
+              for r in read_json(DATA / 'racecards.json', {}).get('runners', []):
+                  try:
+                      day = str(r.get('date') or '')
+                      time = dt.datetime.fromisoformat(str(r['race_time']).replace('Z','+00:00')).astimezone(DUBLIN).strftime('%H:%M')
+                      key = '|'.join([day, slug(r.get('course')), time])
+                      groups.setdefault(key, []).append(slug(r.get('race_status')))
+                  except (KeyError, ValueError, TypeError):
+                      continue
+              return {k for k,v in groups.items() if v and all(x in ('abandoned','cancelled','canceled','void') for x in v)}
+
+
+          def first_two(race):'''))
+              s=replace(s,'    races = race_snapshot(feed)','    closed = abandoned_alert_keys()\n    races = {k:v for k,v in race_snapshot(feed).items() if k not in closed}')
+              s=replace(s,'            previous = (before or {}).get("races") or {}','            previous = {k:v for k,v in ((before or {}).get("races") or {}).items() if k not in abandoned_alert_keys()}')
+              s=replace(s,'    for event in reversed(events):','    closed = abandoned_alert_keys()\n    for event in reversed(events):')
+              s=replace(s,'        result = send_push(event, secret, subscriber)', '''        affected = [x for x in event.get('changes', []) if x.get('race_key') in closed]
+                  if affected:
+                      # An already composed stale push is not rewritten or sent; keep its audit.
+                      event['push_status'] = 'suppressed'
+                      event['push_error'] = 'Includes an abandoned race; superseded by current racecards'
+                      continue
+                  result = send_push(event, secret, subscriber)''')
+              ast.parse(s);p.write_text(s)
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            python "$RUNNER_TEMP/stage161_patch.py"
+            python -m py_compile scripts/stage153_roi_combined.py scripts/stage154_roi_notifications.py
+            python scripts/stage153_roi_combined.py self-test
+            python - <<'PY'
+          import re,subprocess,tempfile
+          from pathlib import Path
+          html=Path('index.html').read_text()
+          assert 'STAGE161_IN_PLACE_REFRESH' in html
+          assert 'window.location.reload()' not in html
+          with tempfile.TemporaryDirectory() as d:
+              n=0
+              for attrs,body in re.findall(r'<script\b([^>]*)>(.*?)</script\s*>',html,re.I|re.S):
+                  if not body.strip() or re.search(r'\btype=["\'](?:application/(?:ld\+)?json|importmap)["\']',attrs,re.I):continue
+                  p=Path(d)/f'script-{n}.js';p.write_text(body)
+                  subprocess.run(['node','--check',str(p)],check=True);n+=1
+              print('STAGE161_INLINE_SCRIPTS_SYNTAX_OK',n)
+          PY
+            git add index.html scripts/stage153_roi_combined.py scripts/stage154_roi_notifications.py data/strategy-roi-combined.json
+            if git diff --cached --quiet; then echo STAGE161_ALREADY_INSTALLED; break; fi
+            git commit -m 'Stage161: hide abandoned races and refresh app data without page reloads'
+            if git push origin HEAD:main; then echo STAGE161_PUBLISHED; break; fi
+            test "$attempt" -lt 5 || exit 1
+            sleep "$((attempt*3))"
+          done
+      - name: Request fresh combined-model assessment
+        shell: bash
+        run: |
+          set -euo pipefail
+          DATE="$(TZ=Europe/Dublin date +%F)"
+          gh workflow run stage153-roi-combined.yml --ref main -f "selection_date=$DATE"
+          echo "STAGE161_TRIGGERED_STAGE153 $DATE"
