@@ -1,0 +1,183 @@
+name: Stage168 - Extend history to Stage152 and G5 and correct ROI routes
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: stage168-history-routing-integration
+  cancel-in-progress: false
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Apply source-only changes to validated loader and route aliases
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import ast
+          import json
+          helper=Path('scripts/stage167_validated_history.py')
+          g5=Path('scripts/stage128_g5_today_paper.py')
+          combined=Path('scripts/stage153_roi_combined.py')
+          files={p:p.read_text() for p in (helper,g5,combined)}
+          h,g,c=(files[p] for p in (helper,g5,combined))
+          def replace_once(s,old,new):
+              if new in s:return s
+              assert s.count(old)==1, ('Unexpected source, refusing overwrite',old[:140])
+              return s.replace(old,new,1)
+          anchor="    'reports/stage151-d142/source/stage2/historical_ukie_staging.sqlite',"
+          h=replace_once(h,anchor,anchor+"\n    'reports/stage152-specialists/source/stage2/historical_ukie_staging.sqlite',\n    'reports/stage128/source/stage2/historical_ukie_staging.sqlite',")
+          assert 'versions/132' in h and '839,8159,143' in h
+          assert 'L.scratch_archive(args.db,args.reference,cards,date,args.out)' in Path('scripts/stage152_best_roi_specialists_today.py').read_text()
+          anchor='def run(args):\n    cutoff=G.stamp(args.cutoff)'
+          replacement='''def run(args):
+              # Stage168: use the verified historical input for the daily G5 scorer.
+              import sys
+              root=str(Path(__file__).resolve().parent.parent)
+              if root not in sys.path:
+                  sys.path.insert(0,root)
+              from stage167_validated_history import refreshed_inputs
+              with refreshed_inputs(args.db,args.reference,str(as_day(args.date))) as (db,reference):
+                  original_db,original_ref=args.db,args.reference
+                  try:
+                      args.db,args.reference=str(db),str(reference)
+                      return _run_with_history(args)
+                  finally:
+                      args.db,args.reference=original_db,original_ref
+
+          def _run_with_history(args):
+              cutoff=G.stamp(args.cutoff)'''
+          g=replace_once(g,anchor,replacement)
+          # Fix three confirmed legacy aliases using the audited catalogue, not new ROI tuning.
+          catalogue=json.loads(Path('data/roi-racetype-route-map.json').read_text())['routes']
+          expected={'HURDLE_NOVICE':'D137_HPR_ABILITY_GRADE_WEIGHT', 'HURDLE_NOVICE_HANDICAP':'D_FORM_WEIGHT_GRADE__ROI', 'CHASE_NOVICE_HANDICAP':'D137_HPR_ABILITY_GRADE_OR_WEIGHT'}
+          assert all(catalogue[k]['model']==v for k,v in expected.items())
+          anchor=" if code not in ROUTES:ROUTES[code]=settings['model']"
+          replacement=anchor+'''
+          # Stage168: reconcile legacy labels with the audited 50-type ROI catalogue.
+          AUDITED_ROUTE_ALIASES={
+           'novice hurdle':'HURDLE_NOVICE',
+           'novice handicap hurdle':'HURDLE_NOVICE_HANDICAP',
+           'novice handicap chase':'CHASE_NOVICE_HANDICAP',
+          }
+          for alias,code in AUDITED_ROUTE_ALIASES.items():
+           ROUTES[alias]=STAGE156_ROUTES[code]['model']'''
+          c=replace_once(c,anchor,replacement)
+          c=replace_once(c,'  evidence=STAGE156_ROUTES.get(extended_route,{})','  evidence=STAGE156_ROUTES.get(AUDITED_ROUTE_ALIASES.get(subtype,extended_route),{})')
+          anchor=' assert len(STAGE156_ROUTES)==50'
+          c=replace_once(c,anchor,anchor+'''
+           assert ROUTES['novice hurdle']=='D137_HPR_ABILITY_GRADE_WEIGHT'
+           assert ROUTES['novice handicap hurdle']=='D_FORM_WEIGHT_GRADE__ROI'
+           assert ROUTES['novice handicap chase']=='D137_HPR_ABILITY_GRADE_OR_WEIGHT'
+           assert all(ROUTES[a]==STAGE156_ROUTES[k]['model'] for a,k in AUDITED_ROUTE_ALIASES.items())''')
+          for p,s in zip((helper,g5,combined),(h,g,c)):
+              ast.parse(s,filename=str(p))
+              p.write_text(s)
+          print('STAGE168_SOURCE_PATCH_READY')
+          PY
+          python -m py_compile scripts/stage167_validated_history.py scripts/stage128_g5_today_paper.py scripts/stage153_roi_combined.py
+          python scripts/stage153_roi_combined.py self-test
+          PYTHONPATH=.:scripts python - <<'PY'
+          from pathlib import Path
+          import stage167_validated_history as h
+          for p in ('reports/stage152-specialists/source/stage2/historical_ukie_staging.sqlite','reports/stage128/source/stage2/historical_ukie_staging.sqlite'):
+              assert h.daily_source(Path(p))
+          assert not h.daily_source(Path('reports/research/historical_ukie_staging.sqlite'))
+          print('STAGE168_LOADER_SCOPE_OK')
+          PY
+          git diff --check
+          git diff --stat
+      - name: Publish source-only patch, preserving all historical picks
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add scripts/stage167_validated_history.py scripts/stage128_g5_today_paper.py scripts/stage153_roi_combined.py
+          if git diff --cached --quiet; then echo 'STAGE168_ALREADY_INSTALLED'; exit 0; fi
+          git commit -m 'Stage168: connect Stage152 and G5 history; reconcile audited ROI aliases'
+          for i in 1 2 3 4 5; do
+            if git pull --rebase origin main && git push origin HEAD:main; then
+              echo 'STAGE168_INSTALLED'; exit 0
+            fi
+            git rebase --abort || true
+            sleep "$((i*3))"
+          done
+          exit 1
+  recovery-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Assess archive metadata for recent final races without inventing form
+        run: |
+          python - <<'PY'
+          import collections,datetime as dt,json,pathlib,re
+          from zoneinfo import ZoneInfo
+          root=pathlib.Path('data'); days=['2026-11-21','2026-11-22','2026-11-23']
+          def norm(x):return re.sub(r'[^a-z0-9]','',str(x or '').casefold())
+          def key(x):
+              day=str(x.get('date') or '')[:10]; course=norm(x.get('course'))
+              off=x.get('race_time') or x.get('off_dt') or x.get('off') or ''
+              try:clock=dt.datetime.fromisoformat(str(off).replace('Z','+00:00')).astimezone(ZoneInfo('Europe/Dublin')).strftime('%H:%M')
+              except (ValueError,TypeError):clock=str(off)[:5]
+              return day,course,clock
+          def rows(obj):
+              if isinstance(obj,list):
+                  for v in obj:yield from rows(v)
+              elif isinstance(obj,dict):
+                  if obj.get('horse') and obj.get('course') and obj.get('date'):yield obj
+                  else:
+                      for v in obj.values():
+                          if isinstance(v,(dict,list)):yield from rows(v)
+          candidates=collections.defaultdict(list)
+          card_files={}
+          for p in (root/'racecards-archive.json',root/'racecards.json'):
+              if not p.exists():continue
+              obj=json.loads(p.read_text()); count=0
+              for r in rows(obj):
+                  k=key(r)
+                  if k[0] in days:
+                      candidates[k+(norm(r['horse']),)].append(r);count+=1
+              card_files[p.name]={'relevant_runner_rows':count}
+          report={}
+          for day in days:
+              p=root/'racing-results'/f'{day}.json'; stats=collections.Counter()
+              for race in json.loads(p.read_text()).get('results',[]) if p.exists() else []:
+                  if race.get('status')!='final':continue
+                  stats['final_races']+=1
+                  for h in race.get('runners',[]):
+                      stats['runner_rows']+=1
+                      k=key(race)+(norm(h.get('horse')),)
+                      matches=candidates.get(k,[])
+                      if not matches:stats['no_exact_card_match']+=1;continue
+                      signatures={tuple(str(r.get(f) or '') for f in ('horse_id','sire','dam','trainer','jockey','race_name','type','surface','going','distance_f')) for r in matches}
+                      if len(signatures)!=1:stats['ambiguous_card_metadata']+=1;continue
+                      r=matches[0];stats['exact_card_match']+=1
+                      for field in ('horse_id','sire','dam','trainer','jockey','race_name','type','surface','going','distance_f'):
+                          if r.get(field):stats['matched_with_'+field]+=1
+              report[day]=dict(stats)
+          out=pathlib.Path('reports/stage168');out.mkdir(parents=True,exist_ok=True)
+          result={'status':'READ_ONLY_METADATA_AUDIT','card_files':card_files,'daily':report,'limitations':'Exact date/course/time/name match is a review candidate, not sufficient proof of identity; no historical fields inserted. Does not verify external coverage or replace missing comments and distances.'}
+          (out/'recent-form-recovery-audit.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps(result,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage168-recent-form-recovery-audit
+          path: reports/stage168/recent-form-recovery-audit.json
+          if-no-files-found: error
+          retention-days: 30
