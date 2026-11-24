@@ -1,0 +1,718 @@
+name: Stage177 - Parallel 30-day rank1 research simulation
+'on':
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage177-30day-research
+  cancel-in-progress: false
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PYTHONPATH: .:scripts
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: a5987838b0e3f28b53686bac60d52cd164738718
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    - name: Restore the exact Stage174/175 sources once
+      run: |
+        set -euo pipefail
+        mkdir -p "$RUNNER_TEMP/stage176/base" "$RUNNER_TEMP/stage176/ref" reports/stage176-input reports/stage175-prior
+        gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage2-historical-staging-database --dir "$RUNNER_TEMP/stage176/base"
+        gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage4-reference-named-events-and-winners --dir "$RUNNER_TEMP/stage176/ref"
+        gh run download 45466287299 --repo "$GITHUB_REPOSITORY" --name stage174-preflight-30day --dir reports/stage176-input
+        gh run download 45467771702 --repo "$GITHUB_REPOSITORY" --name stage175-recovered-simulation-inputs --dir reports/stage175-prior
+        python -m pip install --disable-pip-version-check 'kagglehub>=0.3,<1' numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2 freezegun==1.5.5
+    - name: Reconstruct the validated Stage176 dataset once (no scoring)
+      run: |
+        python - <<'PY'
+        import collections as C, csv, datetime as D, hashlib, json, os, pathlib as P, re, sqlite3, subprocess as S, unicodedata
+        import kagglehub
+        from stage167_validated_history import build
+        from stage171_recent_history import append_bridge
+        from import_historical_ukie import odds
+        from stage4_match_all_recurring_races import canonical_course
+        UTC=D.timezone.utc
+        O=P.Path('reports/stage176'); O.mkdir(parents=True,exist_ok=True)
+        I=P.Path('reports/stage176-input'); T=P.Path(os.environ['RUNNER_TEMP'])/'stage176';T.mkdir(exist_ok=True)
+        START='2026-10-25'; END='2026-11-23'; EXCLUSIVE='2026-11-24'
+        def read(p):return json.loads(P.Path(p).read_text())
+        def norm(s):return re.sub('[^a-z0-9]','',unicodedata.normalize('NFKD',str(s or '')).encode('ascii','ignore').decode().lower())
+        def horse(s):return norm(re.sub(r'\s*\((?:IRE|GB|FR|USA|GER|AUS|NZ|ITY|JPN)\)\s*$','',str(s or ''),flags=re.I))
+        def course(s):
+         s=re.sub(r'\s*\((?:AW|GB|IRE)\)\s*$','',str(s or ''),flags=re.I);n=norm(s)
+         # Remove explicit country/surface suffixes only for known affected course aliases.
+         alias={'galwayire':'galway','wexfordire':'wexford','dundalkawire':'dundalk','dundalkire':'dundalk','dundalkaw':'dundalk','fairyhouseire':'fairyhouse','clonmelire':'clonmel','gowranparkire':'gowranpark'}
+         n=alias.get(n,n)
+         return {'kemptonpark':'kempton','chelmsfordcity':'chelmsford','bangor':'bangorondee'}.get(n,n)
+        def ts(v):
+         try:
+          x=D.datetime.fromisoformat(str(v).replace('Z','+00:00'));return x.astimezone(UTC) if x.tzinfo else None
+         except (TypeError,ValueError):return None
+        def key(r):
+         x=ts(r.get('race_time') or r.get('off_dt') or r.get('time_utc') or r.get('off_utc') or r.get('time'));d=str(r.get('date') or r.get('day') or '')
+         return d,course(r.get('course') or r.get('meeting')),x.strftime('%H:%M') if x else str(r.get('time') or '')[:5]
+        def off(k):return ts(k[0]+'T'+k[2]+':00+00:00')
+        def run(a,timeout=180):return S.check_output(a,text=True,timeout=timeout)
+        def write(name,rs):
+         if not rs:return
+         with (O/name).open('w',newline='') as f:
+          w=csv.DictWriter(f,fieldnames=list(dict.fromkeys(k for r in rs for k in r)));w.writeheader();w.writerows(rs)
+        def sha(p):
+         h=hashlib.sha256()
+         with P.Path(p).open('rb') as f:
+          for b in iter(lambda:f.read(4*1024*1024),b''):h.update(b)
+         return h.hexdigest()
+        NR={'nr','nonrunner','withdrawn','scratched','dns','reserve','nonstarter'}
+        def inactive(r):return any(norm(r.get(k)) in NR|{'true','1','yes'} for k in ('is_non_runner','is_withdrawn','withdrawn','runner_status','status'))
+        OUTCOME={'position','finish_pos','result','outcome','sp','sp_decimal','beaten','overall_beaten','distance_beaten_total','starting_price','race_result','result_status'}
+        def leak(r):return any(r.get(k) not in (None,'',[],{}) for k in OUTCOME) or norm(r.get('race_status')) in {'finished','resulted','final','completed'}
+        def price(x):
+         v=odds(x)
+         return v if v and v>=1.01 else None
+        assert horse('Example (IRE)')=='example' and price('5/2F')==3.5 and course('Kempton (AW)')=='kempton'
+        pre=list(csv.DictReader((I/'race-preoff-audit.csv').open()));assert len(pre)==990
+        prior=list(csv.DictReader(P.Path('reports/stage175-prior/recovery-ledger.csv').open()))
+        prior_by_key={(x['date'],course(x['course']),x['time']):x for x in prior}
+        oldgroups=C.defaultdict(list)
+        for x in pre:oldgroups[(x['date'],course(x['course']),x['time'])].append(x)
+        assert len(oldgroups)==975, len(oldgroups)
+        config=read(I/'agreed-config.json');assert config['minimum_races']==0
+        (O/'agreed-config.json').write_text(json.dumps(config,indent=2))
+        # Reuse exact validated builder and pinned source. Never publish raw database or edit app data.
+        base=T/'base/historical_ukie_staging.sqlite';ref=T/'ref/all_races_with_reference_event_ids.csv'
+        assert base.is_file() and ref.is_file()
+        src=P.Path(kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025/versions/132'))
+        work=T/'history';work.mkdir(exist_ok=True)
+        db,reference=build(base,ref,src,work)
+        append_bridge(db,reference,EXCLUSIVE)
+        with sqlite3.connect(f'file:{db}?mode=ro',uri=True) as c:
+         assert c.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+         latest,total=c.execute('SELECT MAX(race_date),COUNT(*) FROM historical_races').fetchone()
+         assert latest<=END and latest>='2026-11-20'
+         assert c.execute('SELECT COUNT(*) FROM historical_races WHERE race_date>=?',(EXCLUSIVE,)).fetchone()[0]==0
+         print('STAGE176_VALIDATED_HISTORY',latest,total,flush=True)
+         archive=C.defaultdict(dict)
+         for rid,d,co,h,p,s,o in c.execute('SELECT r.id,r.race_date,r.course,h.horse_name,h.finish_pos,h.sp_decimal,h.outcome FROM historical_races r JOIN historical_runs h ON h.race_id=r.id WHERE r.race_date BETWEEN ? AND ?',(START,END)):
+          rr=archive[(d,course(co))].setdefault(rid,[]);rr.append({'horse':h,'position':p,'sp':s,'outcome':o})
+        manifest={'source':'Kaggle version 132 + validated Stage167 builder + Stage171 verified bridge','history_through':latest,'history_races':total,'database_sha256':sha(db),'reference_sha256':sha(reference),'repository_commit':run(['git','rev-parse','HEAD']).strip(),'replay_cutoff_policy':'Physically truncate each private history database AND reference to dates strictly before target day. Model-specific training and G5 HPR ledger checks are separate mandatory gates.'}
+        (O/'history-manifest.json').write_text(json.dumps(manifest,indent=2))
+        # Gather original final result files; historical archive is independent settlement evidence only.
+        results={}; collisions=[];aliases=[];conflicting_keys=set()
+        def outcome_signature(r):
+         return sorted((horse(h.get('horse')),str(h.get('position') or ''),norm(h.get('status'))) for h in r.get('runners',[]) if horse(h.get('horse')) and norm(h.get('status')) not in NR)
+        for d in sorted({r['date'] for r in pre}):
+         for r in read(P.Path('data/racing-results')/(d+'.json')).get('results',[]):
+          r.setdefault('date',d);k=key(r)
+          if off(k) and r.get('status')=='final' and any(str(h.get('position'))=='1' for h in r.get('runners',[])):
+           if k in results:
+            old=results[k];same=outcome_signature(old)==outcome_signature(r)
+            oldsp={horse(h['horse']):price(h.get('sp')) for h in old.get('runners',[]) if str(h.get('position'))=='1'}
+            newsp={horse(h['horse']):price(h.get('sp')) for h in r.get('runners',[]) if str(h.get('position'))=='1'}
+            conflict=any(oldsp.get(h) is not None and newsp.get(h) is not None and abs(oldsp[h]-newsp[h])>1e-6 for h in set(oldsp)&set(newsp))
+            collisions.append({'key':k,'original_courses':[old.get('course'),r.get('course')],'same_starters_and_positions':same,'winner_sp_conflict':conflict})
+            if not same or conflict:conflicting_keys.add(k);continue
+            if sum(v is not None for v in newsp.values())>sum(v is not None for v in oldsp.values()):results[k]=r
+           else:results[k]=r
+        for k,items in oldgroups.items():
+         if len(items)>1:aliases.append({'canonical_key':k,'original_keys':[x['course'] for x in items],'result_identity_verified':k in results and k not in conflicting_keys and any(x['key']==k for x in collisions)})
+        (O/'identity-reconciliation.json').write_text(json.dumps({'aliases':aliases,'result_collisions':collisions,'conflicting_keys':sorted(conflicting_keys)},indent=2))
+        # Use timestamped NR evidence only. Do not delete a horse because it is absent in results.
+        ledger=read('data/nonrunner-monitor.json');known=C.defaultdict(dict)
+        for v in ledger.get('known',{}).values():
+         try:d,co,t=v['race'].split('|'); k=(d,course(co),t);stamp=ts(v.get('detected_at'))
+         except (ValueError,KeyError):continue
+         if off(k) and stamp and stamp<off(k) and v.get('source')=='EXPLICIT_RACECARD_STATUS':known[k][horse(v.get('horse'))]=stamp
+        # Recover latest genuine snapshot for every race, independent of the result.
+        # Scan both live and archive JSON paths: archive records need their own collected_at or archived_at.
+        # If absent, skip; file publication time alone is not enough for recycled old cards.
+        snap={};errors=[];audit=C.Counter()
+        for path in ('data/racecards.json','data/racecards-archive.json'):
+         commits=run(['git','log','--format=%H %ct','--since=2026-10-23T00:00:00Z','--until=2026-11-24T00:00:00Z','--',path]).splitlines()
+         for idx,line in enumerate(commits,1):
+          rev,epoch=line.split();pub=D.datetime.fromtimestamp(int(epoch),UTC)
+          try:j=json.loads(run(['git','show',rev+':'+path]))
+          except (ValueError,S.CalledProcessError,S.TimeoutExpired) as e:errors.append({'path':path,'commit':rev,'error':str(e)[:250]});continue
+          if not isinstance(j,dict):continue
+          groups=C.defaultdict(list)
+          for r in j.get('runners',[]):
+           k=key(r)
+           if START<=k[0]<=END and off(k) and pub<off(k):groups[k].append(r)
+          for k,rows in groups.items():
+           # Archive timestamps must belong to the individual snapshot, not merely a mutable global refresh.
+           if path.endswith('-archive.json'):
+            stamps=[ts(r.get('collected_at') or r.get('archived_at') or r.get('snapshot_at')) for r in rows]
+            if not all(stamps) or len(set(stamps))!=1:audit['archive_missing_per_snapshot_timestamp']+=1;continue
+            col=stamps[0]
+           else:col=ts(j.get('collected_at'))
+           if not col or max(pub,col)>=off(k) or any(leak(r) for r in rows):continue
+           stamp=max(pub,col);active=[r for r in rows if horse(r.get('horse')) and not inactive(r) and not (horse(r.get('horse')) in known[k] and known[k][horse(r.get('horse'))]>=stamp)]
+           # Never override an explicitly later declaration with an older NR observation.
+           ids=[horse(r.get('horse')) for r in active]
+           if not ids or len(ids)!=len(set(ids)):audit['ambiguous_declared_identity']+=1;continue
+           if k not in snap or stamp>snap[k]['stamp']:snap[k]={'stamp':stamp,'commit':rev,'path':path,'rows':active,'all_rows':rows}
+          if idx%100==0:print('STAGE176_SCAN',path,idx,len(commits),flush=True)
+        # Match complete starter identity + winner and all comparable finishing positions; never fill missing SP by horse alone.
+        rows=[];cards=C.defaultdict(list);settlements=[];matched_ids=set()
+        for k,oldlist in sorted(oldgroups.items()):
+         old=prior_by_key.get(k,oldlist[0]);r=results.get(k)
+         if k in conflicting_keys:errors.append({'race':k,'error':'conflicting_result_identity_or_SP'});continue
+         if len(oldlist)>1 and not any(x['canonical_key']==k and x['result_identity_verified'] for x in aliases):errors.append({'race':k,'error':'duplicate_identity_not_proven'});continue
+         if not r:errors.append({'race':k,'error':'result_key_no_longer_matches'});continue
+         starters=[h for h in r['runners'] if horse(h.get('horse')) and norm(h.get('status')) not in NR]
+         names={horse(h['horse']):h for h in starters};wins={n for n,h in names.items() if str(h.get('position'))=='1'}
+         candidate=[]
+         if len(names)==len(starters):
+          for rid,a in archive.get((k[0],k[1]),{}).items():
+           a=[h for h in a if norm(h['outcome']) not in NR]
+           ar={horse(h['horse']):h for h in a}
+           if len(ar)!=len(a) or set(ar)!=set(names) or {n for n,h in ar.items() if h['position']==1}!=wins:continue
+           if any(str(names[n].get('position'))!=str(ar[n]['position']) for n in names if names[n].get('position') is not None and ar[n]['position'] is not None):continue
+           candidate.append((rid,ar))
+         rid,ar=candidate[0] if len(candidate)==1 else (None,{})
+         if rid in matched_ids:rid=None;ar={}
+         if rid:matched_ids.add(rid)
+         sp_missing_before=sum(price(names[n].get('sp')) is None for n in wins);sp_missing_after=0;conflicts=[];sp_ledger=[]
+         for n in sorted(wins):
+          original=price(names[n].get('sp'));other=price(ar[n].get('sp')) if n in ar else None
+          if original is not None and other is not None and abs(original-other)>1e-6:conflicts.append(n)
+          final=original if original is not None else other
+          if final is None:sp_missing_after+=1
+          sp_ledger.append({'horse':names[n]['horse'],'sp_decimal':final,'source':'app final result' if original is not None else 'validated historical archive' if other is not None else 'missing','archive_race_id':rid})
+         settlements.append({'date':k[0],'course':k[1],'time':k[2],'winner_prices':sp_ledger,'price_conflicts':conflicts,'starters':[{'horse':h['horse'],'position':h.get('position'),'status':h.get('status')} for h in starters],'declared_nonrunners':[h['horse'] for h in r['runners'] if horse(h.get('horse')) and norm(h.get('status')) in NR]})
+         s=snap.get(k);decl={horse(h['horse']) for h in s['rows']} if s else set();missing=set(names)-decl;extra=decl-set(names)
+         status='NO_PREOFF_CARD' if not s else 'MISSING_ACTUAL_STARTERS' if missing else 'DECLARED_FIELD_EXTRA' if extra else 'EXACT_FIELD'
+         if status in ('EXACT_FIELD','DECLARED_FIELD_EXTRA'):
+          # Preserve genuine declared field, including unresolved extra declarations. Never rerank using final starters.
+          for h in s['rows']:
+           card={a:b for a,b in h.items() if a not in OUTCOME|{'odds','price','current_odds','bookmaker_odds'}};cards[k[0]].append({'card':card,'source_commit':s['commit'],'source_path':s['path'],'asof':s['stamp'].isoformat()})
+         rows.append({'date':k[0],'course':k[1],'time':k[2],'before':old.get('after',old.get('status','UNKNOWN')),'after':status,'missing_starters':';'.join(sorted(missing)),'extra_declarations':';'.join(sorted(extra)),'archive_match':rid or '', 'archive_candidate_count':len(candidate),'winner_sp_missing_before':sp_missing_before,'winner_sp_missing_after':sp_missing_after,'sp_conflict':';'.join(conflicts),'card_commit':s['commit'] if s else '', 'card_asof':s['stamp'].isoformat() if s else '', 'card_source':s['path'] if s else ''})
+        write('recovery-ledger.csv',rows);(O/'settlement-prices.json').write_text(json.dumps(settlements,indent=2));(O/'errors.json').write_text(json.dumps(errors,indent=2));
+        # Only genuine original cards. Never export result-derived reconstructed cards as pre-race evidence.
+        (O/'verified-card-inputs.json').write_text(json.dumps(cards,separators=(',',':')))
+        blockers=['Exact A feature parity still unverified','Z and D(c) historical scorer parity still unverified','G5 HPR ledger and model-specific training cutoffs still unverified','All model replay output coverage must be checked before routing comparison','V2 coarse Other mapping needs explicit crosswalk']
+        counts=C.Counter(r['after'] for r in rows)
+        if sum(counts.values())!=975 or counts.get('EXACT_FIELD',0)+counts.get('DECLARED_FIELD_EXTRA',0)!=975:blockers.append('Incomplete exact pre-off field coverage')
+        if any(r['winner_sp_missing_after'] or r['sp_conflict'] for r in rows):blockers.append('Unresolved winner prices or price conflicts; exclude affected races from ROI until verified, do not choose a price arbitrarily')
+        if counts.get('DECLARED_FIELD_EXTRA'):blockers.append('Extra declarations retained as genuinely pre-off; rank-1 non-runners must be void, never hindsight rank-2 promotion')
+        report={'status':'RECONCILIATION_AND_PILOT_ONLY','ready_to_simulate':False,'races':len(rows),'original_stage174_keys':990,'canonical_keys':len(oldgroups),'alias_groups':len(aliases),'alias_groups_verified':sum(a['result_identity_verified'] for a in aliases),'conflicting_result_keys':len(conflicting_keys),'history_manifest':manifest,'before':dict(C.Counter(r['before'] for r in rows)),'after':dict(counts),'missing_winner_sp_races_before':sum(bool(r['winner_sp_missing_before']) for r in rows),'missing_winner_sp_races_after':sum(bool(r['winner_sp_missing_after']) for r in rows),'price_conflict_races':sum(bool(r['sp_conflict']) for r in rows),'uniquely_matched_archive_races':sum(bool(r['archive_match']) for r in rows),'scan_audit':dict(audit),'errors':len(errors),'blockers':blockers,'simulation_run':False,'live_app_changed':False}
+        (O/'recovery-report.json').write_text(json.dumps(report,indent=2));print(json.dumps(report,indent=2),flush=True)
+        PY
+    - name: Fingerprint and prepare genuine pre-off batches once
+      run: |
+        python - <<'PY'
+        import collections as C,csv,datetime as D,hashlib,json,os,pathlib as P,re,subprocess as S,unicodedata
+        UTC=D.timezone.utc; O=P.Path('reports/stage176'); T=P.Path(os.environ['RUNNER_TEMP'])/'stage176'; B=P.Path('reports/stage177/shared');B.mkdir(parents=True,exist_ok=True)
+        START='2026-10-25';END='2026-11-23'; DAYS=[(D.date.fromisoformat(START)+D.timedelta(days=i)).isoformat() for i in range(30)]
+        def load(p):return json.loads(P.Path(p).read_text())
+        def dump(p,v):P.Path(p).write_text(json.dumps(v,separators=(',',':')))
+        def norm(s):return re.sub('[^a-z0-9]','',unicodedata.normalize('NFKD',str(s or '')).encode('ascii','ignore').decode().lower())
+        def horse(s):return norm(re.sub(r'\s*\((?:IRE|GB|FR|USA|GER|AUS|NZ|ITY|JPN)\)\s*$','',str(s or ''),flags=re.I))
+        def course(s):
+         n=norm(re.sub(r'\s*\((?:AW|GB|IRE)\)\s*$','',str(s or ''),flags=re.I)); n={'galwayire':'galway','wexfordire':'wexford','dundalkawire':'dundalk','dundalkire':'dundalk','dundalkaw':'dundalk','fairyhouseire':'fairyhouse','clonmelire':'clonmel','gowranparkire':'gowranpark'}.get(n,n);return {'kemptonpark':'kempton','chelmsfordcity':'chelmsford','bangor':'bangorondee'}.get(n,n)
+        def ts(v):
+         try:
+          t=D.datetime.fromisoformat(str(v).replace('Z','+00:00'));return t.astimezone(UTC) if t.tzinfo else None
+         except (ValueError,TypeError):return None
+        def key(r):
+         v=r.get('race_time') or r.get('off_utc') or r.get('off_dt') or r.get('time_utc') or r.get('time'); t=ts(v);return (str(r.get('date') or ''),course(r.get('course') or r.get('meeting')),t.strftime('%H:%M') if t else str(v or '')[:5])
+        def off(k):return ts(k[0]+'T'+k[2]+':00+00:00')
+        def sha(p):
+         with open(p,'rb') as f:return hashlib.file_digest(f,'sha256').hexdigest()
+        if __name__=='__main__':
+         import shutil
+         from rhp_runner_eligibility import active_runner
+         from stage153_roi_combined import type_for
+         # Match the precise Stage176 source fingerprint; fail before expensive jobs if it changed.
+         manifest=load(O/'history-manifest.json'); assert manifest['history_races']==506390 and manifest['history_through']=='2026-11-23'; assert manifest['database_sha256']=='9434247646a9f0cbdff6a942a79cb0d873d004ba0beb5a123bbbe2b0f3a5b032' and manifest['reference_sha256']=='a4349c1e3644ac688ff86132063a8762c139c7a413c6872edc1b0694a1f3d7e1',manifest
+         shutil.move(T/'history/candidate.sqlite',B/'candidate.sqlite');shutil.move(T/'history/candidate-reference.csv',B/'candidate-reference.csv')
+         for f in ('history-manifest.json','recovery-report.json','recovery-ledger.csv','identity-reconciliation.json','settlement-prices.json','agreed-config.json'):shutil.copy2(O/f,B/f)
+         # Separate settled information from scoring input. Only use results to audit field completeness, never delete a runner based on a result.
+         settlements={key(r):r for r in load(O/'settlement-prices.json')}; verified={key(x) for x in csv.DictReader((O/'recovery-ledger.csv').open()) if x['after'] in ('EXACT_FIELD','DECLARED_FIELD_EXTRA')}
+         candidates=C.defaultdict(list); reject={'position','finish_pos','result','outcome','sp','sp_decimal','starting_price','beaten','race_result','result_status','overall_beaten','distance_beaten_total'}; remove=reject|{'odds','price','bookmaker_odds','current_odds','paddypower_decimal','paddy_power_decimal'}
+         def add(k,rows,stamp,rev,path):
+          if k not in verified or not stamp or not off(k) or stamp>=off(k)-D.timedelta(minutes=11):return
+          if any(any(r.get(f) not in (None,'',[],{}) for f in reject) or str(r.get('race_status','')).lower() in ('finished','final','resulted','completed') for r in rows):return
+          rows=[{a:b for a,b in r.items() if a not in remove} for r in rows if r.get('horse') and active_runner(r)]
+          names=[horse(r['horse']) for r in rows]; actual={horse(h['horse']) for h in settlements[k]['starters']}
+          if len(names)<2 or len(set(names))!=len(names) or not actual<=set(names):return
+          # Retain all declarations; field verification is an evaluation quality gate only.
+          candidates[k].append((stamp,rev,path,rows))
+         # Re-read original Git snapshots, not the Stage176 pre-filtered card bundle: the
+         # Stage176 NR ledger could contain an observation made after its card timestamp.
+         # No retrospective runner removal is permitted here.
+         for path in ('data/racecards.json','data/racecards-archive.json'):
+          for line in S.check_output(['git','log','--format=%H %ct','--since=2026-10-23T00:00:00Z','--until=2026-11-24T00:00:00Z','--',path],text=True).splitlines():
+           rev,epoch=line.split();pub=D.datetime.fromtimestamp(int(epoch),UTC)
+           try:j=json.loads(S.check_output(['git','show',rev+':'+path]));col=ts(j.get('collected_at'))
+           except (ValueError,KeyError,S.CalledProcessError):continue
+           g=C.defaultdict(list)
+           for r in j.get('runners',[]):
+            k=key(r)
+            if k in verified:g[k].append(r)
+           for k,rows in g.items():
+            if path.endswith('-archive.json'):
+             stamps=[ts(r.get('collected_at') or r.get('archived_at') or r.get('snapshot_at')) for r in rows]
+             if not all(stamps) or len(set(stamps))!=1:continue
+             collected=stamps[0]
+            else:collected=col
+            if collected:add(k,rows,max(pub,collected),rev,path)
+         # One or more real common-clock batches per day; minimize repeated model scans by selecting
+         # maximum coverage at a shared cutoff, subject to every card already being published then.
+         audits=[];missing=[];batchcount=0
+         for day in DAYS:
+          todo={k for k in verified if k[0]==day}; remaining=set(todo); batches=[]
+          midnight=ts(day+'T00:00:00Z'); times={midnight+D.timedelta(seconds=1)}
+          for k in todo:
+           times.add(off(k)-D.timedelta(minutes=11))
+           times.update(max(midnight+D.timedelta(seconds=1),s[0]+D.timedelta(seconds=1)) for s in candidates[k])
+          def selection(t,keys):
+           out={}
+           for k in keys:
+            if t.date().isoformat()!=day or t>=off(k)-D.timedelta(minutes=10):continue
+            opt=[s for s in candidates[k] if s[0]<t and t-s[0]<D.timedelta(hours=25)]
+            if opt:out[k]=max(opt,key=lambda s:(s[0],s[1]))
+           return out
+          while remaining:
+           options=[(t,selection(t,remaining)) for t in sorted(times)];t,chosen=max(options,key=lambda x:(len(x[1]),-x[0].timestamp()))
+           if not chosen:break
+           bid=f'{day}-{len(batches)+1:02d}';rows=[];race_meta=[]
+           for k,s in sorted(chosen.items()):
+            stamp,rev,path,field=s;rows.extend(field);race_meta.append({'key':k,'source_asof':stamp.isoformat(),'source_commit':rev,'source_path':path,'field_size':len(field),'legacy_type':type_for(field),'title':field[0].get('race_name'),'declared_horses':[horse(r['horse']) for r in field]})
+           # Timestamp here is the newest genuine constituent snapshot, not a fabricated earlier timestamp.
+           collected=max(s[0] for s in chosen.values()); assert collected<t
+           dump(B/(bid+'.json'),{'collected_at':collected.isoformat(),'runners':rows});batches.append({'batch':bid,'cutoff':t.isoformat(),'races':race_meta,'runner_rows':len(rows)});remaining-=set(chosen);batchcount+=1
+          for k in sorted(remaining):missing.append({'key':k,'reason':'NO_COMPLETE_SNAPSHOT_AT_LEAST_10_MIN_PREOFF'})
+          dump(B/(day+'-batches.json'),batches);audits.append({'date':day,'verified_races':len(todo),'batch_count':len(batches),'scheduled_races':len(todo)-len(remaining),'missing':len(remaining)})
+         dump(B/'batch-coverage.json',{'days':audits,'missing':missing,'batch_count':batchcount,'scheduled_races':sum(a['scheduled_races'] for a in audits),'verified_races':len(verified),'snapshot_policy':'Genuine per-race cards at a shared pre-off cutoff; all declared active runners retained. Final results used only to verify field coverage.'})
+         print('STAGE177_BATCH_COVERAGE',json.dumps(load(B/'batch-coverage.json'),indent=2),flush=True)
+         # Shared G5 inputs restored once; do not copy huge pilot scratch artifacts.
+
+        PY
+    - name: Restore G5 pinned training bundles and HPR ledger once
+      run: |
+        set -euo pipefail
+        B=reports/stage177/shared
+        mkdir -p "$B/g3" "$B/models"
+        gh run download 43407036838 --repo "$GITHUB_REPOSITORY" --name stage109-g3-learning-43407036838 --dir "$B/g3"
+        gh run download 43539599590 --repo "$GITHUB_REPOSITORY" --name stage127-g5-quarterly-43539599590 --dir "$B/models"
+        python scripts/stage87_hpr_storage.py restore --dir data/hpr/shards --db "$B/hpr.sqlite" | tee "$B/hpr-restore-audit.json"
+        # Source parity from Stage176 pilot: no silent ledger change.
+        grep -q '7a000a39add397fdd43bbfed7c6fbe47e7df0f653d28c3a70e6302f958e741df' "$B/hpr-restore-audit.json"
+        test -s "$B/g3/stage109-prior-form-state.joblib"
+        test -s "$B/g3/stage109-future-form-model.joblib"
+    - uses: actions/upload-artifact@v4
+      with:
+        name: stage177-shared-db
+        path: |-
+          reports/stage177/shared/candidate.sqlite
+          reports/stage177/shared/candidate-reference.csv
+        if-no-files-found: error
+        retention-days: 7
+        compression-level: 1
+    - uses: actions/upload-artifact@v4
+      with:
+        name: stage177-shared-inputs
+        path: |-
+          reports/stage177/shared/*.json
+          reports/stage177/shared/recovery-ledger.csv
+        if-no-files-found: error
+        retention-days: 7
+        compression-level: 1
+    - uses: actions/upload-artifact@v4
+      with:
+        name: stage177-g5-inputs
+        path: |-
+          reports/stage177/shared/g3/stage109-prior-form-state.joblib
+          reports/stage177/shared/g3/stage109-future-form-model.joblib
+          reports/stage177/shared/models/stage127-*-2025-final.joblib
+          reports/stage177/shared/hpr.sqlite
+        if-no-files-found: error
+        retention-days: 7
+        compression-level: 1
+  score:
+    needs: prepare
+    name: ${{ matrix.day }} / ${{ matrix.engine }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        day:
+        - '2026-10-25'
+        - '2026-10-26'
+        - '2026-10-27'
+        - '2026-10-28'
+        - '2026-10-29'
+        - '2026-10-30'
+        - '2026-10-31'
+        - '2026-11-01'
+        - '2026-11-02'
+        - '2026-11-03'
+        - '2026-11-04'
+        - '2026-11-05'
+        - '2026-11-06'
+        - '2026-11-07'
+        - '2026-11-08'
+        - '2026-11-09'
+        - '2026-11-10'
+        - '2026-11-11'
+        - '2026-11-12'
+        - '2026-11-13'
+        - '2026-11-14'
+        - '2026-11-15'
+        - '2026-11-16'
+        - '2026-11-17'
+        - '2026-11-18'
+        - '2026-11-19'
+        - '2026-11-20'
+        - '2026-11-21'
+        - '2026-11-22'
+        - '2026-11-23'
+        engine:
+        - '141'
+        - '147'
+        - '151'
+        - '152'
+        - G5
+        - ABC
+        - DC
+        - Z
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PYTHONPATH: .:scripts
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+      DAY: ${{ matrix.day }}
+      ENGINE: ${{ matrix.engine }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: a5987838b0e3f28b53686bac60d52cd164738718
+        fetch-depth: ${{ matrix.engine == 'DC' && matrix.day == '2026-11-10' && '0' || '1' }}
+        persist-credentials: false
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    - uses: actions/download-artifact@v4
+      with:
+        name: stage177-shared-inputs
+        path: reports/stage177/shared
+    - name: Check whether this job has eligible input before downloading the database
+      id: eligible
+      run: |
+        python - <<'PY'
+        import json,os,pathlib
+        p=pathlib.Path('reports/stage177/shared')/(os.environ['DAY']+'-batches.json')
+        b=json.loads(p.read_text());e=os.environ['ENGINE'];eligible=bool(b) and (e!='Z' or any(any(x['key'][1] in ('dundalk','newmarket') for x in j['races']) for j in b))
+        with open(os.environ['GITHUB_OUTPUT'],'a') as f:print('run='+str(eligible).lower(),file=f)
+        PY
+    - uses: actions/download-artifact@v4
+      with:
+        name: stage177-shared-db
+        path: reports/stage177/shared
+      if: steps.eligible.outputs.run == 'true'
+    - uses: actions/download-artifact@v4
+      with:
+        name: stage177-g5-inputs
+        path: reports/stage177/shared
+      if: steps.eligible.outputs.run == 'true' && matrix.engine == 'G5'
+    - name: Install pinned scorer dependencies
+      if: steps.eligible.outputs.run == 'true'
+      run: python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2 freezegun==1.5.5 requests
+    - name: Replay real scorer using strictly prior-day database; save only compact Rank 1 outputs
+      run: |
+        python - <<'PY'
+        import collections as C,csv,datetime as D,hashlib,json,os,pathlib as P,shutil,sqlite3,subprocess as S,sys,re,unicodedata
+        DAY=os.environ['DAY'];ENGINE=os.environ['ENGINE']; ROOT=P.Path.cwd();B=ROOT/'reports/stage177/shared';O=ROOT/'reports/stage177/score';O.mkdir(parents=True,exist_ok=True);T=P.Path(os.environ['RUNNER_TEMP'])/'stage177';T.mkdir(exist_ok=True)
+        def read(p):return json.loads(P.Path(p).read_text())
+        def dump(p,v):P.Path(p).write_text(json.dumps(v,indent=2))
+        def digest(p):
+         with open(p,'rb') as f:return hashlib.file_digest(f,'sha256').hexdigest()
+        def norm(s):return re.sub('[^a-z0-9]','',unicodedata.normalize('NFKD',str(s or '')).encode('ascii','ignore').decode().lower())
+        def horse(s):return norm(re.sub(r'\s*\((?:IRE|GB|FR|USA|GER|AUS|NZ|ITY|JPN)\)\s*$','',str(s or ''),flags=re.I))
+        def course(s):
+         n=norm(re.sub(r'\s*\((?:AW|GB|IRE)\)\s*$','',str(s or ''),flags=re.I));n={'galwayire':'galway','wexfordire':'wexford','dundalkawire':'dundalk','dundalkire':'dundalk','dundalkaw':'dundalk','fairyhouseire':'fairyhouse','clonmelire':'clonmel','gowranparkire':'gowranpark'}.get(n,n);return {'kemptonpark':'kempton','chelmsfordcity':'chelmsford','bangor':'bangorondee'}.get(n,n)
+        def ts(v):
+         try:
+          t=D.datetime.fromisoformat(str(v).replace('Z','+00:00'));return t.astimezone(D.timezone.utc) if t.tzinfo else None
+         except (ValueError,TypeError):return None
+        def key(r):
+         v=r.get('race_time') or r.get('off_utc') or r.get('time_utc') or r.get('time') or r.get('off_dt');t=ts(v);return str(r.get('date') or ''),course(r.get('course') or r.get('meeting')),t.strftime('%H:%M') if t else str(v or '')[:5]
+        def off(k):return ts(k[0]+'T'+k[2]+':00+00:00')
+        def csvout(path,rows):
+         with path.open('w',newline='') as f:
+          w=csv.DictWriter(f,fieldnames=['date','course','time','model','horse','route','basis','gate_qualified','batch','source_asof','cutoff']);w.writeheader();w.writerows(rows)
+        manifest=read(B/'history-manifest.json');batches=read(B/(DAY+'-batches.json'));audit={'date':DAY,'engine':ENGINE,'history_manifest':manifest,'batches':[],'status':'NOT_RUN'};out=[]
+        # No need for expensive work for a missing date or Z outside its allowed courses.
+        if ENGINE=='Z':batches=[b for b in batches if any(x['key'][1] in ('dundalk','newmarket') for x in b['races'])]
+        if not batches:audit['status']='NO_ELIGIBLE_BATCH';dump(O/'audit.json',audit);csvout(O/'rank1.csv',[]);sys.exit(0)
+        # One private truncated DB per day/job. Reuse across batches; no target or future results in predictive inputs.
+        assert digest(B/'candidate.sqlite')==manifest['database_sha256'] and digest(B/'candidate-reference.csv')==manifest['reference_sha256']
+        db=B/'candidate.sqlite';ref=T/'prior-reference.csv'
+        with sqlite3.connect(db) as c:
+         c.execute('DELETE FROM historical_runs WHERE race_id IN (SELECT id FROM historical_races WHERE race_date>=?)',(DAY,));c.execute('DELETE FROM historical_races WHERE race_date>=?',(DAY,));c.commit();latest,n=c.execute('SELECT MAX(race_date),COUNT(*) FROM historical_races').fetchone();assert latest<DAY and c.execute('SELECT COUNT(*) FROM historical_races WHERE race_date>=?',(DAY,)).fetchone()[0]==0
+        with (B/'candidate-reference.csv').open(encoding='utf-8-sig',newline='') as f,ref.open('w',newline='') as g:
+         r=csv.DictReader(f);w=csv.DictWriter(g,fieldnames=r.fieldnames);w.writeheader();w.writerows(x for x in r if x.get('date','')<DAY)
+        audit.update(prior_history_through=latest,prior_race_count=n)
+        # Exact historical Stage81 category source (for D(c)); no invented label or future outcome.
+        if ENGINE=='DC':
+         with sqlite3.connect(db) as c:
+          c.execute('CREATE TABLE IF NOT EXISTS stage65p_race_details (race_id TEXT PRIMARY KEY,race_name TEXT,pattern TEXT,rating_band TEXT,age_band TEXT,sex_rest TEXT,source_file TEXT)')
+          with ref.open() as f:
+           c.executemany('INSERT OR IGNORE INTO stage65p_race_details VALUES (?,?,NULL,NULL,NULL,NULL,?)',((r['stage2_race_id'],r['race_name'],'validated prior reference') for r in csv.DictReader(f) if r.get('stage2_race_id') and r.get('race_name')))
+          c.commit()
+        if ENGINE=='ABC':S.run([sys.executable,'scripts/stage101_all_models_compare.py','install-engines'],check=True)
+        wrapper=T/'clock.py';wrapper.write_text('import sys,runpy\nfrom freezegun import freeze_time\nclock,script,*args=sys.argv[1:]\nsys.argv=[script,*args]\nwith freeze_time(clock,real_asyncio=True):\n runpy.run_path(script,run_name="__main__")\n')
+        # Model C historical core and A/B diagnostic proxies use original feature pipeline, excluding unrecoverable tips.
+        abc=T/'abc.py';abc.write_text('''import sys,json,csv,pathlib,collections
+        import numpy as np
+        import stage101_all_models_compare as M
+        from rhp_runner_eligibility import active_runner
+        cards,db,ref,out=sys.argv[1:];j=json.load(open(cards));g=collections.defaultdict(list)
+        for r in j['runners']:
+         if active_runner(r):g[(r['date'],M.norm(r['course']),M.clock(r['race_time']))].append(r)
+        entries=[{'date':k[0],'course':rs[0]['course'],'time':k[2],'key':k,'cards':rs} for k,rs in g.items() if len(rs)>=2];issues=[];result=M.card_models_original(pathlib.Path(db),pathlib.Path(ref),entries,issues);rr=[]
+        for e in entries:
+         for label,model in result.get(e['key'],{}).items():
+          scores=model.get('scores'); i=int(np.argmax(scores));rr.append({'date':e['date'],'course':e['course'],'time':e['time'],'model':{M.REPLAY_A:'A_PROXY',M.REPLAY_B:'B_PROXY',M.REPLAY_C:'C_HISTORICAL_CORE'}[label],'horse':e['cards'][i]['horse'],'rank':1,'basis':model['basis']})
+        pathlib.Path(out).write_text(json.dumps(rr));print('ABC diagnostic issues',len(issues),flush=True)
+        ''')
+        zwrap=T/'z.py';zwrap.write_text('''import sys,pathlib,json
+        from stage38_model_dz_live import make_forecast
+        import stage116_verified_form_live as F
+        # The shared validated private DB is the only allowed source for this replay.
+        F.ensure_fresh_result_db=lambda db,target,repo:(db,{'source':'STAGE177_PINNED_PRIOR_DB','no_live_refresh':True})
+        repo,db,day=sys.argv[1:];make_forecast(repo,db,day)
+        ''')
+        models={'141':('stage141_today_or_weight_paper.py',[],'stage141-today-all-runners.csv'),'147':('stage147_daily_143_146.py',['today','--config',str(ROOT/'scripts/stage143_race_type_specialist_config.json')],'stage146-today-all-runners.csv'),'151':('stage151_d142_core_form_or_weight_today.py',['today'],'stage151-d142-core-form-weight-all-runners.csv'),'152':('stage152_best_roi_specialists_today.py',['today'],'stage152-strongest-roi-specialists-all-runners.csv')}
+        def capture(raw,b,basis=None,full_rank=False):
+         by=C.defaultdict(list)
+         for r in raw:
+          k=key(r);m=r.get('model');
+          if k[0]==DAY and m and r.get('horse'):by[(k,m)].append(r)
+         meta={tuple(x['key']):x for x in b['races']};accepted=0;excluded=C.Counter()
+         for (k,m),rs in by.items():
+          if k not in meta:excluded['unmatched_race']+=1;continue
+          h=meta[k];top=[r for r in rs if str(r.get('rank')) in ('1','1.0')]
+          if len(top)!=1:excluded['ambiguous_rank1']+=1;continue
+          if full_rank and (len(rs)!=len(h['declared_horses']) or {horse(r['horse']) for r in rs}!=set(h['declared_horses'])):excluded['model_field_not_identical']+=1;continue
+          r=top[0]
+          if horse(r['horse']) not in h['declared_horses']:excluded['horse_not_declared']+=1;continue
+          out.append(dict(date=k[0],course=k[1],time=k[2],model=m,horse=r['horse'],route=r.get('route',''),basis=basis or r.get('basis','ACTUAL_ENGINE_REPLAY'),gate_qualified=r.get('gate_qualified',''),batch=b['batch'],source_asof=h['source_asof'],cutoff=b['cutoff']));accepted+=1
+         return accepted,dict(excluded)
+        for b in batches:
+         bid=b['batch'];cards=B/(bid+'.json');work=T/bid;work.mkdir(exist_ok=True); cutoff=b['cutoff'];log=O/(bid+'.log'); report={'batch':bid,'cutoff':cutoff,'scheduled_races':len(b['races']),'status':'FAILED'}
+         # Z and D(c) run in disposable checkout only; no Git writes or network tip fetches.
+         try:
+          if ENGINE in models:
+           script,extra,fname=models[ENGINE];args=[str(wrapper),cutoff,str(ROOT/'scripts'/script),*extra,'--db',str(db),'--reference',str(ref),'--cards',str(cards),'--date',DAY,'--out',str(work)];output=work/fname
+          elif ENGINE=='G5':
+           if b['runner_rows']<40:raise RuntimeError('G5 refuses batches under 40 runner rows; do not pad or weaken guard')
+           args=[str(wrapper),cutoff,str(ROOT/'scripts/stage128_g5_today_paper.py'),'paper','--date',DAY,'--cutoff',cutoff,'--state',str(B/'g3/stage109-prior-form-state.joblib'),'--g3',str(B/'g3/stage109-future-form-model.joblib'),'--models',str(B/'models'),'--db',str(db),'--reference',str(ref),'--hpr',str(B/'hpr.sqlite'),'--cards',str(cards),'--out',str(work)];output=work/'stage128-g5-all-horses.csv'
+          elif ENGINE=='ABC':
+           args=[str(wrapper),cutoff,str(abc),str(cards),str(db),str(ref),str(work/'abc.json')];output=work/'abc.json'
+          elif ENGINE=='Z':
+           shutil.copy2(cards,ROOT/'data/racecards.json');args=[str(wrapper),cutoff,str(zwrap),str(ROOT),str(db),DAY];output=ROOT/'data/strategy-z-probabilities.json';output.unlink(missing_ok=True)
+          elif ENGINE=='DC':
+           shutil.copy2(cards,ROOT/'data/racecards.json');output=ROOT/'data/strategy-dc-probabilities.json';output.unlink(missing_ok=True);args=[str(wrapper),cutoff,str(ROOT/'scripts/rhp_stage83_dc_integrated.py'),'--db',str(db),'--stage81',str(ROOT/'data/rhp-stage81-ukie-2021plus-hashes.csv.gz'),'--day',DAY,'--slot','research-only','--out',str(work)]
+          else:raise ValueError(ENGINE)
+          print('STAGE177_START',DAY,ENGINE,bid,flush=True)
+          with log.open('w') as f:rc=S.run([sys.executable,*args],stdout=f,stderr=S.STDOUT,timeout=6000).returncode
+          if rc!=0 or not output.is_file():raise RuntimeError(f'scorer returncode={rc}; see {log.name}')
+          if ENGINE in (*models,'G5'):
+           raw=list(csv.DictReader(output.open()));basis='ACTUAL_ENGINE_REPLAY';counts,ex=capture(raw,b,basis,True)
+          elif ENGINE=='ABC':counts,ex=capture(read(output),b,None,False)
+          else:
+           raw=[];feed=read(output)
+           for r in feed.get('races',[]):
+            if r.get('date')!=DAY:continue
+            for h in r.get('runners',[]):
+             raw.append({**r,**h,'model':'Z' if ENGINE=='Z' else 'D(c)_RECONSTRUCTED','gate_qualified':bool(r.get('selection'))})
+           counts,ex=capture(raw,b,'ACTUAL_Z_FROZEN_ENGINE_REPLAY' if ENGINE=='Z' else 'STAGE83_RECONSTRUCTED_CATEGORY_INPUT_PARITY_UNVERIFIED',True)
+          report.update(status='SCORED' if counts else 'NO_ACCEPTED_RANK1',rank1_rows=counts,excluded=ex)
+         except Exception as e:report.update(error=repr(e))
+         finally:
+          audit['batches'].append(report);dump(O/'audit.json',audit);csvout(O/'rank1.csv',out);print('STAGE177_BATCH',json.dumps(report),flush=True)
+          # Remove scorer scratch SQLite and full-field output after the compact audit is saved.
+          shutil.rmtree(work,ignore_errors=True)
+        audit['status']='COMPLETE' if all(x['status']=='SCORED' for x in audit['batches']) else 'PARTIAL_OR_FAILED';dump(O/'audit.json',audit);csvout(O/'rank1.csv',out)
+
+        PY
+    - uses: actions/upload-artifact@v4
+      with:
+        name: stage177-ranks-${{ matrix.day }}-${{ matrix.engine }}
+        path: reports/stage177/score/
+        if-no-files-found: error
+        retention-days: 7
+        compression-level: 1
+      if: always()
+  compare:
+    needs:
+    - prepare
+    - score
+    if: always() && needs.prepare.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PYTHONPATH: .:scripts
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: a5987838b0e3f28b53686bac60d52cd164738718
+        fetch-depth: 1
+        persist-credentials: false
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    - uses: actions/download-artifact@v4
+      with:
+        name: stage177-shared-inputs
+        path: reports/stage177/shared
+    - uses: actions/download-artifact@v4
+      with:
+        pattern: stage177-ranks-*
+        path: reports/stage177/results
+        merge-multiple: false
+    - name: Settle selections; compare only admissible rankings and disclose missing coverage
+      run: |
+        python - <<'PY'
+        import collections as C,csv,json,pathlib as P,re,unicodedata
+        from stage153_roi_combined import ROUTES,STAGE156_ROUTES,AUDITED_ROUTE_ALIASES
+        B=P.Path('reports/stage177/shared');R=P.Path('reports/stage177/results');O=P.Path('reports/stage177/summary');O.mkdir(parents=True,exist_ok=True)
+        def load(p):return json.loads(P.Path(p).read_text())
+        def norm(s):return re.sub('[^a-z0-9]','',unicodedata.normalize('NFKD',str(s or '')).encode('ascii','ignore').decode().lower())
+        def horse(s):return norm(re.sub(r'\s*\((?:IRE|GB|FR|USA|GER|AUS|NZ|ITY|JPN)\)\s*$','',str(s or ''),flags=re.I))
+        def key(r):return r['date'],r['course'],r['time']
+        def write(name,rows):
+         p=O/name
+         if not rows:p.write_text('');return
+         with p.open('w',newline='') as f:
+          w=csv.DictWriter(f,fieldnames=list(dict.fromkeys(k for r in rows for k in r)));w.writeheader();w.writerows(rows)
+        settlements={key(x):x for x in load(B/'settlement-prices.json')}; cards={};batches=[]
+        for p in B.glob('*-batches.json'):
+         for b in load(p):
+          batches.append(b)
+          for h in b['races']:cards[tuple(h['key'])]=h
+        picks=C.defaultdict(dict);issues=[];engine=[]
+        for p in R.rglob('audit.json'):
+         j=load(p);engine.append({'date':j['date'],'engine':j['engine'],'status':j['status'],'batches':len(j['batches']),'accepted_rank1':sum(b.get('rank1_rows',0) for b in j['batches']),'failed_or_empty_batches':sum(b['status']!='SCORED' for b in j['batches'])})
+        for p in R.rglob('rank1.csv'):
+         for r in csv.DictReader(p.open()):
+          k=key(r);m=r['model']
+          if k not in cards:issues.append({'key':'|'.join(k),'model':m,'issue':'unknown card key'});continue
+          if m in picks[k]:raise RuntimeError('Duplicate model rank1 for '+str((k,m)))
+          picks[k][m]=r
+        route_codes={}
+        legacy_to_code={'maiden hurdle':'HURDLE_MAIDEN','handicap hurdle':'HURDLE_HANDICAP','novice hurdle':'HURDLE_NOVICE','novice handicap hurdle':'HURDLE_NOVICE_HANDICAP','beginners chase':'CHASE_BEGINNERS','handicap chase':'CHASE_HANDICAP','novice handicap chase':'CHASE_NOVICE_HANDICAP','nh flat open':'NH_FLAT_OPEN','aw maiden':'AW_MAIDEN','aw nursery':'AW_NURSERY','aw handicap':'AW_HANDICAP','auction restricted':'AW_AUCTION_RESTRICTED_SALES'}
+        for k,h in cards.items():
+         codes={p['route'] for m,p in picks[k].items() if m.startswith(('STAGE143_','STAGE146_')) and p['route'] in STAGE156_ROUTES}
+         if len(codes)>1:issues.append({'key':'|'.join(k),'issue':'specialist route conflict'});continue
+         extended=next(iter(codes),None);title=str(h.get('title') or '').lower();legacy=h.get('legacy_type')
+         if 'junior' in title and 'hurdle' in title:extended='HURDLE_JUVENILE'
+         # V1 uses the existing legacy-first routing exactly, including audited aliases.
+         canonical=extended or legacy_to_code.get(legacy)
+         if canonical not in STAGE156_ROUTES:issues.append({'key':'|'.join(k),'issue':'no audited race type'});continue
+         route_codes[k]=(canonical,ROUTES.get(legacy) or ROUTES.get(extended))
+        def settle(k,p):
+         s=settlements[k];h=horse(p['horse']);starter={horse(z['horse']):z for z in s['starters']};nr={horse(z) for z in s['declared_nonrunners']};wins={horse(z['horse']):z['sp_decimal'] for z in s['winner_prices']};
+         if h not in starter:return ('VOID_NR' if h in nr else 'UNMATCHED',None,None)
+         w=int(h in wins);sp_ok=not s['price_conflicts'] and all(v is not None for v in wins.values()) and bool(wins)
+         # Dead-heat settlement: the win stake is divided by the number of joint winners.
+         pnl=(float(wins[h])/len(wins)-1 if w else -1.) if sp_ok else None
+         return 'SETTLED',w,pnl
+        def discipline(t):return 'AW' if t.startswith('AW_') else 'Turf Flat' if t.startswith('TURF_') else 'National Hunt' if t.startswith(('HURDLE_','CHASE_','NH_')) else 'Unclassified'
+        def metric(rows):
+         settled=[r for r in rows if r['status']=='SETTLED'];priced=[r for r in settled if r['pnl'] is not None];w=sum(r['won'] for r in settled);p=sum(r['pnl'] for r in priced)
+         return {'races':len(rows),'settled':len(settled),'wins':w,'strike_rate_pct':round(100*w/len(settled),4) if settled else None,'roi_settled':len(priced),'pnl_units':round(p,4),'roi_pct':round(100*p/len(priced),4) if priced else None,'void_or_unmatched':len(rows)-len(settled)}
+        def rec(k,m,version):
+         p=picks[k].get(m);t=route_codes[k][0];status,w,pnl=settle(k,p) if p else ('NO_SELECTION',None,None)
+         return {'version':version,'date':k[0],'course':k[1],'time':k[2],'race_type':t,'discipline':discipline(t),'model':m or '', 'horse':p['horse'] if p else '', 'basis':p['basis'] if p else '', 'status':status,'won':w,'pnl':pnl}
+        # A/B proxies and C core (without historical tips) and reconstructed D(c) are diagnostic only.
+        # Z is a separately validated frozen-engine candidate, and its original gate remains mandatory.
+        core={m for rs in picks.values() for m,p in rs.items() if p['basis']=='ACTUAL_ENGINE_REPLAY'}
+        by=C.defaultdict(list);all_model_rows=[]
+        for k,(t,v1) in route_codes.items():
+         for m,p in picks[k].items():
+          if m=='Z' and p.get('gate_qualified','').lower()!='true':continue
+          a=rec(k,m,'UNDERLYING');all_model_rows.append(a)
+          if m in core:by[(t,m)].append(a)
+        model_perf=[];best={}
+        for (t,m),rows in sorted(by.items()):
+         x=metric(rows);model_perf.append({'race_type':t,'model':m,**x})
+         if not x['settled']:continue
+         # User requested no sample minimum; rank strike rate first, then ROI, then stable model name.
+         rank=(x['strike_rate_pct'],x['roi_pct'] if x['roi_pct'] is not None else -float('inf'))
+         if t not in best or rank>best[t][0] or (rank==best[t][0] and m<best[t][1]):best[t]=(rank,m,x)
+        # Z comparison only on identical gate-qualified races, course and race type. Each competing model must have a settled selection in the identical cohort.
+        zcohorts=C.defaultdict(list)
+        for k,(t,_) in route_codes.items():
+         p=picks[k].get('Z')
+         if p and p.get('gate_qualified','').lower()=='true' and ((k[1]=='dundalk' and t.startswith('AW_')) or (k[1]=='newmarket' and t.startswith('TURF_'))) and settle(k,p)[0]=='SETTLED':zcohorts[(k[1],t)].append(k)
+        z_audit=[];zwin={}
+        for (co,t),ks in sorted(zcohorts.items()):
+         scores=[]
+         for m in sorted(core|{'Z'}):
+          if not all(m in picks[k] and settle(k,picks[k][m])[0]=='SETTLED' for k in ks):continue
+          a=metric([rec(k,m,'Z_MATCHED') for k in ks]);scores.append((a['strike_rate_pct'],a['roi_pct'] if a['roi_pct'] is not None else -float('inf'),m,a));z_audit.append({'course':co,'race_type':t,'model':m,**a})
+         # No override when no comparator or only ties on both metrics.
+         if len(scores)>1:
+          z=next((x for x in scores if x[2]=='Z'),None);others=[x for x in scores if x[2]!='Z']
+          if z and others and z[:2]>max(x[:2] for x in others):zwin[(co,t)]=set(ks)
+        v2map={'AW_HANDICAP':'STAGE143_TYPE_EVIDENCE','AW_MAIDEN':'Z','AW_NURSERY':'D137_HPR_ABILITY_GRADE_WEIGHT','AW_NOVICE':'STAGE143_TYPE_EVIDENCE','CHASE_HANDICAP':'D142_LONG_CORE_FORM_OR_WEIGHT','CHASE_BEGINNERS':'STAGE146_A_RETRAINED_TRENDS','HURDLE_HANDICAP':'D(c)','HURDLE_MAIDEN':'A'}
+        def v2(t):return 'A' if t.startswith('NH_FLAT_') else v2map.get(t,'C')
+        proxy={'A':'A_PROXY','C':'C_HISTORICAL_CORE','D(c)':'D(c)_RECONSTRUCTED'}
+        rows=[]
+        for k,(t,m1) in sorted(route_codes.items()):
+         m2=v2(t);m3=best.get(t,(None,None,None))[1];m4='Z' if k in zwin.get((k[1],t),set()) else m3
+         # Strict V2 retains its original Z scope and gate, does not fabricate full coverage.
+         if m2=='Z' and not (k[1]=='dundalk' and t.startswith('AW_') and picks[k].get('Z',{}).get('gate_qualified','').lower()=='true'):m2=None
+         for name,m in [('V1_CURRENT_FIXED',m1),('V2_EXACT_STRICT_INCOMPLETE',m2),('V2_DIAGNOSTIC_NOT_EXACT',proxy.get(m2,m2)),('V3_BEST_SR_VALIDATED_SPECIALISTS_ONLY',m3),('V4_V3_PLUS_Z_OVERRIDE',m4)]:rows.append(rec(k,m,name))
+        versions=sorted({x['version'] for x in rows});groups=C.defaultdict(list)
+        for r in rows:
+         if r['status']=='NO_SELECTION':continue
+         for d,g in [('overall','ALL'),('day',r['date']),('discipline',r['discipline']),('race_type',r['race_type'])]:groups[(r['version'],d,g)].append(r)
+        summary=[{'version':v,'dimension':d,'group':g,**metric(rr)} for (v,d,g),rr in sorted(groups.items())]
+        # Paired V1/V3/V4 on identical settled races only; V2 exact lacks certified A/C/Dc so NOT included as a complete benchmark.
+        paired_versions=['V1_CURRENT_FIXED','V3_BEST_SR_VALIDATED_SPECIALISTS_ONLY','V4_V3_PLUS_Z_OVERRIDE']; bykey=C.defaultdict(dict)
+        for r in rows:bykey[key(r)][r['version']]=r
+        common={k for k,v in bykey.items() if all(v.get(m,{}).get('status')=='SETTLED' for m in paired_versions)}
+        paired=[]
+        for m in paired_versions:
+         rr=[bykey[k][m] for k in common];gg=C.defaultdict(list)
+         for r in rr:
+          for d,g in [('overall','ALL'),('day',r['date']),('discipline',r['discipline']),('race_type',r['race_type'])]:gg[(d,g)].append(r)
+         paired.extend({'version':m,'dimension':d,'group':g,**metric(rs)} for (d,g),rs in sorted(gg.items()))
+        for filename,data in [('engine-coverage.csv',engine),('underlying-rank1-settlement.csv',all_model_rows),('model-racetype-metrics.csv',model_perf),('best-sr-route-map.csv',[{'race_type':t,'model':x[1],**x[2]} for t,x in sorted(best.items())]),('z-course-comparison.csv',z_audit),('routing-decisions.csv',rows),('version-metrics-all-available.csv',summary),('paired-validated-versions.csv',paired),('issues.csv',issues)]:write(filename,data)
+        report={'status':'RESEARCH_PARTIAL_COMPARISON_NOT_FULL_V2_CERTIFIED','period':['2026-10-25','2026-11-23'],'history_manifest':load(B/'history-manifest.json'),'source_reconciliation':load(B/'recovery-report.json'),'batch_coverage':load(B/'batch-coverage.json'),'expected_engine_date_jobs':240,'reported_engine_date_jobs':len(engine),'engine_status_counts':dict(C.Counter(x['status'] for x in engine)),'scheduled_card_races':len(cards),'classified_races':len(route_codes),'paired_v1_v3_v4_settled_races':len(common),'eligible_underlying_models':sorted(core),'minimum_sample':0,'selection_metric':'strike rate then ROI','warning':'V2 exact is incomplete; A/B proxy, historical-only C, reconstructed D(c) not eligible for certified V3. V3/V4 are in-sample route optimization, not forward performance. Missing results/SP and incomplete fields explicitly excluded. No live changes.','overall_available':[r for r in summary if r['dimension']=='overall'],'overall_paired':[r for r in paired if r['dimension']=='overall']}
+        (O/'report.json').write_text(json.dumps(report,indent=2));print('STAGE177_REPORT',json.dumps(report['overall_available'],indent=2),flush=True);print('STAGE177_PAIRED',json.dumps(report['overall_paired'],indent=2),flush=True)
+
+        PY
+    - uses: actions/upload-artifact@v4
+      with:
+        name: stage177-30day-comparison
+        path: reports/stage177/summary/
+        if-no-files-found: error
+        retention-days: 30
+        compression-level: 1
