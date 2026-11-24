@@ -1,0 +1,130 @@
+name: Stage174 - 30-day simulation input preflight
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Audit 30 completed dates and original model coverage (no scoring)
+        run: |
+          python - <<'PY'
+          import collections as C, csv, datetime as D, json, pathlib as P, re, subprocess as S
+          UTC=D.timezone.utc
+          start=D.date(2026,10,25); end=D.date(2026,11,23)
+          days=[(start+D.timedelta(days=i)).isoformat() for i in range((end-start).days+1)]
+          out=P.Path('reports/stage174');out.mkdir(parents=True,exist_ok=True)
+          def norm(x):return re.sub(r'[^a-z0-9]','',str(x or '').lower())
+          def course(x):
+              k=norm(x)
+              if k.endswith('aw'):k=k[:-2]
+              return {'kemptonpark':'kempton','chelmsfordcity':'chelmsford','bangor':'bangorondee'}.get(k,k)
+          def ts(x):
+              try:
+                  v=D.datetime.fromisoformat(str(x).replace('Z','+00:00'));return v.astimezone(UTC) if v.tzinfo else None
+              except (TypeError,ValueError):return None
+          def key(r):
+              d=str(r.get('date') or r.get('day') or '');t=r.get('race_time') or r.get('off_dt') or r.get('time_utc') or r.get('off_utc') or r.get('time');v=ts(t)
+              return (d,course(r.get('course') or r.get('meeting')),v.strftime('%H:%M') if v else str(t or '')[:5])
+          def off(k):return ts(k[0]+'T'+k[2]+':00+00:00')
+          def command(a):return S.check_output(a,text=True,timeout=120)
+          def read(p):return json.loads(P.Path(p).read_text())
+          def csvout(name,rows):
+              if not rows:return
+              with (out/name).open('w',newline='') as f:
+                  w=csv.DictWriter(f,fieldnames=list(dict.fromkeys(k for r in rows for k in r)));w.writeheader();w.writerows(rows)
+          nr={'nr','nonrunner','withdrawn','scratched','dns','reserve'}
+          def inactive(r):return any(norm(r.get(k)) in nr|{'true','1','yes'} for k in ('is_non_runner','is_withdrawn','withdrawn','runner_status','status'))
+          outcome_fields={'position','finish_pos','result','outcome','sp','sp_decimal','beaten','overall_beaten','distance_beaten_total','starting_price','race_result','result_status'}
+          def nonempty(v):return v not in (None,'',[],{})
+          def leak(r):return any(nonempty(r.get(x)) for x in outcome_fields) or norm(r.get('race_status')) in {'finished','resulted','final','completed'}
+          results={};errors=[];dayrows=[];rankrows=[];raceaudit=[];source=[]
+          for d in days:
+              p=P.Path('data/racing-results')/(d+'.json')
+              if not p.exists():errors.append({'date':d,'issue':'result_file_missing'});continue
+              try:
+                  for r in read(p).get('results',[]):
+                      r.setdefault('date',d);k=key(r)
+                      if off(k) and str(r.get('status','')).lower()=='final' and any(str(h.get('position'))=='1' for h in r.get('runners',[])):
+                          results[k]=r
+              except Exception as e:errors.append({'date':d,'issue':'results_parse','detail':str(e)})
+          snapshots={};counts=C.Counter();first=D.datetime.combine(start-D.timedelta(days=2),D.time.min,UTC);last=D.datetime.combine(end+D.timedelta(days=1),D.time.min,UTC)
+          commits=command(['git','log','--format=%H %ct','--since='+first.isoformat(),'--until='+last.isoformat(),'--','data/racecards.json']).splitlines()
+          # Inspect original Git snapshots; each race gets latest available, strictly pre-off card.
+          # Keep original declarations separately from final result fields; never reconstruct from winners.
+          for i,line in enumerate(commits,1):
+              sha,epoch=line.split();commit=D.datetime.fromtimestamp(int(epoch),UTC)
+              try:j=json.loads(command(['git','show',sha+':data/racecards.json']))
+              except Exception as e:errors.append({'commit':sha,'issue':'card_snapshot_parse','detail':str(e)[:250]});continue
+              collected=ts(j.get('collected_at'))
+              if collected is None:counts['missing_collected_at']+=1;continue
+              stamp=max(commit,collected)
+              groups=C.defaultdict(list)
+              for r in j.get('runners',[]):
+                  k=key(r)
+                  if k[0] in days and off(k) and stamp<off(k):groups[k].append(r)
+              for k,rs in groups.items():
+                  if any(leak(r) for r in rs):counts['outcome_contaminated_card']+=1;continue
+                  active={norm(r.get('horse')) for r in rs if r.get('horse') and not inactive(r)}
+                  if not active:continue
+                  counts['valid_race_snapshots']+=1
+                  if k not in snapshots or stamp>snapshots[k]['stamp']:
+                      snapshots[k]={'stamp':stamp,'commit':sha,'collected':collected,'rows':rs,'active':active}
+              if i%100==0:print('Scanned',i,'of',len(commits),flush=True)
+          # Audit complete field identity rather than guessing racecard/result matches.
+          for k,r in sorted(results.items()):
+              h=[x for x in r.get('runners',[]) if x.get('horse') and norm(x.get('status')) not in nr]
+              actual={norm(x['horse']) for x in h};snap=snapshots.get(k);decl=snap['active'] if snap else set();missing=actual-decl;extra=decl-actual
+              winners=[x for x in h if str(x.get('position'))=='1'];sp_ok=bool(winners) and all(nonempty(x.get('sp')) for x in winners)
+              status='NO_PREOFF_CARD' if not snap else 'MISSING_ACTUAL_STARTERS' if missing else 'DECLARED_FIELD_EXTRA' if extra else 'EXACT_FIELD'
+              rs=snap['rows'] if snap else []
+              raceaudit.append({'date':k[0],'course':k[1],'time':k[2],'status':status,'actual_starters':len(actual),'declared_active':len(decl),'missing_starters':';'.join(sorted(missing)),'extra_declarations':';'.join(sorted(extra)),'winner_sp_present':sp_ok,'card_commit':snap['commit'] if snap else '', 'card_asof':snap['stamp'].isoformat() if snap else '', 'race_name':next((x.get('race_name') for x in rs if x.get('race_name')),''),'trainer_rows':sum(bool(x.get('trainer')) for x in rs),'jockey_rows':sum(bool(x.get('jockey')) for x in rs),'weight_rows':sum(bool(x.get('lbs') or x.get('weight_lbs') or x.get('weight')) for x in rs),'or_rows':sum(bool(x.get('ofr') or x.get('official_rating')) for x in rs),'form_rows':sum(bool(x.get('form')) for x in rs),'z_eligible_course':k[1] in {'dundalk','newmarket'}})
+          for d in days:
+              rr=[r for r in raceaudit if r['date']==d];p=P.Path('data/model-performance')/(d+'.json');models={}
+              if p.exists():
+                  try:models=read(p).get('models',{})
+                  except Exception as e:errors.append({'date':d,'issue':'rank_archive_parse','detail':str(e)})
+              for m,rows in models.items():
+                  valid=set()
+                  for r in rows:
+                      k=key(r);stamp=ts(r.get('snapshot_at'))
+                      if k in results and r.get('pre_off_valid') is True and stamp and stamp<off(k) and any(str(x.get('rank'))=='1' and x.get('horse') for x in r.get('runners',[])):valid.add(k)
+                  rankrows.append({'date':d,'model':m,'archived_rank1_races':len(valid),'final_races':len(rr)})
+              dayrows.append({'date':d,'result_file_present':(P.Path('data/racing-results')/(d+'.json')).exists(),'final_races':len(rr),'exact_preoff_fields':sum(r['status']=='EXACT_FIELD' for r in rr),'preoff_fields_extra_declarations':sum(r['status']=='DECLARED_FIELD_EXTRA' for r in rr),'missing_actual_starters':sum(r['status']=='MISSING_ACTUAL_STARTERS' for r in rr),'no_preoff_card':sum(r['status']=='NO_PREOFF_CARD' for r in rr),'missing_winner_sp':sum(not r['winner_sp_present'] for r in rr),'daily_rank_archive':p.exists()})
+          # Explicit dependencies: file presence is not proof of input parity.
+          engines={'A':['scripts/stage101_all_models_compare.py'],'C':['scripts/stage22_model_c.py'],'Z':['data/model-z-strategies.json'],'D(c)':['scripts/rhp_stage83_dc_integrated.py'],'141':['scripts/stage141_today_or_weight_paper.py'],'143/146':['scripts/stage147_daily_143_146.py','scripts/stage143_race_type_specialist_config.json'],'151':['scripts/stage151_d142_core_form_or_weight_today.py'],'152':['scripts/stage152_best_roi_specialists_today.py'],'G5':['scripts/stage128_g5_today_paper.py'],'Combined':['scripts/stage153_roi_combined.py','data/roi-racetype-route-map.json']}
+          for m,paths in engines.items():
+              for p in paths:source.append({'model':m,'file':p,'exists':P.Path(p).is_file()})
+          config={'period':[days[0],days[-1]],'rank':1,'stake_units':1,'price':'SP','route_objective':'strike_rate_then_roi','minimum_races':0,'V1':'current fixed Combined routing (not historical live publication before launch)','V2_exact_roi_reference':{'AW_HANDICAP':'STAGE143_TYPE_EVIDENCE','AW_MAIDEN':'Z','AW_NURSERY':'D137_HPR_ABILITY_GRADE_WEIGHT','AW_NOVICE':'STAGE143_TYPE_EVIDENCE','CHASE_HANDICAP':'D142_LONG_CORE_FORM_OR_WEIGHT','CHASE_BEGINNERS':'STAGE146_A_RETRAINED_TRENDS','HURDLE_HANDICAP':'D(c)','HURDLE_MAIDEN':'A','NH_FLAT_OPEN':'A','OTHER':'C'},'V3':'fixed best strike rate per type, all eligible general models','V4':'V3 plus Z eligible-course override on identical races','z_policy':'Dundalk AW and Newmarket turf only; no extension of model scope; compare matched races','missing_policy':'explicit gap, no fabricated picks, no silent fallback','evaluation':'in-sample retrospective; not prospective validation'}
+          (out/'agreed-config.json').write_text(json.dumps(config,indent=2))
+          for name,rows in [('daily-coverage.csv',dayrows),('race-preoff-audit.csv',raceaudit),('archived-rank-coverage.csv',rankrows),('engine-inventory.csv',source)]:csvout(name,rows)
+          (out/'errors.json').write_text(json.dumps(errors,indent=2))
+          blockers=['Exact Model A replay feature parity has not been certified; archived ranks alone do not span all 30 days.','Model Z course-restricted replay must be proven on eligible races only.','Historical form and trained-parameter cutoffs for every candidate must be verified before scoring.','V2 Other race-type mapping must be reconciled with the previous coarse table; no universal Z fallback.']
+          gap=C.Counter(r['status'] for r in raceaudit)
+          if gap.get('NO_PREOFF_CARD') or gap.get('MISSING_ACTUAL_STARTERS'):blockers.append('Missing verified pre-off field coverage; recover or explicitly approve exclusions before simulation.')
+          if gap.get('DECLARED_FIELD_EXTRA'):blockers.append('Declared fields differ from final starters; reconcile non-runners using timestamped pre-off evidence, not future results.')
+          if any(not r['winner_sp_present'] for r in raceaudit):blockers.append('Missing winner SP; verify before ROI settlement.')
+          report={'status':'PREFLIGHT_ONLY_SIMULATION_NOT_RUN','ready_to_simulate':False,'dates':len(days),'result_files':sum(r['result_file_present'] for r in dayrows),'final_races':len(raceaudit),'card_commits_scanned':len(commits),'card_status':dict(gap),'snapshot_audit':dict(counts),'errors':len(errors),'blockers':blockers,'note':'No model scored, no live data or routes modified. A successful workflow means only that the audit completed.'}
+          (out/'preflight-report.json').write_text(json.dumps(report,indent=2));print(json.dumps(report,indent=2))
+          PY
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage174-preflight-30day
+          path: reports/stage174/
+          if-no-files-found: error
+          retention-days: 30
