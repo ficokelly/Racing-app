@@ -1,0 +1,85 @@
+name: Stage164 - Kaggle v132 staging and coverage reconciliation
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  stage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test existing importer
+        run: python -m unittest -v test_stage2.py
+      - name: Download pinned Kaggle release
+        run: |
+          python -m pip install 'kagglehub>=0.3,<1'
+          python - <<'PY'
+          import kagglehub, os
+          path=kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025/versions/132')
+          with open(os.environ['GITHUB_ENV'],'a') as f: print('HISTORY_PATH='+path,file=f)
+          PY
+      - name: Stage newly published overlap in isolated SQLite
+        run: |
+          mkdir -p reports/stage164
+          python import_historical_ukie.py --mode import --input "$HISTORY_PATH" --min-date 2026-10-23 --max-date 2026-11-20 --database "$RUNNER_TEMP/stage164.sqlite" --report reports/stage164/import-report.json
+      - name: Compare all source runners and races against archive
+        run: |
+          python - <<'PY'
+          import collections,csv,json,os,pathlib,sqlite3,sys
+          sys.path.insert(0,'scripts')
+          import stage90_kaggle_gap_audit as a
+          first,last='2026-10-23','2026-11-23'
+          recent=collections.defaultdict(list)
+          for p in pathlib.Path('data/racing-results').glob('*.json'):
+              if not first<=p.stem[:10]<=last: continue
+              for race in json.loads(p.read_text()).get('results',[]):
+                  if race.get('status')!='final': continue
+                  for runner in race.get('runners',[]):
+                      k=a.racekey(race.get('date') or p.stem,race.get('course'),race.get('off_dt') or race.get('off') or race.get('off_time'),runner.get('horse'))
+                      if all(k): recent[k].append(str(runner.get('position') or ''))
+          src=collections.defaultdict(list)
+          for p in pathlib.Path(os.environ['HISTORY_PATH']).rglob('*.csv'):
+              with p.open(encoding='utf-8-sig',errors='replace',newline='') as f:
+                  r=csv.DictReader(f)
+                  if not {'date','course','off','horse','pos'}.issubset(r.fieldnames or []): continue
+                  for row in r:
+                      d=row['date'][:10]
+                      if first<=d<=last:
+                          k=a.racekey(d,row['course'],row['off'],row['horse'])
+                          if all(k): src[k].append(str(row['pos'] or ''))
+          sr={k[:3] for k in src}; rr={k[:3] for k in recent}
+          out=collections.defaultdict(collections.Counter)
+          for k,v in src.items():
+              c=out[k[0]]; c['source_runner_keys']+=1
+              if len(v)!=1: c['ambiguous_source']+=1
+              elif k not in recent: c['missing_runner_keys']+=1
+              elif len(recent[k])!=1: c['ambiguous_archive']+=1
+              elif v[0]!=recent[k][0]: c['position_discrepancy']+=1
+              else: c['matching_position']+=1
+          for k in recent:
+              out[k[0]]['archive_runner_keys']+=1
+              if k not in src: out[k[0]]['archive_only_runner_keys']+=1
+          for k in sr: out[k[0]]['source_race_keys']+=1
+          for k in rr: out[k[0]]['archive_race_keys']+=1
+          for k in sr-rr: out[k[0]]['missing_race_keys']+=1
+          for k in rr-sr: out[k[0]]['archive_only_race_keys']+=1
+          with sqlite3.connect(os.path.join(os.environ['RUNNER_TEMP'],'stage164.sqlite')) as c:
+              assert c.execute('pragma quick_check').fetchone()[0]=='ok'
+              n=c.execute('select count(*) from historical_runs').fetchone()[0]
+              lo,hi=c.execute('select min(race_date),max(race_date) from historical_races').fetchone()
+              assert n>0 and hi=='2026-11-20',(n,lo,hi)
+          result={'stage':'isolated import only; no live writes','source_version':132,'staged_runs':n,'min_date':lo,'max_date':hi,'comparison':'normalized date/course/off/horse keys; missing keys are candidates, not verified absent races','by_day':dict(sorted(out.items()))}
+          pathlib.Path('reports/stage164/coverage.json').write_text(json.dumps(result,indent=2))
+          print(json.dumps(result,indent=2))
+          PY
+      - name: Publish aggregate report only
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage164-kaggle-staging-report
+          path: reports/stage164/coverage.json
+          if-no-files-found: error
+          retention-days: 30
