@@ -1,0 +1,135 @@
+name: 'Stage163 — Hot Pots odds range filter'
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: stage163-hot-pots-odds-filter
+  cancel-in-progress: false
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Install and validate odds filter
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/stage163.py <<'PY'
+          from pathlib import Path
+          import re, subprocess, tempfile
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
+          marker='RHP_STAGE163_ODDS_RANGE_V1'
+          if marker in s:
+              print('Stage163 already installed')
+              raise SystemExit(0)
+          def swap(old,new):
+              global s
+              assert s.count(old)==1, f'Expected one anchor, found {s.count(old)}: {old[:100]}'
+              s=s.replace(old,new,1)
+          # Reuse exactly the same chosen bookmaker quote for display and filtering.
+          swap(" function selectionPrice(race,horse,status){\n  if(status==='nr')return '<span class=\"rhp70-price\"><b>NR</b><small>Withdrawn</small></span>';", " function rhp163Quote(race,horse,status){\n  if(status==='nr')return null;")
+          swap("  if(!matches.length)return '<span class=\"rhp70-price\"><b>—</b><small>Odds unavailable</small></span>';", "  if(!matches.length)return null;")
+          swap("  const alternative=preference!=='all'&&chosen.bookmaker!==preference;", "  return {chosen,alternative:preference!=='all'&&chosen.bookmaker!==preference};\n }\n function selectionPrice(race,horse,status){\n  if(status==='nr')return '<span class=\"rhp70-price\"><b>NR</b><small>Withdrawn</small></span>';\n  const quote=rhp163Quote(race,horse,status);\n  if(!quote)return '<span class=\"rhp70-price\"><b>—</b><small>Odds unavailable</small></span>';\n  const {chosen,alternative}=quote;")
+          helpers=r''' // RHP_STAGE163_ODDS_RANGE_V1
+           const rhp163Modes=['all','le2','2to5','5to10','gt10','custom'];
+           let rhp163Mode='all',rhp163Min='',rhp163Max='';
+           try{const v=JSON.parse(sessionStorage.getItem('rhp163-odds-filter')||'{}');if(rhp163Modes.includes(v.mode))rhp163Mode=v.mode;rhp163Min=String(v.min||'');rhp163Max=String(v.max||'');}catch(e){}
+           function rhp163Save(){try{sessionStorage.setItem('rhp163-odds-filter',JSON.stringify({mode:rhp163Mode,min:rhp163Min,max:rhp163Max}));}catch(e){}}
+           // Convert fractional odds to decimal odds. Plain numbers mean n/1.
+           function rhp163Parse(value){
+            const v=String(value??'').trim().toLowerCase();
+            if(!v)return null;
+            if(['evs','evens','even'].includes(v))return 2;
+            const m=v.match(/^(\d+(?:\.\d+)?)\s*(?:\/|:|\s+to\s+)\s*(\d+(?:\.\d+)?)$/);
+            if(m){const a=Number(m[1]),b=Number(m[2]);return a>0&&b>0&&Number.isFinite(a/b)?1+a/b:NaN;}
+            if(/^\d+(?:\.\d+)?$/.test(v)&&Number(v)>0&&Number.isFinite(Number(v)))return 1+Number(v);
+            return NaN;
+           }
+           function rhp163Bounds(){
+            const min=rhp163Parse(rhp163Min),max=rhp163Parse(rhp163Max);
+            return {min,max,valid:!Number.isNaN(min)&&!Number.isNaN(max)&&(min===null||max===null||min<=max)};
+           }
+           function rhp163MatchesPrice(price,mode,bounds){
+            if(mode==='all')return true;
+            if(!Number.isFinite(price)||price<=1)return false;
+            if(mode==='le2')return price<=3;
+            if(mode==='2to5')return price>3&&price<=6;
+            if(mode==='5to10')return price>6&&price<=11;
+            if(mode==='gt10')return price>11;
+            return mode==='custom'&&bounds.valid&&(bounds.min===null||price>=bounds.min)&&(bounds.max===null||price<=bounds.max);
+           }
+           function rhp163HorseMatches(race,horse){
+            if(rhp163Mode==='all')return true;
+            const quote=rhp163Quote(race,horse,cardState(race,horse));
+            return rhp163MatchesPrice(quote?.chosen?.current,rhp163Mode,rhp163Bounds());
+           }
+           function rhp163RaceMatches(race){
+            return rhp163Mode==='all'||ordered(race).slice(0,2).some(h=>rhp163HorseMatches(race,h.horse));
+           }
+           function rhp163Sync(){
+            const select=$('rhp163-odds-mode'),custom=$('rhp163-custom'),error=$('rhp163-error');
+            if(!select)return;
+            select.value=rhp163Mode;custom.hidden=rhp163Mode!=='custom';
+            if(document.activeElement!==$('rhp163-min'))$('rhp163-min').value=rhp163Min;
+            if(document.activeElement!==$('rhp163-max'))$('rhp163-max').value=rhp163Max;
+            error.textContent=rhp163Mode==='custom'&&!rhp163Bounds().valid?'Enter valid fractional odds; minimum must not exceed maximum.':'';
+           }
+          '''
+          swap(" let rhp158Meeting='all',rhp158Time='all';", " let rhp158Meeting='all',rhp158Time='all';\n"+helpers)
+          old="   $('strategy-day-switch').insertAdjacentElement('afterend',filter);"
+          new=r'''   const reset=filter.querySelector('[data-rhp158-reset-hot]');
+             reset.insertAdjacentHTML('beforebegin',`<label style="grid-column:1 / -1">Odds range<select id="rhp163-odds-mode" aria-label="Filter Hot Pots by latest odds"><option value="all">All odds</option><option value="le2">2/1 or less</option><option value="2to5">Over 2/1 to 5/1</option><option value="5to10">Over 5/1 to 10/1</option><option value="gt10">Over 10/1</option><option value="custom">Custom odds range</option></select></label><div id="rhp163-custom" style="grid-column:1 / -1" hidden><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px"><label>Minimum odds<input id="rhp163-min" type="text" placeholder="e.g. 5/2" autocomplete="off" style="width:100%;min-width:0;box-sizing:border-box;background:var(--rhp-card);color:var(--rhp-ink);border:1px solid var(--rhp-edge);border-radius:10px;padding:10px"></label><label>Maximum odds<input id="rhp163-max" type="text" placeholder="e.g. 8/1" autocomplete="off" style="width:100%;min-width:0;box-sizing:border-box;background:var(--rhp-card);color:var(--rhp-ink);border:1px solid var(--rhp-edge);border-radius:10px;padding:10px"></label></div><p class="hint">Use fractional odds or evens. A plain number means /1. Leave either limit blank for an open range.</p><p id="rhp163-error" role="status" style="color:#d97706"></p></div>`);
+             $('strategy-day-switch').insertAdjacentElement('afterend',filter);'''
+          swap(old,new)
+          swap("  const old=$('power-type-toggle')?.closest('.panel');if(old)old.hidden=true;", "  rhp163Sync();\n  const old=$('power-type-toggle')?.closest('.panel');if(old)old.hidden=true;")
+          swap("  const shown=available.filter(r=>(rhp158Meeting==='all'||r.course===rhp158Meeting)&&(rhp158Time==='all'||r.time===rhp158Time))", "  const shown=available.filter(r=>(rhp158Meeting==='all'||r.course===rhp158Meeting)&&(rhp158Time==='all'||r.time===rhp158Time)&&rhp163RaceMatches(r))")
+          swap("${nr?' · pending reassessment':''}</small></div>${selectionPrice(race,x.horse,status)}", "${nr?' · pending reassessment':''}</small>${rhp163Mode!=='all'&&rhp163HorseMatches(race,x.horse)?'<small style=\"font-weight:700;color:var(--rhp-ink)\">✓ Odds match</small>':''}</div>${selectionPrice(race,x.horse,status)}")
+          swap("  if(e.target.id==='rhp158-hp-time'){rhp158Time=e.target.value;renderStrategySelections();}", "  if(e.target.id==='rhp158-hp-time'){rhp158Time=e.target.value;renderStrategySelections();}\n  if(e.target.id==='rhp163-odds-mode'){rhp163Mode=e.target.value;rhp163Save();renderStrategySelections();}\n  if(e.target.id==='rhp163-min'||e.target.id==='rhp163-max'){rhp163Min=$('rhp163-min').value;rhp163Max=$('rhp163-max').value;rhp163Save();renderStrategySelections();}")
+          swap("if(e.target.closest('[data-rhp158-reset-hot]')){rhp158Meeting='all';rhp158Time='all';renderStrategySelections();return;}", "if(e.target.closest('[data-rhp158-reset-hot]')){rhp158Meeting='all';rhp158Time='all';rhp163Mode='all';rhp163Min='';rhp163Max='';rhp163Save();renderStrategySelections();return;}")
+          # Validate the entire inline app plus focused boundary tests before writing.
+          with tempfile.TemporaryDirectory() as folder:
+              for i,script in enumerate(re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>',s,re.I|re.S)):
+                  target=Path(folder)/f'script-{i}.js';target.write_text(script);subprocess.run(['node','--check',str(target)],check=True)
+              test=Path(folder)/'test.js'
+              test.write_text("const sessionStorage={getItem:()=>null};\n"+helpers+"""
+          const assert=require('node:assert/strict');
+          assert.equal(rhp163Parse('2/1'),3);assert.equal(rhp163Parse('5/2'),3.5);
+          assert.equal(rhp163Parse('EVS'),2);assert.equal(rhp163Parse('10'),11);
+          assert.equal(rhp163Parse('5 to 1'),6);assert.equal(rhp163Parse(''),null);
+          assert.ok(Number.isNaN(rhp163Parse('1/0')));assert.ok(Number.isNaN(rhp163Parse('bad')));
+          for(const [p,want] of [[2,'le2'],[3,'le2'],[3.01,'2to5'],[6,'2to5'],[6.01,'5to10'],[11,'5to10'],[11.01,'gt10']]){
+           assert.deepEqual(['le2','2to5','5to10','gt10'].filter(m=>rhp163MatchesPrice(p,m,{})),[want]);}
+          assert.equal(rhp163MatchesPrice(null,'le2',{}),false);
+          assert.equal(rhp163MatchesPrice(3.5,'custom',{valid:true,min:3.5,max:9}),true);
+          assert.equal(rhp163MatchesPrice(10,'custom',{valid:true,min:3.5,max:9}),false);
+          assert.equal(rhp163MatchesPrice(4,'custom',{valid:false,min:6,max:3}),false);
+          console.log('STAGE163_BOUNDARY_TESTS_OK');
+          """)
+              subprocess.run(['node',str(test)],check=True)
+          p.write_text(s,encoding='utf-8')
+          print('STAGE163_PATCH_VALIDATED')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            python /tmp/stage163.py
+            git diff --check
+            git add index.html
+            if git diff --cached --quiet; then echo 'Stage163 already published'; exit 0; fi
+            git commit -m 'Stage163: add Hot Pots odds bands and custom fractional range'
+            if git push origin HEAD:main; then echo 'STAGE163_PUBLISHED'; exit 0; fi
+            sleep "$((attempt*3))"
+          done
+          exit 1
