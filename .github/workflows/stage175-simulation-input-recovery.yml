@@ -1,0 +1,188 @@
+name: Stage175 - Reuse validated history and recover simulation inputs
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  recovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PYTHONPATH: '.:scripts'
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Restore exact validated sources and Stage174 audit
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/stage175/base" "$RUNNER_TEMP/stage175/ref" reports/stage175-input
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage2-historical-staging-database --dir "$RUNNER_TEMP/stage175/base"
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage4-reference-named-events-and-winners --dir "$RUNNER_TEMP/stage175/ref"
+          gh run download 45466287299 --repo "$GITHUB_REPOSITORY" --name stage174-preflight-30day --dir reports/stage175-input
+          python -m pip install --disable-pip-version-check 'kagglehub>=0.3,<1'
+      - name: Build shared validated history and reconcile verified inputs
+        run: |
+          python - <<'PY'
+          import collections as C, csv, datetime as D, hashlib, json, os, pathlib as P, re, sqlite3, subprocess as S, unicodedata
+          import kagglehub
+          from stage167_validated_history import build
+          from stage171_recent_history import append_bridge
+          from import_historical_ukie import odds
+          from stage4_match_all_recurring_races import canonical_course
+          UTC=D.timezone.utc
+          O=P.Path('reports/stage175'); O.mkdir(parents=True,exist_ok=True)
+          I=P.Path('reports/stage175-input'); T=P.Path(os.environ['RUNNER_TEMP'])/'stage175';T.mkdir(exist_ok=True)
+          START='2026-10-25'; END='2026-11-23'; EXCLUSIVE='2026-11-24'
+          def read(p):return json.loads(P.Path(p).read_text())
+          def norm(s):return re.sub('[^a-z0-9]','',unicodedata.normalize('NFKD',str(s or '')).encode('ascii','ignore').decode().lower())
+          def horse(s):return norm(re.sub(r'\s*\((?:IRE|GB|FR|USA|GER|AUS|NZ|ITY|JPN)\)\s*$','',str(s or ''),flags=re.I))
+          def course(s):
+           s=re.sub(r'\s*\((?:AW|GB|IRE)\)\s*$','',str(s or ''),flags=re.I);n=norm(s)
+           return {'kemptonpark':'kempton','chelmsfordcity':'chelmsford','bangor':'bangorondee'}.get(n,n)
+          def ts(v):
+           try:
+            x=D.datetime.fromisoformat(str(v).replace('Z','+00:00'));return x.astimezone(UTC) if x.tzinfo else None
+           except (TypeError,ValueError):return None
+          def key(r):
+           x=ts(r.get('race_time') or r.get('off_dt') or r.get('time_utc') or r.get('off_utc') or r.get('time'));d=str(r.get('date') or r.get('day') or '')
+           return d,course(r.get('course') or r.get('meeting')),x.strftime('%H:%M') if x else str(r.get('time') or '')[:5]
+          def off(k):return ts(k[0]+'T'+k[2]+':00+00:00')
+          def run(a,timeout=180):return S.check_output(a,text=True,timeout=timeout)
+          def write(name,rs):
+           if not rs:return
+           with (O/name).open('w',newline='') as f:
+            w=csv.DictWriter(f,fieldnames=list(dict.fromkeys(k for r in rs for k in r)));w.writeheader();w.writerows(rs)
+          def sha(p):
+           h=hashlib.sha256()
+           with P.Path(p).open('rb') as f:
+            for b in iter(lambda:f.read(4*1024*1024),b''):h.update(b)
+           return h.hexdigest()
+          NR={'nr','nonrunner','withdrawn','scratched','dns','reserve','nonstarter'}
+          def inactive(r):return any(norm(r.get(k)) in NR|{'true','1','yes'} for k in ('is_non_runner','is_withdrawn','withdrawn','runner_status','status'))
+          OUTCOME={'position','finish_pos','result','outcome','sp','sp_decimal','beaten','overall_beaten','distance_beaten_total','starting_price','race_result','result_status'}
+          def leak(r):return any(r.get(k) not in (None,'',[],{}) for k in OUTCOME) or norm(r.get('race_status')) in {'finished','resulted','final','completed'}
+          def price(x):
+           v=odds(x)
+           return v if v and v>=1.01 else None
+          assert horse('Example (IRE)')=='example' and price('5/2F')==3.5 and course('Kempton (AW)')=='kempton'
+          pre=list(csv.DictReader((I/'race-preoff-audit.csv').open()));assert len(pre)==990
+          config=read(I/'agreed-config.json');assert config['minimum_races']==0
+          (O/'agreed-config.json').write_text(json.dumps(config,indent=2))
+          # Reuse exact validated builder and pinned source. Never publish raw database or edit app data.
+          base=T/'base/historical_ukie_staging.sqlite';ref=T/'ref/all_races_with_reference_event_ids.csv'
+          assert base.is_file() and ref.is_file()
+          src=P.Path(kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025/versions/132'))
+          work=T/'history';work.mkdir(exist_ok=True)
+          db,reference=build(base,ref,src,work)
+          append_bridge(db,reference,EXCLUSIVE)
+          with sqlite3.connect(f'file:{db}?mode=ro',uri=True) as c:
+           assert c.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+           latest,total=c.execute('SELECT MAX(race_date),COUNT(*) FROM historical_races').fetchone()
+           assert latest<=END and latest>='2026-11-20'
+           assert c.execute('SELECT COUNT(*) FROM historical_races WHERE race_date>=?',(EXCLUSIVE,)).fetchone()[0]==0
+           print('STAGE175_VALIDATED_HISTORY',latest,total,flush=True)
+           archive=C.defaultdict(dict)
+           for rid,d,co,h,p,s,o in c.execute('SELECT r.id,r.race_date,r.course,h.horse_name,h.finish_pos,h.sp_decimal,h.outcome FROM historical_races r JOIN historical_runs h ON h.race_id=r.id WHERE r.race_date BETWEEN ? AND ?',(START,END)):
+            rr=archive[(d,course(co))].setdefault(rid,[]);rr.append({'horse':h,'position':p,'sp':s,'outcome':o})
+          manifest={'source':'Kaggle version 132 + validated Stage167 builder + Stage171 verified bridge','history_through':latest,'history_races':total,'database_sha256':sha(db),'reference_sha256':sha(reference),'repository_commit':run(['git','rev-parse','HEAD']).strip(),'replay_cutoff_policy':'Physically truncate each private history database AND reference to dates strictly before target day. Model-specific training and G5 HPR ledger checks are separate mandatory gates.'}
+          (O/'history-manifest.json').write_text(json.dumps(manifest,indent=2))
+          # Gather original final result files; historical archive is independent settlement evidence only.
+          results={}
+          for d in sorted({r['date'] for r in pre}):
+           for r in read(P.Path('data/racing-results')/(d+'.json')).get('results',[]):
+            r.setdefault('date',d);k=key(r)
+            if off(k) and r.get('status')=='final' and any(str(h.get('position'))=='1' for h in r.get('runners',[])):results[k]=r
+          # Use timestamped NR evidence only. Do not delete a horse because it is absent in results.
+          ledger=read('data/nonrunner-monitor.json');known=C.defaultdict(dict)
+          for v in ledger.get('known',{}).values():
+           try:d,co,t=v['race'].split('|'); k=(d,course(co),t);stamp=ts(v.get('detected_at'))
+           except (ValueError,KeyError):continue
+           if off(k) and stamp and stamp<off(k) and v.get('source')=='EXPLICIT_RACECARD_STATUS':known[k][horse(v.get('horse'))]=stamp
+          # Recover latest genuine snapshot for every race, independent of the result.
+          # Scan both live and archive JSON paths: archive records need their own collected_at or archived_at.
+          # If absent, skip; file publication time alone is not enough for recycled old cards.
+          snap={};errors=[];audit=C.Counter()
+          for path in ('data/racecards.json','data/racecards-archive.json'):
+           commits=run(['git','log','--format=%H %ct','--since=2026-10-23T00:00:00Z','--until=2026-11-24T00:00:00Z','--',path]).splitlines()
+           for idx,line in enumerate(commits,1):
+            rev,epoch=line.split();pub=D.datetime.fromtimestamp(int(epoch),UTC)
+            try:j=json.loads(run(['git','show',rev+':'+path]))
+            except (ValueError,S.CalledProcessError,S.TimeoutExpired) as e:errors.append({'path':path,'commit':rev,'error':str(e)[:250]});continue
+            if not isinstance(j,dict):continue
+            groups=C.defaultdict(list)
+            for r in j.get('runners',[]):
+             k=key(r)
+             if START<=k[0]<=END and off(k) and pub<off(k):groups[k].append(r)
+            for k,rows in groups.items():
+             # Archive timestamps must belong to the individual snapshot, not merely a mutable global refresh.
+             if path.endswith('-archive.json'):
+              stamps=[ts(r.get('collected_at') or r.get('archived_at') or r.get('snapshot_at')) for r in rows]
+              if not all(stamps) or len(set(stamps))!=1:audit['archive_missing_per_snapshot_timestamp']+=1;continue
+              col=stamps[0]
+             else:col=ts(j.get('collected_at'))
+             if not col or max(pub,col)>=off(k) or any(leak(r) for r in rows):continue
+             stamp=max(pub,col);active=[r for r in rows if horse(r.get('horse')) and not inactive(r) and not (horse(r.get('horse')) in known[k] and known[k][horse(r.get('horse'))]>=stamp)]
+             # Never override an explicitly later declaration with an older NR observation.
+             ids=[horse(r.get('horse')) for r in active]
+             if not ids or len(ids)!=len(set(ids)):audit['ambiguous_declared_identity']+=1;continue
+             if k not in snap or stamp>snap[k]['stamp']:snap[k]={'stamp':stamp,'commit':rev,'path':path,'rows':active,'all_rows':rows}
+            if idx%100==0:print('STAGE175_SCAN',path,idx,len(commits),flush=True)
+          # Match complete starter identity + winner and all comparable finishing positions; never fill missing SP by horse alone.
+          rows=[];cards=C.defaultdict(list);settlements=[];matched_ids=set()
+          for old in pre:
+           k=(old['date'],old['course'],old['time']);r=results.get(k)
+           if not r:errors.append({'race':k,'error':'result_key_no_longer_matches'});continue
+           starters=[h for h in r['runners'] if horse(h.get('horse')) and norm(h.get('status')) not in NR]
+           names={horse(h['horse']):h for h in starters};wins={n for n,h in names.items() if str(h.get('position'))=='1'}
+           candidate=[]
+           if len(names)==len(starters):
+            for rid,a in archive.get((k[0],k[1]),{}).items():
+             a=[h for h in a if norm(h['outcome']) not in NR]
+             ar={horse(h['horse']):h for h in a}
+             if len(ar)!=len(a) or set(ar)!=set(names) or {n for n,h in ar.items() if h['position']==1}!=wins:continue
+             if any(str(names[n].get('position'))!=str(ar[n]['position']) for n in names if names[n].get('position') is not None and ar[n]['position'] is not None):continue
+             candidate.append((rid,ar))
+           rid,ar=candidate[0] if len(candidate)==1 else (None,{})
+           if rid in matched_ids:rid=None;ar={}
+           if rid:matched_ids.add(rid)
+           sp_missing_before=sum(price(names[n].get('sp')) is None for n in wins);sp_missing_after=0;conflicts=[];sp_ledger=[]
+           for n in sorted(wins):
+            original=price(names[n].get('sp'));other=price(ar[n].get('sp')) if n in ar else None
+            if original is not None and other is not None and abs(original-other)>1e-6:conflicts.append(n)
+            final=original if original is not None else other
+            if final is None:sp_missing_after+=1
+            sp_ledger.append({'horse':names[n]['horse'],'sp_decimal':final,'source':'app final result' if original is not None else 'validated historical archive' if other is not None else 'missing','archive_race_id':rid})
+           settlements.append({'date':k[0],'course':k[1],'time':k[2],'winner_prices':sp_ledger,'price_conflicts':conflicts})
+           s=snap.get(k);decl={horse(h['horse']) for h in s['rows']} if s else set();missing=set(names)-decl;extra=decl-set(names)
+           status='NO_PREOFF_CARD' if not s else 'MISSING_ACTUAL_STARTERS' if missing else 'DECLARED_FIELD_EXTRA' if extra else 'EXACT_FIELD'
+           if status=='EXACT_FIELD':
+            # Preserve the full genuine pre-off field. Output-only odds and outcome fields are removed.
+            for h in s['rows']:
+             card={a:b for a,b in h.items() if a not in OUTCOME|{'odds','price','current_odds','bookmaker_odds'}};cards[k[0]].append({'card':card,'source_commit':s['commit'],'source_path':s['path'],'asof':s['stamp'].isoformat()})
+           rows.append({'date':k[0],'course':k[1],'time':k[2],'before':old['status'],'after':status,'missing_starters':';'.join(sorted(missing)),'extra_declarations':';'.join(sorted(extra)),'archive_match':rid or '', 'archive_candidate_count':len(candidate),'winner_sp_missing_before':sp_missing_before,'winner_sp_missing_after':sp_missing_after,'sp_conflict':';'.join(conflicts),'card_commit':s['commit'] if s else '', 'card_asof':s['stamp'].isoformat() if s else '', 'card_source':s['path'] if s else ''})
+          write('recovery-ledger.csv',rows);(O/'settlement-prices.json').write_text(json.dumps(settlements,indent=2));(O/'errors.json').write_text(json.dumps(errors,indent=2));
+          # Only genuine original cards. Never export result-derived reconstructed cards as pre-race evidence.
+          (O/'verified-card-inputs.json').write_text(json.dumps(cards,separators=(',',':')))
+          blockers=['Exact A feature parity still unverified','Z and D(c) historical scorer parity still unverified','G5 HPR ledger and model-specific training cutoffs still unverified','All model replay output coverage must be checked before routing comparison','V2 coarse Other mapping needs explicit crosswalk']
+          counts=C.Counter(r['after'] for r in rows)
+          if sum(counts.values())!=990 or counts.get('EXACT_FIELD',0)!=990:blockers.append('Incomplete exact pre-off field coverage')
+          if any(r['winner_sp_missing_after'] or r['sp_conflict'] for r in rows):blockers.append('Unresolved winner prices or price conflicts')
+          report={'status':'RECOVERY_AUDIT_ONLY','ready_to_simulate':False,'races':len(rows),'history_manifest':manifest,'before':dict(C.Counter(r['before'] for r in rows)),'after':dict(counts),'missing_winner_sp_races_before':sum(bool(r['winner_sp_missing_before']) for r in rows),'missing_winner_sp_races_after':sum(bool(r['winner_sp_missing_after']) for r in rows),'price_conflict_races':sum(bool(r['sp_conflict']) for r in rows),'uniquely_matched_archive_races':sum(bool(r['archive_match']) for r in rows),'scan_audit':dict(audit),'errors':len(errors),'blockers':blockers,'simulation_run':False,'live_app_changed':False}
+          (O/'recovery-report.json').write_text(json.dumps(report,indent=2));print(json.dumps(report,indent=2),flush=True)
+          PY
+      - name: Upload research-only recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage175-recovered-simulation-inputs
+          path: reports/stage175/
+          if-no-files-found: error
+          retention-days: 30
