@@ -1,0 +1,297 @@
+name: Stage173 - Rolling route walk-forward comparison
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage173-research-only
+  cancel-in-progress: false
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run original vs rolling 7 and 30 day routes (research only)
+        shell: bash
+        run: |
+          mkdir -p reports/stage173
+          cat > "$RUNNER_TEMP/stage173.py" <<'PY'
+          #!/usr/bin/env python3
+          """Research-only rolling route comparison. Never writes live app data."""
+          import argparse, collections as C, concurrent.futures as F, csv, datetime as D
+          import io, json, math, pathlib as P, re, subprocess as S, tempfile, zipfile
+          from zoneinfo import ZoneInfo
+          UTC=D.timezone.utc
+          TZ=ZoneInfo('Europe/Dublin')
+          WF={'stage141-today-or-weight-paper.yml':'stage141-today-hpr-or-weight-',
+              'stage151-d142-core-form-or-weight-today.yml':'stage151-d142-core-form-weight-today-',
+              'stage152-best-roi-specialists-today.yml':'stage152-best-roi-specialists-',
+              'stage147-daily-143-146.yml':'stage147-daily-143-146-',
+              'stage128-g5-paper.yml':'stage128-g5-paper-',
+              'stage153-roi-combined.yml':'stage153-combined-'}
+          RANK={'stage141-today-rank1-rank2.csv','stage151-d142-core-form-weight-rank1.csv',
+                'stage152-strongest-roi-specialists-rank1.csv','stage146-today-rank1-rank2.csv','stage128-g5-rank1.csv'}
+          ALIASES={'novice hurdle':'HURDLE_NOVICE','maiden hurdle':'HURDLE_MAIDEN','handicap hurdle':'HURDLE_HANDICAP',
+                   'novice handicap hurdle':'HURDLE_NOVICE_HANDICAP','beginners chase':'CHASE_BEGINNERS',
+                   'novice handicap chase':'CHASE_NOVICE_HANDICAP','handicap chase':'CHASE_HANDICAP',
+                   'nh flat open':'NH_FLAT_OPEN','nh_bumper':'NH_FLAT_OPEN','aw maiden':'AW_MAIDEN',
+                   'aw nursery':'AW_NURSERY','auction restricted':'AW_AUCTION_RESTRICTED','aw handicap':'AW_HANDICAP'}
+          def norm(x):return re.sub(r'[^a-z0-9]','',str(x or '').lower())
+          def course(x):
+           s=norm(x);s=s[:-2] if s.endswith('aw') else s
+           return {'kemptonpark':'kempton','chelmsfordcity':'chelmsford','bangor':'bangorondee'}.get(s,s)
+          def ts(x):
+           try:
+            t=D.datetime.fromisoformat(str(x).replace('Z','+00:00'));return t.astimezone(UTC) if t.tzinfo else None
+           except (ValueError,TypeError):return None
+          def clock(x):
+           t=ts(x);return t.strftime('%H:%M') if t else str(x or '')[:5]
+          def off(k):return ts(k[0]+'T'+k[2]+':00+00:00')
+          def key(r):
+           t=r.get('race_time') or r.get('off_dt') or r.get('time_utc') or r.get('off_utc') or r.get('time')
+           if not t and '|' in str(r.get('race_id','')):t=r['race_id'].split('|')[-1]
+           k=(str(r.get('date') or ''),course(r.get('course') or r.get('meeting')),clock(t))
+           return k if k[1] and off(k) else None
+          def route(x):
+           s=str(x or '').strip();return ALIASES.get(s.lower(),s.upper() if re.fullmatch(r'[A-Z0-9_]+',s) and '_' in s else None)
+          def disc(t):
+           if t.startswith('AW_'):return 'AW'
+           if t.startswith(('HURDLE_','CHASE_','NH_')):return 'National Hunt'
+           if t.startswith(('FLAT_','TURF_')):return 'Flat turf'
+           return 'Unclassified'
+          def refine(name,t,is_aw):
+           s=str(name or '').lower()
+           if is_aw and 'nursery' in s:return 'AW_NURSERY'
+           if 'novice' in s and 'handicap' in s:
+            if 'hurdle' in s:return 'HURDLE_NOVICE_HANDICAP'
+            if 'chase' in s or 'steeple' in s:return 'CHASE_NOVICE_HANDICAP'
+           if 'hurdle' in s and ('juvenile' in s or 'junior' in s):return 'HURDLE_JUVENILE'
+           if t:return t
+           if 'hurdle' in s:
+            for term,rt in [('maiden','HURDLE_MAIDEN'),('handicap','HURDLE_HANDICAP'),('novice','HURDLE_NOVICE')]:
+             if term in s:return rt
+           if 'chase' in s or 'steeple' in s:
+            for term,rt in [('handicap','CHASE_HANDICAP'),('beginner','CHASE_BEGINNERS'),('novice','CHASE_NOVICE')]:
+             if term in s:return rt
+           if any(x in s for x in ('nh flat','national hunt flat','bumper','pro/am) flat')):return 'NH_FLAT_OPEN'
+           if is_aw:
+            for term,rt in [('handicap','AW_HANDICAP'),('maiden','AW_MAIDEN'),('novice','AW_NOVICE')]:
+             if term in s:return rt
+           return None
+          def run(args,timeout=180):
+           p=S.run(args,capture_output=True,text=True,timeout=timeout)
+           if p.returncode:raise RuntimeError(' '.join(args[:4])+': '+p.stderr[-300:])
+           return p.stdout
+          def load(p):return json.loads(p.read_text())
+          def dates(a,b):
+           while a<=b:yield a.isoformat();a+=D.timedelta(days=1)
+          def versions(p,since=None):
+           a=['git','log','--format=%H %ct','--reverse']
+           if since:a+=['--since='+since]
+           return [(l.split()[0],D.datetime.fromtimestamp(int(l.split()[1]),UTC)) for l in run(a+['--',str(p)]).splitlines() if l.strip()]
+          def git_json(sha,p):
+           try:return json.loads(run(['git','show',sha+':'+str(p)]))
+           except (RuntimeError,ValueError):return {}
+          def price(s):
+           if str(s).upper() in ('EVS','EVENS'):return 2.0
+           try:
+            a,b=str(s).split('/');v=1+float(a)/float(b)
+           except (ValueError,ZeroDivisionError):
+            try:v=float(s)
+            except (TypeError,ValueError):return None
+           return v if math.isfinite(v) and v>=1 else None
+          def settle(r,h):
+           if not r or str(r.get('status','')).lower()!='final':return None
+           runners=r.get('runners',[]);horse=next((x for x in runners if norm(x.get('horse'))==norm(h)),None)
+           if not horse or norm(horse.get('status')) in ('scratched','nonrunner','withdrawn','nr','dns'):return None
+           if horse.get('position') is None and norm(horse.get('status')) not in ('ran','finished','resulted','completed'):return None
+           winners=[x for x in runners if str(x.get('position'))=='1']
+           if not winners:return None
+           if str(horse.get('position'))!='1':return 0,-1.0
+           sp=price(horse.get('sp'));return (1,sp/len(winners)-1) if sp is not None else None
+          def sig(r):return {norm(h.get('horse')):v for h in r.get('runners',[]) if (v:=settle(r,h.get('horse'))) is not None}
+          def metrics(a):
+           n=len(a);w=sum(x['win'] for x in a);p=sum(x['pl'] for x in a)
+           return {'bets':n,'wins':w,'strike_rate_pct':round(100*w/n,4) if n else None,'pl_units':round(p,4),'roi_pct':round(100*p/n,4) if n else None}
+          def write_csv(p,rows):
+           if not rows:return
+           cols=list(dict.fromkeys(k for r in rows for k in r))
+           with p.open('w',newline='') as f:
+            w=csv.DictWriter(f,fieldnames=cols);w.writeheader();w.writerows(rows)
+          def selftest():
+           r={'status':'final','runners':[{'horse':'A','status':'ran','position':1,'sp':'3/1'},{'horse':'B','status':'ran','position':1,'sp':'5/1'},{'horse':'C','status':'ran','position':None},{'horse':'D','status':'scratched'}]}
+           assert settle(r,'A')==(1,1.0) and settle(r,'B')==(1,2.0) and settle(r,'C')==(0,-1.0) and settle(r,'D') is None and settle(r,'missing') is None
+           assert route('handicap hurdle')=='HURDLE_HANDICAP'
+           assert key({'date':'2026-11-24','course':'Lingfield (AW)','race_id':'2026-11-24|LINGFIELD|11:38'})==('2026-11-24','lingfield','11:38')
+           assert refine('Nursery Handicap Stakes','AW_HANDICAP',True)=='AW_NURSERY'
+           assert metrics([{'win':1,'pl':2},{'win':0,'pl':-1}])['roi_pct']==50
+          
+          def parse_zip(z,published=None):
+           """Published artifact creation time is required in remote run. Local audit uses ZIP times only."""
+           rows=[];files=z.namelist();g5=None
+           for n in files:
+            if n.endswith('stage128-g5-paper-audit.json'):g5=ts(json.loads(z.read(n)).get('asof_utc'))
+           for n in files:
+            p=P.PurePosixPath(n);pub=published or D.datetime(*z.getinfo(n).date_time,tzinfo=UTC)
+            if p.name=='strategy-roi-combined.json':
+             for r in json.loads(z.read(n)).get('races',[]):
+              h=next((h.get('horse') for h in r.get('runners',[]) if str(h.get('rank'))=='1'),None);s=r.get('selection') or {}
+              stamp=ts(s.get('published_at') or r.get('published_at'))
+              if h and stamp and s.get('pre_off_valid') is not False:
+               rows.append((r,'V1',h,max(pub,stamp),route(r.get('race_type')),2))
+            elif p.name in RANK:
+             for r in csv.DictReader(io.StringIO(z.read(n).decode('utf-8-sig'))):
+              if str(r.get('rank')) not in ('1','1.0') or norm(r.get('result_known'))=='true':continue
+              stamp=ts(r.get('prediction_asof') or r.get('decision_utc') or r.get('scored_at') or r.get('cards_asof')) or (g5 if p.name.startswith('stage128') else None)
+              if stamp:rows.append((r,r.get('model'),r.get('horse'),max(pub,stamp),route(r.get('route') or r.get('race_type')),4 if p.name.startswith('stage146') else 3))
+           return rows
+          
+          def main():
+           selftest();ap=argparse.ArgumentParser();ap.add_argument('--repo',default='ficokelly/Racing-app');ap.add_argument('--start',default='2026-11-18');ap.add_argument('--end',default='2026-11-24');ap.add_argument('--cutoff',default='2026-11-24T16:45:00+00:00');ap.add_argument('--min-races',type=int,default=10);ap.add_argument('--min-days',type=int,default=3);ap.add_argument('--out',default='reports/stage173');ap.add_argument('--local-audit',help='Directory of existing ZIPs; parser audit only, not a verified performance test');a=ap.parse_args()
+           start=D.date.fromisoformat(a.start);end=D.date.fromisoformat(a.end);warm=start-D.timedelta(days=30);all_days=set(dates(warm,end));targets=set(dates(start,end));cut=ts(a.cutoff);assert cut and start<=end
+           out=P.Path(a.out);out.mkdir(parents=True,exist_ok=True);issues=[];picks={};base={};types={};names={}
+           def add(r,m,h,stamp,rt,priority,source):
+            k=key(r)
+            if not k or k[0] not in all_days or not m or not h or not stamp or stamp>=off(k) or stamp>cut:return
+            title=r.get('race_name') or (r.get('race_type') if m.startswith('G5_') else None)
+            aw='(AW)' in str(r.get('course') or r.get('meeting')) or str(r.get('discipline','')).upper()=='AW' or r.get('surface_class')=='AW'
+            if title:names[k]=(title,aw)
+            if rt and (k not in types or (priority,stamp)>types[k][:2]):types[k]=(priority,stamp,rt)
+            b=base if m=='V1' else picks;idx=k if m=='V1' else (k,m)
+            if idx not in b or stamp>b[idx]['stamp']:b[idx]={'horse':h,'stamp':stamp,'model':r.get('source_model') or m,'source':source}
+           if a.local_audit:
+            for p in P.Path(a.local_audit).glob('github-actions-artifact-*.zip'):
+             try:
+              with zipfile.ZipFile(p) as z:
+               for r,m,h,t,rt,pri in parse_zip(z):add(r,m,h,t,rt,pri,p.name)
+             except Exception as e:issues.append({'artifact':p.name,'error':str(e)})
+            counts=C.Counter((k[0],m) for k,m in picks);print(json.dumps({'baseline_by_day':dict(C.Counter(k[0] for k in base if k[0] in targets and off(k)<=cut)),'candidate_models':sorted({m for _,m in picks}),'candidate_rows':len(picks),'issues':issues,'note':'Local parser audit; ZIP timestamps are not remote artifact publication proof.'},indent=2));return
+           def list_runs(it):
+            wf,prefix=it;url=f'repos/{a.repo}/actions/workflows/{wf}/runs?status=success&created={warm-D.timedelta(days=1)}..{end}&per_page=100'
+            try:return [(wf,prefix,*l.split('\t')) for l in run(['gh','api','--paginate',url,'--jq','.workflow_runs[] | [.id,.created_at] | @tsv']).splitlines() if l.strip()]
+            except Exception as e:issues.append({'workflow':wf,'error':str(e)});return []
+           with F.ThreadPoolExecutor(max_workers=4) as ex:source_runs=[r for b in ex.map(list_runs,WF.items()) for r in b]
+           print('STAGE173_SOURCE_RUNS',len(source_runs),flush=True)
+           def fetch_art(item):
+            wf,prefix,rid,_=item
+            try:
+             x=run(['gh','api',f'repos/{a.repo}/actions/runs/{rid}/artifacts?per_page=100','--jq','.artifacts[] | select(.expired == false) | [.id,.name,.created_at] | @tsv'])
+             for line in x.splitlines():
+              aid,name,created=line.split('\t');pub=ts(created)
+              if not name.startswith(prefix) or not pub or pub>cut:continue
+              # Use the proven Actions artifact download path; published time comes from the API.
+              with tempfile.TemporaryDirectory() as td:
+               run(['gh','run','download',rid,'--repo',a.repo,'--name',name,'--dir',td],timeout=240)
+               buf=io.BytesIO()
+               with zipfile.ZipFile(buf,'w') as z:
+                for p in P.Path(td).rglob('*'):
+                 if p.is_file() and (p.name in RANK or p.name in ('strategy-roi-combined.json','stage128-g5-paper-audit.json')):z.write(p,str(p.relative_to(td)))
+               with zipfile.ZipFile(buf) as z:return rid,parse_zip(z,pub),None
+             return rid,[],'no usable artifact'
+            except Exception as e:return rid,[],str(e)
+           with F.ThreadPoolExecutor(max_workers=6) as ex:
+            for i,(rid,rs,error) in enumerate(ex.map(fetch_art,source_runs),1):
+             if error:issues.append({'run':rid,'error':error})
+             for r,m,h,t,rt,pri in rs:add(r,m,h,t,rt,pri,'artifact:'+rid)
+             if i%25==0:print('STAGE173_ARTIFACTS',i,'/',len(source_runs),flush=True)
+           # Archived per-model full Rank 1 records, not official shortlist substitutions.
+           for d in sorted(all_days):
+            p=P.Path('data/model-performance')/(d+'.json')
+            if not p.exists():continue
+            try:
+             for m,rs in load(p).get('models',{}).items():
+              for r in rs:
+               if r.get('pre_off_valid') is not True:continue
+               h=next((x.get('horse') for x in r.get('runners',[]) if str(x.get('rank'))=='1'),None)
+               add(r,m,h,ts(r.get('snapshot_at')),None,1,'daily-archive:'+d)
+            except Exception as e:issues.append({'archive':str(p),'error':str(e)})
+           dc=P.Path('data/strategy-dc-probabilities.json')
+           for sha,commit in versions(dc,warm.isoformat()):
+            if commit>cut:continue
+            for r in git_json(sha,dc).get('races',[]):
+             stamp=ts(r.get('published_at'));h=next((x.get('horse') for x in r.get('runners',[]) if str(x.get('rank'))=='1'),None)
+             if stamp:add(r,'D(c)',h,max(stamp,commit),None,1,'git:'+sha[:12])
+           for k,(name,aw) in names.items():
+            old=types.get(k,(0,None,None));rt=refine(name,old[2],aw)
+            if rt:types[k]=(5,off(k)-D.timedelta(seconds=1),rt)
+           # Known-at timestamps: compare final settlement with actual earlier Git snapshots.
+           results={};known={}
+           for d in sorted(all_days):
+            p=P.Path('data/racing-results')/(d+'.json')
+            if not p.exists():continue
+            try:
+             for r in load(p).get('results',[]):
+              k=key(r)
+              if k and off(k)<=cut:results[k]=r
+             for sha,stamp in versions(p):
+              if stamp>cut:continue
+              for r in git_json(sha,p).get('results',[]):
+               k=key(r)
+               if k not in results or stamp<off(k):continue
+               final=sig(results[k])
+               for h,v in sig(r).items():
+                if final.get(h)==v:known.setdefault((k,h),stamp)
+            except Exception as e:issues.append({'results':str(p),'error':str(e)})
+           history=C.defaultdict(list);models=sorted({m for k,m in picks})
+           for (k,m),p in picks.items():
+            rt=types.get(k,(None,None,None))[2];v=settle(results.get(k),p['horse']);at=known.get((k,norm(p['horse'])))
+            if rt and v is not None and at:history[rt,m].append((k[0],at,*v))
+           decisions=[];common=[];audit=[]
+           for k,b in sorted(base.items()):
+            if k[0] not in targets or off(k)>cut:continue
+            rt=types.get(k,(None,None,None))[2] or 'UNCLASSIFIED';mid=D.datetime.combine(D.date.fromisoformat(k[0]),D.time.min,TZ).astimezone(UTC)
+            choices={'V1':(b,'original',0,0,None)}
+            for v,window in [('V2_7d',7),('V3_30d',30)]:
+             lo=(D.date.fromisoformat(k[0])-D.timedelta(days=window)).isoformat();eligible=[]
+             for m in models:
+              rs=[x for x in history.get((rt,m),[]) if lo<=x[0]<k[0] and x[1]<mid];n=len(rs);nd=len({x[0] for x in rs})
+              if n>=a.min_races and nd>=a.min_days:eligible.append((100*sum(x[3] for x in rs)/n,n,nd,m))
+             eligible.sort(key=lambda x:(-x[0],-x[1],x[3]));best=eligible[0] if eligible else None
+             if best:
+              roi,n,nd,m=best;p=picks.get((k,m));choices[v]=(p or b,'rolling_route' if p else 'fallback_candidate_unavailable',n,nd,roi)
+             else:choices[v]=(b,'fallback_insufficient_history',0,0,None)
+             audit.append({'version':v,'date':k[0],'course':k[1],'time':k[2],'race_type':rt,'decision_cutoff':mid.isoformat(),'window_start':lo,'qualified_models':len(eligible),'selected_model':best[3] if best else None,'training_bets':best[1] if best else 0,'training_days':best[2] if best else 0,'training_roi_pct':round(best[0],4) if best else None})
+            batch=[]
+            for v,(p,reason,n,nd,roi) in choices.items():
+             val=settle(results.get(k),p['horse']);row={'version':v,'date':k[0],'course':k[1],'time':k[2],'race_type':rt,'discipline':disc(rt),'source_model':p['model'],'horse':p['horse'],'publication':p['stamp'].isoformat(),'source':p['source'],'reason':reason,'training_bets':n,'training_days':nd,'training_roi_pct':roi,'status':'settled' if val is not None else 'unsettled_or_void','win':val[0] if val is not None else None,'pl':val[1] if val is not None else None};batch.append(row)
+            decisions+=batch
+            if all(x['status']=='settled' for x in batch):common+=batch
+           def summarize(rs,scope):
+            g=C.defaultdict(list)
+            for r in rs:
+             if r['status']!='settled':continue
+             for dim,k in [('overall',None),('daily','date'),('discipline','discipline'),('race_type','race_type')]:g[r['version'],dim,r[k] if k else 'All'].append(r)
+            return [{'scope':scope,'version':v,'dimension':dim,'group':name,**metrics(rows)} for (v,dim,name),rows in sorted(g.items())]
+           summary=summarize(decisions,'all_settled')+summarize(common,'common_races');coverage=[]
+           for m in models:
+            ks=[k for k,mm in picks if mm==m];ds=sorted({k[0] for k in ks});coverage.append({'model':m,'first_day':ds[0],'last_day':ds[-1],'available_days':len(ds),'rank1_rows':len(ks)})
+           for name,rs in [('summary',summary),('decisions',decisions),('training-audit',audit),('model-coverage',coverage)]:write_csv(out/(name+'.csv'),rs)
+           report={'start':a.start,'end':a.end,'cutoff':a.cutoff,'warmup_start':warm.isoformat(),'minimum_races':a.min_races,'minimum_days':a.min_days,'baseline_races':len(decisions)//3,'common_settled_races':len(common)//3,'model_count':len(models),'source_runs':len(source_runs),'source_errors':len(issues),'results_dates':sorted({k[0] for k in results}),'routing_counts':dict(C.Counter(r['version']+'|'+r['reason'] for r in decisions)),'note':'V3 is an up-to-30-day exploratory window, not proof of 30 complete days. Compare common_races first. Missing outcomes and non-runners excluded. No live changes.','summary':summary,'models':coverage}
+           (out/'report.json').write_text(json.dumps(report,indent=2));(out/'issues.json').write_text(json.dumps(issues,indent=2))
+           print(json.dumps({k:v for k,v in report.items() if k not in ('summary','models')},indent=2),flush=True)
+           for row in summary:
+            if row['dimension']=='overall':print('STAGE173_RESULT',json.dumps(row),flush=True)
+           if not common:raise RuntimeError('No common settled races; inspect uploaded audit')
+          if __name__=='__main__':main()
+          PY
+          python -m py_compile "$RUNNER_TEMP/stage173.py"
+          python "$RUNNER_TEMP/stage173.py" --repo "$GITHUB_REPOSITORY" --out reports/stage173
+      - name: Upload results and evidence audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage173-walkforward-comparison
+          path: reports/stage173/
+          if-no-files-found: warn
+          retention-days: 30
