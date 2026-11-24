@@ -2,160 +2,191 @@ name: Racing Hot Pots - Five Minute Data Updates
 
 on:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      fallback:
+        type: boolean
+        default: false
+    secrets:
+      PUNTERSEDGE_API_KEY:
+        required: true
   schedule:
-    - cron: '*/5 7-22 * * *'
+    - cron: '1-59/5 7-22 * * *'
+      timezone: 'Europe/Dublin'
+    - cron: '3,18,33,48 7-22 * * *'
+      timezone: 'Europe/Dublin'
 
 permissions:
   contents: write
   actions: write
 
-concurrency:
-  group: rhp-five-minute-update
-  cancel-in-progress: false
-
 jobs:
-  collect:
+  odds:
+    if: github.event_name != 'schedule' || github.event.schedule != '3,18,33,48 7-22 * * *' || inputs.fallback == true
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 8
+    concurrency:
+      group: rhp-stage162-odds-publisher
+      cancel-in-progress: false
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          persist-credentials: true
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Update UK and Irish bookmaker odds
+          ref: main
+          fetch-depth: 0
+      - name: Check published odds age before spending credits
+        id: guard
+        env:
+          FALLBACK: ${{ inputs.fallback }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          python - <<'PY'
+          import datetime as dt, json, os
+          from pathlib import Path
+          try:
+              x=json.loads(Path('data/latest-odds.json').read_text())
+              stamp=dt.datetime.fromisoformat(x['collected_at'].replace('Z','+00:00'))
+              age=(dt.datetime.now(dt.timezone.utc)-stamp).total_seconds()/60
+              if not x.get('prices') or age < -2: age=1e6
+          except (OSError,ValueError,TypeError,KeyError): age=1e6
+          fallback=os.environ['FALLBACK'].lower()=='true'
+          threshold=9 if fallback else 4
+          needed=age>=threshold or (os.environ['EVENT']=='workflow_dispatch' and not fallback)
+          print(f'ODDS_AGE_MIN={age:.1f} FALLBACK={fallback} COLLECT={needed}')
+          if age>=15: print(f'::warning::Published odds are {age:.1f} minutes old')
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f: f.write(f'collect={str(needed).lower()}\n')
+          PY
+      - name: Collect one fresh odds snapshot
+        if: steps.guard.outputs.collect == 'true'
         env:
           PUNTERSEDGE_API_KEY: ${{ secrets.PUNTERSEDGE_API_KEY }}
-        run: python scripts/stage26_feed_capture.py odds
-
-      - name: Archive older odds snapshots (no API call)
-        run: python archive-odds-history.py
-
-      - name: Publish odds first (before slower racecard and result processing)
+        run: |
+          set -euo pipefail
+          test -n "$PUNTERSEDGE_API_KEY"
+          python scripts/stage26_feed_capture.py odds
+          python - <<'PY'
+          import datetime as dt,json,os
+          from pathlib import Path
+          p=Path('data/latest-odds.json'); j=json.loads(p.read_text())
+          assert isinstance(j.get('prices'),list) and j['prices'], 'Empty odds response; preserve published feed'
+          assert any(isinstance(q,dict) and isinstance(q.get('decimal_odds'),(int,float)) and q['decimal_odds']>1 and not q.get('stale') for q in j['prices']), 'No usable odds; preserve published feed'
+          stamp=dt.datetime.fromisoformat(j['collected_at'].replace('Z','+00:00'))
+          age=(dt.datetime.now(dt.timezone.utc)-stamp).total_seconds()
+          assert -120<=age<=600, 'Invalid collection timestamp'
+          Path(os.environ['RUNNER_TEMP'],'stage162-odds.json').write_bytes(p.read_bytes())
+          PY
+      - name: Merge snapshot onto latest main and publish without stale overwrite
+        if: steps.guard.outputs.collect == 'true'
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add data/latest-odds.json data/odds-history.json data/odds-archive/
-          if git diff --cached --quiet; then exit 0; fi
-          git commit -m 'Publish current bookmaker odds promptly'
-          for attempt in 1 2 3 4; do
-            if git pull --rebase origin main && git push origin HEAD:main; then exit 0; fi
-            git rebase --abort || true
-            sleep $((attempt * 3))
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            python - <<'PY'
+          import datetime as dt,json,os
+          from pathlib import Path
+          def stamp(x):
+              try: return dt.datetime.fromisoformat(x['collected_at'].replace('Z','+00:00'))
+              except (KeyError,TypeError,ValueError): return dt.datetime.min.replace(tzinfo=dt.timezone.utc)
+          p=Path('data/latest-odds.json'); h=Path('data/odds-history.json')
+          new=json.loads(Path(os.environ['RUNNER_TEMP'],'stage162-odds.json').read_text())
+          old=json.loads(p.read_text()) if p.exists() else {}
+          if stamp(new)<=stamp(old):
+              print('ODDS_SUPERSEDED: a newer snapshot already exists')
+              raise SystemExit(0)
+          hist=json.loads(h.read_text()) if h.exists() else []
+          assert isinstance(hist,list), 'Invalid odds history; refusing to overwrite'
+          hist={v['collected_at']:v for v in hist if isinstance(v,dict) and v.get('collected_at')}
+          hist[new['collected_at']]=new
+          p.write_text(json.dumps(new,indent=2)+'\n')
+          h.write_text(json.dumps(sorted(hist.values(),key=stamp),separators=(',',':'))+'\n')
+          print('ODDS_PUBLISH',new['collected_at'],'quotes',len(new['prices']))
+          PY
+            if git diff --quiet -- data/latest-odds.json data/odds-history.json; then exit 0; fi
+            python archive-odds-history.py
+            git add data/latest-odds.json data/odds-history.json data/odds-archive/
+            git commit -m 'Stage162: publish fresh bookmaker odds'
+            if git push origin HEAD:main; then exit 0; fi
+            sleep "$((attempt*2))"
           done
-          echo 'Could not publish timely odds: GitHub update conflict' >&2
+          echo '::error::Odds publication failed after five attempts'
           exit 1
 
+  maintenance:
+    if: inputs.fallback != true && (github.event_name == 'workflow_dispatch' || github.event.schedule == '3,18,33,48 7-22 * * *')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: rhp-stage162-results-and-racecards
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
       - name: Update final UK and Irish race results
         env:
           PUNTERSEDGE_API_KEY: ${{ secrets.PUNTERSEDGE_API_KEY }}
         run: python collect-puntersedge-results.py
-
-      - name: Reconcile verified results, finishing SPs and trainer/jockey form
-        shell: bash
+      - name: Reconcile results and trainer/jockey form
         run: |
           set -euo pipefail
           python scripts/stage68_result_reconciler.py
-          # Only recompute 14-day form when new verified race results were appended.
           if [ -n "$(git status --porcelain -- data/racing-results/)" ]; then
-            python calculate-strike-rates.py || echo "WARNING: Form rebuild failed; verified results will still be published."
+            python calculate-strike-rates.py || echo '::warning::Form rebuild failed'
           fi
-
-      - name: Update settled ROI specialists using final verified results
-        shell: bash
-        run: |
           if test -s data/strategy-roi-combined.json; then
-            python scripts/stage153_roi_combined.py settle \
-              --output data/strategy-roi-combined.json \
-              --results data/race-results.json \
-              --settled data/strategy-roi-combined-results.json
+            python scripts/stage153_roi_combined.py settle --output data/strategy-roi-combined.json --results data/race-results.json --settled data/strategy-roi-combined-results.json
           fi
-
-      - name: Update and archive complete racecards once an hour
+      - name: Refresh racecards once per hour
         env:
           RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
           RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
         run: |
           set -euo pipefail
-          # GitHub's scheduled runners frequently start after hh:05. Compare the
-          # published refresh hour, not the wall-clock start minute. This runs
-          # at most once per UTC hour, but catches up immediately if stale.
-          if python - <<'RHP_RACECARD_FRESHNESS'
+          if python - <<'PY'
           import datetime as dt,json
           from pathlib import Path
-          path=Path('data/racecards.json')
           try:
-           payload=json.loads(path.read_text())
-           last=dt.datetime.fromisoformat(payload['collected_at'].replace('Z','+00:00'))
-           fresh=(dt.datetime.now(dt.timezone.utc)-last).total_seconds()<3600 and last.astimezone(dt.timezone.utc).hour==dt.datetime.now(dt.timezone.utc).hour
-           if fresh and payload.get('runners'):
-            print('Racecards already collected this UTC hour:',last.isoformat())
-            raise SystemExit(0)
-          except (OSError,ValueError,TypeError,KeyError) as exc:
-           print('Racecards need refresh:',exc)
-          raise SystemExit(1)
-          RHP_RACECARD_FRESHNESS
-          then
-            echo 'Racecards up to date; no extra free-tier API request.'
-          else
-            python scripts/stage26_feed_capture.py racecards
-          fi
-
-      - name: Detect confirmed non-runners and archive pre-change decisions
+              j=json.loads(Path('data/racecards.json').read_text())
+              last=dt.datetime.fromisoformat(j['collected_at'].replace('Z','+00:00'))
+              fresh=0<=(dt.datetime.now(dt.timezone.utc)-last).total_seconds()<3600 and bool(j.get('runners'))
+          except (OSError,ValueError,TypeError,KeyError): fresh=False
+          raise SystemExit(0 if fresh else 1)
+          PY
+          then echo 'Racecards already fresh'; else python scripts/stage26_feed_capture.py racecards; fi
+      - name: Detect confirmed non-runners
         id: nonrunners
-        shell: bash
         run: |
           set -euo pipefail
-          python scripts/stage26_nonrunner_monitor.py --repo . | tee /tmp/stage26-monitor.log
-          count=$(sed -n 's/^STAGE26_NR_NEW=//p' /tmp/stage26-monitor.log | tail -1)
+          python scripts/stage26_nonrunner_monitor.py --repo . | tee /tmp/stage162-monitor.log
+          count=$(sed -n 's/^STAGE26_NR_NEW=//p' /tmp/stage162-monitor.log | tail -1)
           echo "new=${count:-0}" >> "$GITHUB_OUTPUT"
-
-      - name: Refresh AW (2) historical track strike rates (offline)
+      - name: Refresh AW track stats
         run: python calculate-aw2-track-stats.py
-
-      - name: Publish changed API feeds
+      - name: Publish maintenance data only (never odds)
         run: |
+          set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add data/aw2-track-stats.json data/latest-odds.json data/odds-history.json data/odds-archive/ data/race-results.json data/racecards.json data/racecards-archive.json data/nonrunner-monitor.json data/racing-results/ data/strike-rates.json data/form-identity-cache.json data/strategy-d-history.json data/strategy-d-results.json reports/stage32/form-rebuild-audit.json
-          # This file is created only after a confirmed non-runner. It is optional.
-          if [ -f data/strategy-roi-combined-results.json ]; then git add data/strategy-roi-combined-results.json; fi
-          if [ -f data/nonrunner-decision-history.json ]; then
-            git add data/nonrunner-decision-history.json
-          fi
-          if git diff --cached --quiet; then
-            echo 'No changes to publish.'
-            exit 0
-          fi
-          git commit -m 'Refresh odds, results, alerts and racecard archive'
-          for attempt in 1 2 3 4; do
-            if git pull --rebase origin main && git push origin HEAD:main; then
-              echo 'Published refreshed data.'
-              exit 0
-            fi
-            git rebase --abort || true
-            sleep $((attempt * 3))
+          for path in data/aw2-track-stats.json data/race-results.json data/racecards.json data/racecards-archive.json data/nonrunner-monitor.json data/racing-results/ data/strike-rates.json data/form-identity-cache.json data/strategy-d-history.json data/strategy-d-results.json reports/stage32/form-rebuild-audit.json data/strategy-roi-combined-results.json data/nonrunner-decision-history.json; do
+            if test -e "$path"; then git add "$path"; fi
           done
-          echo 'Could not publish; check for concurrent legacy workflow writes.' >&2
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Stage162: refresh results and racecards independently of odds'
+          for attempt in 1 2 3 4; do
+            if git pull --rebase origin main && git push origin HEAD:main; then exit 0; fi
+            git rebase --abort || true
+            sleep "$((attempt*3))"
+          done
           exit 1
-
-      - name: Reassess all three models on confirmed non-runner changes
-        if: ${{ steps.nonrunners.outputs.new != '0' && steps.nonrunners.outputs.new != '' }}
+      - name: Reassess models on confirmed non-runner changes
+        if: steps.nonrunners.outputs.new != '0' && steps.nonrunners.outputs.new != ''
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: bash
         run: |
           set -euo pipefail
-          # Stage 13 rebuilds A against the changed field. Stage 17 is triggered
-          # by successful Stage 13 completion and rebuilds B's live decisions.
           gh workflow run stage13-strategy-learning.yml --ref main
-          # Stage 22 independently rebuilds Model C's full-field rankings.
           gh workflow run stage21-model-c-live.yml --ref main
-          echo 'Triggered genuine all-runner reassessment, not simple odds renormalisation.'

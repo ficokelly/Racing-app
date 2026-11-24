@@ -3,88 +3,17 @@ name: 'Stage153 — Odds freshness watchdog and fallback'
 on:
   workflow_dispatch:
   schedule:
-    # Independent backup only; normal 5-minute collector remains the primary.
-    - cron: '2-59/5 7-22 * * *'
+    - cron: '4-59/5 7-22 * * *'
       timezone: 'Europe/Dublin'
 
 permissions:
   contents: write
-
-concurrency:
-  group: stage153-odds-fallback
-  cancel-in-progress: false
+  actions: write
 
 jobs:
   fallback:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 12
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 0
-      - name: Check already published odds age before any paid API request
-        id: freshness
-        shell: bash
-        run: |
-          python - <<'PY'
-          import datetime as dt,json,os,pathlib
-          try:
-            x=json.loads(pathlib.Path('data/latest-odds.json').read_text())
-            stamp=dt.datetime.fromisoformat(x['collected_at'].replace('Z','+00:00'))
-            age=(dt.datetime.now(dt.timezone.utc)-stamp).total_seconds()/60
-          except (OSError,TypeError,ValueError,KeyError):age=1e6
-          needed=age>9
-          print('ODDS_AGE_MIN',round(age,1),'FALLBACK_REQUIRED',needed)
-          with open(os.environ['GITHUB_OUTPUT'],'a') as f:f.write('needed='+str(needed).lower()+'\n')
-          PY
-      - name: Collect only when original five-minute publisher is stale
-        if: steps.freshness.outputs.needed == 'true'
-        env:
-          PUNTERSEDGE_API_KEY: ${{ secrets.PUNTERSEDGE_API_KEY }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -z "${PUNTERSEDGE_API_KEY:-}" ]; then
-            echo 'No PuntersEdge API key. Do not substitute fabricated prices.' >&2
-            exit 1
-          fi
-          python scripts/stage26_feed_capture.py odds
-          cp data/latest-odds.json "$RUNNER_TEMP/stage153-fallback-odds.json"
-      - name: Safely publish only newer odds (never overwrite a fresher main branch)
-        if: steps.freshness.outputs.needed == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          for attempt in 1 2 3 4 5; do
-            git fetch origin main
-            git reset --hard origin/main
-            python - <<'PY'
-          import datetime as dt,json,os,pathlib
-          new=json.loads(pathlib.Path(os.environ['RUNNER_TEMP'],'stage153-fallback-odds.json').read_text())
-          dest=pathlib.Path('data/latest-odds.json')
-          old=json.loads(dest.read_text()) if dest.exists() else {}
-          a=dt.datetime.fromisoformat(new['collected_at'].replace('Z','+00:00'))
-          b=dt.datetime.fromisoformat(old['collected_at'].replace('Z','+00:00')) if old.get('collected_at') else dt.datetime.min.replace(tzinfo=dt.timezone.utc)
-          if a<=b:
-            print('ODDS_FALLBACK_SUPERSEDED_BY_FRESHER_PUBLISHER')
-          else:
-            dest.write_text(json.dumps(new,indent=2)+'\n')
-            h=pathlib.Path('data/odds-history.json')
-            history=json.loads(h.read_text()) if h.exists() else []
-            if not isinstance(history,list):history=[]
-            history=[v for v in history if v.get('collected_at')!=new['collected_at']]
-            history.append(new)
-            h.write_text(json.dumps(history,indent=2)+'\n')
-            print('ODDS_FALLBACK_SNAPSHOT_PUBLISHED',new['collected_at'],'ROWS',new.get('prices_collected'))
-          PY
-            git add data/latest-odds.json data/odds-history.json
-            if git diff --cached --quiet; then echo 'No stale overwrite';exit 0;fi
-            git commit -m 'Stage153: backup bookmaker snapshot after stale primary feed'
-            if git push origin HEAD:main; then exit 0; fi
-            sleep "$((attempt*3))"
-          done
-          echo 'Could not publish fallback due to concurrent writes' >&2
-          exit 1
+    uses: ./.github/workflows/racing-hot-pots-five-minute.yml
+    with:
+      fallback: true
+    secrets:
+      PUNTERSEDGE_API_KEY: ${{ secrets.PUNTERSEDGE_API_KEY }}
