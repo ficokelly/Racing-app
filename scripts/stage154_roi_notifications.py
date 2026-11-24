@@ -42,7 +42,22 @@ def slug(value):
     return re.sub(r"[^a-z0-9]", "", str(value or "").casefold())
 
 
+# STAGE161_ABANDONED_ALERTS
+def abandoned_alert_keys():
+    groups = {}
+    for r in read_json(DATA / 'racecards.json', {}).get('runners', []):
+        try:
+            day = str(r.get('date') or '')
+            time = dt.datetime.fromisoformat(str(r['race_time']).replace('Z','+00:00')).astimezone(DUBLIN).strftime('%H:%M')
+            key = '|'.join([day, slug(r.get('course')), time])
+            groups.setdefault(key, []).append(slug(r.get('race_status')))
+        except (KeyError, ValueError, TypeError):
+            continue
+    return {k for k,v in groups.items() if v and all(x in ('abandoned','cancelled','canceled','void') for x in v)}
+
+
 def first_two(race):
+
     runners = [x for x in (race.get("runners") or []) if isinstance(x, dict)]
     ranked = sorted((x for x in runners if str(x.get("rank", "")).isdigit()), key=lambda x: int(x["rank"]))
     first = race.get("selection") if isinstance(race.get("selection"), dict) else {}
@@ -99,7 +114,8 @@ def current_feed():
     if generated.tzinfo is None or generated.astimezone(UTC) > dt.datetime.now(UTC) + dt.timedelta(minutes=3):
         print("INVALID_FEED_TIME", at)
         return None
-    races = race_snapshot(feed)
+    closed = abandoned_alert_keys()
+    races = {k:v for k,v in race_snapshot(feed).items() if k not in closed}
     if not any(r["rank1"] for r in races.values()):
         print("NO_PUBLISHED_RANK1", date)
         return None
@@ -198,7 +214,7 @@ def main():
         before = state["days"].get(day)
         if not before or str(before.get("generated_at")) != stamp:
             first = before is None
-            previous = (before or {}).get("races") or {}
+            previous = {k:v for k,v in ((before or {}).get("races") or {}).items() if k not in abandoned_alert_keys()}
             event = make_event(day, stamp, previous, current, first)
             if not any(x.get("id") == event["id"] for x in events):
                 events.insert(0, event)
@@ -209,6 +225,7 @@ def main():
     # Independently retry pending deliveries; even if no fresh Stage153 run happened.
     secret = os.environ.get("ONESIGNAL_API_KEY", "").strip()
     subscriber = os.environ.get("ONESIGNAL_SUBSCRIPTION_ID", "").strip()
+    closed = abandoned_alert_keys()
     for event in reversed(events):
         if event.get("push_status") == "sent":
             continue
@@ -221,6 +238,12 @@ def main():
         if (dt.datetime.now(UTC) - created.astimezone(UTC)) > dt.timedelta(hours=2):
             event["push_status"] = "expired"
             event["push_error"] = "Notification no longer timely; preserved in app history"
+            continue
+        affected = [x for x in event.get('changes', []) if x.get('race_key') in closed]
+        if affected:
+            # An already composed stale push is not rewritten or sent; keep its audit.
+            event['push_status'] = 'suppressed'
+            event['push_error'] = 'Includes an abandoned race; superseded by current racecards'
             continue
         result = send_push(event, secret, subscriber)
         event["push_status"] = result["status"]

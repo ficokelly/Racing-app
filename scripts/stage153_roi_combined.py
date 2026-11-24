@@ -160,6 +160,10 @@ def declared(cards,target):
   grouped[k].append(r)
  return grouped
 
+# STAGE161_ABANDONED_RACES: require explicit consistent race-level status.
+def abandoned_race(entries):
+ return bool(entries) and all(normalize(r.get('race_status')) in {'abandoned','cancelled','canceled','void'} for r in entries)
+
 def nonrunner(r):
  return any(str(r.get(k) or '').casefold().replace('-','').replace('_','') in ('true','1','yes','nr','nonrunner','withdrawn','scratched','dns')
    for k in ('is_non_runner','is_withdrawn','withdrawn','runner_status','status'))
@@ -254,10 +258,15 @@ def build(args):
    for r in old.get('races',[]):
     if r.get('date')==target:prior[(str(r.get('date'))+' '+str(r.get('time')),normalize(r.get('course')))]=r
   except (OSError,ValueError):pass
- races=[];counts=collections.Counter()
+ races=[];abandoned=[];counts=collections.Counter()
  for (stamp,course_key),entries in sorted(grouped.items()):
   off=dt.datetime.strptime(stamp,'%Y-%m-%d %H:%M').replace(tzinfo=UTC)
   course=entries[0].get('course');clock=stamp[11:]
+  if abandoned_race(entries):
+   abandoned.append({**prior.get((target+' '+clock,course_key),{}),'date':target,'course':course,'time':clock,'race_time':iso(off),'race_status':'abandoned',
+    'racecard_asof':cards.get('collected_at')})
+   counts['abandoned']+=1
+   continue
   old=prior.get((stamp.split()[0]+' '+clock,course_key))
   # Persist the original pre-off prediction once the race has begun.
   if old and off<=now:
@@ -363,10 +372,17 @@ def build(args):
  if args.output.exists():
   try:existing=[r for r in json.loads(args.output.read_text()).get('races',[]) if r.get('date')!=target]
   except (ValueError,OSError):pass
+ if args.output.exists():
+  try:
+   previous_audit=json.loads(args.output.read_text()).get('abandoned_races',[])
+   audit={(r.get('date'),normalize(r.get('course')),r.get('time')):r for r in previous_audit}
+   for r in abandoned:audit.setdefault((r.get('date'),normalize(r.get('course')),r.get('time')),r)
+   abandoned=list(audit.values())
+  except (ValueError,OSError):pass
  payload={'version':1,'model':'ROI Specialists','day':target,'generated_at':iso(now),
           'schedule':'20:00 previous day; 08:00, 10:00, 12:00, 14:00 and 16:00 Dublin',
           'races':sorted(existing+races,key=lambda r:(r.get('date',''),r.get('race_time',''))),
-          'coverage':dict(counts),'source_rows':dict(read_stats),'source_models':sorted(set(ROUTES.values())),
+          'coverage':dict(counts),'abandoned_races':abandoned,'source_rows':dict(read_stats),'source_models':sorted(set(ROUTES.values())),
           'odds_used_to_select':False,
           'warning':'Research only; historical ROI is not a promise. No specialist = no fabricated selection.'}
  args.output.parent.mkdir(parents=True,exist_ok=True)
@@ -377,7 +393,7 @@ def build(args):
  # Stage155 + Stage159 only change prose and evidence metadata; all frozen rankings, scores and picks remain unchanged.
  args.output.write_text(json.dumps(payload,indent=2,ensure_ascii=False)+'\n')
  print('STAGE153_ASSEMBLED',json.dumps({'day':target,'races':len(races),'counts':dict(counts)}))
- if not counts['ranked'] and not counts['preserved_post_off']:
+ if not counts['ranked'] and not counts['preserved_post_off'] and counts['abandoned']!=len(grouped):
   raise RuntimeError('No verified complete-field specialist selections; withheld all races')
 
 def settle(args):
@@ -426,6 +442,9 @@ def selftest():
  for title,expected in cases:
   assert type_for([x(title,course='Dundalk' if expected.startswith('aw') or expected=='auction restricted' else 'Hexham')])==expected,(title,expected)
  assert type_for([x('Flat Handicap',course='Ascot')]) is None
+ assert abandoned_race([{'race_status':'abandoned'},{'race_status':'cancelled'}])
+ assert not abandoned_race([{'race_status':'abandoned'},{'race_status':'declared'}])
+ assert not abandoned_race([{}])
  assert len(STAGE156_ROUTES)==50
  assert STAGE156_ROUTES['AW_NOVICE']['model']=='STAGE143_TYPE_INTERACTIONS'
  assert STAGE156_ROUTES['AW_LISTED_PATTERN']['evidence_grade']=='provisional_small_sample'
