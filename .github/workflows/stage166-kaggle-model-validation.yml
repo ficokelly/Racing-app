@@ -1,0 +1,210 @@
+name: Stage166 - Validate updated form in all specialist models (paper only)
+on:
+  workflow_dispatch:
+    inputs:
+      selection_date:
+        description: "Today or tomorrow in Dublin; blank selects tomorrow if cards exist"
+        required: false
+        type: string
+        default: ""
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Restore exact baseline used by live specialists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/base" "$RUNNER_TEMP/ref" reports/stage166
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage2-historical-staging-database --dir "$RUNNER_TEMP/base"
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage4-reference-named-events-and-winners --dir "$RUNNER_TEMP/ref"
+          test -s "$RUNNER_TEMP/base/historical_ukie_staging.sqlite"
+          test -s "$RUNNER_TEMP/ref/all_races_with_reference_event_ids.csv"
+      - name: Fetch pinned Kaggle archive and verify importer
+        run: |
+          python -m unittest -v test_stage2.py
+          python -m pip install 'kagglehub>=0.3,<1'
+          python - <<'PY'
+          import kagglehub,os
+          path=kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025/versions/132')
+          with open(os.environ['GITHUB_ENV'],'a') as f: print('HISTORY_PATH='+path,file=f)
+          PY
+      - name: Extend original archive in a disposable copy using exact source IDs
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv,datetime as dt,json,os,pathlib,re,sqlite3,shutil,collections
+          import import_historical_ukie as I
+          import stage4_match_all_recurring_races as R
+          tmp=pathlib.Path(os.environ['RUNNER_TEMP']); src=pathlib.Path(os.environ['HISTORY_PATH'])
+          base=tmp/'base/historical_ukie_staging.sqlite'; ref=tmp/'ref/all_races_with_reference_event_ids.csv'
+          dest=tmp/'candidate.sqlite'; delta=tmp/'delta.sqlite'; out=pathlib.Path('reports/stage166')
+          with sqlite3.connect(f'file:{base}?mode=ro',uri=True) as b:
+              before=b.execute('select max(race_date), count(*) from historical_races').fetchone()
+              before_runs=b.execute('select count(*) from historical_runs').fetchone()[0]
+              assert b.execute('pragma quick_check').fetchone()[0]=='ok'
+          first=min('2026-10-23',(dt.date.fromisoformat(before[0])+dt.timedelta(days=1)).isoformat()); last='2026-11-20'
+          assert first<=last and first>'2026-09-30',first
+          print('Baseline cutoff',before[0],'reconciliation window',first,last,flush=True)
+          # Source-identical race IDs: collect factual titles, detect contradictory source duplicates.
+          names={}; bad=set(); runner_seen={}; counters=collections.Counter()
+          for filename,opener in I.source_iter(src):
+              with opener() as f:
+                  reader=csv.DictReader(f); m=I.mapping(reader.fieldnames or [])
+                  if not all(m.get(k) for k in ('race_date','course','horse','finish','race_id')): continue
+                  for row in reader:
+                      d=I.dateparse(I.value(row,m,'race_date')) if first<=str(row.get(m['race_date'],'')).strip()[:10]<=last else None
+                      if not d or not first<=d<=last:continue
+                      course=I.value(row,m,'course'); raw=I.value(row,m,'race_id'); horse=I.value(row,m,'horse')
+                      if not course or not raw or not horse:continue
+                      rid=I.SOURCE+':'+d+':'+I.normhead(course)+':'+re.sub('[^a-zA-Z0-9_-]','',raw)[:90]
+                      name=str(row.get('race_name') or '').strip(); region=R.region(course)
+                      facts=(d,course,I.value(row,m,'race_type'),name,region,raw)
+                      if rid in names and names[rid]!=facts:bad.add(rid)
+                      names[rid]=facts
+                      hid=I.value(row,m,'horse_id'); key=(rid,'id:'+hid if hid else 'name:'+I.normname(horse))
+                      signature=tuple(I.value(row,m,k) for k in ('horse','country','foaled','finish','trainer','jockey','rating','weight','sp','draw','age','sex','sire','dam','rpr','ts','comment','beaten'))
+                      if key in runner_seen:
+                          if runner_seen[key]!=signature:bad.add(rid)
+                          else:counters['identical_duplicate_source_rows']+=1
+                      runner_seen[key]=signature
+          report=I.process(src,delta,first,last,'import')
+          assert report['date_max']==last and report['inserted']>0,report
+          shutil.copy2(base,dest)
+          with sqlite3.connect(dest) as c:
+              c.execute('attach database ? as incoming',(str(delta),))
+              c.execute('create temp table approved(id text primary key)')
+              # Match only exact original source race identifiers; existing result conflicts quarantine the race.
+              for rid in c.execute('''select distinct i.race_id from incoming.historical_runs i join historical_runs b on i.race_id=b.race_id and i.runner_key=b.runner_key where i.finish_pos is not b.finish_pos or i.outcome is not b.outcome or i.horse_name_norm is not b.horse_name_norm'''):
+                  bad.add(rid[0]);counters['baseline_conflict_races']+=1
+              # Detect cross-ID duplicate or conflicting race records before any append.
+              # A shared runner on the same day and course is a conservative quarantine signal,
+              # never a reason to merge two provider race IDs automatically.
+              def slot(day,course,horse):
+                  return (day,R.canonical_course(course),I.normname(horse))
+              baseline_slots=collections.defaultdict(set)
+              for rid,day,course,horse in c.execute('select r.id,r.race_date,r.course,h.horse_name from historical_races r join historical_runs h on h.race_id=r.id where r.race_date between ? and ?',(first,last)):
+                  baseline_slots[slot(day,course,horse)].add(rid)
+              incoming_slots=collections.defaultdict(set)
+              for rid,day,course,horse in c.execute('select r.id,r.race_date,r.course,h.horse_name from incoming.historical_races r join incoming.historical_runs h on h.race_id=r.id'):
+                  incoming_slots[slot(day,course,horse)].add(rid)
+              cross_baseline=set();cross_incoming=set()
+              for k,ids in incoming_slots.items():
+                  for rid in ids:
+                      if baseline_slots.get(k,set())-{rid}:cross_baseline.add(rid)
+                      if len(ids)>1:cross_incoming.add(rid)
+              counters['cross_id_baseline_quarantine']=len(cross_baseline)
+              counters['cross_id_incoming_quarantine']=len(cross_incoming)
+              bad.update(cross_baseline|cross_incoming)
+              oldref={}
+              with ref.open(encoding='utf-8-sig',newline='') as f:
+                  rr=csv.DictReader(f); fields=rr.fieldnames or []
+                  assert {'stage2_race_id','date','region_scope','course','race_type','race_name'}<=set(fields)
+                  for row in rr:
+                      if first<=row.get('date','')<=last:
+                          rid=row['stage2_race_id']; facts=(row['date'],row['course'],row['race_type'],row['race_name'],row['region_scope'])
+                          if rid in oldref and oldref[rid]!=facts:bad.add(rid)
+                          oldref[rid]=facts
+              append=[]
+              for rid,d,course,typ in c.execute('select id,race_date,course,race_type from incoming.historical_races'):
+                  facts=names.get(rid)
+                  if rid in bad: counters['quarantined_races']+=1;continue
+                  if not facts or not facts[3] or facts[4] not in ('GB','IRELAND'):
+                      counters['missing_or_out_of_scope_reference']+=1;continue
+                  if rid in oldref and oldref[rid] != facts[:5]:
+                      counters['reference_conflicts']+=1;continue
+                  c.execute('insert into approved values(?)',(rid,))
+                  if rid not in oldref:
+                      append.append(dict(stage2_race_id=rid,date=d,course=course,race_type=typ or '',race_name=facts[3],region_scope=facts[4],source_race_id=facts[5]))
+              # Do not overwrite historical performances or training data.
+              c.execute('insert or ignore into historical_races select i.* from incoming.historical_races i join approved a on a.id=i.id');counters['new_races']=c.execute('select changes()').fetchone()[0]
+              c.execute('insert or ignore into historical_runs select i.* from incoming.historical_runs i join approved a on a.id=i.race_id');counters['new_runners']=c.execute('select changes()').fetchone()[0]
+              c.commit()
+              latest, races=c.execute('select max(race_date),count(*) from historical_races').fetchone(); runs=c.execute('select count(*) from historical_runs').fetchone()[0]
+              assert latest==last and runs==before_runs+counters['new_runners'] and races==before[1]+counters['new_races'],(latest,runs,races,counters)
+              assert c.execute('pragma quick_check').fetchone()[0]=='ok'
+              assert not c.execute('select count(*) from historical_runs h left join historical_races r on r.id=h.race_id where r.id is null').fetchone()[0]
+          with ref.open(encoding='utf-8-sig',newline='') as f,(tmp/'candidate-reference.csv').open('w',encoding='utf-8',newline='') as destref:
+              r=csv.DictReader(f); w=csv.DictWriter(destref,fieldnames=fields,extrasaction='ignore'); w.writeheader();w.writerows(r);w.writerows(append)
+          # The 21–23 November archive is preserved; do not silently convert unmatched API identities.
+          recent={}
+          for day in ('2026-11-21','2026-11-22','2026-11-23'):
+              p=pathlib.Path('data/racing-results')/(day+'.json')
+              rs=[r for r in json.loads(p.read_text()).get('results',[]) if r.get('status')=='final'] if p.exists() else []
+              recent[day]={'final_races':len(rs),'runner_rows':sum(len(r.get('runners',[])) for r in rs),
+                  'races_with_name':sum(bool(r.get('race_name') or r.get('name')) for r in rs),
+                  'races_with_type':sum(bool(r.get('type') or r.get('race_type')) for r in rs),
+                  'races_with_source_id':sum(bool(r.get('race_id') or (r.get('external_verification') or {}).get('source_race_id')) for r in rs),
+                  'runners_with_horse_id':sum(bool(h.get('horse_id')) for r in rs for h in r.get('runners',[])),
+                  'runners_with_trainer_and_jockey':sum(bool(h.get('trainer') and h.get('jockey')) for r in rs for h in r.get('runners',[]))}
+          result={'status':'CANDIDATE_ONLY_NOT_DEPLOYED','baseline_cutoff':before[0],'candidate_cutoff':latest,'first_reconciled_date':first,'kaggle_version':132,'original_races':before[1],'original_runs':before_runs,'candidate_races':races,'candidate_runs':runs,'new_reference_rows':len(append),'counts':dict(counters),'later_archive_not_yet_merged':recent,'note':'Existing historical rows are not overwritten. No model changes. Raw archive not published.'}
+          (out/'candidate-report.json').write_text(json.dumps(result,indent=2));print(json.dumps(result,indent=2))
+          PY
+      - name: Install existing specialist model dependencies
+        run: python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2
+      - name: Refresh declared racecards locally (no push)
+        env:
+          RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
+          RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
+        run: python collect-racecards.py
+      - name: Exercise exact existing model entrypoints with updated candidate inputs
+        env:
+          REQUESTED_DATE: ${{ inputs.selection_date }}
+          OMP_NUM_THREADS: '1'
+          OPENBLAS_NUM_THREADS: '1'
+          MKL_NUM_THREADS: '1'
+        run: |
+          python - <<'PY'
+          import datetime as dt,json,os,pathlib,subprocess,sys
+          from zoneinfo import ZoneInfo
+          out=pathlib.Path('reports/stage166'); tmp=pathlib.Path(os.environ['RUNNER_TEMP'])
+          cards=json.loads(pathlib.Path('data/racecards.json').read_text())
+          now=dt.datetime.now(ZoneInfo('Europe/Dublin'));today=now.date().isoformat();tomorrow=(now.date()+dt.timedelta(days=1)).isoformat()
+          available={str(x.get('date')) for x in cards.get('runners',[])}
+          target=os.environ.get('REQUESTED_DATE') or (tomorrow if tomorrow in available else today)
+          assert target in (today,tomorrow) and target in available,('No current declared racecards for target',target)
+          db=tmp/'candidate.sqlite';ref=tmp/'candidate-reference.csv'
+          assert db.is_file() and ref.is_file()
+          models=[('141',['scripts/stage141_today_or_weight_paper.py'],'stage141-today-audit.json'),
+                  ('143-146',['scripts/stage147_daily_143_146.py','today','--config','scripts/stage143_race_type_specialist_config.json'],'stage146-today-audit.json'),
+                  ('150',['scripts/stage150_d142_long_form_today.py','today'],'stage150-d142-audit.json'),
+                  ('151',['scripts/stage151_d142_core_form_or_weight_today.py','today'],'stage151-d142-core-form-weight-audit.json')]
+          results={}
+          for name,entry,audit_name in models:
+              model_out=out/('paper-'+name); model_out.mkdir(exist_ok=True)
+              cmd=[sys.executable,'-u',*entry,'--db',str(db),'--reference',str(ref),'--cards','data/racecards.json','--date',target,'--out',str(model_out)]
+              print('PAPER_CHECK_START',name,target,flush=True)
+              proc=subprocess.run(cmd)
+              audit=model_out/audit_name
+              summary={'returncode':proc.returncode,'audit_exists':audit.is_file()}
+              if audit.is_file():
+                  a=json.loads(audit.read_text())
+                  summary['reported_history']={k:v for k,v in a.items() if k in ('historical_source_latest','historical_source_through','historical_results_through','trained_through','ranked_races')}
+              results[name]=summary
+              # Do not retain temporary model databases on the runner between checks.
+              for f in model_out.rglob('*.sqlite'):
+                  f.unlink()
+              print('PAPER_CHECK_END',name,summary,flush=True)
+              (out/'model-checks.json').write_text(json.dumps({'target':target,'paper_only':True,'results':results},indent=2))
+          if not all(v['returncode']==0 and v['audit_exists'] for v in results.values()):
+              raise SystemExit('At least one specialist check failed; no deployment permitted')
+          PY
+      - name: Upload aggregate validation report only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage166-historical-candidate-report
+          path: |
+            reports/stage166/candidate-report.json
+            reports/stage166/model-checks.json
+          if-no-files-found: error
+          retention-days: 30
