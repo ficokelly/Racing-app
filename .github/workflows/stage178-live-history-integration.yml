@@ -1,0 +1,204 @@
+name: Stage178 - Preserve recovered history and validate live bridge
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: stage171-daily-recent-history
+  cancel-in-progress: false
+jobs:
+  integrate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PYTHONPATH: '.:scripts'
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Restore immutable Stage177b inputs while scoring continues
+        uses: actions/download-artifact@v4
+        with:
+          name: stage177-shared-inputs
+          run-id: 45491296882
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/stage178-input
+      - name: Restore exact frozen history database
+        uses: actions/download-artifact@v4
+        with:
+          name: stage177-shared-db
+          run-id: 45491296882
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/stage178-input
+      - name: Preserve genuine historical evidence and test production bridge on private DB
+        run: |
+          python - <<'PY'
+          import collections as C,csv,datetime as D,hashlib,json,os,pathlib as P,re,shutil,sqlite3,unicodedata
+          from scripts import stage171_recent_history as M
+          from import_historical_ukie import number
+          from stage4_match_all_recurring_races import region
+          B=P.Path(os.environ['RUNNER_TEMP'])/'stage178-input'; O=P.Path('reports/stage178');O.mkdir(parents=True,exist_ok=True)
+          ROOT=P.Path('data'); L=ROOT/'stage171-history'; E=ROOT/'stage178-history-evidence'; E.mkdir(exist_ok=True);L.mkdir(exist_ok=True)
+          START='2026-10-25';END='2026-11-23';EXCLUSIVE='2026-11-24'; BASE=M.BASE
+
+          def load(p):return json.loads(P.Path(p).read_text())
+          def dump(p,obj):P.Path(p).write_text(json.dumps(obj,ensure_ascii=False,sort_keys=True,separators=(',',':'))+'\n')
+          def sha(p):
+           with P.Path(p).open('rb') as f:return hashlib.file_digest(f,'sha256').hexdigest()
+          def course(s):
+           n=M.norm(re.sub(r'\s*\((?:AW|GB|IRE)\)\s*$','',str(s or ''),flags=re.I));n={'galwayire':'galway','wexfordire':'wexford','dundalkawire':'dundalk','dundalkire':'dundalk','dundalkaw':'dundalk','fairyhouseire':'fairyhouse','clonmelire':'clonmel','gowranparkire':'gowranpark'}.get(n,n);return {'kemptonpark':'kempton','chelmsfordcity':'chelmsford','bangor':'bangorondee'}.get(n,n)
+          def stamp(s):return D.datetime.fromisoformat(str(s).replace('Z','+00:00')).astimezone(D.timezone.utc)
+          def key(r):
+           d=str(r.get('date') or '')[:10];o=M.off(r);return (d,course(r.get('course')),f'{o//60:02d}:{o%60:02d}' if o is not None else '')
+          def outcome(h):
+           st=M.norm(h.get('status'));p=h.get('position')
+           if st in M.NR:return ('NR',0) if p in (None,'') else None
+           if not isinstance(p,bool) and re.fullmatch(r'[0-9]+(?:\.0+)?',str(p)) and float(p)>0 and st not in M.TERMINAL:return ('FINISHED',int(float(p)))
+           if st in M.TERMINAL and p in (None,''):return (M.TERMINAL[st],0)
+           return None
+
+          def signature(rows):
+           out=[];names=[]
+           for h in rows:
+            n=M.horse(h.get('horse'));v=outcome(h);names.append(n)
+            if not n or v is None:return None
+            if v[0]!='NR':out.append((n,v[1],v[0]))
+           return sorted(out) if len(names)==len(set(names)) else None
+
+          def main():
+           manifest=load(B/'history-manifest.json'); db=B/'candidate.sqlite';ref=B/'candidate-reference.csv'
+           assert manifest['repository_commit']=='a5987838b0e3f28b53686bac60d52cd164738718'
+           assert manifest['logical_content_sha256']=='a2c053093ebf7e0881133faff4449c75550912dddef310322c5ba05161ec4e75'
+           assert sha(db)==manifest['database_sha256'] and sha(ref)==manifest['reference_sha256']
+           assert load(B/'batch-coverage.json')['scheduled_races']==938
+           settlements={(x['date'],x['course'],x['time']):x for x in load(B/'settlement-prices.json')}
+           evidence=C.defaultdict(list); fresh=C.defaultdict(list); stats=C.Counter(); reasons=[]; added_ids=[]
+           def reject(k,reason):stats[reason]+=1;reasons.append({'key':k,'reason':reason})
+           for p in sorted(B.glob('*-batches.json')):
+            day=p.name[:10]; assert START<=day<=END
+            bykey=C.defaultdict(list)
+            for r in M.load_day(ROOT,day):
+             if M.verified_source(r):bykey[key(r)].append(r)
+            for batch in load(p):
+             grouped=C.defaultdict(list)
+             for r in load(B/(batch['batch']+'.json'))['runners']:grouped[key(r)].append(r)
+             for rm in batch['races']:
+              k=tuple(rm['key']);field=grouped[k];settle=settlements[k]
+              assert len(field)==rm['field_size'] and sorted(M.horse(r['horse']) for r in field)==sorted(rm['declared_horses'])
+              assert stamp(rm['source_asof'])<stamp(batch['cutoff'])<stamp(day+'T'+k[2]+':00+00:00')
+              # Immutable, separated declaration evidence; no settlement attached to preoff card itself.
+              fields=('horse','horse_id','sire','dam','trainer','jockey','race_id','race_time','race_name','type','surface','going','distance_f','race_class','ofr','lbs','draw','age','sex','region','country','runner_status','status','is_non_runner','is_withdrawn','is_reserve','reserve_status')
+              evidence[day].append({'key':list(k),'source_asof':rm['source_asof'],'source_commit':rm['source_commit'],'source_path':rm['source_path'],'declared_field':[{f:r.get(f) for f in fields} for r in field],'settlement':settle,'status':'RECOVERED_EVIDENCE_NOT_AUTOMATIC_HISTORICAL_OVERRIDE'})
+              stats['evidence_races']+=1
+              if day<=BASE:continue # Older Kaggle coverage needs identity/field reconciliation, never append duplicates.
+              if settle['price_conflicts']:reject(k,'conflicting_sp');continue
+              expected=signature(settle['starters']); matches=[r for r in bykey[k] if expected and signature(r.get('runners',[]))==expected]
+              if len(matches)!=1:reject(k,'no_unique_externally_verified_final');continue
+              race=matches[0]
+              # Match known winner SP against the frozen recovered settlement when both exist.
+              known={M.horse(h['horse']):h['sp_decimal'] for h in settle['winner_prices'] if h.get('sp_decimal') is not None}
+              if any(M.horse(h['horse']) in known and M.sp_decimal(h.get('sp')) is not None and abs(M.sp_decimal(h.get('sp'))-known[M.horse(h['horse'])])>1e-6 for h in race['runners']):reject(k,'live_final_sp_changed');continue
+              cards={M.horse(r['horse']):r for r in field}; actual=[h for h in race['runners'] if outcome(h) and outcome(h)[0]!='NR']
+              if not all(M.horse(h['horse']) in cards for h in actual):reject(k,'missing_verified_starter');continue
+              card_ids={str(r.get('race_id') or '') for r in field};meta_keys=('race_name','type','surface','going','distance_f','race_class','region','country'); meta={f:field[0].get(f) for f in meta_keys}
+              if len(card_ids)!=1 or '' in card_ids or not all(meta.get(f) for f in ('race_name','type','surface','distance_f')) or not 0<(number(meta['distance_f']) or 0)<50 or region(race['course']) not in ('GB','IRELAND'):
+               reject(k,'invalid_race_metadata');continue
+              if any(any(str(r.get(f) or '')!=str(meta[f] or '') for f in ('race_name','type','surface','going','distance_f','race_class')) for r in field):reject(k,'conflicting_race_metadata');continue
+              rr=[]
+              for h in actual:
+               card=cards[M.horse(h['horse'])];st,pos=outcome(h);sp=M.sp_decimal(h.get('sp'))
+               rr.append({'horse':h['horse'],'position':pos or None,'outcome':st,'sp_decimal':sp,'card':{f:card.get(f) for f in ('horse_id','sire','dam','trainer','jockey','ofr','lbs','draw','age','sex')},'race_comment':h.get('race_comment') or h.get('comment') or None,'overall_beaten':h.get('overall_beaten') if h.get('overall_beaten') is not None else h.get('distance_beaten_total')})
+              r={'date':day,'course':race['course'],'racecard_id':next(iter(card_ids)),'result_off_minute':M.off(race),'card_off_minute':M.off(field[0]),'off_difference_minutes':0,'race_metadata':meta,'result_source':race.get('source'),'external_verification':race.get('external_verification'),'runners':rr,'stage178_evidence':{'source_commit':rm['source_commit'],'source_asof':rm['source_asof'],'source_path':rm['source_path'],'verified_result_only':True}}
+              if M.off(race)!=M.off(field[0]) or not M.valid_record(r,day) or not M.still_matches(r,M.load_day(ROOT,day)):reject(k,'stage171_validation_failed');continue
+              fresh[day].append(r);stats['verified_bridge_candidates']+=1
+           assert stats['evidence_races']==938
+           # Keep the permanent evidence independent of mutable research artifacts.
+           for day,records in sorted(evidence.items()):
+            dest=E/(day+'.json'); doc={'schema':'stage178-recovered-preoff-evidence-v1','date':day,'source_run':45491296882,'source_revision':manifest['repository_commit'],'races':sorted(records,key=lambda x:x['key'])}
+            if dest.exists():assert load(dest)==doc,('existing immutable evidence differs',day)
+            else:dump(dest,doc)
+           # Existing bridge records must survive unchanged. Only add verified new identities.
+           for day in sorted(fresh):
+            p=L/(day+'.json');old=load(p) if p.exists() else {'schema':'stage171-verified-results-declaration-bridge-v1','date':day,'source':'Existing app result archive and preoff racecards; declaration metadata is not confirmed actual weights, going or jockeys.','races':[]}
+            assert old['date']==day and old['schema']=='stage171-verified-results-declaration-bridge-v1'
+            records=old['races'];archive=M.load_day(ROOT,day)
+            assert all(M.valid_record(r,day) and M.still_matches(r,archive) for r in records),('existing bridge requires independent correction',day)
+            ids={M.sid(r) for r in records};card_ids={r['racecard_id'] for r in records};names={M.horse(h['horse']) for r in records for h in r['runners']}
+            added=[]
+            for r in sorted(fresh[day],key=lambda r:(r['result_off_minute'],r['course'],M.sid(r))):
+             if M.sid(r) in ids:stats['already_in_live_bridge']+=1;continue
+             hnames={M.horse(h['horse']) for h in r['runners']}
+             if hnames&names or r['racecard_id'] in card_ids:reject((day,r['course'],r['result_off_minute']),'overlapping_live_bridge_identity');continue
+             ids.add(M.sid(r));card_ids.add(r['racecard_id']);names.update(hnames);added.append(r);added_ids.append('stage171:'+day+':'+hashlib.sha256(M.sid(r).encode()).hexdigest()[:24]);stats['new_live_bridge_races']+=1;stats['new_live_bridge_runners']+=len(r['runners'])
+            if added:old['races']=sorted(records+added,key=lambda r:(r['result_off_minute'],r['course'],M.sid(r)));dump(p,old)
+           # Validate with the exact live Stage171 append function against a disposable copy of the frozen DB.
+           work=P.Path(os.environ['RUNNER_TEMP'])/'stage178-verify';work.mkdir(exist_ok=True);candidate=work/'candidate.sqlite';reference=work/'candidate-reference.csv';shutil.copy2(db,candidate)
+           with sqlite3.connect(candidate) as c:
+            assert c.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+            assert c.execute('SELECT COUNT(*),MAX(race_date) FROM historical_races').fetchone()==(506390,END)
+            assert c.execute('SELECT COUNT(*) FROM historical_runs').fetchone()[0]==5115811
+            assert c.execute("SELECT COUNT(*) FROM historical_races WHERE race_date>? AND id NOT LIKE 'stage171:%'",(BASE,)).fetchone()[0]==0
+            c.execute('DELETE FROM historical_runs WHERE race_id IN (SELECT id FROM historical_races WHERE race_date>?)',(BASE,));c.execute('DELETE FROM historical_races WHERE race_date>?',(BASE,));c.commit()
+            assert c.execute('SELECT COUNT(*),MAX(race_date) FROM historical_races').fetchone()==(506332,BASE)
+            assert c.execute('SELECT COUNT(*) FROM historical_runs').fetchone()[0]==5115256
+           with ref.open(encoding='utf-8-sig',newline='') as f,reference.open('w',encoding='utf-8',newline='') as g:
+            reader=csv.DictReader(f);w=csv.DictWriter(g,fieldnames=reader.fieldnames);w.writeheader();w.writerows(r for r in reader if r['date']<=BASE)
+           bridge=M.append_bridge(candidate,reference,EXCLUSIVE,ROOT)
+           with sqlite3.connect(candidate) as c:
+            c.execute('ATTACH DATABASE ? AS frozen',(str(db.resolve()),))
+            for table,cond in [('historical_races',"race_date>'2026-11-20'"),('historical_runs',"race_id LIKE 'stage171:%'")]:
+             missing=c.execute(f'SELECT COUNT(*) FROM (SELECT * FROM frozen.{table} WHERE {cond} EXCEPT SELECT * FROM main.{table} WHERE {cond})').fetchone()[0]
+             assert missing==0,('would remove or modify frozen history',table,missing)
+            n,through=c.execute('SELECT COUNT(*),MAX(race_date) FROM main.historical_races').fetchone();runs=c.execute('SELECT COUNT(*) FROM main.historical_runs').fetchone()[0]
+            assert through==END and n>=506390 and runs>=5115811
+            assert n>=506390+stats['new_live_bridge_races'],('bridge did not consume all new records',n,stats)
+            assert all(c.execute('SELECT COUNT(*) FROM main.historical_races WHERE id=?',(rid,)).fetchone()[0]==1 for rid in added_ids),('new bridge race absent',added_ids)
+            with reference.open(encoding='utf-8-sig',newline='') as f:
+             refids=C.Counter(r['stage2_race_id'] for r in csv.DictReader(f) if r['date']>BASE)
+            assert all(refids[rid]==1 for rid in added_ids),('new reference race absent or duplicate',added_ids)
+            assert c.execute('SELECT COUNT(*) FROM main.historical_runs h LEFT JOIN main.historical_races r ON r.id=h.race_id WHERE r.id IS NULL').fetchone()[0]==0
+            assert c.execute('PRAGMA main.quick_check').fetchone()[0]=='ok'
+           report={'status':'VALIDATED_FOR_LEDGER_PUBLICATION','source_run':45491296882,'source_logical_sha256':manifest['logical_content_sha256'],'stats':dict(stats),'verified_live_candidate_races':n,'verified_live_candidate_runs':runs,'verified_through':through,'bridge_validation':bridge,'older_evidence_status':'PRESERVED_NOT_AUTO_MERGED_INTO_KAGGLE_BASE','g5_status':'HPR_SEPARATE_NOT_CHANGED','all_models_migrated':False,'simulation_inputs_changed':False,'rejected':reasons}
+           dump(O/'report.json',report);print('STAGE178_REPORT',json.dumps({k:v for k,v in report.items() if k!='rejected'}),flush=True)
+           dump(E/'manifest.json',{k:v for k,v in report.items() if k not in ('rejected','status','stats','verified_live_candidate_races','verified_live_candidate_runs','bridge_validation')})
+          if __name__=='__main__':main()
+          PY
+      - name: Publish validated append-only ledgers, never raw DB or predictions
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/stage171-history/ data/stage178-history-evidence/
+          if git diff --cached --quiet; then echo 'STAGE178_NO_CHANGES'; exit 0; fi
+          git diff --cached --stat
+          git commit -m 'Stage178: preserve recovered preoff evidence and verified historical bridge'
+          # Other scheduled app jobs may commit unrelated changes while validation runs.
+          # Rebase only if none of the actual validation inputs changed.
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git diff --name-only HEAD^ origin/main > "$RUNNER_TEMP/stage178-remote-changes.txt"
+            python - <<'CHECK'
+          import os,pathlib,re
+          changes=pathlib.Path(os.environ['RUNNER_TEMP'],'stage178-remote-changes.txt').read_text().splitlines()
+          critical=[p for p in changes if p.startswith(('data/stage171-history/','data/stage178-history-evidence/')) or p in ('scripts/stage171_recent_history.py','scripts/stage167_validated_history.py','import_historical_ukie.py','stage4_match_all_recurring_races.py','scripts/stage68_result_reconciler.py') or (re.fullmatch(r'data/racing-results/\d{4}-\d{2}-\d{2}\.json',p) and '2026-10-25'<=pathlib.Path(p).stem<='2026-11-23')]
+          assert not critical,('Relevant source changed; rerun validation before publication',critical)
+          CHECK
+            git rebase origin/main
+            if git push origin HEAD:main; then echo 'STAGE178_PUBLISHED'; exit 0; fi
+          done
+          exit 1
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage178-live-history-validation
+          path: reports/stage178/
+          if-no-files-found: warn
+          retention-days: 30
