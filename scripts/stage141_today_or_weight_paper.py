@@ -60,7 +60,13 @@ def today_cards(path,date):
                   'snapshot_hours_old':round((now-collected).total_seconds()/3600,2),
                   'race_groups':len(grouped),'usable_fields':len(races),'excluded':dict(excluded)}
 
+# STAGE167_VALIDATED_HISTORY_INPUT_V1
 def scratch_archive(history,reference,races,date,out):
+    from stage167_validated_history import refreshed_inputs
+    with refreshed_inputs(history,reference,date) as (updated_history,updated_reference):
+        return _scratch_archive_original(updated_history,updated_reference,races,date,out)
+
+def _scratch_archive_original(history,reference,races,date,out):
     scratch=out/'synthetic-preoff-scratch.sqlite';ref=out/'preoff-reference.csv'
     if scratch.exists():scratch.unlink()
     shutil.copy2(history,scratch)
