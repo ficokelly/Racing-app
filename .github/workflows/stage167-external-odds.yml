@@ -1,0 +1,95 @@
+name: Stage167 - External five-minute odds refresh
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  odds:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    concurrency:
+      group: rhp-stage162-odds-publisher
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Check odds freshness
+        id: guard
+        run: |
+          python - <<'PY'
+          import datetime as dt, json, os
+          from pathlib import Path
+          try:
+              x = json.loads(Path('data/latest-odds.json').read_text())
+              stamp = dt.datetime.fromisoformat(x['collected_at'].replace('Z', '+00:00'))
+              age = (dt.datetime.now(dt.timezone.utc) - stamp).total_seconds() / 60
+              if not x.get('prices') or age < -2: age = 1e6
+          except (OSError, ValueError, TypeError, KeyError): age = 1e6
+          print(f'ODDS_AGE_MIN={age:.1f}')
+          if age >= 15: print(f'::warning::Published odds are {age:.1f} minutes old')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f'collect={str(age >= 4).lower()}\n')
+          PY
+      - name: Collect and validate fresh odds
+        if: steps.guard.outputs.collect == 'true'
+        env:
+          PUNTERSEDGE_API_KEY: ${{ secrets.PUNTERSEDGE_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$PUNTERSEDGE_API_KEY"
+          python scripts/stage26_feed_capture.py odds
+          python - <<'PY'
+          import datetime as dt, json, os
+          from pathlib import Path
+          p = Path('data/latest-odds.json'); j = json.loads(p.read_text())
+          assert isinstance(j.get('prices'), list) and j['prices'], 'Empty odds response'
+          assert any(isinstance(q, dict) and isinstance(q.get('decimal_odds'), (int, float)) and q['decimal_odds'] > 1 and not q.get('stale') for q in j['prices']), 'No usable odds'
+          stamp = dt.datetime.fromisoformat(j['collected_at'].replace('Z', '+00:00'))
+          age = (dt.datetime.now(dt.timezone.utc) - stamp).total_seconds()
+          assert -120 <= age <= 600, 'Invalid collection timestamp'
+          Path(os.environ['RUNNER_TEMP'], 'stage167-odds.json').write_bytes(p.read_bytes())
+          PY
+      - name: Merge and publish odds safely
+        if: steps.guard.outputs.collect == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            python - <<'PY'
+          import datetime as dt, json, os
+          from pathlib import Path
+          def stamp(x):
+              try: return dt.datetime.fromisoformat(x['collected_at'].replace('Z', '+00:00'))
+              except (KeyError, TypeError, ValueError): return dt.datetime.min.replace(tzinfo=dt.timezone.utc)
+          p = Path('data/latest-odds.json'); h = Path('data/odds-history.json')
+          new = json.loads(Path(os.environ['RUNNER_TEMP'], 'stage167-odds.json').read_text())
+          old = json.loads(p.read_text()) if p.exists() else {}
+          if stamp(new) <= stamp(old):
+              print('ODDS_SUPERSEDED: a newer snapshot already exists')
+              raise SystemExit(0)
+          hist = json.loads(h.read_text()) if h.exists() else []
+          assert isinstance(hist, list), 'Invalid odds history; refusing to overwrite'
+          hist = {v['collected_at']: v for v in hist if isinstance(v, dict) and v.get('collected_at')}
+          hist[new['collected_at']] = new
+          p.write_text(json.dumps(new, indent=2)+'\n')
+          h.write_text(json.dumps(sorted(hist.values(), key=stamp), separators=(',', ':'))+'\n')
+          print('ODDS_PUBLISH', new['collected_at'], 'quotes', len(new['prices']))
+          PY
+            if git diff --quiet -- data/latest-odds.json data/odds-history.json; then exit 0; fi
+            python archive-odds-history.py
+            git add data/latest-odds.json data/odds-history.json data/odds-archive/
+            git commit -m 'Stage167: publish externally triggered bookmaker odds'
+            if git push origin HEAD:main; then exit 0; fi
+            sleep "$((attempt*2))"
+          done
+          echo '::error::Odds publication failed after five attempts'
+          exit 1
