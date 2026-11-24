@@ -31,7 +31,12 @@ def refreshed_inputs(history, reference, date):
     import kagglehub
     src=pathlib.Path(kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025/versions/132'))
     with tempfile.TemporaryDirectory(prefix='stage167-history-') as td:
-        yield build(pathlib.Path(history).resolve(),pathlib.Path(reference).resolve(),src,pathlib.Path(td))
+        db,ref=build(pathlib.Path(history).resolve(),pathlib.Path(reference).resolve(),src,pathlib.Path(td))
+        # STAGE171_RECENT_BRIDGE: G5 has a separate HPR ledger, so do not advance its cutoff on partial dates.
+        if 'reports/stage128/source/stage2/' not in pathlib.Path(history).resolve().as_posix():
+            from stage171_recent_history import append_bridge
+            append_bridge(db,ref,date)
+        yield db,ref
 
 def build(base,ref,source,tmp):
     import csv,datetime as dt,json,os,pathlib,re,sqlite3,shutil,collections
