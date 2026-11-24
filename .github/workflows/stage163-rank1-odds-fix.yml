@@ -1,0 +1,90 @@
+name: 'Stage163 fix — Rank 1 odds only'
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: stage163-hot-pots-odds-filter
+  cancel-in-progress: false
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Patch and test Rank 1 filtering
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/rank1_fix.py <<'PY'
+          from pathlib import Path
+          import re, subprocess, tempfile
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+          changes = [
+              ("return rhp163Mode==='all'||ordered(race).slice(0,2).some(h=>rhp163HorseMatches(race,h.horse));", "return rhp163Mode==='all'||ordered(race).some(h=>Number(h.rank)===1&&rhp163HorseMatches(race,h.horse));"),
+              ("rhp163Mode!=='all'&&rhp163HorseMatches(race,x.horse)?", "rhp163Mode!=='all'&&Number(x.rank)===1&&rhp163HorseMatches(race,x.horse)?"),
+              ('Odds range<select id="rhp163-odds-mode" aria-label="Filter Hot Pots by latest odds"', 'Rank 1 odds range<select id="rhp163-odds-mode" aria-label="Filter Hot Pots by Rank 1 latest odds"'),
+          ]
+          for old, new in changes:
+              if s.count(old) == 1 and s.count(new) == 0:
+                  s = s.replace(old, new, 1)
+              elif s.count(old) == 0 and s.count(new) == 1:
+                  continue
+              else:
+                  raise RuntimeError(f'Unexpected source anchor: {old}')
+          helpers = re.search(r'function rhp163Parse\(value\)\{.*?(?=\n\s*function rhp163Sync\()', s, re.S).group(0)
+          with tempfile.TemporaryDirectory() as d:
+              for i, script in enumerate(re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>', s, re.I|re.S)):
+                  f = Path(d)/f'script-{i}.js'
+                  f.write_text(script, encoding='utf-8')
+                  subprocess.run(['node','--check',str(f)], check=True)
+              f = Path(d)/'test.js'
+              f.write_text('''const assert=require('node:assert/strict');
+          let rhp163Mode='le2',rhp163Min='',rhp163Max='';
+          const ordered=r=>[...r.runners].sort((a,b)=>Number(a.rank)-Number(b.rank));
+          const cardState=(r,h)=>r.runners.find(x=>x.horse===h)?.nr?'nr':'active';
+          const rhp163Quote=(r,h,status)=>status==='nr'?null:{chosen:{current:r.runners.find(x=>x.horse===h)?.price}};
+          ''' + helpers + '''
+          const race=(p1,p2,nr=false)=>({runners:[{rank:1,horse:'Gilded Outlaw',price:p1,nr},{rank:2,horse:'Green Spain',price:p2}]});
+          assert.equal(rhp163RaceMatches(race(7.5,2.5)),false);
+          assert.equal(rhp163RaceMatches(race(2.5,7.5)),true);
+          assert.equal(rhp163RaceMatches(race(3,2.5)),true);
+          assert.equal(rhp163RaceMatches(race(undefined,2.5)),false);
+          assert.equal(rhp163RaceMatches(race(2.5,2.5,true)),false);
+          assert.equal(rhp163RaceMatches({runners:[{rank:2,horse:'Green Spain',price:2.5}]}),false);
+          for(const [mode,yes,no] of [['2to5',4,7],['5to10',8,12],['gt10',12,8]]){
+            rhp163Mode=mode;
+            assert.equal(rhp163RaceMatches(race(yes,no)),true);
+            assert.equal(rhp163RaceMatches(race(no,yes)),false);
+          }
+          rhp163Mode='custom';rhp163Min='5/2';rhp163Max='4/1';
+          assert.equal(rhp163RaceMatches(race(3.5,7.5)),true);
+          assert.equal(rhp163RaceMatches(race(7.5,3.5)),false);
+          rhp163Mode='all';assert.equal(rhp163RaceMatches({runners:[]}),true);
+          console.log('RANK1_ODDS_REGRESSION_TESTS_OK');
+          ''', encoding='utf-8')
+              subprocess.run(['node',str(f)],check=True)
+          p.write_text(s, encoding='utf-8')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            python /tmp/rank1_fix.py
+            git diff --check
+            git add index.html
+            if git diff --cached --quiet; then echo 'Rank 1 fix already installed'; exit 0; fi
+            git commit -m 'Stage163 fix: filter Hot Pots odds by Rank 1 only'
+            if git push origin HEAD:main; then echo 'RANK1_ODDS_FIX_PUBLISHED'; exit 0; fi
+            sleep "$((attempt*3))"
+          done
+          exit 1
