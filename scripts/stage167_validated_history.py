@@ -10,6 +10,8 @@ DAILY_SOURCE_ROOTS = {
     'reports/stage147-143-146/source/stage2/historical_ukie_staging.sqlite',
     'reports/stage150-d142/source/stage2/historical_ukie_staging.sqlite',
     'reports/stage151-d142/source/stage2/historical_ukie_staging.sqlite',
+    'reports/stage152-specialists/source/stage2/historical_ukie_staging.sqlite',
+    'reports/stage128/source/stage2/historical_ukie_staging.sqlite',
 }
 
 def daily_source(history):

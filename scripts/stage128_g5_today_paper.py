@@ -209,6 +209,21 @@ def confidence_report(base,state,network,groups,target):
 
 
 def run(args):
+    # Stage168: use the verified historical input for the daily G5 scorer.
+    import sys
+    root=str(Path(__file__).resolve().parent.parent)
+    if root not in sys.path:
+        sys.path.insert(0,root)
+    from stage167_validated_history import refreshed_inputs
+    with refreshed_inputs(args.db,args.reference,str(as_day(args.date))) as (db,reference):
+        original_db,original_ref=args.db,args.reference
+        try:
+            args.db,args.reference=str(db),str(reference)
+            return _run_with_history(args)
+        finally:
+            args.db,args.reference=original_db,original_ref
+
+def _run_with_history(args):
     cutoff=G.stamp(args.cutoff)
     target=as_day(args.date)
     if not cutoff:raise ValueError('Invalid as-of clock')

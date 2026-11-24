@@ -43,6 +43,14 @@ def load_route_map():
 STAGE156_ROUTES=load_route_map()
 for code,settings in STAGE156_ROUTES.items():
  if code not in ROUTES:ROUTES[code]=settings['model']
+# Stage168: reconcile legacy labels with the audited 50-type ROI catalogue.
+AUDITED_ROUTE_ALIASES={
+ 'novice hurdle':'HURDLE_NOVICE',
+ 'novice handicap hurdle':'HURDLE_NOVICE_HANDICAP',
+ 'novice handicap chase':'CHASE_NOVICE_HANDICAP',
+}
+for alias,code in AUDITED_ROUTE_ALIASES.items():
+ ROUTES[alias]=STAGE156_ROUTES[code]['model']
 
 FILES=(
  'stage141-today-all-runners.csv',
@@ -286,7 +294,7 @@ def build(args):
   if newly_routed:
    subtype=extended_route
    model=STAGE156_ROUTES[extended_route]['model']
-  evidence=STAGE156_ROUTES.get(extended_route,{})
+  evidence=STAGE156_ROUTES.get(AUDITED_ROUTE_ALIASES.get(subtype,extended_route),{})
   research_status=(str(evidence.get('evidence_grade') or 'provisional_small_sample')
                    if newly_routed else 'existing_previously_tested_route')
   race={'date':target,'course':course,'time':clock,'race_time':iso(off),
@@ -446,6 +454,10 @@ def selftest():
  assert not abandoned_race([{'race_status':'abandoned'},{'race_status':'declared'}])
  assert not abandoned_race([{}])
  assert len(STAGE156_ROUTES)==50
+ assert ROUTES['novice hurdle']=='D137_HPR_ABILITY_GRADE_WEIGHT'
+ assert ROUTES['novice handicap hurdle']=='D_FORM_WEIGHT_GRADE__ROI'
+ assert ROUTES['novice handicap chase']=='D137_HPR_ABILITY_GRADE_OR_WEIGHT'
+ assert all(ROUTES[a]==STAGE156_ROUTES[k]['model'] for a,k in AUDITED_ROUTE_ALIASES.items())
  assert STAGE156_ROUTES['AW_NOVICE']['model']=='STAGE143_TYPE_INTERACTIONS'
  assert STAGE156_ROUTES['AW_LISTED_PATTERN']['evidence_grade']=='provisional_small_sample'
  assert STAGE156_ROUTES['HURDLE_JUVENILE']['model']=='D_FORM_WEIGHT_GRADE__ROI'
