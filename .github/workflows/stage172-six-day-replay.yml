@@ -1,0 +1,391 @@
+name: Stage172 - Six-day counterfactual replay and route audit
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage172-six-day-research-replay
+  cancel-in-progress: false
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PYTHONPATH: '.:scripts'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Restore original publications and strictly pre-off card snapshots
+        run: |
+          python - <<'PY'
+          import datetime as dt, json, pathlib, subprocess, collections, os, shutil
+          from zoneinfo import ZoneInfo
+          P=pathlib.Path('reports/stage172/inputs'); P.mkdir(parents=True,exist_ok=True)
+          DAYS=[f'2026-11-{n}' for n in range(19,25)]
+          PARENTS=[44506642140,44566761489,44769572547,44840454769,44918355644,44960094603,45037140185,45083892114,45159880230,45246288266,45363257577,45415661304]
+          UTC=dt.timezone.utc
+
+          def stamp(v):
+              try:
+                  t=dt.datetime.fromisoformat(str(v).replace('Z','+00:00'))
+                  return t.astimezone(UTC) if t.tzinfo else None
+              except (ValueError,TypeError):return None
+
+          def fetch(run,name,dest):
+              dest.mkdir(parents=True,exist_ok=True)
+              return subprocess.run(['gh','run','download',str(run),'--repo',os.environ['GITHUB_REPOSITORY'],'--name',name,'--dir',str(dest)],check=False).returncode==0
+
+          parents={}; errors=[]
+          for run in PARENTS:
+              dest=P/'original'/str(run)
+              if not fetch(run,f'stage153-combined-{run}',dest):errors.append({'run':run,'error':'combined_artifact_unavailable'});continue
+              path=dest/'data/strategy-roi-combined.json'
+              if not path.exists():errors.append({'run':run,'error':'combined_output_missing'});continue
+              j=json.loads(path.read_text());parents[run]=j
+          # Latest actual publication preserves prior completed races; morning baseline for 24 Nov before repair.
+          assert 45415661304 in parents and 45363257577 in parents, 'Missing original morning or refreshed baseline'
+          latest=parents[45415661304]; morning=parents[45363257577]
+          original={d:[r for r in (morning if d==DAYS[-1] else latest)['races'] if r.get('date')==d] for d in DAYS}
+          actual={d:[r for r in latest['races'] if r.get('date')==d] for d in DAYS}
+          (P/'original.json').write_text(json.dumps(original));(P/'actual.json').write_text(json.dumps(actual))
+          # Original pre-off source artifacts for routing-only counterfactual. Use only runs predating the repaired history.
+          prefix={'stage141-today-or-weight-paper.yml':'stage141-today-hpr-or-weight-', 'stage151-d142-core-form-or-weight-today.yml':'stage151-d142-core-form-weight-today-', 'stage152-best-roi-specialists-today.yml':'stage152-best-roi-specialists-', 'stage147-daily-143-146.yml':'stage147-daily-143-146-', 'stage128-g5-paper.yml':'stage128-g5-paper-'}
+          seen=set()
+          for run in PARENTS[:-1]:
+              path=P/'original'/str(run)/'reports/stage153/source/status.json'
+              if not path.exists():continue
+              status=json.loads(path.read_text())
+              for wf,rid in status.get('ids',{}).items():
+                  if wf not in prefix or rid in seen or status.get('conclusions',{}).get(wf)!='success':continue
+                  seen.add(rid)
+                  if not fetch(rid,prefix[wf]+str(rid),P/'old-sources'/str(rid)):errors.append({'run':rid,'error':'specialist_artifact_unavailable'})
+          # Reconstruct a common pre-off card from Git history (not current archive or results).
+          # Select latest genuine snapshot committed >= day start minus 4h, before earliest recorded off.
+          for d in DAYS:
+              target=dt.date.fromisoformat(d)
+              known=[stamp(r.get('race_time')) for r in original[d]+actual[d] if stamp(r.get('race_time'))]
+              limit=min(known)-dt.timedelta(minutes=12) if known else dt.datetime.combine(target,dt.time(9),UTC)
+              commits=subprocess.check_output(['git','log','--first-parent','-n','50','--before='+limit.isoformat(),'--format=%H','--','data/racecards.json'],text=True).splitlines()
+              chosen=None
+              for sha in commits:
+                  try:
+                      j=json.loads(subprocess.check_output(['git','show',sha+':data/racecards.json'],text=True));t=stamp(j.get('collected_at'))
+                  except (ValueError,subprocess.CalledProcessError):continue
+                  if not t or t>limit:continue
+                  rows=[r for r in j.get('runners',[]) if r.get('date')==d and stamp(r.get('race_time'))]
+                  if not rows:continue
+                  first=min(stamp(r['race_time']) for r in rows)
+                  asof=max(t+dt.timedelta(seconds=1),dt.datetime.combine(target,dt.time(0,1),UTC))
+                  if asof>=first-dt.timedelta(minutes=10) or asof-t>dt.timedelta(hours=4):continue
+                  if any(str(r.get('race_status','')).casefold() in ('finished','resulted','final','completed') for r in rows):continue
+                  # Strip non-card fields if present; never supply current outcome or price fields to scorers.
+                  reject={'position','finish_pos','result','outcome','sp','sp_decimal','beaten','overall_beaten','distance_beaten_total','odds','price','starting_price','race_result','result_status'}
+                  # No target outcome is permitted, even if a provider supplied unexpected data.
+                  if any(any(r.get(k) not in (None,'',[],{}) for k in reject if k not in ('odds','price')) for r in rows):continue
+                  snapshot={'collected_at':j['collected_at'],'runners':[{k:v for k,v in r.items() if k not in reject} for r in rows]}
+                  chosen={'date':d,'source_commit':sha,'card_collected_at':t.isoformat(),'simulated_asof':asof.isoformat(),'first_off':first.isoformat(),'declared_races':len({(r.get('course'),r.get('race_time')) for r in rows}),'declared_rows':len(rows),'status':'PREOFF_GIT_SNAPSHOT'}
+                  (P/f'cards-{d}.json').write_text(json.dumps(snapshot));break
+              if not chosen:chosen={'date':d,'status':'NO_VERIFIABLE_FULL_DAY_PREOFF_SNAPSHOT'}
+              (P/f'meta-{d}.json').write_text(json.dumps(chosen,indent=2)); print('STAGE172_CARD',json.dumps(chosen),flush=True)
+          (P/'download-errors.json').write_text(json.dumps(errors,indent=2))
+          print('STAGE172_PREPARED',list(original), 'original_source_runs',len(seen),'artifact_warnings',len(errors))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage172-replay-inputs
+          path: reports/stage172/inputs/
+          if-no-files-found: error
+          retention-days: 14
+  replay:
+    name: Replay ${{ matrix.day }} specialist ${{ matrix.model }}
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 170
+    strategy:
+      fail-fast: false
+      max-parallel: 12
+      matrix:
+        day: ['2026-11-19','2026-11-20','2026-11-21','2026-11-22','2026-11-23','2026-11-24']
+        model: ['141','147','151','152']
+    env:
+      DAY: ${{ matrix.day }}
+      MODEL: ${{ matrix.model }}
+      GH_TOKEN: ${{ github.token }}
+      PYTHONPATH: '.:scripts'
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage172-replay-inputs
+          path: reports/stage172/inputs
+      - name: Confirm historical pre-off card exists
+        id: card
+        run: |
+          python - <<'PY'
+          import os,json,pathlib
+          p=pathlib.Path('reports/stage172/inputs')/('meta-'+os.environ['DAY']+'.json')
+          ok=json.loads(p.read_text())['status']=='PREOFF_GIT_SNAPSHOT'
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:print('available='+str(ok).lower(),file=f)
+          PY
+      - name: Install exact specialist dependencies and isolated replay clock
+        if: steps.card.outputs.available == 'true'
+        run: python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2 freezegun==1.5.5 'kagglehub>=0.3,<1'
+      - name: Restore original baseline privately
+        if: steps.card.outputs.available == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/base" "$RUNNER_TEMP/ref"
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage2-historical-staging-database --dir "$RUNNER_TEMP/base"
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage4-reference-named-events-and-winners --dir "$RUNNER_TEMP/ref"
+      - name: Reconstruct strictly prior-day history and score using actual specialist
+        if: steps.card.outputs.available == 'true'
+        run: |
+          python - <<'PY'
+          import os,sys,json, pathlib, sqlite3,csv,runpy,datetime as dt, tempfile
+          from freezegun import freeze_time
+          import kagglehub
+          from stage167_validated_history import build
+          from stage171_recent_history import append_bridge
+          D=os.environ['DAY']; M=os.environ['MODEL']; ROOT=pathlib.Path.cwd(); P=ROOT/'reports/stage172/inputs'; O=ROOT/'reports/stage172/replay'/D/M; O.mkdir(parents=True,exist_ok=True)
+          meta=json.loads((P/f'meta-{D}.json').read_text())
+          if meta['status']!='PREOFF_GIT_SNAPSHOT':
+              (O/'replay-meta.json').write_text(json.dumps({'date':D,'model':M,'status':'NO_VERIFIABLE_PREOFF_SNAPSHOT'}));sys.exit(0)
+          T=pathlib.Path(os.environ['RUNNER_TEMP']); base=T/'base/historical_ukie_staging.sqlite'; ref=T/'ref/all_races_with_reference_event_ids.csv'; work=T/'history';work.mkdir()
+          assert base.is_file() and ref.is_file()
+          # Keep the already-validated builder unchanged; then enforce a physical target-day cutoff.
+          src=pathlib.Path(kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025/versions/132'))
+          db,reference=build(base,ref,src,work)
+          with sqlite3.connect(db) as con:
+              con.execute('PRAGMA foreign_keys=ON')
+              con.execute('DELETE FROM historical_runs WHERE race_id IN (SELECT id FROM historical_races WHERE race_date>=?)',(D,))
+              con.execute('DELETE FROM historical_races WHERE race_date>=?',(D,));con.commit()
+              assert con.execute('SELECT COUNT(*) FROM historical_races WHERE race_date>=?',(D,)).fetchone()[0]==0
+          # Reference is also truncated, not merely date-filtered in Python.
+          newref=work/'strict-preoff-reference.csv'
+          with reference.open(encoding='utf-8-sig',newline='') as f,newref.open('w',encoding='utf-8',newline='') as g:
+              reader=csv.DictReader(f);writer=csv.DictWriter(g,fieldnames=reader.fieldnames);writer.writeheader()
+              writer.writerows(r for r in reader if r.get('date','')<D)
+          if D>'2026-11-20':append_bridge(db,newref,D)
+          with sqlite3.connect(f'file:{db}?mode=ro',uri=True) as c:
+              latest,n=c.execute('SELECT MAX(race_date),COUNT(*) FROM historical_races').fetchone()
+              assert latest<D and c.execute('SELECT COUNT(*) FROM historical_races WHERE race_date>=?',(D,)).fetchone()[0]==0
+              assert c.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+          print('STAGE172_STRICT_PRIOR_HISTORY',D,latest,n,flush=True)
+          # All replay artifacts remain isolated. The simulated clock is used ONLY in this
+          # process and is never set in live workflows or used to publish past picks.
+          scripts={'141':('stage141_today_or_weight_paper.py',[]),'151':('stage151_d142_core_form_or_weight_today.py',['today']),'152':('stage152_best_roi_specialists_today.py',['today']),'147':('stage147_daily_143_146.py',['today','--config',str(ROOT/'scripts/stage143_race_type_specialist_config.json')])}
+          script,extra=scripts[M];file=ROOT/'scripts'/script
+          sys.argv=[str(file),*extra,'--db',str(db),'--reference',str(newref),'--cards',str(P/f'cards-{D}.json'),'--date',D,'--out',str(O)]
+          # Do not use standard live path roots: stage167's live loader would rebuild a future archive.
+          with freeze_time(meta['simulated_asof'],real_asyncio=True):
+              assert dt.datetime.now(dt.timezone.utc).date().isoformat()==D
+              try:runpy.run_path(str(file),run_name='__main__')
+              except SystemExit as exc:
+                  if exc.code not in (None,0):raise
+          files={'141':'stage141-today-all-runners.csv','151':'stage151-d142-core-form-weight-all-runners.csv','152':'stage152-strongest-roi-specialists-all-runners.csv','147':'stage146-today-all-runners.csv'}
+          assert (O/files[M]).is_file(), 'Missing actual model full-field output'
+          with (O/files[M]).open(newline='') as f:
+              rows=list(csv.DictReader(f))
+          assert rows and all(r.get('date')==D for r in rows),'Unexpected date or empty output'
+          (O/'replay-meta.json').write_text(json.dumps({**meta,'model':M,'status':'RETROSPECTIVE_SIMULATION_ONLY','prior_history_through':latest,'archive_races':n,'rows':len(rows),'real_generated_at':dt.datetime.now(dt.timezone.utc).isoformat()},indent=2))
+          # Keep only CSV and compact JSON audits, not scratch SQLite/reference/weights.
+          print('STAGE172_SCORED',D,M,len(rows),flush=True)
+          PY
+      - name: Record unavailable snapshot rather than invent a card
+        if: steps.card.outputs.available == 'false'
+        run: |
+          mkdir -p "reports/stage172/replay/$DAY/$MODEL"
+          cp "reports/stage172/inputs/meta-$DAY.json" "reports/stage172/replay/$DAY/$MODEL/replay-meta.json"
+      - name: Publish compact simulation outputs only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage172-replay-${{ matrix.day }}-${{ matrix.model }}
+          path: |
+            reports/stage172/replay/${{ matrix.day }}/${{ matrix.model }}/*all-runners.csv
+            reports/stage172/replay/${{ matrix.day }}/${{ matrix.model }}/*audit.json
+            reports/stage172/replay/${{ matrix.day }}/${{ matrix.model }}/replay-meta.json
+          if-no-files-found: warn
+          retention-days: 14
+  compare:
+    needs: [prepare, replay]
+    if: always() && needs.prepare.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PYTHONPATH: '.:scripts'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage172-replay-inputs
+          path: reports/stage172/inputs
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: stage172-replay-2026-*
+          path: reports/stage172/downloaded
+      - name: Preserve per-day per-model boundaries for source reconciliation
+        run: |
+          python - <<'PY'
+          import pathlib,shutil,re
+          for p in pathlib.Path('reports/stage172/downloaded').glob('stage172-replay-2026-*'):
+              m=re.fullmatch(r'stage172-replay-(2026-11-\d\d)-(\d+)',p.name)
+              if not m:continue
+              q=pathlib.Path('reports/stage172/replay')/m.group(1)/m.group(2);q.mkdir(parents=True,exist_ok=True)
+              for f in p.rglob('*'):
+                  if f.is_file():shutil.copy2(f,q/f.name)
+          PY
+      - name: Compare frozen original selections, route-only corrections and actual rescoring
+        run: |
+          python - <<'PY'
+          import collections,csv,datetime as dt,json,math,os,pathlib,re,sys
+          from scripts.stage68_result_reconciler import verified,sp_decimal
+          from scripts import stage153_roi_combined as C
+          from import_historical_ukie import odds as parse_sp
+          from zoneinfo import ZoneInfo
+          P=pathlib.Path('reports/stage172/inputs'); W=pathlib.Path('reports/stage172/replay'); O=pathlib.Path('reports/stage172/report');O.mkdir(parents=True,exist_ok=True)
+          DAYS=[f'2026-11-{n}' for n in range(19,25)]
+          ALIAS={'novice hurdle':'HURDLE_NOVICE','maiden hurdle':'HURDLE_MAIDEN','handicap hurdle':'HURDLE_HANDICAP','novice handicap hurdle':'HURDLE_NOVICE_HANDICAP','beginners chase':'CHASE_BEGINNERS','novice handicap chase':'CHASE_NOVICE_HANDICAP','handicap chase':'CHASE_HANDICAP','nh flat open':'NH_FLAT_OPEN','aw maiden':'AW_MAIDEN','aw nursery':'AW_NURSERY','auction restricted':'AW_AUCTION_RESTRICTED_SALES','aw handicap':'AW_HANDICAP'}
+          assert len(C.STAGE156_ROUTES)==50 and all(C.ROUTES[k]==C.STAGE156_ROUTES[v]['model'] for k,v in ALIAS.items())
+          original=json.loads((P/'original.json').read_text());actual=json.loads((P/'actual.json').read_text())
+          def norm(x):return C.normalize(re.sub(r'\s*\((?:IRE|GB|FR|AW)\)\s*$','',str(x or ''),flags=re.I))
+          def horse(x):return norm(x)
+          def venue(x):
+              n=norm(x)
+              return n[:-2] if n.endswith('aw') and n[:-2] in {'lingfield','wolverhampton','kempton','kemptonpark','southwell','newcastle','dundalk','chelmsfordcity','chelmsford'} else n
+          def key(r):
+              off=C.parse_time(r.get('race_time') or r.get('off_dt'))
+              if off is None:
+                  try:off=dt.datetime.fromisoformat(str(r.get('date'))+'T'+str(r.get('time'))[:5]+':00+00:00')
+                  except (ValueError,TypeError):return None
+              return (off.strftime('%Y-%m-%d %H:%M'),venue(r.get('course')))
+          def pick(r):
+              s=r.get('selection') or {};off=C.parse_time(r.get('race_time'));p=C.parse_time(r.get('published_at'));t=C.parse_time(s.get('published_at'))
+              return s.get('horse') if s.get('pre_off_valid') and off and p and t and max(p,t)<off else None
+          def route_code(r):return ALIAS.get(r.get('race_type'),r.get('race_type'))
+          def decision(entries,canonical):
+              subtype=C.type_for(entries);title=str(entries[0].get('race_name') or '').casefold()
+              if 'junior' in title and 'hurdle' in title:canonical='HURDLE_JUVENILE'
+              code=ALIAS.get(subtype) if subtype else canonical
+              # Actual production priority: known aliases precede Stage147 canonical route.
+              model=C.ROUTES.get(subtype) if subtype else None
+              if model is None and canonical in C.STAGE156_ROUTES:code=canonical;model=C.STAGE156_ROUTES[canonical]['model']
+              return code,model,canonical
+
+          def collect_sources(root,date):
+              # Use each original artifact separately so repeated runs are not combined into a fictitious field.
+              sources=collections.defaultdict(list); canonical=collections.defaultdict(set)
+              for folder in sorted(root.iterdir()) if root.exists() else []:
+                  if not folder.is_dir():continue
+                  grouped,stats,routes=C.read_sources([folder],date)
+                  for (st,course_key,model),rows in grouped.items():
+                      k=(st,venue(course_key),model)
+                      sources[k].append(rows)
+                  for (st,course_key),code in routes.items():canonical[(st,venue(course_key))].add(code)
+              return sources,canonical
+
+          def ranked_field(rows,field,limit=None):
+              try:
+                  by={horse(x['horse']):x for x in rows};ranks=sorted(int(x['rank']) for x in rows)
+                  if len(by)!=len(rows) or set(by)!=field or ranks!=list(range(1,len(field)+1)):return None
+                  stamps=[C.parse_time(x.get('prediction_asof') or x.get('decision_utc') or x.get('scored_at') or x.get('cards_asof')) for x in rows]
+                  if any(t is None for t in stamps):return None
+                  if limit and max(stamps)>limit:return None
+                  return next(x['horse'] for x in rows if int(x['rank'])==1),max(stamps)
+              except (ValueError,TypeError,KeyError,StopIteration):return None
+
+          def result(h,race):
+              if not h or not race:return ('UNSETTLED',None)
+              rr=[r for r in race.get('runners',[]) if horse(r.get('horse'))==horse(h)]
+              if len(rr)!=1:return ('UNMATCHED',None)
+              r=rr[0];p=str(r.get('position') or '').strip();s=str(r.get('status') or '').lower().replace(' ','').replace('-','').replace('_','')
+              if s in ('nr','nonrunner','withdrawn','scratched','dns'):return ('VOID',None)
+              if p in ('1','1.0'):
+                  sp=parse_sp(r.get('sp'));return ('WIN',sp-1) if sp else ('WIN_SP_MISSING',None)
+              if (p.isdigit() and int(p)>1) or s in ('pu','pulledup','f','fell','ur','unseatedrider','bd','broughtdown','ro','ranout','r','refused','dq','dsq','disqualified','su','slippedup'):return ('LOSS',-1.)
+              return ('UNKNOWN_FINISH',None)
+
+          rows=[]; audit=[]
+          for d in DAYS:
+              meta=json.loads((P/f'meta-{d}.json').read_text()); op={key(r):r for r in original[d]}; ap={key(r):r for r in actual[d]}
+              oldsrc,oldroutes=collect_sources(P/'old-sources',d)
+              src,canon=collect_sources(W/d,d)
+              cf=P/f'cards-{d}.json'; cards=collections.defaultdict(list)
+              if cf.exists():
+                  for r in json.loads(cf.read_text())['runners']:cards[key(r)].append(r)
+              results=collections.defaultdict(list); path=pathlib.Path('data/racing-results')/f'{d}.json'
+              if path.exists():
+                  for r in json.loads(path.read_text()).get('results',[]):
+                      if verified(r):results[key(r)].append(r)
+              for k in sorted((set(op)|set(ap)|set(cards))-{None}):
+                  old=op.get(k,{});live=ap.get(k,{}); entries=cards.get(k,[]); original_pick=pick(old);live_pick=pick(live)
+                  original_field={horse(r.get('horse')) for r in old.get('runners',[]) if r.get('horse')}
+                  field={horse(r.get('horse')) for r in entries if r.get('horse') and not C.nonrunner(r)}
+                  code=route_code(old); expected=C.STAGE156_ROUTES.get(code,{}).get('model'); canonical=next(iter(canon[k])) if len(canon[k])==1 else None
+                  corrected=None; simulated=None; reason='NO_PREOFF_CARD'; rc=None; route=None
+                  if expected and original_pick:
+                      if expected==old.get('source_model'):corrected=original_pick
+                      else:
+                          t=C.parse_time(old.get('published_at'))
+                          found=[p for rr in oldsrc.get(k+(expected,),[]) if (p:=ranked_field(rr,original_field,t)) is not None]
+                          if found:corrected=max(found,key=lambda x:x[1])[0]
+                  if entries:
+                      rc,route,canonical=decision(entries,canonical); reason='NO_VERIFIED_SOURCE_FIELD'
+                      if C.abandoned_race(entries):reason='ABANDONED'
+                      elif len(canon[k])>1:reason='CONFLICTING_CANONICAL_ROUTE'
+                      elif route and len(field)>=2:
+                          found=[p for rr in src.get(k+(route,),[]) if (p:=ranked_field(rr,field,C.parse_time(k[0].replace(' ','T')+':00+00:00')-dt.timedelta(seconds=1))) is not None]
+                          if len(found)==1:simulated=found[0][0];reason='SIMULATED'
+                          elif len(found)>1:reason='DUPLICATE_SOURCE_FIELDS'
+                  if canonical and rc and canonical!=rc:audit.append({'date':d,'race':k,'production_code':rc,'canonical_code':canonical,'production_model':route,'canonical_model':C.STAGE156_ROUTES.get(canonical,{}).get('model')})
+                  res=results[k][0] if len(results[k])==1 else None
+                  # Official result joins require exact date/course/time; no fuzzy match on settled performance.
+                  oo,opnl=result(original_pick,res); ro,rpnl=result(corrected,res); so,spnl=result(simulated,res); lo,lpnl=result(live_pick,res)
+                  chosen_code=rc or code or 'UNKNOWN'; discipline='AW' if chosen_code.startswith('AW_') else 'Flat' if chosen_code.startswith('TURF_') else 'Jumps' if chosen_code.startswith(('HURDLE_','CHASE_','NH_FLAT_')) else 'Unknown'
+                  rows.append({'date':d,'course':(entries[0].get('course') if entries else old.get('course') or live.get('course')),'time':k[0][-5:],'race_type':chosen_code,'discipline':discipline,'original_model':old.get('source_model'),'expected_original_route_model':expected,'simulation_model':route,'canonical_type':canonical,'original_rank1':original_pick,'routing_only_rank1':corrected,'corrected_replay_rank1':simulated,'latest_live_rank1':live_pick,'same_original_field':bool(original_field and original_field==field),'original_field_size':len(original_field),'replay_field_size':len(field),'original_outcome':oo,'routing_only_outcome':ro,'replay_outcome':so,'live_outcome':lo,'original_profit':opnl,'routing_only_profit':rpnl,'replay_profit':spnl,'live_profit':lpnl,'replay_status':reason,'original_publication':old.get('published_at'),'replay_snapshot':meta.get('card_collected_at')})
+
+          def stats(group,prefix):
+              settled=[r for r in group if r[prefix+'_profit'] is not None]
+              n=len(settled);wins=sum(r[prefix+'_outcome']=='WIN' for r in settled);profit=sum(r[prefix+'_profit'] for r in settled)
+              return {'settled':n,'wins':wins,'strike_pct':round(100*wins/n,2) if n else None,'profit_units':round(profit,2),'roi_pct':round(100*profit/n,2) if n else None}
+          def aggregate(group):
+              paired=[r for r in group if r['same_original_field'] and r['original_profit'] is not None and r['replay_profit'] is not None]
+              routepaired=[r for r in group if r['original_profit'] is not None and r['routing_only_profit'] is not None]
+              return {'races':len(group),'original_selections':sum(bool(r['original_rank1']) for r in group),'replay_selections':sum(bool(r['corrected_replay_rank1']) for r in group),'paired_same_field':len(paired),'changed_rank1_on_paired':sum(horse(r['original_rank1'])!=horse(r['corrected_replay_rank1']) for r in paired),'original_all_settled':stats(group,'original'),'replay_all_settled':stats(group,'replay'),'paired_original':stats(paired,'original'),'paired_replay':stats(paired,'replay'),'routing_pair_original':stats(routepaired,'original'),'routing_pair_corrected':stats(routepaired,'routing_only'),'coverage_reasons':dict(collections.Counter(r['replay_status'] for r in group))}
+          report={'status':'RETROSPECTIVE_ONLY_NO_LIVE_CHANGES','dates':DAYS,'all_up':aggregate(rows),'by_day':{d:aggregate([r for r in rows if r['date']==d]) for d in DAYS},'by_discipline':{d:aggregate([r for r in rows if r['discipline']==d]) for d in sorted({r['discipline'] for r in rows})},'by_race_type':{d:aggregate([r for r in rows if r['race_type']==d]) for d in sorted({r['race_type'] for r in rows})},'canonical_route_discrepancies':audit,'original_source_download_errors':json.loads((P/'download-errors.json').read_text()),'limitations':['Reconstructed previous-date results may have become available only later; not proof of deployable historical availability.','Morning 24 November baseline is pre-repair. Latest actual live pick is separate.','Racecards are a single pre-off Git snapshot per date, not every late field revision. Same-field paired comparisons are primary.','No G5 replay is needed for corrected catalogue: none of its 50 routes select G5. Original G5 outcomes are retained.','Pending, void, unverified finishing statuses and missing winning SP are excluded from ROI.','All dates are scored where preoff snapshots and source artifacts are available; all omissions are reported.','This replay is not an independent validation of a profitable strategy.']}
+          with (O/'race-by-race.csv').open('w',newline='') as f:
+              w=csv.DictWriter(f,fieldnames=list(rows[0]));w.writeheader();w.writerows(rows)
+          (O/'summary.json').write_text(json.dumps(report,indent=2));print('STAGE172_REPORT',json.dumps(report['all_up']),flush=True)
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
+              print('# Six-day retrospective — identical-field matched results',file=f)
+              print('| Date | Races | Replayed | Matched & settled | Original wins | Replay wins | Original ROI | Replay ROI |',file=f);print('|---|---:|---:|---:|---:|---:|---:|---:|',file=f)
+              for d,z in [*report['by_day'].items(),('ALL',report['all_up'])]:
+                  a=z['paired_original'];b=z['paired_replay'];print(f"| {d} | {z['races']} | {z['replay_selections']} | {z['paired_same_field']} | {a['wins']} | {b['wins']} | {a['roi_pct']} | {b['roi_pct']} |",file=f)
+              print('\nResults still pending today are not counted as losses. Coverage gaps and routing conflicts are in summary.json.',file=f)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage172-six-day-comparison
+          path: reports/stage172/report/
+          if-no-files-found: error
+          retention-days: 30
