@@ -34,6 +34,9 @@ def refreshed_inputs(history, reference, date):
         db,ref=build(pathlib.Path(history).resolve(),pathlib.Path(reference).resolve(),src,pathlib.Path(td))
         # STAGE171_RECENT_BRIDGE: G5 has a separate HPR ledger, so do not advance its cutoff on partial dates.
         if 'reports/stage128/source/stage2/' not in pathlib.Path(history).resolve().as_posix():
+            # STAGE180_ARCHIVE_OVERLAY
+            from scripts.stage180_archive_overlay import apply as apply_archive_overlay
+            apply_archive_overlay(db,ref,date)
             from stage171_recent_history import append_bridge
             append_bridge(db,ref,date)
         yield db,ref
