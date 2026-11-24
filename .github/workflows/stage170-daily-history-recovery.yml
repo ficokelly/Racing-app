@@ -1,0 +1,362 @@
+name: Stage170 - Daily historical recovery and freshness checks
+on:
+  workflow_dispatch:
+    inputs:
+      since:
+        description: 'First date; blank = 21 November initially, then rolling three-day window'
+        type: string
+        required: false
+        default: ''
+      through:
+        description: 'Last completed date for manual runs; blank = yesterday in Dublin'
+        type: string
+        required: false
+        default: ''
+  schedule:
+    - cron: '45 5 * * *'
+      timezone: 'Europe/Dublin'
+    - cron: '45 16 * * *'
+      timezone: 'Europe/Dublin'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage170-daily-history-audit
+  cancel-in-progress: false
+jobs:
+  dates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      first: ${{ steps.window.outputs.first }}
+      last: ${{ steps.window.outputs.last }}
+    steps:
+      - id: window
+        env:
+          FIRST: ${{ inputs.since }}
+          LAST: ${{ inputs.through }}
+          EVENT: ${{ github.event_name }}
+          SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          python - <<'PY'
+          import datetime as dt,os
+          from zoneinfo import ZoneInfo
+          today=dt.datetime.now(ZoneInfo('Europe/Dublin')).date()
+          yesterday=today-dt.timedelta(days=1)
+          minimum=dt.date(2026,11,21)
+          # Evening is a read-only audit of available final results, NOT a completed-day import.
+          evening=os.environ['EVENT']=='schedule' and os.environ['SCHEDULE']=='45 16 * * *'
+          latest=today if evening else yesterday
+          last=dt.date.fromisoformat(os.environ['LAST']) if os.environ['LAST'] else latest
+          initial=os.environ['EVENT']=='workflow_dispatch' and (last-minimum).days<=13
+          first=dt.date.fromisoformat(os.environ['FIRST']) if os.environ['FIRST'] else (minimum if initial else max(minimum,last-dt.timedelta(days=2)))
+          if not minimum<=first<=last<=latest or (last-first).days>13:
+              raise SystemExit('Use allowed dates from 21 November onward, maximum 14 days per run')
+          print('Audit window',first,last,'evening_partial_day_audit',evening)
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:
+              print('first='+first.isoformat(),file=f);print('last='+last.isoformat(),file=f)
+          PY
+  provider:
+    name: Recover missing outcomes using authenticated historical endpoint
+    needs: dates
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      FIRST_DAY: ${{ needs.dates.outputs.first }}
+      LAST_DAY: ${{ needs.dates.outputs.last }}
+      PYTHONPATH: '.:scripts'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Recover missing outcomes using authenticated historical endpoint
+        env:
+          RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
+          RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
+        run: |
+          python - <<'PY'
+          import collections, datetime as dt, json, os, pathlib, re, unicodedata, sys
+          from zoneinfo import ZoneInfo
+          from scripts.stage79_priority_recovery import fetch_api_day
+          from scripts.stage68_result_reconciler import sp_decimal
+          ROOT=pathlib.Path('data/racing-results')
+          OUT=pathlib.Path('reports/stage170/provider'); OUT.mkdir(parents=True,exist_ok=True)
+          NR={'nr','nonrunner','withdrawn','scratched','dns','wd','reserve'}
+          TERMINAL={'pu':'PU','pulledup':'PU','f':'F','fell':'F','ur':'UR','unseatedrider':'UR','bd':'BD','broughtdown':'BD','ro':'RO','ranout':'RO','ref':'REF','refused':'REF','r':'REF','dq':'DQ','dsq':'DQ','disqualified':'DQ','su':'SU','slippedup':'SU'}
+          def norm(x):
+              return re.sub(r'[^a-z0-9]','',unicodedata.normalize('NFKD',str(x or '')).encode('ascii','ignore').decode().casefold())
+          def horse(x):
+              return norm(re.sub(r'\s*\((?:ire|gb|fr|usa|ger|aus|nz)\)\s*$','',str(x or ''),flags=re.I))
+          def course(x):
+              return norm(re.sub(r'\s*\((?:aw|ire|gb)\)\s*$','',str(x or ''),flags=re.I))
+          def clock(r):
+              raw=str(r.get('off_dt') or r.get('race_time') or r.get('off') or '')
+              try:
+                  t=dt.datetime.fromisoformat(raw.replace('Z','+00:00'))
+                  if t.tzinfo is None:return None
+                  t=t.astimezone(ZoneInfo('Europe/Dublin'));return t.hour*60+t.minute
+              except ValueError:
+                  if re.fullmatch(r'\d{2}:\d{2}',raw):
+                      h,m=map(int,raw.split(':'));return h*60+m if h<24 and m<60 else None
+                  return None
+          def outcome(r):
+              p=r.get('position'); status=norm(r.get('status')); token=norm(p)
+              if status in NR or token in NR:return ('NR',None) if not str(p or '').isdigit() else ('CONFLICT',None)
+              if status in TERMINAL or token in TERMINAL:
+                  return (TERMINAL.get(status) or TERMINAL.get(token),None) if not str(p or '').isdigit() else ('CONFLICT',None)
+              if not isinstance(p,bool) and str(p or '').isdigit() and int(p)>0:return ('FINISHED',int(p))
+              return ('UNKNOWN',None)
+          def index(race):
+              result={}
+              for r in race.get('runners') or []:
+                  name=horse(r.get('horse') or r.get('name'))
+                  if not name or name in result:return None
+                  result[name]=r
+              return result or None
+          def starter_set(rows):return {h for h,r in rows.items() if outcome(r)[0]!='NR'}
+          def valid_order(rows):
+              states=[outcome(r) for r in rows.values() if outcome(r)[0]!='NR']
+              pos=[p for _,p in states if p is not None]
+              return len(states)>=2 and all(k not in ('UNKNOWN','CONFLICT') for k,_ in states) and pos.count(1)==1 and sorted(pos)==list(range(1,len(pos)+1))
+          def compare(old,new):
+              a=index(old);b=index(new)
+              if not a or not b:return 'invalid_field',None
+              if starter_set(a)!=starter_set(b):return 'field_mismatch',None
+              if not valid_order(b):return 'provider_unverified_order',None
+              for h in starter_set(a):
+                  oa,ob=outcome(a[h]),outcome(b[h])
+                  if oa[0]!='UNKNOWN' and oa!=ob:return 'known_result_conflict',None
+              return 'matched',(a,b)
+          def selftest():
+              a={'runners':[{'horse':'A','position':1},{'horse':'B','status':'ran'}]}
+              b={'runners':[{'horse':'A','position':'1'},{'horse':'B','position':'PU'}]}
+              assert compare(a,b)[0]=='matched'
+              assert outcome(b['runners'][1])==('PU',None)
+              assert compare(a,{'runners':[{'horse':'A','position':2},{'horse':'B','position':1}]})[0]=='known_result_conflict'
+              assert compare(a,{'runners':[{'horse':'A','position':1},{'horse':'C','position':2}]})[0]=='field_mismatch'
+              assert not valid_order({'A':{'position':1},'B':{'status':'ran'}})
+          selftest()
+          first=dt.date.fromisoformat(os.environ['FIRST_DAY']);last=dt.date.fromisoformat(os.environ['LAST_DAY'])
+          user=os.environ.get('RACING_API_USERNAME','').strip();pwd=os.environ.get('RACING_API_PASSWORD','').strip()
+          report={'status':'SOURCE_RECOVERY_AUDIT_ONLY','source':'The Racing API historical /v1/results','daily':{},'no_production_changes':True}
+          for i in range((last-first).days+1):
+              day=(first+dt.timedelta(days=i)).isoformat();p=ROOT/(day+'.json');stats=collections.Counter();errors=collections.Counter();calls=[0]
+              old=[r for r in json.loads(p.read_text()).get('results',[]) if r.get('status')=='final'] if p.exists() else []
+              stats['archived_final_races']=len(old)
+              if user and pwd: batch=fetch_api_day(day,user,pwd,4,calls,errors)
+              else:batch=[];errors['NO_CREDENTIALS']+=1
+              stats['provider_races_returned']=len(batch)
+              seen=set()
+              for r in old:
+                  a=index(r);t=clock(r)
+                  if not a or t is None:stats['invalid_archive_race']+=1;continue
+                  incomplete=not valid_order(a)
+                  stats['archive_unverified_order_races']+=int(incomplete)
+                  matches=[];reasons=collections.Counter()
+                  for q in batch:
+                      if str(q.get('date') or '')[:10]!=day or str(q.get('region') or '').upper() not in ('GB','IRE','IE'):continue
+                      if str(q.get('status') or '').casefold() in ('interim','abandoned','cancelled','canceled','void','provisional'):continue
+                      if course(q.get('course'))!=course(r.get('course')) or clock(q) is None or abs(t-clock(q))>30:continue
+                      reason,pair=compare(r,q);reasons[reason]+=1
+                      if pair:matches.append((q,pair))
+                  if len(matches)!=1:
+                      stats['unmatched_or_ambiguous']+=1
+                      if reasons['known_result_conflict']:stats['known_result_conflict']+=1
+                      continue
+                  q,(a,b)=matches[0];rid=str(q.get('race_id') or '')
+                  if not rid or rid in seen:stats['duplicate_or_missing_provider_id']+=1;continue
+                  seen.add(rid);stats['matched_complete_fields']+=1
+                  stats['previously_incomplete_races_recoverable']+=int(incomplete)
+                  for h in starter_set(a):
+                      z=b[h];stats['matched_starters']+=1
+                      stats['recovered_terminal_statuses']+=int(outcome(a[h])[0]=='UNKNOWN' and outcome(z)[0] not in ('FINISHED','UNKNOWN','CONFLICT'))
+                      stats['recovered_numeric_positions']+=int(outcome(a[h])[0]=='UNKNOWN' and outcome(z)[0]=='FINISHED')
+                      stats['provider_comments_present']+=int(bool(z.get('comment') or z.get('race_comment')))
+                      stats['provider_explicit_overall_margins_present']+=int(any(z.get(k) not in (None,'') for k in ('overall_beaten','distance_beaten_total','total_beaten')))
+                      stats['provider_horse_ids_present']+=int(bool(z.get('horse_id')))
+                      stats['provider_pedigrees_present']+=int(bool(z.get('sire') and z.get('dam')))
+                      stats['provider_trainer_jockey_present']+=int(bool(z.get('trainer') and z.get('jockey')))
+              report['daily'][day]={'counts':dict(stats),'api_requests':calls[0],'api_errors':dict(errors)}
+          report['access_status']='RESPONDED' if any(x['counts'].get('provider_races_returned') for x in report['daily'].values()) else 'BLOCKED_OR_NO_RESULTS'
+          report['limitations']=['Only full-field, consistent result matches are counted.','No raw provider records published to public GitHub.','No model history changed; access and field coverage must be established before integration.']
+          (OUT/'report.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage170-provider-${{ github.run_id }}
+          path: reports/stage170/provider/report.json
+          if-no-files-found: error
+          retention-days: 30
+  archive:
+    name: Reconcile archived results with complete racecard fields
+    needs: dates
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      FIRST_DAY: ${{ needs.dates.outputs.first }}
+      LAST_DAY: ${{ needs.dates.outputs.last }}
+      PYTHONPATH: '.:scripts'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Reconcile archived results with complete racecard fields
+        run: |
+          python - <<'PY'
+          import collections,datetime as dt,json,pathlib,re,unicodedata
+          from zoneinfo import ZoneInfo
+          from scripts.stage68_result_reconciler import sp_decimal
+          ROOT=pathlib.Path('data'); OUT=pathlib.Path('reports/stage170/archive'); OUT.mkdir(parents=True,exist_ok=True)
+          import os
+          first=dt.date.fromisoformat(os.environ['FIRST_DAY']); last=dt.date.fromisoformat(os.environ['LAST_DAY'])
+          DAYS=[(first+dt.timedelta(days=i)).isoformat() for i in range((last-first).days+1)]
+          NR={'nr','nonrunner','withdrawn','scratched','dns'}
+          TERMINAL={'pu':'PU','pulledup':'PU','f':'F','fell':'F','ur':'UR','unseatedrider':'UR','bd':'BD','broughtdown':'BD','ro':'RO','ranout':'RO','refused':'REF','r':'REF','dq':'DQ','dsq':'DQ','disqualified':'DQ','su':'SU','slippedup':'SU'}
+          def norm(x):
+              s=unicodedata.normalize('NFKD',str(x or '')).encode('ascii','ignore').decode().casefold()
+              return re.sub(r'[^a-z0-9]','',s)
+          def horse(x):return norm(re.sub(r'\s*\((?:ire|gb|fr|usa|ger|aus|nz)\)\s*$','',str(x or ''),flags=re.I))
+          def course(x):return norm(re.sub(r'\s*\((?:aw|ire|gb)\)\s*$','',str(x or ''),flags=re.I))
+          def off(x):
+              raw=str(x.get('race_time') or x.get('off_dt') or x.get('off') or '')
+              try:
+                  d=dt.datetime.fromisoformat(raw.replace('Z','+00:00'))
+                  if d.tzinfo is None:return None
+                  d=d.astimezone(ZoneInfo('Europe/Dublin'))
+                  return d.hour*60+d.minute
+              except ValueError:
+                  if re.fullmatch(r'\d\d:\d\d',raw):
+                      h,m=map(int,raw.split(':'));return h*60+m if h<24 and m<60 else None
+                  return None
+          def rows(obj):
+              if isinstance(obj,list):
+                  for v in obj:yield from rows(v)
+              elif isinstance(obj,dict):
+                  if obj.get('horse') and obj.get('course') and obj.get('date'):yield obj
+                  else:
+                      for v in obj.values():
+                          if isinstance(v,(dict,list)):yield from rows(v)
+          def nonrunner(r):
+              return any(norm(r.get(k)) in NR|{'true','1','yes'} for k in ('is_non_runner','is_withdrawn','runner_status','status','withdrawn'))
+          fields=('horse_id','sire','dam','trainer','jockey','race_name','type','surface','going','distance_f','race_class','ofr','lbs','draw','age','sex')
+          grouped=collections.defaultdict(lambda:collections.defaultdict(list))
+          for p in (ROOT/'racecards-archive.json',ROOT/'racecards.json'):
+              if not p.exists():continue
+              for row in rows(json.loads(p.read_text())):
+                  day=str(row.get('date'))[:10]; venue=course(row.get('course')); rid=str(row.get('race_id') or '')
+                  if day in DAYS and venue and rid and off(row) is not None:
+                      grouped[(day,venue,rid)][horse(row['horse'])].append(row)
+          card_index=collections.defaultdict(list)
+          for (day,venue,rid),group in grouped.items():
+              # Duplicate observations are safe only if all material metadata agrees.
+              if any(not h or len({tuple(str(r.get(k) or '') for k in fields)+(str(off(r)),str(nonrunner(r))) for r in rr})!=1 for h,rr in group.items()):continue
+              card={h:rr[0] for h,rr in group.items()}
+              if len({off(r) for r in card.values()})!=1:continue
+              if len({tuple(str(r.get(k) or '') for k in ('race_name','type','surface','going','distance_f','race_class')) for r in card.values()})!=1:continue
+              card_index[(day,venue)].append((rid,card))
+          def match(day,race):
+              rr=race.get('runners') or []; names=[horse(r.get('horse')) for r in rr]
+              if not names or not all(names) or len(names)!=len(set(names)):return None,'bad_result_field'
+              actual=set(names); clock=off(race)
+              if clock is None:return None,'missing_result_time'
+              candidates=[]
+              for rid,card in card_index.get((day,course(race.get('course'))),[]):
+                  cardnames=set(card)
+                  if not actual<=cardnames:continue
+                  if any(not nonrunner(card[h]) for h in cardnames-actual):continue
+                  gap=abs(clock-off(next(iter(card.values()))))
+                  if gap>30:continue
+                  candidates.append((rid,card,gap))
+              if len(candidates)!=1:return None,'no_full_field_match' if not candidates else 'ambiguous_field_match'
+              rid,card,gap=candidates[0]
+              first=next(iter(card.values()));metadata=[];positions=[]
+              if not all(first.get(k) for k in ('race_name','type','surface','distance_f')):return None,'missing_race_metadata'
+              for r,h in zip(rr,names):
+                  c=card[h];status=norm(r.get('status'));pos=r.get('position')
+                  if status in NR:
+                      if pos not in (None,''):return None,'conflicting_nonrunner'
+                      continue
+                  if not all(c.get(k) for k in ('horse_id','sire','dam')):return None,'missing_identity'
+                  if isinstance(pos,bool):return None,'invalid_position'
+                  try:
+                      p=int(float(pos)) if re.fullmatch(r'[0-9]+(?:\.0+)?',str(pos)) and float(pos)>0 else None
+                  except (TypeError,ValueError,OverflowError):p=None
+                  if p is None and status not in TERMINAL:return None,'unknown_terminal_status'
+                  if p is not None and status in TERMINAL:return None,'conflicting_position'
+                  if p is not None:positions.append(p)
+                  metadata.append({'horse':r['horse'],'position':p,'outcome':'FINISHED' if p is not None else TERMINAL[status],'sp_decimal':sp_decimal(r.get('sp')),'card':{k:c.get(k) for k in fields},'race_comment':r.get('race_comment') or r.get('comment') or None,'overall_beaten':r.get('overall_beaten') or r.get('distance_beaten_total') or None})
+              if len(metadata)<2 or positions.count(1)!=1 or len(positions)!=len(set(positions)):return None,'unverified_finishing_order'
+              if max(positions)>len(metadata) or sorted(positions)!=list(range(1,len(positions)+1)):return None,'noncontiguous_finishing_order'
+              return {'date':day,'course':first['course'],'racecard_id':rid,'result_off_minute':clock,'card_off_minute':off(first),'off_difference_minutes':gap,'race_metadata':{k:first.get(k) for k in ('race_name','type','surface','going','distance_f','race_class','region','country')},'result_source':race.get('source'),'external_verification':race.get('external_verification'),'runners':metadata},'matched'
+          summary={};accepted=[]
+          for day in DAYS:
+              p=ROOT/'racing-results'/f'{day}.json';stats=collections.Counter();potential=[]
+              for race in json.loads(p.read_text()).get('results',[]) if p.exists() else []:
+                  if race.get('status')!='final':continue
+                  stats['final_races']+=1;stats['source_runner_rows']+=len(race.get('runners',[]))
+                  result,reason=match(day,race);stats[reason]+=1
+                  if result:potential.append(result)
+              ids=collections.Counter(r['racecard_id'] for r in potential)
+              starters=collections.Counter(horse(h['horse']) for r in potential for h in r['runners'])
+              for r in potential:
+                  if ids[r['racecard_id']]!=1 or any(starters[horse(h['horse'])]!=1 for h in r['runners']):
+                      stats['duplicate_race_or_starter_quarantined']+=1;continue
+                  accepted.append(r);stats['candidate_races']+=1;stats['candidate_starters']+=len(r['runners'])
+                  stats['different_off_time_races']+=int(r['off_difference_minutes']!=0)
+                  stats['comments_present']+=sum(bool(h['race_comment']) for h in r['runners'])
+                  stats['overall_beaten_present']+=sum(h['overall_beaten'] is not None for h in r['runners'])
+              summary[day]=dict(stats)
+          report={'status':'RECOVERY_CANDIDATE_ONLY','days':summary,'total_candidate_races':len(accepted),'total_candidate_starters':sum(len(r['runners']) for r in accepted),'limitations':['Full-field matches are still candidates, not independently verified final result provenance.','Racecard fields describe declarations; actual weights, riders and going may differ.','Missing race comments or overall margins are never fabricated.','No SQLite or live model changes. Do not use partial coverage to advance G5 HPR cutoff.']}
+          (OUT/'recovery-report.json').write_text(json.dumps(report,indent=2)+'\n')
+          # Candidate rows deliberately remain in memory; only aggregate evidence is published.
+          print(json.dumps(report,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage170-archive-${{ github.run_id }}
+          path: reports/stage170/archive/recovery-report.json
+          if-no-files-found: error
+          retention-days: 30
+  kaggle:
+    name: Check Kaggle release and installed history freshness
+    needs: dates
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      FIRST_DAY: ${{ needs.dates.outputs.first }}
+      LAST_DAY: ${{ needs.dates.outputs.last }}
+      PYTHONPATH: '.:scripts'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check Kaggle release and installed history freshness
+        run: |
+          python - <<'PY'
+          import json,pathlib
+          from scripts.stage90_kaggle_gap_audit import kaggle_metadata
+          out=pathlib.Path('reports/stage170/kaggle');out.mkdir(parents=True,exist_ok=True)
+          meta=kaggle_metadata(); v=meta.get('version')
+          try: v=int(v)
+          except (ValueError,TypeError):v=None
+          report={'installed_version':132,'installed_history_through':'2026-11-20','publisher_metadata':meta,'new_release_available':v is not None and v>132,'status':'NEW_RELEASE_REQUIRES_VALIDATION' if v is not None and v>132 else 'NO_NEW_RELEASE_CONFIRMED' if v==132 else 'VERSION_UNKNOWN_OR_UNEXPECTED','no_production_changes':True}
+          (out/'report.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage170-kaggle-${{ github.run_id }}
+          path: reports/stage170/kaggle/report.json
+          if-no-files-found: error
+          retention-days: 30
