@@ -1,0 +1,180 @@
+"""Compare a newly published Kaggle version to the actual archived GB/IE result rows.
+Approve whole days only where coverage is a verified superset, with no known contradictions.
+"""
+import argparse, collections as C, csv, datetime as dt, json, os, re, sys, tempfile
+from pathlib import Path
+from urllib.request import Request, urlopen
+from zoneinfo import ZoneInfo
+import kagglehub
+import import_historical_ukie as I
+import stage4_match_all_recurring_races as R
+from scripts import stage32_form_rebuild as F
+from scripts.kaggle_form_baseline import BASELINE
+
+DATASET='deltaromeo/horse-racing-results-ukireland-2015-2025'
+REPORT=Path('reports/stage32/kaggle-form-comparison.json')
+NR={'NR','NONRUNNER','NONSTARTER','WD','WITHDRAWN','SCRATCHED','DNS'}
+TERMINAL={'F','FELL','PU','P','PULLEDUP','UR','UNSEATEDRIDER','BD','BROUGHTDOWN','RO','RANOUT','R','REF','REFUSED','DQ','DSQ','DISQUALIFIED','SU','RR','DNF','CO','S','UNPLACED','FINISHEDUNPLACED','U','RET'}
+PEOPLE={'trainers':['Dan Skelton','Martin Keighley'],'jockeys':['Harry Skelton','James Best']}
+
+def read(p): return json.loads(p.read_text()) if p.exists() else {}
+def save(p,obj):
+    p.parent.mkdir(parents=True,exist_ok=True); tmp=p.with_suffix('.tmp'); tmp.write_text(json.dumps(obj,indent=2,ensure_ascii=False)+'\n'); tmp.replace(p)
+def version_number():
+    url='https://www.kaggle.com/api/v1/datasets/view/'+DATASET
+    with urlopen(Request(url,headers={'Accept':'application/json','User-Agent':'RacingApp-form-audit/1.0'}),timeout=45) as r: obj=json.load(r)
+    for k in ('currentVersionNumber','versionNumber','current_version_number','version_number'):
+        v=obj.get(k)
+        if str(v).isdigit() and int(v)>0:return int(v)
+    raise RuntimeError('Kaggle metadata did not expose a version number; do not guess latest')
+
+def outcome(pos,status=''):
+    p=str(pos or '').strip().upper(); s=F.compact(status).upper(); q=F.compact(p).upper()
+    if q in NR or s in NR:return 'NR'
+    m=re.fullmatch(r'([1-9][0-9]*)(?:\.0+|=|ST|ND|RD|TH)?',p)
+    if m:return int(m.group(1))
+    if q in TERMINAL or s in TERMINAL:return 'NONFINISH'
+    return 'UNKNOWN'
+
+def person_totals(rows):
+    out={'starters':len(rows),'trainers':{},'jockeys':{}}
+    for kind,group in [('trainer','trainers'),('jockey','jockeys')]:
+        for x in rows:
+            name=x[kind]; nm=F.compact(name)
+            if not nm:continue
+            a=out[group].setdefault(nm,{'name':name,'runs':0,'wins':0});a['runs']+=1;a['wins']+=int(x['outcome']==1)
+    return out
+
+def fetch_rows(source,start,end):
+    days=C.defaultdict(dict); problems=C.defaultdict(C.Counter); races=C.defaultdict(set); maxdate=''; scanned=0
+    for filename,opener in I.source_iter(source):
+        with opener() as f:
+            sample=f.read(8192);f.seek(0)
+            try:dialect=csv.Sniffer().sniff(sample,delimiters=',;\t|')
+            except csv.Error:dialect=csv.excel
+            reader=csv.DictReader(f,dialect=dialect); m=I.mapping(reader.fieldnames or [])
+            if not all(m.get(x) for x in ('race_date','course','horse','finish','trainer','jockey')) or not any(m.get(x) for x in ('race_id','race_no','off_time')):continue
+            for row in reader:
+                raw=I.value(row,m,'race_date'); day=raw[:10] if re.fullmatch(r'\d{4}-\d\d-\d\d',raw[:10]) else I.dateparse(raw)
+                if not day or day>end:continue
+                maxdate=max(maxdate,day)
+                if day<start:continue
+                scanned+=1; course=I.value(row,m,'course')
+                region=R.region(course)
+                # Explicitly foreign courses are outside the UK/IE metric, not evidence of a missing UK/IE result.
+                if region=='OTHER':
+                    problems[day]['excluded_explicit_foreign_course']+=1;continue
+                if region not in ('GB','IRELAND'):
+                    problems[day]['unresolved_course:'+course[:80]]+=1;continue
+                co=F.course_key(course);horse=F.horse_key(I.value(row,m,'horse'));rid=I.value(row,m,'race_id') or I.value(row,m,'race_no') or I.value(row,m,'off_time')
+                pos=outcome(I.value(row,m,'finish'))
+                if not all((co,horse,rid)) or pos=='UNKNOWN':problems[day]['invalid_identity_or_finish']+=1;continue
+                if pos=='NR':continue
+                x={'outcome':pos,'trainer':I.value(row,m,'trainer'),'jockey':I.value(row,m,'jockey'),'race':rid}
+                key=(co,horse); old=days[day].get(key)
+                if old and old!=x:problems[day]['contradictory_duplicate']+=1;continue
+                days[day][key]=x;races[day].add((co,rid))
+    if not maxdate or not scanned:raise RuntimeError('No usable recent Kaggle source records')
+    return days,problems,races,maxdate
+
+def api_rows(day):
+    rows={}; races=set(); problems=C.Counter()
+    doc=read(Path('data/racing-results')/(day+'.json'))
+    for race in doc.get('results',[]):
+        if race.get('status')=='superseded' or str(race.get('region') or '').upper() not in ('','GB','IRE','IE'):continue
+        co=F.course_key(race.get('course'));off=F.off_key(race.get('off_dt') or race.get('race_time') or race.get('off'))
+        if not co or not off:problems['invalid_race']+=1;continue
+        races.add((co,off))
+        for h in race.get('runners',[]):
+            if not F.is_starter(h):continue
+            key=(co,F.horse_key(h.get('horse')));pos=outcome(h.get('position'),h.get('status'))
+            if not key[1] or pos in ('NR','UNKNOWN'):problems['invalid_runner']+=1;continue
+            x={'outcome':pos,'trainer':str(h.get('trainer') or ''),'jockey':str(h.get('jockey') or ''),'race':off}
+            if key in rows and rows[key]!=x:problems['contradictory_duplicate']+=1;continue
+            rows[key]=x
+    return rows,races,problems
+
+def compare(day,k,kr,kissues,api,ar,ai,expected,api_count):
+    common=k.keys()&api.keys(); missing=api.keys()-k.keys(); different=0; people_diff=0
+    for key in common:
+        a,b=api[key],k[key]
+        different+=int(a['outcome']!=b['outcome'])
+        people_diff+=sum(bool(a[t] and b[t] and F.compact(a[t])!=F.compact(b[t])) for t in ('trainer','jockey'))
+    stats=person_totals(k.values()); ag=person_totals(api.values())
+    gaps={g:len(k)-sum(x['runs'] for x in stats[g].values()) for g in ('trainers','jockeys')}
+    # A full known field may have NR omissions. Require at least one matching starter
+    # per saved race, and a unique candidate by horse overlap, not an inferred off time.
+    groups=C.defaultdict(set)
+    for (co,horse),x in k.items():groups[(co,x['race'])].add(horse)
+    matched=set(); unmatched=0
+    for key,decl in sorted(expected.items()):
+        _,co,_=key.split('|'); active={h for h,s in decl.items() if s!='NR'}
+        if not active:continue
+        hits=[g for g,hs in groups.items() if g[0]==co and hs&active]
+        if len(hits)!=1 or hits[0] in matched:unmatched+=1
+        else:matched.add(hits[0])
+    reasons=[]
+    if not api or not k:reasons.append('no_comparable_source_rows')
+    if len(api)!=api_count:reasons.append('archive_vs_published_api_count_mismatch')
+    if missing:reasons.append('api_starters_absent_from_kaggle')
+    if different:reasons.append('finish_disagreements')
+    if people_diff:reasons.append('person_name_disagreements')
+    if len(kr)<len(ar):reasons.append('fewer_kaggle_races')
+    if unmatched:reasons.append('unmatched_saved_races')
+    if any(gaps.values()):reasons.append('missing_kaggle_persons')
+    if any(key!='excluded_explicit_foreign_course' for key in kissues) or ai:reasons.append('source_quality_issues')
+    if not reasons and len(k)==len(api) and all(sum(x['runs'] for x in ag[g].values())==len(api) for g in ('trainers','jockeys')):reasons.append('no_demonstrated_coverage_improvement')
+    return {'date':day,'api_starters':len(api),'kaggle_starters':len(k),'api_races':len(ar),'kaggle_races':len(kr),'shared_starters':len(common),'api_only_starters':len(missing),'kaggle_only_starters':len(k.keys()-api.keys()),'finish_disagreements':different,'person_disagreements':people_diff,'kaggle_identity_gaps':gaps,'unmatched_saved_races':unmatched,'kaggle_issues':dict(kissues),'api_issues':dict(ai),'approved':not reasons,'reasons':reasons},stats
+
+def main():
+    p=argparse.ArgumentParser();p.add_argument('--version',default='');p.add_argument('--audit-only',action='store_true');args=p.parse_args()
+    old=read(BASELINE); last=read(REPORT)
+    version=int(args.version) if args.version else version_number()
+    if not args.version and version<=max(old.get('version',0),last.get('version',0)):
+        print('No new Kaggle version detected:',version);return
+    if version<old.get('version',0):raise RuntimeError('Refusing baseline downgrade')
+    end=(dt.datetime.now(ZoneInfo('Europe/Dublin')).date()-dt.timedelta(days=1)).isoformat(); start=(dt.date.fromisoformat(end)-dt.timedelta(days=13)).isoformat()
+    source=Path(kagglehub.dataset_download(DATASET+'/versions/'+str(version)))
+    kdays,kissues,kraces,cutoff=fetch_rows(source,start,end)
+    cache=F.cache_index(F.load_json(F.CACHE_FILE)); audit=C.Counter()
+    for pth in (Path('data/racecards-archive.json'),Path('data/racecards.json')):
+        F.combine_person_cache(cache,F.load_json(pth),pth.name,audit)
+    api,dates=F.get_best_rows(dt.date.fromisoformat(end),cache,audit); counts=C.Counter(r['date'] for r in api)
+    ledger=read(F.AUDIT_FILE).get('coverage_guard',{}).get('expected_races',{})
+    exceptions={ '|'.join((str(e.get('day')),F.course_key(e.get('course')),F.off_key(e.get('time')))) for e in read(Path('data/rhp-stage72-race-exceptions.json')).get('races',[]) if e.get('source') and e.get('disposition') in ('ABANDONED','UNRUN_DUPLICATE_CARD','VOID','CANCELLED') }
+    approved={}; comparisons=[]
+    for day,k in sorted(kdays.items()):
+        a,ar,ai=api_rows(day)
+        expected={key:v for key,v in ledger.items() if key.startswith(day+'|') and key not in exceptions}
+        r,stats=compare(day,k,kraces[day],kissues[day],a,ar,ai,expected,counts[day])
+        # The raw archive may omit identities supplied by the existing card cache.
+        # Do not replace a day if its enriched known person totals would decrease.
+        enriched=person_totals([{'trainer':x['trainer'],'jockey':x['jockey'],'outcome':1 if F.is_win(x) else 2} for x in api if x['date']==day])
+        losses=[]
+        for group in ('trainers','jockeys'):
+            for nm,stat in enriched[group].items():
+                candidate=stats[group].get(nm,{})
+                if candidate.get('runs',0)<stat['runs'] or candidate.get('wins',0)<stat['wins']:
+                    losses.append({'group':group,'name':stat['name'],'api_runs':stat['runs'],'candidate_runs':candidate.get('runs',0),'api_wins':stat['wins'],'candidate_wins':candidate.get('wins',0)})
+        r['enriched_person_losses']=losses
+        if losses:
+            r['reasons'].append('known_enriched_person_totals_would_decrease');r['approved']=False
+        comparisons.append(r)
+        if r['approved']:approved[day]=stats
+    def examples(approved_days):
+        base=person_totals([{'trainer':r['trainer'],'jockey':r['jockey'],'outcome':1 if F.is_win(r) else 2} for r in api if r['date'] not in approved_days])
+        for g,names in PEOPLE.items():
+            for name in names:
+                nm=F.compact(name); a=base[g].setdefault(nm,{'name':name,'runs':0,'wins':0})
+                for d in approved_days.values():
+                    stat=d[g].get(nm,{})
+                    a['runs']+=stat.get('runs',0);a['wins']+=stat.get('wins',0)
+        return {g:{name:base[g].get(F.compact(name)) for name in names} for g,names in PEOPLE.items()}
+    # Preserve older approved days only until they roll out; never silently downgrade on a new version.
+    retained={d:v for d,v in old.get('approved_days',{}).items() if start<=d<=end and d not in approved}
+    candidate={**retained,**approved}
+    report={'version':version,'cutoff':cutoff,'window':[start,end],'status':'APPROVED_DAYS_AVAILABLE' if approved else 'NO_NEW_DAYS_PASSED_GATES','days':comparisons,'api_only_examples':examples({}),'candidate_examples':examples(candidate),'newly_approved_days':sorted(approved),'retained_previously_approved_days':sorted(retained),'audit_only':args.audit_only,'scope':'UK/IE archived race coverage; independent full fixture census and Racing Post comparisons still required. Raw source not published.'}
+    save(REPORT,report);print(json.dumps(report,indent=2))
+    if approved and not args.audit_only:
+        save(BASELINE,{'schema':'kaggle-form-baseline-v1','version':version,'cutoff':cutoff,'approved_days':candidate,'day_versions':{d:version if d in approved else old.get('day_versions',{}).get(d,old.get('version')) for d in candidate}})
+if __name__=='__main__':main()

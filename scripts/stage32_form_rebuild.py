@@ -278,6 +278,14 @@ def get_best_rows(as_of: dt.date, cache: dict, audit: collections.Counter):
 
 
 def build_form(rows: list[dict], as_of: dt.date, dates: set[str], audit: collections.Counter) -> dict:
+    # FORM_PERSON_ID_COLLISION_V2: provider IDs must identify exactly one normalised name.
+    # Compute across the entire rolling window so IDs remain stable across periods.
+    id_names = {'trainer':collections.defaultdict(set),'jockey':collections.defaultdict(set)}
+    for row in rows:
+        for typ in ('trainer','jockey'):
+            ident=row.get(typ+'_id') or ''
+            nm=compact(row.get(typ) or '')
+            if ident and nm: id_names[typ][ident].add(nm)
     periods = {}
     for n in range(1, 15):
         lower = (as_of-dt.timedelta(days=n-1)).isoformat()
@@ -302,7 +310,10 @@ def build_form(rows: list[dict], as_of: dt.date, dates: set[str], audit: collect
                     person['ids'][ident]+=1
             for nm,val in byname.items():
                 # Prefer the most consistently observed provider ID for this name.
-                identity=val['ids'].most_common(1)[0][0] if val['ids'] else 'name:'+nm
+                candidates=[i for i,_ in val['ids'].most_common() if len(id_names[typ][i])==1 and not i.startswith('name:')]
+                identity=candidates[0] if candidates else 'name:'+nm
+                if identity in people[typ]:
+                    raise ValueError('Duplicate form aggregate identity: '+identity)
                 runs=val['runs']
                 people[typ][identity]={'name':val['name'],'runs' if typ=='trainer' else 'rides':runs,
                                        'wins':val['wins'],'strike_rate':round(100*val['wins']/runs,1)}
@@ -364,6 +375,12 @@ def main() -> None:
     if not rows or not any(x.get('trainer') for x in rows):
         raise SystemExit('No verified form rows: leave the published strike-rate file unchanged')
     output=build_form(rows,as_of,dates,audit)
+    # KAGGLE_FORM_BASELINE_V1: replace approved historical days, preserve API bridge.
+    try:
+        from scripts.kaggle_form_baseline import merge as merge_kaggle_form
+    except ModuleNotFoundError:
+        from kaggle_form_baseline import merge as merge_kaggle_form
+    output=merge_kaggle_form(output,rows,dates,as_of,audit,build_form,compact)
     report={'status':'AUDITED_PARTIAL_COVERAGE','as_of':as_of.isoformat(),'date_start_14d':(as_of-dt.timedelta(days=13)).isoformat(),
             'counts':dict(audit),'fourteen_day_form_runners':output['periods']['14']['runners'],
             'fourteen_day_missing_trainer_rows':output['periods']['14']['identity_gaps']['trainer'],
@@ -376,6 +393,15 @@ def main() -> None:
                         'No selection or probability models were changed.',
                         'Duplicated runner records are counted once, not twice.',
                         'This fixes form result identity linking, not the original API source coverage.']}
+    if output.get('kaggle_version'):
+        report['kaggle_version']=output['kaggle_version']
+        report['kaggle_cutoff']=output['kaggle_cutoff']
+        report['kaggle_days']=output['periods']['14']['kaggle_days']
+        report['api_days']=output['periods']['14']['api_days']
+        report['fourteen_day_form_runners']=output['periods']['14']['runners']
+        report['fourteen_day_missing_trainer_rows']=output['periods']['14']['identity_gaps']['trainer']
+        report['fourteen_day_missing_jockey_rows']=output['periods']['14']['identity_gaps']['jockey']
+        report['warnings'].append('Coverage guard checks the raw API archive; some of its historical gaps may be covered by approved Kaggle aggregates. Neither source is certified complete.')
     # FORM_REPAIR_V1: check missing races, declarations and identities on every rebuild.
     try:
         from scripts.form_coverage_guard import apply_guard
