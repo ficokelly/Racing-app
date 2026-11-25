@@ -1,0 +1,185 @@
+name: Stage193 - Recovered history HPR reconciliation and versioned audit
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/stage193-hpr-reconciliation.yml'
+  schedule:
+    - cron: '45 6 * * *'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage193-hpr-reconciliation
+  cancel-in-progress: false
+jobs:
+  reconcile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PYTHONPATH: '.:scripts'
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      DB: reports/stage147-143-146/source/stage2/historical_ukie_staging.sqlite
+      REF: reports/stage147-143-146/source/stage4/all_races_with_reference_event_ids.csv
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install original HPR dependencies and validate engines
+        run: |
+          python -m pip install --disable-pip-version-check kagglehub numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2
+          python scripts/stage86_hpr_engine.py --mode self-test
+          python scripts/stage87_hpr_storage.py self-test
+      - name: Restore baseline and permanent HPR ledger read-only
+        run: |
+          set -euo pipefail
+          mkdir -p "$(dirname "$DB")" "$(dirname "$REF")" reports/stage193
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage2-historical-staging-database --dir "$(dirname "$DB")"
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage4-reference-named-events-and-winners --dir "$(dirname "$REF")"
+          python scripts/stage87_hpr_storage.py restore --dir data/hpr/shards --db "$RUNNER_TEMP/stage193-live-hpr.sqlite"
+      - name: Reconstruct both HPR recipes on verified prior-only history and audit coverage
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/stage193.py" <<'PY'
+          import collections as C, csv, datetime as dt, hashlib, json, math, os, pathlib as P, sqlite3
+          from zoneinfo import ZoneInfo
+          import stage86_hpr_engine as H
+          import stage134c_full_field_hpr_replay as V
+          import stage133_class_taxonomy_hpr_replay as T
+          import stage108_model_g2 as G
+          from stage167_validated_history import refreshed_inputs
+          from scripts import stage182c_verified_source as A
+          O=P.Path('reports/stage193'); O.mkdir(exist_ok=True)
+          target=dt.datetime.now(ZoneInfo('Europe/Dublin')).date().isoformat()
+          def load(p):return json.loads(P.Path(p).read_text())
+          def save(n,x):(O/n).write_text(json.dumps(x,indent=2,sort_keys=True,default=str)+'\n')
+          def digest(x):return hashlib.sha256(json.dumps(x,sort_keys=True,separators=(',',':'),default=str).encode()).hexdigest()
+          def write(n,rows,fields):
+              with (O/n).open('w',newline='') as f:
+                  w=csv.DictWriter(f,fieldnames=fields,extrasaction='ignore');w.writeheader();w.writerows(rows)
+          approved={e['id']:e for p in ('data/stage182c-approved-history.json','data/stage182h-approved-history.json') for e in load(p)['races']}
+          assert len(approved)==127 and sum(e['runners'] for e in approved.values())==1434
+          # Read latest revisions only; do NOT insert v3.1 into the legacy v0 store.
+          with sqlite3.connect('file:'+os.environ['RUNNER_TEMP']+'/stage193-live-hpr.sqlite?mode=ro',uri=True) as c:
+              assert c.execute('pragma quick_check').fetchone()[0]=='ok'
+              versions=dict(c.execute('select model_version,count(*) from hpr_ratings group by model_version'))
+              prior_store=C.defaultdict(list)
+              sql='''select a.payload,a.revision,a.source_sha from hpr_ratings a join
+                (select horse_key,race_key,model_version,max(revision) rev from hpr_ratings
+                 group by horse_key,race_key,model_version) b on a.horse_key=b.horse_key
+                 and a.race_key=b.race_key and a.model_version=b.model_version and a.revision=b.rev
+                 where a.model_version=?'''
+              for payload,rev,sha in c.execute(sql,(H.VERSION,)):
+                  r=json.loads(payload); prior_store[(r['horse_key'],r['date'],H.course(r.get('course')))].append((r,rev,sha))
+          counts=C.Counter(); audit=[]; scores=[]; rejected=[]; seen=set()
+          with refreshed_inputs(P.Path(os.environ['DB']),P.Path(os.environ['REF']),target) as (db,ref):
+              db=P.Path(db);ref=P.Path(ref)
+              with sqlite3.connect('file:'+str(db.resolve())+'?mode=ro',uri=True) as c:
+                  latest,nr=c.execute('select max(race_date),count(*) from historical_races').fetchone()
+                  first=c.execute('select min(race_date) from historical_races').fetchone()[0]
+                  assert latest<target and c.execute('pragma quick_check').fetchone()[0]=='ok'
+                  affected={}; expected={}
+                  for rid,e in approved.items():
+                      race,rr=A.fetch(c,rid)
+                      assert len(rr)==e['runners'] and A.signature(race,rr)==e['sha256'],rid
+                      for row in rr:
+                          h={'horse':row[3],'horse_source_id':row[2],'sire':row[17],'dam':row[18],'outcome':row[8]}
+                          key=V.verified_horse_key(h); token=(rid,row[1]); expected[token]=dict(race_id=rid,runner_key=row[1],date=race[1],horse_key_hash=digest(key) if key else '',status='PENDING')
+                          if not V.eligible_starter(h):expected[token]['status']='NON_RUNNER';continue
+                          if not key:expected[token]['status']='UNVERIFIABLE_IDENTITY';continue
+                          affected[key]=min(affected.get(key,race[1]),race[1])
+              refs,refaudit=G.load_reference(ref,first=first,last=latest)
+              # Stream every verified historical field, retaining only affected horses' full careers.
+              # Preserve separate v0 archival and full-field v3.1 inputs: these are not interchangeable.
+              # Identify duplicate horse/date/course slots before scoring ANY affected run.
+              slot_counts=C.Counter()
+              for field in V.stream_archive(db,first,latest):
+                  for x in field:
+                      if not V.eligible_starter(x):continue
+                      k=V.verified_horse_key(x)
+                      if k in affected:slot_counts[(k,x['date'],H.course(x['course']))]+=1
+              past0=C.defaultdict(list);past31=C.defaultdict(list);pending=[];prev_day=None
+              def release():
+                  for key,s0,s31 in pending:
+                      if s0 is not None:past0[key].append(s0)
+                      if s31 is not None:past31[key].append(s31)
+                  pending.clear()
+              for field in V.stream_archive(db,first,latest):
+                  day=field[0]['date'];rid=field[0]['race_id'];counts['fields_scanned']+=1
+                  if day!=prev_day:release();prev_day=day
+                  starters=[x for x in field if V.eligible_starter(x)]
+                  ks=[V.verified_horse_key(x) for x in starters]; mult=C.Counter(ks)
+                  hit=[(x,k) for x,k in zip(starters,ks) if k in affected]
+                  if not hit:continue
+                  meta=refs.get(rid); valid=bool(meta and V.race_identity(field[0],meta)); reason=''
+                  if not valid:reason='UNVERIFIED_RACE_REFERENCE'
+                  elif len(starters)<2:reason='FIELD_TOO_SMALL'
+                  else:
+                      country=str(meta[4]).upper();title=meta[3];rtype=meta[2];stored=str(field[0].get('race_class') or '').strip()
+                      title_only=T.parse(title,rtype,country);parsed=T.parse(title,f'{rtype} {stored}',country)
+                      recorded=T.parse('',stored,country)['explicit_uk_class'] if stored else None
+                      if title_only['explicit_uk_class'] is not None and recorded is not None and title_only['explicit_uk_class']!=recorded:reason='CLASS_CONFLICT'
+                  if reason:
+                      counts[reason]+=len(hit)
+                      for x,k in hit:
+                          token=(rid,x['runner_key'])
+                          if token in expected:expected[token]['status']=reason
+                      continue
+                  fieldor,fieldweight,known_or,known_weight=V.field_context(starters);pts=V.class_points(parsed)
+                  ors=[H.number(x.get('official_rating')) for x in field];ors=[x for x in ors if x is not None and x>0]
+                  mean0=sum(ors)/len(ors) if len(ors)>=max(2,math.ceil(len(field)*.5)) else None
+                  for x,k in hit:
+                      token=(rid,x['runner_key']); slot=(k,day,H.course(x['course']))
+                      if mult[k]!=1 or slot_counts[slot]!=1 or slot in seen:
+                          counts['DUPLICATE_IDENTITY_OR_SLOT']+=1
+                          if token in expected:expected[token]['status']='DUPLICATE_IDENTITY_OR_SLOT'
+                          rejected.append({'race_id_hash':digest(rid),'horse_key_hash':digest(k),'date':day,'reason':'DUPLICATE_IDENTITY_OR_SLOT'})
+                          continue
+                      seen.add(slot)
+                      event={'horse_key':k,'horse':x['horse'],'race_key':'HIST|'+rid,'date':day,'course':x['course'],'race_type':x['race_type'],'surface':x['surface'],'distance_f':x['distance_f'],'going':x['going'],'race_class':x['race_class'],'trainer':x['trainer'],'jockey':x['jockey'],'weight_lbs':x['weight_lbs'],'official_rating':x['official_rating'],'draw':x['draw'],'position':x['finish_pos'],'status':x['outcome'],'beaten':x['beaten'],'field_size':len(field),'field_or':mean0,'source':'archive_pedigree_or_id','source_race_id':rid}
+                      s0,why0=H.score_event(event,past0[k]); ev31={**event,'race_type':str(title)+' '+str(rtype),'field_size':len(starters),'field_or':fieldor if known_or>=max(2,math.ceil(len(starters)*.5)) else None,'source':'HISTORICAL_EXACT_ARCHIVE_PREVIOUS_DAY'};ev31.pop('source_race_id',None)
+                      base31,why31=H.score_event(ev31,past31[k]); h31=V.v31(base31,ev31,pts,fieldor,fieldweight) if base31 is not None else None
+                      pending.append((k,s0,base31)); counts['affected_career_runs']+=1
+                      if day<affected[k]:continue
+                      stored_rows=prior_store.get(slot,[]); match='MISSING'; existing=None;revision=None
+                      if len(stored_rows)==1:
+                          old,revision,_=stored_rows[0]
+                          if H.number(old.get('position'))!=H.number(x.get('finish_pos')) or (H.number(x.get('finish_pos')) is None and H.norm(old.get('status'))!=H.norm(x.get('outcome'))):match='OUTCOME_CONFLICT'
+                          else:match='EXISTING_SAME_ID_DATE_COURSE_OUTCOME';existing=old.get('hpr')
+                      elif stored_rows:match='AMBIGUOUS_MULTIPLE_LEDGER_KEYS'
+                      out={'date':day,'race_id_hash':digest(rid),'horse_key_hash':digest(k),'recovered_race':rid in approved,'existing_v0_status':match,'existing_v0':existing,'existing_revision':revision,'reconstructed_v0':s0['hpr'] if s0 else None,'reconstructed_v31':h31,'v0_status':why0,'v31_status':why31,'v0_source_digest':H.source_digest(event),'v31_source_digest':H.source_digest(ev31),'v0_prior_runs':len(past0[k]),'v31_prior_runs':len(past31[k])}
+                      scores.append(out)
+                      if token in expected:expected[token].update(status='BOTH_RATED' if s0 is not None and h31 is not None else 'RATING_INCOMPLETE',existing_v0_status=match,v0_status=why0,v31_status=why31,reconstructed_v0=out['reconstructed_v0'],reconstructed_v31=h31)
+              release()
+              audit=list(expected.values()); assert len(audit)==1434
+              # Missing rows are not silently ignored; a candidate is not a live ledger.
+              for x in audit:
+                  if x['status']=='PENDING':x['status']='NOT_RECONSTRUCTED'
+              assert len({(x['race_id_hash'],x['horse_key_hash']) for x in scores})==len(scores)
+              for x in scores:
+                  for name in ('reconstructed_v0','reconstructed_v31'):
+                      if x[name] is not None:assert 0<=x[name]<=100
+              summary={'status':'RECONSTRUCTED_CANDIDATE_ONLY_NOT_LIVE','target_date':target,'history_through':latest,'history_races':nr,'approved_races':len(approved),'approved_runner_rows':len(audit),'affected_horses':len(affected),'recovered_coverage':dict(C.Counter(x['status'] for x in audit)),'existing_v0_recovered_coverage':dict(C.Counter(x.get('existing_v0_status','NOT_MATCHED') for x in audit)),'affected_followup_rows':sum(not x['recovered_race'] for x in scores),'candidate_rating_rows':len(scores),'legacy_versions':versions,'v0_recipe':H.VERSION,'v31_recipe':V.VERSION,'reference_audit':refaudit,'counts':dict(counts),'candidate_sha256':digest(scores),'limitations':['Legacy v0 store read only; reconstructed historic v0 may differ from archived live event inputs.','v3.1 reconstruction uses full-field Stage134c/139 recipe, not mixed into legacy store.','Existing matches are identity/date/course/outcome candidates, not proof of exact race-key parity.','Only original 127 recovered races and subsequent affected career runs are audited; not a complete all-horse HPR ledger.','No live consumer, shards, frozen simulation, or selection routing changed.','No raw historical source rows or proprietary database exported.']}
+              save('report.json',summary)
+              write('recovered-coverage.csv',audit,['race_id','runner_key','date','horse_key_hash','status','existing_v0_status','v0_status','v31_status','reconstructed_v0','reconstructed_v31'])
+              write('versioned-candidate-ratings.csv',scores,['date','race_id_hash','horse_key_hash','recovered_race','existing_v0_status','existing_v0','existing_revision','reconstructed_v0','reconstructed_v31','v0_status','v31_status','v0_source_digest','v31_source_digest','v0_prior_runs','v31_prior_runs'])
+              save('duplicate-quarantine.json',rejected)
+              print('STAGE193_REPORT',json.dumps(summary,default=str),flush=True)
+              if not scores or not any(x['status']=='BOTH_RATED' for x in audit):raise RuntimeError('No verified recovered HPR candidate rows')
+          PY
+          python -m py_compile "$RUNNER_TEMP/stage193.py"
+          python "$RUNNER_TEMP/stage193.py"
+      - name: Retain derived HPR candidate and audit (no source database)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage193-hpr-reconciliation-${{ github.run_id }}
+          path: reports/stage193/
+          retention-days: 90
+          if-no-files-found: warn
