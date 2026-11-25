@@ -1,0 +1,109 @@
+name: Stage182d - Verify remaining 18 historical runs individually
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/stage182d-remaining-form-verification.yml']
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage182d-provider-verification
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      PYTHONPATH: '.:scripts'
+      PYTHONUNBUFFERED: '1'
+      PUNTERSEDGE_API_KEY: ${{ secrets.PUNTERSEDGE_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage182b-metadata-repair-audit
+          run-id: 45518317420
+          github-token: ${{ github.token }}
+          path: evidence
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage181-unmatched-recovery-audit
+          run-id: 45515273975
+          github-token: ${{ github.token }}
+          path: original
+      - name: Obtain independent dated provider evidence for the 18 exceptions
+        run: |
+          python - <<'PY'
+          import collections as C, datetime as D, json, os, pathlib as P, re
+          from zoneinfo import ZoneInfo
+          from scripts import stage171_recent_history as M
+          from scripts.stage65c_puntersedge_recovery import get_results
+          OUT=P.Path('reports/stage182d');OUT.mkdir(parents=True,exist_ok=True)
+          def load(p):return json.loads(P.Path(p).read_text())
+          def save(n,x):(OUT/n).write_text(json.dumps(x,indent=2,ensure_ascii=False)+'\n')
+          def norm(x):return M.horse(x)
+          def course(x):
+           n=M.course(x);return {'dundalkaw':'dundalk','dundalkire':'dundalk','dundalkawire':'dundalk','kemptonpark':'kempton','chelmsfordcity':'chelmsford','bangor':'bangorondee','galwayire':'galway','wexfordire':'wexford','curraghire':'curragh'}.get(n,n)
+          def status(h):
+           p=h.get('position');s=M.norm(h.get('status'));t=M.norm(p)
+           if s in M.NR or t in M.NR:return ('NR',None)
+           if s in M.TERMINAL or t in M.TERMINAL:return (M.TERMINAL.get(s) or M.TERMINAL.get(t),None)
+           if not isinstance(p,bool) and re.fullmatch(r'[0-9]+(?:\.0+)?',str(p)) and float(p)>0:return ('FINISHED',int(float(p)))
+           return ('UNKNOWN',None)
+          def field(rows):
+           res={}
+           for h in rows or []:
+            n=norm(h.get('horse') or h.get('name'));st=status(h)
+            if not n or n in res:return None
+            if st[0]!='NR':res[n]=st
+           return res
+          def stamp(x):
+           try:
+            t=D.datetime.fromisoformat(str(x).replace('Z','+00:00'));return t if t.tzinfo else None
+           except (ValueError,TypeError):return None
+          report=load('evidence/report.json');rows=[x for x in load('evidence/record-audit.json') if x['status']!='RECOVERED_IN_PRIVATE_CANDIDATE'];assert len(rows)==report['remaining_unmatched_in_candidate']==18
+          originals=load('original/unresolved-prior-runs.json');state={'requests':0,'max_requests':60};errors={};provider={};key=os.environ.get('PUNTERSEDGE_API_KEY','').strip()
+          for d in sorted({q for x in rows for q in (x['date'],(D.date.fromisoformat(x['date'])+D.timedelta(days=1)).isoformat())}):
+           try:
+            if not key:raise RuntimeError('Provider key unavailable')
+            rs,_=get_results(d,key,state)
+            for r in rs:
+             if r.get('race_id'):provider[str(r['race_id'])]=r
+           except Exception as e:errors[d]=type(e).__name__+': '+str(e)[:140]
+          records=[]
+          for x in rows:
+           d=x['date'];n=norm(x['horse']);co=course(x['course']);p=P.Path('data/racing-results')/(d+'.json');old=[];external=[]
+           for a in load(p).get('results',[]) if p.exists() else []:
+            f=field(a.get('runners'))
+            if a.get('status')=='final' and course(a.get('course'))==co and f and n in f:
+             old.append((a,f))
+           for r in provider.values():
+            t=stamp(r.get('start_time'))
+            if not t or t.astimezone(ZoneInfo('Europe/Dublin')).date().isoformat()!=d or course(r.get('venue_canonical') or r.get('venue'))!=co:continue
+            if r.get('category')!='horse' or r.get('country') not in ('GB','IE') or str(r.get('status','')).lower() not in ('final','finished','resulted','complete','completed','official'):continue
+            f=field(r.get('runners'))
+            if not f or n not in f or any(s[0]=='UNKNOWN' for s in f.values()):continue
+            if x.get('prior_time') is not None and abs(M.off({'race_time':r['start_time']})-x['prior_time'])>30:continue
+            external.append((r,f))
+           pairs=[]
+           for a,af in old:
+            for r,pf in external:
+             if set(af)!=set(pf):continue
+             differences=[{'horse':h,'archive':af[h],'provider':pf[h]} for h in sorted(af) if af[h]!=pf[h]]
+             pairs.append({'archive_id':a.get('race_id'),'provider_id':r.get('race_id'),'archive_time':M.off(a),'provider_time':r.get('start_time'),'target_archive':af[n],'target_provider':pf[n],'field_size':len(pf),'differences':differences,'archive_surface':a.get('surface'),'archive_region':a.get('region'),'archive_title':a.get('race_name'),'archive_type':a.get('type'),'archive_distance':a.get('dist_f')})
+           exact=[v for v in pairs if not v['differences']];status_code='CORROBORATED_FULL_FIELD_REVIEW_REQUIRED' if len(exact)==1 else 'CONFLICT_REQUIRES_REVIEW' if pairs else 'NO_UNIQUE_CORROBORATED_FIELD'
+           records.append({'horse':x['horse'],'date':d,'course':x['course'],'stage182b_status':x['status'],'validation_reasons':x.get('validation_reasons',[]),'conflicting_horses':x.get('conflicting_horses',[]),'original_identity_evidence':[z for z in originals if norm(z['horse'])==n and z['prior_date']==d and course(z['prior_course'])==co],'archive_candidates':len(old),'provider_candidates':len(external),'full_field_comparisons':pairs,'status':status_code})
+          summary={'status':'READ_ONLY_INDIVIDUAL_PROVIDER_AUDIT','remaining':len(records),'distinct_horses':len({norm(x['horse']) for x in records}),'provider_requests':state['requests'],'provider_errors':errors,'counts':dict(C.Counter(x['status'] for x in records)),'note':'No result, identity or metadata conflicts automatically overwritten; no live changes. Corroboration is evidence for subsequent verified append.'}
+          save('remaining-records.json',records);save('report.json',summary);print('STAGE182D_REPORT',json.dumps(summary),flush=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage182d-individual-recovery-evidence
+          path: reports/stage182d/
+          if-no-files-found: error
+          retention-days: 30
