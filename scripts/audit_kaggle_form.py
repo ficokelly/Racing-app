@@ -106,6 +106,7 @@ def person_totals(rows):
 
 def fetch_rows(source,start,end):
     days=C.defaultdict(dict); problems=C.defaultdict(C.Counter); races=C.defaultdict(set); maxdate=''; scanned=0
+    dash=C.defaultdict(list); known_nr=C.defaultdict(set)
     for filename,opener in I.source_iter(source):
         with opener() as f:
             sample=f.read(8192);f.seek(0)
@@ -127,12 +128,23 @@ def fetch_rows(source,start,end):
                     problems[day]['unresolved_course:'+course[:80]]+=1;continue
                 co=F.course_key(course);horse=F.horse_key(I.value(row,m,'horse'));rid=I.value(row,m,'race_id') or I.value(row,m,'race_no') or I.value(row,m,'off_time')
                 pos=outcome(I.value(row,m,'finish'))
+                if all((co,horse,rid)) and I.value(row,m,'finish').strip() in ('-','–','—'):
+                    dash[day].append((co,horse,rid));continue
                 if not all((co,horse,rid)) or pos=='UNKNOWN':problems[day]['invalid_identity_or_finish:'+course[:40]+':'+str(I.value(row,m,'finish'))[:30]]+=1;continue
-                if pos=='NR':continue
+                if pos=='NR':known_nr[day].add((co,horse,rid));continue
                 x={'outcome':pos,'trainer':I.value(row,m,'trainer'),'jockey':I.value(row,m,'jockey'),'race':rid}
                 key=(co,horse); old=days[day].get(key)
                 if old and old!=x:problems[day]['contradictory_duplicate']+=1;continue
                 days[day][key]=x;races[day].add((co,rid))
+    # A dash is NOT a finishing position and is never automatically a non-runner.
+    # An exact source race/horse with a separate known finish or explicit NR is redundant.
+    for day,records in dash.items():
+        for co,horse,rid in records:
+            match=days[day].get((co,horse))
+            if (match and match['race']==rid) or (co,horse,rid) in known_nr[day]:
+                problems[day]['excluded_redundant_dash_row']+=1
+            else:
+                problems[day]['unresolved_dash:'+co]+=1
     if not maxdate or not scanned:raise RuntimeError('No usable recent Kaggle source records')
     return days,problems,races,maxdate
 
@@ -181,7 +193,7 @@ def compare(day,k,kr,kissues,api,ar,ai,expected,api_count):
     if len(kr)<len(ar):reasons.append('fewer_kaggle_races')
     if unmatched:reasons.append('unmatched_saved_races')
     if any(gaps.values()):reasons.append('missing_kaggle_persons')
-    if any(key!='excluded_explicit_foreign_course' for key in kissues) or ai:reasons.append('source_quality_issues')
+    if any(key not in ('excluded_explicit_foreign_course','excluded_redundant_dash_row') for key in kissues) or ai:reasons.append('source_quality_issues')
     if not reasons and len(k)==len(api) and all(sum(x['runs'] for x in ag[g].values())==len(api) for g in ('trainers','jockeys')):reasons.append('no_demonstrated_coverage_improvement')
     return {'date':day,'api_starters':len(api),'kaggle_starters':len(k),'api_races':len(ar),'kaggle_races':len(kr),'shared_starters':len(common),'api_only_starters':len(missing),'kaggle_only_starters':len(k.keys()-api.keys()),'finish_disagreements':different,'person_disagreements':people_diff,'kaggle_identity_gaps':gaps,'unmatched_saved_races':unmatched,'kaggle_issues':dict(kissues),'api_issues':dict(ai),'approved':not reasons,'reasons':reasons},stats
 
@@ -229,9 +241,9 @@ def main():
             ar=matches[0]
             for kind in ('trainer','jockey'):
                 if ar[kind] and F.person_key(ar[kind])!=F.person_key(kr[kind]):
-                    pair_conflicts.append({'kind':kind,'api_name':ar[kind],'kaggle_name':kr[kind]})
+                    pair_conflicts.append({'kind':kind,'api_name':ar[kind],'kaggle_name':kr[kind],'course_key':co,'horse_key':horse})
         r['enriched_pair_conflicts']=len(pair_conflicts)
-        r['enriched_pair_examples']=pair_conflicts[:20]
+        r['enriched_pair_examples']=pair_conflicts
         if pair_conflicts:
             r['reasons'].append('enriched_runner_identity_disagreement');r['approved']=False
         r['enriched_person_losses']=losses

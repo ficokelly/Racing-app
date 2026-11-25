@@ -43,7 +43,12 @@ def compact(value: object) -> str:
 
 def person_key(name: object) -> str:
     # Jockey claim changes do not create a new person.
-    return compact(re.sub(r'\s*\(\d+\)\s*$', '', str(name or '')))
+    # FORM_PERSON_REGISTRY_V4
+    try:
+        from scripts.form_person_aliases import person_key as registered_key
+    except ModuleNotFoundError:
+        from form_person_aliases import person_key as registered_key
+    return registered_key(name)
 
 
 def horse_key(name: object) -> str:

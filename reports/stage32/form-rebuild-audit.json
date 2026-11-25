@@ -9,20 +9,20 @@
     "rows_with_identity_enrichment": 3444,
     "unique_starters": 3502
   },
-  "fourteen_day_form_runners": 3502,
-  "fourteen_day_missing_trainer_rows": 58,
-  "fourteen_day_missing_jockey_rows": 58,
+  "fourteen_day_form_runners": 3816,
+  "fourteen_day_missing_trainer_rows": 21,
+  "fourteen_day_missing_jockey_rows": 21,
   "gordon_elliott": {
     "name": "Gordon Elliott",
-    "runs": 66,
+    "runs": 76,
     "wins": 12,
-    "strike_rate": 18.2
+    "strike_rate": 15.8
   },
   "jack_kennedy": {
     "name": "Jack Kennedy",
-    "rides": 26,
+    "rides": 28,
     "wins": 6,
-    "strike_rate": 23.1
+    "strike_rate": 21.4
   },
   "reference_screenshot_2026_11_03": {
     "gordon_elliott_wins": 9,
@@ -33,7 +33,28 @@
     "Racing API coverage is not assured complete; unmatched identities are withheld.",
     "No selection or probability models were changed.",
     "Duplicated runner records are counted once, not twice.",
-    "This fixes form result identity linking, not the original API source coverage."
+    "This fixes form result identity linking, not the original API source coverage.",
+    "Coverage guard checks the raw API archive; some of its historical gaps may be covered by approved Kaggle aggregates. Neither source is certified complete."
+  ],
+  "kaggle_version": 132,
+  "kaggle_cutoff": "2026-11-20",
+  "kaggle_days": [
+    "2026-11-11",
+    "2026-11-12",
+    "2026-11-13",
+    "2026-11-14",
+    "2026-11-15",
+    "2026-11-17",
+    "2026-11-18",
+    "2026-11-20"
+  ],
+  "api_days": [
+    "2026-11-16",
+    "2026-11-19",
+    "2026-11-21",
+    "2026-11-22",
+    "2026-11-23",
+    "2026-11-24"
   ],
   "coverage_guard": {
     "expected_races": {
