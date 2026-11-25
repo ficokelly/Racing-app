@@ -1,0 +1,302 @@
+name: Stage204C - Shared historical database HPR integration and targeted replay
+on:
+  workflow_dispatch:
+    inputs:
+      target_date:
+        description: Prospective Dublin target date (default 26 November 2026)
+        required: false
+        default: '2026-11-26'
+  push:
+    branches: [main]
+    paths: ['.github/workflows/stage204c-hpr-shared-history.yml']
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage204c-hpr-integration
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      PYTHONPATH: .:scripts
+      PYTHONUNBUFFERED: '1'
+      GH_TOKEN: ${{ github.token }}
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install existing source and model dependencies
+        run: pip install numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2 requests 'kagglehub>=0.3,<1'
+      - name: Restore original historical archive and HPR ledger
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage152-specialists/source/stage2 reports/stage204c/ref reports/stage204c/output
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage2-historical-staging-database --dir reports/stage152-specialists/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage4-reference-named-events-and-winners --dir reports/stage204c/ref
+          python scripts/stage87_hpr_storage.py restore --dir data/hpr/shards --db reports/stage204c/hpr-original.sqlite
+          python scripts/stage86_hpr_engine.py --mode self-test
+      - name: Validate HPR linked database and targeted rating replay
+        env:
+          ASKED_DATE: ${{ inputs.target_date }}
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/stage204c.py" <<'PY'
+          """Candidate HPR integration. Preserve original ledger, replay verified affected careers only.
+          No Kaggle raw source data or full shared historical DB is exported.
+          """
+          import collections as C, csv, datetime as D, hashlib, json, math, os, pathlib as P, shutil, sqlite3
+          import stage86_hpr_engine as H
+          import stage87_hpr_storage as Store
+          import stage108_model_g2 as G
+          from scripts.stage201_recent_history import course, state
+          from rhp_runner_eligibility import active_runner
+          from stage167_validated_history import refreshed_inputs
+          
+          OUT=P.Path('reports/stage204c/output'); OUT.mkdir(parents=True,exist_ok=True)
+          ROOT=P.Path('data'); TARGET=os.environ.get('ASKED_DATE','').strip() or '2026-11-26'
+          BASE=P.Path('reports/stage152-specialists/source/stage2/historical_ukie_staging.sqlite')
+          REFS=list(P.Path('reports/stage204c/ref').rglob('all_races_with_reference_event_ids.csv'))
+          LEDGER=P.Path('reports/stage204c/hpr-original.sqlite')
+          CAND=P.Path('reports/stage204c/hpr-candidate.sqlite')
+          
+          def dump(name,obj): (OUT/name).write_text(json.dumps(obj,indent=2,sort_keys=True,default=str)+'\n')
+          def write(name,rows,fields):
+              with (OUT/name).open('w',newline='',encoding='utf8') as f:
+                  w=csv.DictWriter(f,fieldnames=fields,extrasaction='ignore');w.writeheader();w.writerows(rows)
+          def digest(x): return hashlib.sha256(json.dumps(x,sort_keys=True,separators=(',',':'),default=str).encode()).hexdigest()
+          def slot(key,date,venue): return (key,str(date),course(venue))
+          def result(x): return state({'position':x.get('position',x.get('finish_pos')),'status':x.get('status') or x.get('outcome')})
+          def identity(x):
+              key=H.identity(x)
+              return key if key.startswith('P|') else ''
+          def event_key(row): return (row['horse_key'],row['race_key'],row['model_version'])
+          def actual_rows(field): return [x for x in field if result(x)[0]!='NR']
+          def terminal_for_hpr(st):
+              return {'PU':'pu','F':'f','UR':'ur','BD':'bd','RO':'ro','REF':'refused','FINISHED':'FINISHED'}.get(st,st)
+          def exact_field(field,ref):
+              if not field or not ref:return False
+              d,co,region=ref
+              if region not in ('GB','IRELAND') or d!=field[0]['date'] or course(co)!=course(field[0]['course']):return False
+              states=[result(x) for x in actual_rows(field)]
+              positions=sorted(p for s,p in states if p is not None)
+              return bool(len(states)>=2 and all(s not in ('UNKNOWN','NR') for s,p in states) and positions and positions==list(range(1,len(positions)+1)))
+          def event(x,field,ref):
+              st,pos=result(x); actual=actual_rows(field); n=len(actual)
+              ors=[H.number(r.get('official_rating')) for r in actual];ors=[v for v in ors if v is not None and v>0]
+              field_or=sum(ors)/len(ors) if len(ors)>=max(2,math.ceil(n*.5)) else None
+              return dict(horse_key=identity(x),horse=x['horse'],race_key='HIST|'+x['race_id'],date=x['date'],course=x['course'],race_type=x['race_type'],surface=x['surface'],distance_f=x['distance_f'],going=x['going'],race_class=x['race_class'],trainer=x['trainer'],jockey=x['jockey'],weight_lbs=x['weight_lbs'],official_rating=x['official_rating'],draw=x['draw'],position=pos,status=terminal_for_hpr(st),beaten=x['beaten'],field_size=n,field_or=field_or,source='shared_verified_history_stage204c',source_race_id=x['race_id'])
+          
+          def latest(c,target):
+              q='''SELECT a.payload,a.revision,a.source_sha,a.horse_key,a.race_key,a.model_version,a.race_date FROM hpr_ratings a JOIN
+                   (SELECT horse_key,race_key,model_version,MAX(revision) rev FROM hpr_ratings WHERE race_date<? GROUP BY horse_key,race_key,model_version) b
+                   ON a.horse_key=b.horse_key AND a.race_key=b.race_key AND a.model_version=b.model_version AND a.revision=b.rev
+                   WHERE a.race_date<?'''
+              for raw,rev,sha,h,r,v,d in c.execute(q,(target,target)):
+                  x=json.loads(raw)
+                  assert (x.get('horse_key'),x.get('race_key'),x.get('model_version'),x.get('date'))==(h,r,v,d),'Ledger payload/key mismatch'
+                  yield x,rev,sha
+          
+          def prior_profiles(c,target,card):
+              affected={identity(x) for x in card if identity(x)}
+              counts={'declared_exact_pedigree':len(affected)}
+              # Only proven repairs and bridge records, never target-day events. Include prior approved October repairs.
+              approved=set()
+              for p in (ROOT/'stage182c-approved-history.json',ROOT/'stage182h-approved-history.json'):
+                  if p.exists():approved.update(x['id'] for x in json.loads(p.read_text()).get('races',[]))
+              repair_ids=set()
+              for rid, in c.execute("SELECT id FROM historical_races WHERE race_date<? AND (id LIKE 'stage201:%' OR id LIKE 'stage202b:%' OR id LIKE 'stage203:%' OR id LIKE 'stage196:%' OR id LIKE 'stage171:%')",(target,)):repair_ids.add(rid)
+              repair_ids|=approved
+              # Stage203 pedigree repairs may refer to existing Kaggle race IDs.
+              for p in (ROOT/'stage203-identity').glob('identity-*.json'):
+                  if p.stem.removeprefix('identity-')<=target:
+                      repair_ids.update(x['race_id'] for x in json.loads(p.read_text()).get('records',[]) if x.get('race_id'))
+              for rid in sorted(repair_ids):
+                  for h,sire,dam,p,st in c.execute('SELECT u.horse_name,u.sire,u.dam,u.finish_pos,u.outcome FROM historical_runs u JOIN historical_races r ON r.id=u.race_id WHERE r.id=? AND r.race_date<?',(rid,target)):
+                      if result({'position':p,'status':st})[0] in ('NR','UNKNOWN'):continue
+                      k=identity({'horse':h,'sire':sire,'dam':dam})
+                      if k:affected.add(k)
+              counts.update(repair_races_considered=len(repair_ids),total_affected_identities=len(affected))
+              return affected,counts
+          
+          def link_candidates(db,ref,target,affected,old_slots):
+              # Stream once. Store only exact pedigree slots needed by old ratings or affected careers.
+              with P.Path(ref).open(encoding='utf-8-sig',newline='') as f:
+                  refs={r['stage2_race_id']:(r['date'],r['course'],r['region_scope'].upper()) for r in csv.DictReader(f)}
+              old_links=C.defaultdict(list); careers=C.defaultdict(list); bad=C.defaultdict(list); count=C.Counter()
+              with sqlite3.connect(f'file:{P.Path(db).resolve()}?mode=ro',uri=True) as c:
+                  first,last=c.execute('SELECT MIN(race_date),MAX(race_date) FROM historical_races').fetchone()
+                  assert first and last and last<target
+                  for field in G.from_db(c,first,last):
+                      count['historical_fields_scanned']+=1
+                      d=field[0]['date']; rid=field[0]['race_id']; hit=[]
+                      for x in field:
+                          k=identity(x)
+                          if not k:continue
+                          s=slot(k,d,x['course'])
+                          if k not in affected and s not in old_slots:continue
+                          st,p=result(x)
+                          if st=='NR':continue
+                          hit.append((x,k,s,st,p))
+                          if s in old_slots:old_links[s].append((rid,x['runner_key'],st,p))
+                      if not hit:continue
+                      verified=exact_field(field,refs.get(rid))
+                      for x,k,s,st,p in hit:
+                          if k not in affected:continue
+                          if not verified or st=='UNKNOWN':
+                              bad[k].append((d,rid,'UNVERIFIED_FULL_FIELD_OR_OUTCOME'));continue
+                          e=event(x,field,refs[rid]); q,why=H.run_quality(e)
+                          if q is None:bad[k].append((d,rid,why));continue
+                          careers[k].append((s,e,x['runner_key']))
+              return old_links,careers,bad,dict(count)
+          
+          def link_result(x,raw,slots_count):
+              s=slot(x['horse_key'],x['date'],x.get('course'))
+              if not x['horse_key'].startswith('P|'):return None,'UNSUPPORTED_IDENTITY'
+              if slots_count[(x['model_version'],s)]!=1:return None,'DUPLICATE_LEDGER_SLOT'
+              opts=raw.get(s,[])
+              if len(opts)!=1:return None,'NO_EXACT_HISTORY' if not opts else 'AMBIGUOUS_HISTORY_SLOT'
+              rid,runner,st,p=opts[0]
+              if (st,p)!=result(x) or st=='UNKNOWN':return None,'OUTCOME_CONFLICT_OR_UNKNOWN'
+              return (rid,runner),'VERIFIED_EXACT_PEDIGREE_DATE_COURSE_OUTCOME'
+          
+          def reconcile(affected,old,oldlinks,careers,bad,slots_count):
+              updates=[]; audit=[]; counts=C.Counter()
+              for k in sorted(affected):
+                  existing=sorted(old.get(k,[]),key=lambda x:(x['date'],x['race_key']))
+                  source=sorted(careers.get(k,[]),key=lambda z:(z[0][1],z[1]['race_key']))
+                  prior_map={slot(k,x['date'],x.get('course')):x for x in existing}
+                  new_slots={s for s,e,r in source if s not in prior_map}
+                  old_issues=[why for x in existing for _,why in [link_result(x,oldlinks,slots_count)] if why!='VERIFIED_EXACT_PEDIGREE_DATE_COURSE_OUTCOME']
+                  source_slots=C.Counter(s for s,e,r in source)
+                  day_counts=C.Counter(s[1] for s,e,r in source)
+                  reason=''; added=0; revised=0
+                  if not new_slots:reason='NO_MISSING_VERIFIED_EVENT'
+                  elif old_issues:reason='QUARANTINE_EXISTING_LINK_CONFLICT'
+                  elif any(n>1 for n in source_slots.values()) or any(n>1 for n in day_counts.values()):reason='QUARANTINE_DUPLICATE_CAREER_SLOT'
+                  elif bad.get(k):reason='QUARANTINE_UNSCORABLE_OR_UNVERIFIED_CAREER_EVENT'
+                  elif not set(prior_map)<=set(source_slots):reason='QUARANTINE_EXISTING_EVENT_NOT_REPLAYABLE'
+                  else:
+                      earliest=min(s[1] for s in new_slots); past=[]; pending=[]
+                      for s,e,r in source:
+                          oldrow=prior_map.get(s)
+                          if oldrow and s[1]<earliest:
+                              past.append(oldrow);continue
+                          # Keep original event keys so revisions never create a second record for the same event.
+                          if oldrow:e={**e,'race_key':oldrow['race_key']}
+                          scored,why=H.score_event(e,past)
+                          if scored is None:reason='QUARANTINE_REPLAY_FAILED_'+str(why);pending=[];break
+                          assert scored['model_version']==H.VERSION and 0<=scored['hpr']<=100 and scored['date']<TARGET
+                          if oldrow:
+                              changed=abs(float(scored['hpr'])-float(oldrow['hpr']))>1e-9 or scored.get('prior_hpr_count')!=oldrow.get('prior_hpr_count')
+                              if changed:pending.append(scored);revised+=1;past.append(scored)
+                              else:past.append(oldrow)
+                          else:pending.append(scored);added+=1;past.append(scored)
+                      if not reason:
+                          reason='REPLAY_CANDIDATE';updates.extend(pending)
+                      else:added=revised=0
+                  counts[reason]+=1
+                  audit.append({'horse_key_hash':digest(k),'existing_v0':len(existing),'verified_source_events':len(source),'missing_verified_events':len(new_slots),'unscorable_or_unverified_events':len(bad.get(k,[])),'existing_link_issues':len(old_issues),'status':reason,'candidate_insertions':added,'candidate_revisions':revised})
+              return updates,audit,dict(counts)
+          
+          def embed(db,ledger,target,links):
+              # Private model database, original history untouched apart from newly created HPR tables/views.
+              with sqlite3.connect(db) as c:
+                  c.execute('PRAGMA foreign_keys=ON')
+                  assert not c.execute("SELECT 1 FROM sqlite_master WHERE name='hpr_ratings'").fetchone()
+                  c.executescript(Store.SCHEMA)
+                  c.execute('ATTACH DATABASE ? AS hpr_source',(str(ledger.resolve()),))
+                  c.execute(f'INSERT INTO hpr_ratings ({Store.FIELDS}) SELECT {Store.FIELDS} FROM hpr_source.hpr_ratings WHERE race_date<?',(target,))
+                  c.execute('INSERT INTO hpr_metadata SELECT * FROM hpr_source.hpr_metadata')
+                  c.executescript('''CREATE TABLE hpr_event_link(horse_key TEXT NOT NULL,race_key TEXT NOT NULL,model_version TEXT NOT NULL,historical_race_id TEXT NOT NULL,runner_key TEXT NOT NULL,proof TEXT NOT NULL,PRIMARY KEY(horse_key,race_key,model_version),FOREIGN KEY(historical_race_id,runner_key) REFERENCES historical_runs(race_id,runner_key));
+                  CREATE VIEW hpr_latest AS SELECT h.* FROM hpr_ratings h WHERE h.revision=(SELECT MAX(x.revision) FROM hpr_ratings x WHERE x.horse_key=h.horse_key AND x.race_key=h.race_key AND x.model_version=h.model_version);
+                  CREATE VIEW hpr_verified_latest AS SELECT h.*,l.historical_race_id,l.runner_key,l.proof FROM hpr_latest h JOIN hpr_event_link l USING(horse_key,race_key,model_version);''')
+                  c.executemany('INSERT INTO hpr_event_link VALUES(?,?,?,?,?,?)',links)
+                  total=c.execute('SELECT COUNT(*) FROM hpr_ratings').fetchone()[0]
+                  expected=c.execute('SELECT COUNT(*) FROM hpr_source.hpr_ratings WHERE race_date<?',(target,)).fetchone()[0]
+                  assert total==expected
+                  # Verify complete byte-for-byte copy, including every earlier revision, not just current scores.
+                  assert not c.execute(f'SELECT {Store.FIELDS} FROM hpr_source.hpr_ratings WHERE race_date<? EXCEPT SELECT {Store.FIELDS} FROM main.hpr_ratings LIMIT 1',(target,)).fetchone()
+                  assert not c.execute('PRAGMA foreign_key_check(hpr_event_link)').fetchone()
+                  assert c.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+                  assert c.execute('SELECT MAX(race_date) FROM hpr_ratings').fetchone()[0]<target
+                  n=c.execute('SELECT COUNT(*) FROM hpr_verified_latest').fetchone()[0]; assert n==len(links)
+                  c.commit();c.execute('DETACH DATABASE hpr_source')
+              return {'all_prior_revisions_imported':total,'verified_latest_links':n,'unlinked_ratings_retained_not_verified':True,'prior_date_only':True,'copy_integrity':'PASS'}
+          
+          def main():
+              assert len(REFS)==1 and BASE.is_file() and LEDGER.is_file()
+              assert D.date.fromisoformat(TARGET)>=D.date.today(),'Candidate validation must be prospective'
+              carddoc=json.loads((ROOT/'racecards.json').read_text());cards=[r for r in carddoc['runners'] if r.get('date')==TARGET and active_runner(r)]
+              assert cards and len({r['horse_id'] for r in cards})==len(cards)
+              shutil.copy2(LEDGER,CAND)
+              with sqlite3.connect(LEDGER) as c:
+                  assert c.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+                  original_total=c.execute('SELECT COUNT(*) FROM hpr_ratings').fetchone()[0]
+                  original=list(latest(c,TARGET));original_versions=dict(c.execute('SELECT model_version,COUNT(*) FROM hpr_ratings GROUP BY model_version'))
+              old=C.defaultdict(list);old_slots=set();slots_count=C.Counter()
+              for x,rev,sha in original:
+                  s=slot(x['horse_key'],x['date'],x.get('course'));old_slots.add(s);slots_count[x['model_version'],s]+=1
+                  if x['model_version']==H.VERSION:old[x['horse_key']].append(x)
+              with refreshed_inputs(BASE,REFS[0],TARGET) as (db,ref):
+                  with sqlite3.connect(db) as c:
+                      latest_date=c.execute('SELECT MAX(race_date) FROM historical_races').fetchone()[0];assert latest_date<TARGET
+                      affected,profiles=prior_profiles(c,TARGET,cards)
+                  links,careers,bad,scan=link_candidates(db,ref,TARGET,affected,old_slots)
+                  proposals,report,why=reconcile(affected,old,links,careers,bad,slots_count)
+                  assert len({event_key(x) for x in proposals})==len(proposals)
+                  # Do not publish live shards; append only to a disposable candidate ledger.
+                  with sqlite3.connect(CAND) as c:
+                      counts=H.save_ratings(c,proposals)
+                      assert counts.get('inserted',0)+counts.get('revised',0)+counts.get('unchanged',0)==len(proposals)
+                      assert c.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+                      c.execute('ATTACH DATABASE ? AS old',(str(LEDGER.resolve()),))
+                      assert not c.execute(f'SELECT {Store.FIELDS} FROM old.hpr_ratings EXCEPT SELECT {Store.FIELDS} FROM main.hpr_ratings LIMIT 1').fetchone(),'Original HPR revisions changed or removed'
+                      c.execute('DETACH DATABASE old')
+                      candidate_total=c.execute('SELECT COUNT(*) FROM hpr_ratings').fetchone()[0]
+                      final=list(latest(c,TARGET))
+                  assert candidate_total==original_total+counts.get('inserted',0)+counts.get('revised',0)
+                  # For new events, the already audited source slot is authoritative; add it to the linking index.
+                  for k in affected:
+                      for s,e,r in careers.get(k,[]):
+                          if s not in old_slots:links[s].append((e['source_race_id'],r,*result(e)))
+                  final_slots=C.Counter((x['model_version'],slot(x['horse_key'],x['date'],x.get('course'))) for x,rev,sha in final)
+                  link_rows=[];link_counts=C.Counter(); unresolved=[]
+                  for x,rev,sha in final:
+                      match,reason=link_result(x,links,final_slots);link_counts[reason]+=1
+                      if match:link_rows.append((*event_key(x),*match,reason))
+                      else:unresolved.append({'horse_key_hash':digest(x['horse_key']),'date':x['date'],'race_key_hash':digest(x['race_key']),'model_version':x['model_version'],'reason':reason})
+                  linked=embed(db,CAND,TARGET,link_rows)
+                  # Every new/revised rating must be uniquely linked. Do not export any candidate if this fails.
+                  verified_keys={r[:3] for r in link_rows}
+                  assert all(event_key(x) in verified_keys for x in proposals),'Proposed rating lacks unique verified source link'
+                  # Replay is idempotent: a second save of identical candidate payloads must not append revisions.
+                  with sqlite3.connect(CAND) as c:
+                      again=H.save_ratings(c,proposals)
+                      assert again.get('unchanged',0)==len(proposals) and not again.get('inserted',0) and not again.get('revised',0)
+                  write('affected-careers.csv',report,['horse_key_hash','existing_v0','verified_source_events','missing_verified_events','unscorable_or_unverified_events','existing_link_issues','status','candidate_insertions','candidate_revisions'])
+                  write('unlinked-existing-ratings.csv',unresolved,['horse_key_hash','date','race_key_hash','model_version','reason'])
+                  summary={'status':'CANDIDATE_VALIDATED_NOT_DEPLOYED','target':TARGET,'history_through':latest_date,'active_runners':len(cards),'original_hpr_rows':original_total,'original_versions':original_versions,'candidate_hpr_rows':candidate_total,'latest_prior_ratings':len(final),'linked_latest_counts':dict(link_counts),'affected_profiles':profiles,'replay_status':why,'rating_changes':counts,'scan':scan,'embedded_database':linked,'original_revisions_preserved':True,'second_save_idempotent':True,'legacy_hpr_formula_unchanged':H.VERSION,'stage203_loader_present':'append_stage203' in P.Path('scripts/stage167_validated_history.py').read_text(),'no_raw_shared_database_exported':True,'production_changes':False}
+                  dump('summary.json',summary);print(json.dumps(summary,indent=2),flush=True)
+                  # Publish an auditable derived delta only; source data and the private model database remain on runner.
+                  # Full candidate ledger can be reconstructed from the original ledger plus these append-only rows.
+                  dump('candidate-hpr-revisions.json',proposals)
+                  with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:f.write('## HPR integration candidate\n\n```json\n'+json.dumps(summary,indent=2)+'\n```\n')
+          
+          if __name__=='__main__':main()
+          PY
+          python -m py_compile "$RUNNER_TEMP/stage204c.py"
+          python -u "$RUNNER_TEMP/stage204c.py"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage204c-hpr-shared-history-${{ github.run_id }}
+          path: reports/stage204c/output/
+          if-no-files-found: warn
+          retention-days: 30
