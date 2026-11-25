@@ -15,6 +15,7 @@ DATASET='deltaromeo/horse-racing-results-ukireland-2015-2025'
 REPORT=Path('reports/stage32/kaggle-form-comparison.json')
 NR={'NR','NONRUNNER','NONSTARTER','WD','WITHDRAWN','SCRATCHED','DNS'}
 TERMINAL={'F','FELL','PU','P','PULLEDUP','UR','UNSEATEDRIDER','BD','BROUGHTDOWN','RO','RANOUT','R','REF','REFUSED','DQ','DSQ','DISQUALIFIED','SU','RR','DNF','CO','S','UNPLACED','FINISHEDUNPLACED','U','RET'}
+FOREIGN={'compiegne','toulouse','abudhabi','auteuil','woodbine','chantilly','meydan'}
 PEOPLE={'trainers':['Dan Skelton','Martin Keighley'],'jockeys':['Harry Skelton','James Best']}
 
 def read(p): return json.loads(p.read_text()) if p.exists() else {}
@@ -36,12 +37,70 @@ def outcome(pos,status=''):
     if q in TERMINAL or s in TERMINAL:return 'NONFINISH'
     return 'UNKNOWN'
 
+def person_words(s):
+    import unicodedata
+    s=unicodedata.normalize('NFKD',str(s or ''))
+    s=''.join(x for x in s if not unicodedata.combining(x)).casefold()
+    s=re.sub(r'\s*\(\d+\)\s*$','',s)
+    return re.findall(r'[a-z]+',s)
+
+def lexical_alias(a,b):
+    x,y=person_words(a),person_words(b)
+    if ',' in str(a):
+        left,right=str(a).split(',',1);x=person_words(right)+person_words(left)
+    if ',' in str(b):
+        left,right=str(b).split(',',1);y=person_words(right)+person_words(left)
+    titles={'mr','mrs','ms','miss','dr'}
+    x=[t for t in x if t not in titles]; y=[t for t in y if t not in titles]
+    if not x or not y:return False
+    if F.person_key(a)==F.person_key(b):return True
+    if ''.join(x)==''.join(y):return True
+    # Initials plus identical surname; no fuzzy spelling or surname-only matches.
+    if len(x)<2 or len(y)<2 or x[-1]!=y[-1] or x[0][0]!=y[0][0]:return False
+    if x[0]==y[0] or len(x[0])==1 or len(y[0])==1:
+        return True
+    return False
+
+def crosswalk(kdays,api):
+    # A source pair must appear on the same uniquely identified starter, not merely
+    # on the same day or with a similar name. Record contradictory aliases for review.
+    observed={t:C.defaultdict(C.Counter) for t in ('trainer','jockey')}
+    reverse={t:C.defaultdict(set) for t in observed}; labels={t:{} for t in observed}
+    raw_labels={t:{} for t in observed}; examples=[]; issues=C.Counter()
+    enriched=C.defaultdict(list)
+    for row in api:
+        enriched[(row['date'],row['form_course'],row['form_horse'])].append(row)
+    for day,k in kdays.items():
+        for (co,horse),r in k.items():
+            matches=enriched.get((day,co,horse),[])
+            if len(matches)!=1:continue
+            a=matches[0]
+            if (r['outcome']==1)!=F.is_win(a):continue
+            for t in observed:
+                kn=F.person_key(r[t]); an=F.person_key(a[t])
+                if not kn or not an:continue
+                observed[t][kn][an]+=1; reverse[t][an].add(kn)
+                labels[t][an]=a[t];raw_labels[t][kn]=r[t]
+    mapping={t:{} for t in observed}
+    for t in observed:
+        for kn,v in observed[t].items():
+            if len(v)!=1:
+                issues[t+'_ambiguous_source_name']+=1;continue
+            an,count=next(iter(v.items()))
+            raw,canonical=raw_labels[t][kn],labels[t][an]
+            if kn==an or lexical_alias(raw,canonical):
+                mapping[t][kn]=canonical
+            else:
+                issues[t+'_unresolved_alias']+=1
+                if len(examples)<80:examples.append({'kind':t,'kaggle_name':raw,'api_name':canonical,'matched_starters':count})
+    return mapping,{'mapped_names':{t:len(v) for t,v in mapping.items()},'unresolved':dict(issues),'unresolved_examples':examples,'source_name_samples':{t:list(raw_labels[t].values())[:12] for t in observed}}
+
 def person_totals(rows):
     out={'starters':len(rows),'trainers':{},'jockeys':{}}
     for kind,group in [('trainer','trainers'),('jockey','jockeys')]:
         for x in rows:
-            name=x[kind]; nm=F.compact(name)
-            if not nm:continue
+            name=x[kind]; nm=F.person_key(name)
+            if not nm or nm in {'nan','none','null','unknown','na'}:continue
             a=out[group].setdefault(nm,{'name':name,'runs':0,'wins':0});a['runs']+=1;a['wins']+=int(x['outcome']==1)
     return out
 
@@ -62,13 +121,13 @@ def fetch_rows(source,start,end):
                 scanned+=1; course=I.value(row,m,'course')
                 region=R.region(course)
                 # Explicitly foreign courses are outside the UK/IE metric, not evidence of a missing UK/IE result.
-                if region=='OTHER':
+                if region=='OTHER' or F.course_key(course) in FOREIGN:
                     problems[day]['excluded_explicit_foreign_course']+=1;continue
                 if region not in ('GB','IRELAND'):
                     problems[day]['unresolved_course:'+course[:80]]+=1;continue
                 co=F.course_key(course);horse=F.horse_key(I.value(row,m,'horse'));rid=I.value(row,m,'race_id') or I.value(row,m,'race_no') or I.value(row,m,'off_time')
                 pos=outcome(I.value(row,m,'finish'))
-                if not all((co,horse,rid)) or pos=='UNKNOWN':problems[day]['invalid_identity_or_finish']+=1;continue
+                if not all((co,horse,rid)) or pos=='UNKNOWN':problems[day]['invalid_identity_or_finish:'+course[:40]+':'+str(I.value(row,m,'finish'))[:30]]+=1;continue
                 if pos=='NR':continue
                 x={'outcome':pos,'trainer':I.value(row,m,'trainer'),'jockey':I.value(row,m,'jockey'),'race':rid}
                 key=(co,horse); old=days[day].get(key)
@@ -99,7 +158,7 @@ def compare(day,k,kr,kissues,api,ar,ai,expected,api_count):
     for key in common:
         a,b=api[key],k[key]
         different+=int(a['outcome']!=b['outcome'])
-        people_diff+=sum(bool(a[t] and b[t] and F.compact(a[t])!=F.compact(b[t])) for t in ('trainer','jockey'))
+        people_diff+=sum(bool(a[t] and b[t] and F.person_key(a[t])!=F.person_key(b[t])) for t in ('trainer','jockey'))
     stats=person_totals(k.values()); ag=person_totals(api.values())
     gaps={g:len(k)-sum(x['runs'] for x in stats[g].values()) for g in ('trainers','jockeys')}
     # A full known field may have NR omissions. Require at least one matching starter
@@ -142,6 +201,13 @@ def main():
     api,dates=F.get_best_rows(dt.date.fromisoformat(end),cache,audit); counts=C.Counter(r['date'] for r in api)
     ledger=read(F.AUDIT_FILE).get('coverage_guard',{}).get('expected_races',{})
     exceptions={ '|'.join((str(e.get('day')),F.course_key(e.get('course')),F.off_key(e.get('time')))) for e in read(Path('data/rhp-stage72-race-exceptions.json')).get('races',[]) if e.get('source') and e.get('disposition') in ('ABANDONED','UNRUN_DUPLICATE_CARD','VOID','CANCELLED') }
+    mapping,alias_report=crosswalk(kdays,api)
+    for k in kdays.values():
+        for row in k.values():
+            for t in ('trainer','jockey'):
+                row[t]=mapping[t].get(F.person_key(row[t]),row[t])
+    enriched_by_key=C.defaultdict(list)
+    for row in api: enriched_by_key[(row['date'],row['form_course'],row['form_horse'])].append(row)
     approved={}; comparisons=[]
     for day,k in sorted(kdays.items()):
         a,ar,ai=api_rows(day)
@@ -156,6 +222,18 @@ def main():
                 candidate=stats[group].get(nm,{})
                 if candidate.get('runs',0)<stat['runs'] or candidate.get('wins',0)<stat['wins']:
                     losses.append({'group':group,'name':stat['name'],'api_runs':stat['runs'],'candidate_runs':candidate.get('runs',0),'api_wins':stat['wins'],'candidate_wins':candidate.get('wins',0)})
+        pair_conflicts=[]
+        for (co,horse),kr in k.items():
+            matches=enriched_by_key.get((day,co,horse),[])
+            if len(matches)!=1:continue
+            ar=matches[0]
+            for kind in ('trainer','jockey'):
+                if ar[kind] and F.person_key(ar[kind])!=F.person_key(kr[kind]):
+                    pair_conflicts.append({'kind':kind,'api_name':ar[kind],'kaggle_name':kr[kind]})
+        r['enriched_pair_conflicts']=len(pair_conflicts)
+        r['enriched_pair_examples']=pair_conflicts[:20]
+        if pair_conflicts:
+            r['reasons'].append('enriched_runner_identity_disagreement');r['approved']=False
         r['enriched_person_losses']=losses
         if losses:
             r['reasons'].append('known_enriched_person_totals_would_decrease');r['approved']=False
@@ -165,15 +243,15 @@ def main():
         base=person_totals([{'trainer':r['trainer'],'jockey':r['jockey'],'outcome':1 if F.is_win(r) else 2} for r in api if r['date'] not in approved_days])
         for g,names in PEOPLE.items():
             for name in names:
-                nm=F.compact(name); a=base[g].setdefault(nm,{'name':name,'runs':0,'wins':0})
+                nm=F.person_key(name); a=base[g].setdefault(nm,{'name':name,'runs':0,'wins':0})
                 for d in approved_days.values():
                     stat=d[g].get(nm,{})
                     a['runs']+=stat.get('runs',0);a['wins']+=stat.get('wins',0)
-        return {g:{name:base[g].get(F.compact(name)) for name in names} for g,names in PEOPLE.items()}
+        return {g:{name:base[g].get(F.person_key(name)) for name in names} for g,names in PEOPLE.items()}
     # Preserve older approved days only until they roll out; never silently downgrade on a new version.
     retained={d:v for d,v in old.get('approved_days',{}).items() if start<=d<=end and d not in approved}
     candidate={**retained,**approved}
-    report={'version':version,'cutoff':cutoff,'window':[start,end],'status':'APPROVED_DAYS_AVAILABLE' if approved else 'NO_NEW_DAYS_PASSED_GATES','days':comparisons,'api_only_examples':examples({}),'candidate_examples':examples(candidate),'newly_approved_days':sorted(approved),'retained_previously_approved_days':sorted(retained),'audit_only':args.audit_only,'scope':'UK/IE archived race coverage; independent full fixture census and Racing Post comparisons still required. Raw source not published.'}
+    report={'version':version,'cutoff':cutoff,'window':[start,end],'status':'APPROVED_DAYS_AVAILABLE' if approved else 'NO_NEW_DAYS_PASSED_GATES','days':comparisons,'api_only_examples':examples({}),'candidate_examples':examples(candidate),'newly_approved_days':sorted(approved),'retained_previously_approved_days':sorted(retained),'identity_crosswalk':alias_report,'audit_only':args.audit_only,'scope':'UK/IE archived race coverage; independent full fixture census and Racing Post comparisons still required. Raw source not published.'}
     save(REPORT,report);print(json.dumps(report,indent=2))
     if approved and not args.audit_only:
         save(BASELINE,{'schema':'kaggle-form-baseline-v1','version':version,'cutoff':cutoff,'approved_days':candidate,'day_versions':{d:version if d in approved else old.get('day_versions',{}).get(d,old.get('version')) for d in candidate}})

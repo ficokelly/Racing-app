@@ -1004,7 +1004,7 @@ function renderMarkets(){syncMarketDayButtons();const arr=scoped(),short=arr.fil
 const bands=[['0-5','≤5%',0,5],['5-10','5–10%',5,10],['10-15','10–15%',10,15],['15-20','15–20%',15,20],['20-25','20–25%',20,25],['25+','25%+',25,Infinity],['unknown','Unknown',null,null]];
 let hotSelectedDay='today',hotDays=14;
 let hotSelected=new Set(),hotSearch='',hotExpanded=false,hotMinRuns=1,hotTodayOnly=true,selectedTrainer=new Set(),selectedJockey=new Set(),trainerDays=14,jockeyDays=14,formData=null,formIndex={trainer:{},jockey:{}};
-const formName=s=>String(s||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+const formName=s=>String(s||'').replace(/\s*\(\d+\)\s*$/,'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
 function formStats(row,type){
   const person=row[type],selectedDays=type==='trainer'?trainerDays:jockeyDays;
   if(!person||!formData||!formData.periods)return null;

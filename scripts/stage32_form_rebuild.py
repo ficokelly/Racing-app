@@ -41,6 +41,11 @@ def compact(value: object) -> str:
     return re.sub(r'[^a-z0-9]+', '', s.lower())
 
 
+def person_key(name: object) -> str:
+    # Jockey claim changes do not create a new person.
+    return compact(re.sub(r'\s*\(\d+\)\s*$', '', str(name or '')))
+
+
 def horse_key(name: object) -> str:
     s = re.sub(r'\s*\((?:IRE|GB|FR|USA|GER|AUS|NZ|SAF|ITA|ITY)\)\s*$', '', str(name or ''), flags=re.I)
     return compact(s)
@@ -254,7 +259,7 @@ def get_best_rows(as_of: dt.date, cache: dict, audit: collections.Counter):
                     else:
                         jockey=''
                         audit['result_identity_jockey_conflict_withheld'] += 1
-                normalized = {'date':race_date, 'trainer':trainer, 'trainer_id':trainer_id,
+                normalized = {'date':race_date, 'form_course':course_key(course), 'form_horse':horse_key(runner.get('horse')), 'trainer':trainer, 'trainer_id':trainer_id,
                               'jockey':jockey, 'jockey_id':jockey_id, 'position':str(runner.get('position')).upper(),
                               'had_explicit_provider_identity': bool(original_trainer and original_jockey),
                               'had_provider_race_id':bool(race.get('race_id'))}
@@ -284,7 +289,7 @@ def build_form(rows: list[dict], as_of: dt.date, dates: set[str], audit: collect
     for row in rows:
         for typ in ('trainer','jockey'):
             ident=row.get(typ+'_id') or ''
-            nm=compact(row.get(typ) or '')
+            nm=person_key(row.get(typ) or '')
             if ident and nm: id_names[typ][ident].add(nm)
     periods = {}
     for n in range(1, 15):
@@ -301,7 +306,7 @@ def build_form(rows: list[dict], as_of: dt.date, dates: set[str], audit: collect
                 if not name:
                     unknown[typ] += 1
                     continue
-                person=byname[compact(name)]
+                person=byname[person_key(name)]
                 person['name']=name
                 person['runs'] += 1
                 person['wins'] += int(is_win(row))
@@ -380,7 +385,7 @@ def main() -> None:
         from scripts.kaggle_form_baseline import merge as merge_kaggle_form
     except ModuleNotFoundError:
         from kaggle_form_baseline import merge as merge_kaggle_form
-    output=merge_kaggle_form(output,rows,dates,as_of,audit,build_form,compact)
+    output=merge_kaggle_form(output,rows,dates,as_of,audit,build_form,person_key)
     report={'status':'AUDITED_PARTIAL_COVERAGE','as_of':as_of.isoformat(),'date_start_14d':(as_of-dt.timedelta(days=13)).isoformat(),
             'counts':dict(audit),'fourteen_day_form_runners':output['periods']['14']['runners'],
             'fourteen_day_missing_trainer_rows':output['periods']['14']['identity_gaps']['trainer'],
