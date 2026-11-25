@@ -58,10 +58,13 @@ while True:
 
         results[race_id] = race
 
+    # FORM_REPAIR_V1: a missing total must not truncate pagination.
     skip += len(races)
-
-    if not races or skip >= data.get("total", 0):
+    total = data.get("total")
+    if not races or (isinstance(total, int) and total > 0 and skip >= total):
         break
+    if skip >= 10000:
+        raise RuntimeError("Results pagination did not terminate; refusing partial response")
 
     time.sleep(1.1)
 

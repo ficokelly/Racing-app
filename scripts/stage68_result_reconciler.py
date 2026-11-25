@@ -93,9 +93,27 @@ def insert_races(root, races):
                 # Preserve richer Racing API trainer/jockey identities, updating only
                 # fields which that source did not provide. Never replace conflicting
                 # official finishing positions without a manual source audit.
+                # FORM_REPAIR_V1: reconcile partial races only with agreeing finals.
+                incomingr = {norm(x.get('horse')): x for x in race['runners']}
+                def placing(x):
+                    return str(x.get('position') or '').strip().removesuffix('.0')
+                old_winners = {n for n,x in oldr.items() if placing(x) in ('1','1=','1ST')}
+                new_winners = {n for n,x in incomingr.items() if placing(x) in ('1','1=','1ST')}
+                shared = oldr.keys() & incomingr.keys()
+                compatible = len(shared)>=2 and bool(old_winners) and old_winners==new_winners
+                compatible = compatible and len(oldr)==len(old.get('runners',[]))
+                compatible = compatible and all(not (placing(oldr[n]).isdigit() and placing(incomingr[n]).isdigit() and placing(oldr[n])!=placing(incomingr[n])) for n in shared)
+                if not compatible:
+                    print('FORM_REPAIR_CONFLICT_OR_LOW_OVERLAP',loc)
+                    continue
                 for runner in race['runners']:
-                    prior = oldr.get(norm(runner.get('horse')))
+                    name = norm(runner.get('horse'))
+                    prior = oldr.get(name)
                     if not prior:
+                        old.setdefault('runners', []).append(dict(runner))
+                        oldr[name]=old['runners'][-1]
+                        update=True
+                        print('FORM_REPAIR_RECOVERED_RUNNER',loc,runner.get('horse'))
                         continue
                     for field in ('position', 'status', 'sp'):
                         if prior.get(field) in (None, '') and runner.get(field) not in (None, ''):

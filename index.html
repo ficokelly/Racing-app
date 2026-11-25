@@ -1036,7 +1036,7 @@ function formStats(row,type){
   if(!stat)return null;
   const runs=Number(stat.runs??stat.rides),wins=Number(stat.wins);
   if(!Number.isFinite(runs)||runs<=0||!Number.isFinite(wins)||wins<0||wins>runs)return null;
-  return {wins,runs,pct:100*wins/runs,availableDays,selectedDays,calendarDays,partialCoverage:availableDays<calendarDays||period.coverage_complete===false};
+  return {wins,runs,pct:100*wins/runs,availableDays,selectedDays,calendarDays,partialCoverage:availableDays<calendarDays||period.coverage_complete!==true};
 }
 function indexFormNames(raw){
  formIndex={trainer:{},jockey:{}};
@@ -1354,7 +1354,7 @@ function rcPersonPreview(r,x,type,day){
   jockey_id:r.jockey_id||x?.jockey_id||null};
  const stat=formStats(row,type);
  const name=row[type]||'Unknown';
- const value=stat?`${stat.wins}/${stat.runs} · ${stat.pct.toFixed(1)}%`:'Form unavailable';
+ const value=stat?`${stat.wins}/${stat.runs} · ${stat.pct.toFixed(1)}%${stat.partialCoverage?' · partial/unverified':''}`:'Form unavailable';
  return `<span class="rc-person-line"><strong>${type==='trainer'?'Trainer':'Jockey'}:</strong> ${safe(name)} · ${safe(value)}</span>`;
 }
 // Full race schedule and horizontally scrollable next-off navigation.

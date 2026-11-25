@@ -376,6 +376,12 @@ def main() -> None:
                         'No selection or probability models were changed.',
                         'Duplicated runner records are counted once, not twice.',
                         'This fixes form result identity linking, not the original API source coverage.']}
+    # FORM_REPAIR_V1: check missing races, declarations and identities on every rebuild.
+    try:
+        from scripts.form_coverage_guard import apply_guard
+    except ModuleNotFoundError:
+        from form_coverage_guard import apply_guard
+    apply_guard(output, report)
     CACHE_FILE.parent.mkdir(parents=True,exist_ok=True)
     CACHE_FILE.write_text(json.dumps({'schema':'rhp-form-identities-v1','updated_as_of':as_of.isoformat(),'identities':cache},separators=(',',':'))+'\n',encoding='utf-8')
     OUTPUT_FILE.write_text(json.dumps(output,ensure_ascii=False,separators=(',',':'))+'\n',encoding='utf-8')
