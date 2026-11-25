@@ -1,0 +1,152 @@
+name: Stage194 - Verified post-baseline bridge compatibility and morning recovery
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/stage194-history-bridge-compatibility.yml']
+permissions:
+  contents: write
+  actions: write
+concurrency:
+  group: stage194-history-bridge-compatibility
+  cancel-in-progress: false
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PYTHONPATH: '.:scripts'
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Prepare guarded adapter without changing Stage171's base date or overlap rules
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/stage194_recent_bridge.py" <<'PY'
+          """Compatibility adapter: retain Stage171's original bridge code and validate only the approved post-baseline additions."""
+          import inspect
+          import json
+          import pathlib
+          import textwrap
+          import stage171_recent_history as original
+
+          OLD = "assert baseline==BASE,('unexpected bridge baseline',baseline)"
+          NEW = 'validate_recovered_baseline(con, baseline, target, root)'
+
+          def validate_recovered_baseline(con, baseline, target, root):
+              base = original.BASE
+              assert baseline and base <= baseline < target, ('unexpected bridge baseline', baseline, target)
+              if baseline == base:
+                  return
+              from scripts import stage182c_verified_source as V
+              ledger = json.loads((pathlib.Path(root)/'stage182h-approved-history.json').read_text())
+              assert ledger['approved_run'] == 45522254220 and ledger['source_version'] == 132 and len(ledger['races']) == 12
+              allowed = {e['id']:e for e in ledger['races'] if base < e['date'] < target}
+              recent = list(con.execute('select id,race_date from historical_races where race_date>?', (base,)))
+              assert recent and len(recent)==len({r[0] for r in recent}), 'invalid post-baseline race identifiers'
+              for rid, date in recent:
+                  assert rid in allowed and allowed[rid]['date'] == date, ('unapproved post-baseline race', rid, date)
+                  race, runners = V.fetch(con, rid)
+                  assert len(runners) == allowed[rid]['runners'] and V.signature(race, runners) == allowed[rid]['sha256'], ('post-baseline recovery changed', rid)
+              print('STAGE194_VERIFIED_POST_BASELINE', len(recent), baseline, flush=True)
+
+          def adapted_bridge():
+              source = textwrap.dedent(inspect.getsource(original.append_bridge))
+              # Fail closed if Stage171's upstream implementation changes unexpectedly.
+              assert source.count(OLD) == 1, 'Stage171 assertion changed; review adapter before using'
+              assert 'slots&existing' in source and 'BASE<day<target' in source, 'Stage171 overlap or time guard changed'
+              ns = dict(vars(original), validate_recovered_baseline=validate_recovered_baseline)
+              exec(compile(source.replace(OLD, NEW, 1), 'stage194-guarded-stage171', 'exec'), ns)
+              return ns['append_bridge']
+
+          def append_bridge(db, reference, target, root=pathlib.Path('data')):
+              return adapted_bridge()(db, reference, target, root)
+          PY
+          cat > "$RUNNER_TEMP/stage194_test.py" <<'PY'
+          import json, pathlib, sqlite3
+          from stage194_recent_bridge import validate_recovered_baseline, adapted_bridge
+          from scripts import stage182c_verified_source as V
+          root=pathlib.Path('data'); ledger=json.loads((root/'stage182h-approved-history.json').read_text())
+          e=[e for e in ledger['races'] if e['date']>'2026-11-20']
+          assert len(e)==1 and e[0]['kind']=='app_archive' and e[0]['runners']==11
+          e=e[0]; rid=e['id']; target='2026-11-25'
+          # Exercise the exact allowlisted archive tuple and checksum using a private, in-memory test database.
+          c=sqlite3.connect(':memory:')
+          c.execute('create table historical_races(id,race_date,'+','.join('c'+str(i) for i in range(2,9))+')')
+          c.execute('create table historical_runs(race_id,runner_key,'+','.join('c'+str(i) for i in range(2,23))+')')
+          c.execute('insert into historical_races values('+','.join('?' for _ in range(9))+')',e['race'])
+          c.executemany('insert into historical_runs values('+','.join('?' for _ in range(23))+')',e['rows'])
+          assert V.signature(*V.fetch(c,rid))==e['sha256'], 'test ledger canonical checksum differs'
+          validate_recovered_baseline(c,'2026-11-20',target,root)
+          validate_recovered_baseline(c,'2026-11-21',target,root)
+          assert callable(adapted_bridge())
+          def must_reject(fn):
+              try:fn()
+              except AssertionError:return
+              raise AssertionError('Guard failed to reject unapproved data')
+          must_reject(lambda:validate_recovered_baseline(c,'2026-11-21','2026-11-21',root))
+          c.execute('insert into historical_races values(?,?,?,?,?,?,?,?,?)',('not-approved','2026-11-22',None,None,None,None,None,None,None))
+          must_reject(lambda:validate_recovered_baseline(c,'2026-11-22',target,root))
+          c.execute('delete from historical_races where id=?',('not-approved',))
+          c.execute('update historical_runs set c3=? where race_id=?',('tampered',rid))
+          must_reject(lambda:validate_recovered_baseline(c,'2026-11-21',target,root))
+          print('STAGE194_TEST_PASS: original base, approved recovery, future date rejection, unapproved race rejection, tamper rejection')
+          PY
+      - name: Publish guarded adapter and keep Stage171 scheduled generator unchanged
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            cp "$RUNNER_TEMP/stage194_recent_bridge.py" scripts/stage194_recent_bridge.py
+            python - <<'PY'
+          from pathlib import Path
+          p=Path('scripts/stage167_validated_history.py');s=p.read_text()
+          old='from stage171_recent_history import append_bridge'
+          new='from stage194_recent_bridge import append_bridge'
+          assert 'STAGE171_RECENT_BRIDGE' in s and 'STAGE182H_VERIFIED_HISTORY' in s
+          if old in s:
+              assert s.count(old)==1 and new not in s
+              s=s.replace(old,new,1)
+          else:assert s.count(new)==1
+          compile(s,str(p),'exec');p.write_text(s)
+          PY
+            python -m py_compile scripts/stage194_recent_bridge.py scripts/stage167_validated_history.py
+            python "$RUNNER_TEMP/stage194_test.py"
+            git add scripts/stage194_recent_bridge.py scripts/stage167_validated_history.py
+            if git diff --cached --quiet; then echo 'STAGE194_ALREADY_PUBLISHED'; exit 0; fi
+            git commit -m 'Stage194: verify approved post-baseline race before original recent-history bridge'
+            if git push origin HEAD:main; then echo 'STAGE194_PUBLISHED'; exit 0; fi
+            sleep "$((attempt*4))"
+          done
+          exit 1
+  dispatch:
+    needs: repair
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        workflow: [stage153-roi-combined.yml, stage193-hpr-reconciliation.yml]
+    env:
+      GH_TOKEN: ${{ github.token }}
+      WF: ${{ matrix.workflow }}
+    steps:
+      - name: Start fresh independent run from corrected main
+        run: |
+          set -euo pipefail
+          DAY="$(TZ=Europe/Dublin date +%F)"
+          if [ "$WF" = stage153-roi-combined.yml ]; then
+            gh workflow run "$WF" --repo "$GITHUB_REPOSITORY" --ref main -f "selection_date=$DAY"
+          else
+            gh workflow run "$WF" --repo "$GITHUB_REPOSITORY" --ref main
+          fi
+          echo "Dispatched $WF from corrected main"
