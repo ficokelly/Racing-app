@@ -1,0 +1,177 @@
+name: Stage202B - Verified missing terminal outcomes and targeted full-field repair
+on:
+  workflow_dispatch:
+    inputs:
+      target_date:
+        description: Dublin target date; blank uses tomorrow
+        required: false
+        default: ''
+  push:
+    branches: [main]
+    paths: ['.github/workflows/stage202b-verified-form-repair.yml']
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: stage202b-verified-form-repair
+  cancel-in-progress: false
+jobs:
+  reconcile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    env:
+      PYTHONPATH: .:scripts
+      PYTHONUNBUFFERED: '1'
+      GH_TOKEN: ${{ github.token }}
+      OPENBLAS_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install existing source dependencies
+        run: pip install numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2 requests 'kagglehub>=0.3,<1'
+      - name: Restore immutable baseline and factual race reference
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage152-specialists/source/stage2 reports/stage202b/ref reports/stage202b/output
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage2-historical-staging-database --dir reports/stage152-specialists/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage4-reference-named-events-and-winners --dir reports/stage202b/ref
+          test -s reports/stage152-specialists/source/stage2/historical_ukie_staging.sqlite
+      - name: Correct independently verified terminal outcomes and reconcile target fields
+        env:
+          ASKED_DATE: ${{ inputs.target_date }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pathlib
+          p=pathlib.Path('scripts/stage201_recent_history.py'); s=p.read_text()
+          assert "BASE='2026-11-20'" in s and "LEDGER='stage201-history'" in s
+          s=s.replace("BASE='2026-11-20'","BASE='2026-10-24'").replace("LEDGER='stage201-history'","LEDGER='stage202b-history'").replace("SOURCE='STAGE201_VERIFIED_FINAL_AND_DECLARATION_IDENTITY'","SOURCE='STAGE202B_VERIFIED_FINAL_AND_DECLARATION_IDENTITY'").replace("'stage201-v1'","'stage202b-v1'").replace("rid='stage201:'","rid='stage202b:'")
+          # Only explicitly dated, audited races. Stage201's existing safety checks remain in force.
+          slots=[('2026-10-26','hereford',960),('2026-11-01','cork',785),('2026-11-16','plumpton',795),('2026-11-16','plumpton',885),('2026-11-16','plumpton',945),('2026-11-16','wolverhampton',990),('2026-11-21','ascot',845),('2026-11-22','cork',799),('2026-11-22','exeter',787),('2026-11-22','exeter',907)]
+          needle="LEDGER='stage202b-history'";s=s.replace(needle,needle+'\nAPPROVED_SLOTS='+repr(set(slots)))
+          needle="if r.get('status')!='final':continue\n            label="; assert s.count(needle)==1
+          s=s.replace(needle,"if r.get('status')!='final':continue\n            if (day,course(r.get('course')),M.off(r)) not in APPROVED_SLOTS:continue\n            label=")
+          needle="source=matches[0]; starters=final_field(source,day)";assert s.count(needle)==1
+          s=s.replace(needle,"source=matches[0]; starters=final_field(source,day)\n                if key not in APPROVED_SLOTS:report.append({'race':key,'status':'HELD_NOT_APPROVED_SLOT'});continue")
+          # Reuse Stage201 course/outcome tests but do not change existing ledger.
+          pathlib.Path('scripts/stage202b_verified_history.py').write_text(s)
+          PY
+          cat > "$RUNNER_TEMP/stage202b.py" <<'PY'
+          import collections as C, datetime as D, json, os, pathlib as P, sqlite3, subprocess as SP
+          from zoneinfo import ZoneInfo
+          from scripts import stage201_recent_history as S
+          from scripts import stage171_recent_history as M
+          from scripts.rhp_runner_eligibility import eligibility
+          from stage167_validated_history import refreshed_inputs
+          import stage108_model_g2 as G
+          from scripts import stage202b_verified_history as V
+          ROOT=P.Path('data'); OUT=P.Path('reports/stage202b/output'); OUT.mkdir(parents=True,exist_ok=True)
+          now=D.datetime.now(ZoneInfo('Europe/Dublin')).date(); target=os.getenv('ASKED_DATE') or (now+D.timedelta(days=1)).isoformat()
+          assert D.date.fromisoformat(target) in (now,now+D.timedelta(days=1)) and target>S.BASE
+          cards=S.read(ROOT/'racecards.json'); rows=[r for r in cards['runners'] if r.get('date')==target and eligibility(r)=='ACTIVE']; assert rows
+          wanted={G.identity(r):r for r in rows}; assert len(wanted)==len(rows) and all(k.startswith('P|') for k in wanted)
+          names={S.norm(r['horse']) for r in rows}
+          def dump(n,x): (OUT/(n+'.json')).write_text(json.dumps(x,indent=2,ensure_ascii=False)+'\n')
+          def expected(r):
+           try:
+            n=int(r.get('last_run')); return (D.date.fromisoformat(target)-D.timedelta(days=n)).isoformat() if n>0 else None
+           except (ValueError,TypeError): return None
+          def scan(db):
+           hits=C.defaultdict(set); collisions=C.defaultdict(set)
+           with sqlite3.connect(db) as c:
+            c.create_function('wanted_name',1,lambda h:int(S.norm(h) in names),deterministic=True)
+            for d,rid,h,sire,dam,hid,p,st in c.execute('select r.race_date,r.id,u.horse_name,u.sire,u.dam,u.horse_source_id,u.finish_pos,u.outcome from historical_runs u join historical_races r on r.id=u.race_id where r.race_date<? and wanted_name(u.horse_name)=1',(target,)):
+             if S.state({'position':p,'status':st})[0] in ('NR','UNKNOWN'):continue
+             k=G.identity({'horse':h,'sire':sire,'dam':dam,'horse_source_id':hid})
+             if k in wanted:hits[k].add((d,rid))
+             else:collisions[S.norm(h)].add((d,rid,k))
+           return hits,collisions
+          def diagnoses(hits,collisions):
+           out=[]
+           for k,r in wanted.items():
+            dates={d for d,_ in hits[k]}; e=expected(r); known=bool(str(r.get('form') or '').strip('-/ ')) or bool(e)
+            out.append(dict(horse=r['horse'],horse_id=r['horse_id'],course=r['course'],time=r['race_time'][11:16],expected=e,starts=len(hits[k]),latest=max(dates,default=None),last_run_matched=e in dates if e else None,known_form_no_history=known and not dates,possible_debut=not known and not dates,collision_events=len(collisions[S.norm(r['horse'])])))
+           return out
+
+          # Independently verified exact finishing-status corrections. Do not modify known positions/SPs.
+          FIXES = [
+           ('2026-11-21','ascot','14:05','bc3ff858-e25a-4404-b716-348b73f63d8d','Miss Goldfire',{'Popova':'F'},['https://www.racingpost.com/results/2/ascot/2026-11-21/931602/','https://www.horseracinguk.co.uk/racecards/2026-11-21/ascot/1405/']),
+           ('2026-11-22','cork','13:19','d7300629-4c56-443c-b5aa-8e4e5d125c2f','Soul Asylum',{"Jessbers Wish":"PU","Daddy's Cupcake":"RO"},['https://www.horseracinguk.co.uk/racecards/2026-11-22/cork/1319/','https://m.attheraces.com/festivals/jumps/racecard/Cork/22-November-2026/1319']),
+           ('2026-11-22','exeter','13:07','c608149c-c29a-4b73-9d0f-c9920a628097','Seventeenothree',{'Stavanger Rose':'PU'},['https://www.horseracinguk.co.uk/racecards/2026-11-22/exeter/1307/','https://m.attheraces.com/racecard/Exeter/22-November-2026/1307/market-movers']),
+           ('2026-11-22','exeter','15:07','5a687254-5dca-4821-b6e6-05d3a5586677','Modern Style',{'Out Of Aces':'PU','Arbitration':'F'},['https://www.horseracinguk.co.uk/racecards/2026-11-22/exeter/1507/','https://www.saturday-racing.com/results/2026-11-22/exeter/15-07/']),
+           ('2026-11-16','plumpton','13:15','0ea30eb6-05d6-41a2-8e56-6e5baecf43b7','Prairie Diamond',{'Girl Of Gold':'PU','No No Fizz':'PU'},['https://www.horseracinguk.co.uk/racecards/2026-11-16/plumpton/1315/','https://www.oddschecker.com/horse-racing/results/2026-11-16/plumpton/13%3A15']),
+           ('2026-11-16','plumpton','14:45','c599b291-6584-43f2-a772-72d223723c46','Of Corse I Can',{'Anothermanicmonday':'PU'},['https://www.saturday-racing.com/results/2026-11-16/plumpton/14-45/','https://www.oddschecker.com/horse-racing/results/2026-11-16/plumpton/14%3A45']),
+           ('2026-11-01','cork','13:05','b408a92a-aec6-4b81-8405-71c434aae752','Cornelienne',{'Afloat':'F','Cerulean Summer':'PU','Eagle Doll':'UR','Potters Queen':'PU','Soldier Power':'F'},['https://www.horseracinguk.co.uk/racecards/2026-11-01/cork/1305/','https://www.oddschecker.com/horse-racing/results/2026-11-01/cork/13%3A05'])
+          ]
+          base=P.Path('reports/stage152-specialists/source/stage2/historical_ukie_staging.sqlite'); refs=list(P.Path('reports/stage202b/ref').rglob('all_races_with_reference_event_ids.csv'));assert len(refs)==1
+          with refreshed_inputs(base,refs[0],target) as (db,ref):
+           before,collisions=scan(db); a=diagnoses(before,collisions); dump('before',a); baseline=S.coverage(db,target)
+           changes=[]; docs={}; repairlog=[]
+           for date,venue,time,sourceid,winner,fix,urls in FIXES:
+            if date>=target:continue
+            if date not in docs:docs[date]=S.read(ROOT/'racing-results'/(date+'.json'))
+            matches=[r for r in docs[date]['results'] if S.course(r.get('course'))==venue and M.off(r)==M.off({'off':time}) and M.sid(r)==sourceid and S.trusted(r)]
+            if len(matches)!=1:repairlog.append({'race':[date,venue,time],'status':'HELD_SOURCE_CHANGED'});continue
+            r=matches[0]; idx={S.norm(h['horse']):h for h in r['runners']}; assert len(idx)==len(r['runners'])
+            if {S.norm(h['horse']) for h in r['runners'] if S.state(h)==('FINISHED',1)}!={S.norm(winner)}:repairlog.append({'race':[date,venue,time],'status':'HELD_WINNER_CONFLICT'});continue
+            wanted_status={S.norm(h):st for h,st in fix.items()}
+            if any(h not in idx or idx[h].get('position') is not None or S.state(idx[h]) not in [('UNKNOWN',None),(st,None)] for h,st in wanted_status.items()):repairlog.append({'race':[date,venue,time],'status':'HELD_OUTCOME_CONFLICT'});continue
+            copy=json.loads(json.dumps(r)); ci={S.norm(h['horse']):h for h in copy['runners']}
+            for h,st in wanted_status.items():
+             if S.state(ci[h])==('UNKNOWN',None):ci[h]['status']=st.lower();ci[h]['stage202b_outcome_sources']=urls;changes.append({'date':date,'course':venue,'time':time,'horse':ci[h]['horse'],'status':st,'sources':urls})
+            if V.final_field(copy,date) is None:repairlog.append({'race':[date,venue,time],'status':'HELD_INCOMPLETE_FIELD'});continue
+            docs[date]['results'][docs[date]['results'].index(r)]=copy;repairlog.append({'race':[date,venue,time],'status':'VERIFIED_COMPLETE_FIELD'})
+           for date,doc in docs.items():
+            p=ROOT/'racing-results'/(date+'.json'); original=S.read(p)
+            if doc!=original:p.write_text(json.dumps(doc,ensure_ascii=False,indent=2)+'\n')
+           # Separate ledger retains prior pipeline; source hashes tie every record to verified final results.
+           candidates=V.build(ROOT,target); actions=V.append(db,ref,target); after,col2=scan(db); b=diagnoses(after,col2)
+           assert all(before[k]<=after[k] for k in wanted),'Pre-existing form lost'
+           assert not any(x['status']=='ADDED' for x in V.append(db,ref,target)),'Repeat append added duplicate race'
+           final=S.coverage(db,target)
+           oldby={x['date']:x for x in baseline}
+           for x in final:
+            old=oldby.get(x['date'],{});assert x.get('matched_outcome',0)>=old.get('matched_outcome',0) and x.get('ambiguous',0)<=old.get('ambiguous',0) and x.get('conflicting_outcome',0)<=old.get('conflicting_outcome',0),'Coverage regression'
+           summary={'target':target,'runners':len(rows),'gaps_before':sum(x['last_run_matched'] is False for x in a),'gaps_after':sum(x['last_run_matched'] is False for x in b),'known_no_history_before':sum(x['known_form_no_history'] for x in a),'known_no_history_after':sum(x['known_form_no_history'] for x in b),'recovered_target_horses':sum(x['starts']>y['starts'] for x,y in zip(b,a)),'added_races':sum(x['status']=='ADDED' for x in actions),'added_starters':sum(x.get('starters',0) for x in actions if x['status']=='ADDED'),'verified_outcome_corrections':len(changes),'normalized_coverage_before':baseline,'normalized_coverage_after':final,'idempotence_passed':True,'note':'Exact complete verified fields only. Unresolved races remain quarantined; model weights unchanged.'}
+           for n,x in [('summary',summary),('after',b),('remaining',[x for x in b if x['last_run_matched'] is False or x['known_form_no_history']]),('outcome-corrections',changes),('repair-status',repairlog),('candidates',candidates),('actions',actions)]:dump(n,x)
+           print(json.dumps(summary,indent=2));P.Path(os.environ['GITHUB_STEP_SUMMARY']).write_text('## Stage202B results\n\n```json\n'+json.dumps(summary,indent=2)+'\n```\n')
+          PY
+          python -m py_compile scripts/stage202b_verified_history.py "$RUNNER_TEMP/stage202b.py"
+          python -u "$RUNNER_TEMP/stage202b.py"
+          python - <<'PY'
+          import pathlib
+          p=pathlib.Path('scripts/stage167_validated_history.py');s=p.read_text()
+          needle='            append_stage201(db,ref,date)'
+          new=needle+'\n            from scripts.stage202b_verified_history import append as append_stage202b\n            append_stage202b(db,ref,date)'
+          if 'append_stage202b(db,ref,date)' not in s:
+              assert s.count(needle)==1
+              p.write_text(s.replace(needle,new))
+          PY
+          python -m py_compile scripts/stage167_validated_history.py
+      - name: Publish only validated repairs (fail on concurrent conflicts)
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add scripts/stage202b_verified_history.py scripts/stage167_validated_history.py data/racing-results
+          if [ -d data/stage202b-history ]; then git add data/stage202b-history; fi
+          if git diff --cached --quiet; then echo 'No changes to publish'; exit 0; fi
+          git commit -m 'Stage202B: independently verified terminal outcomes and targeted historical fields'
+          for attempt in 1 2 3 4 5; do
+            git pull --rebase origin main || { git rebase --abort || true; exit 1; }
+            if git push origin HEAD:main; then exit 0; fi
+            sleep $((attempt*3))
+          done
+          exit 1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage202b-verified-form-${{ github.run_id }}
+          path: reports/stage202b/output/
+          if-no-files-found: warn
+          retention-days: 30
