@@ -1,0 +1,618 @@
+name: Stage190 - Provisional V5 independent paper selections
+on:
+  workflow_dispatch:
+    inputs:
+      selection_date:
+        description: Today or tomorrow Dublin date (blank uses schedule)
+        required: false
+        type: string
+        default: ''
+  push:
+    branches: [main]
+    paths: ['.github/workflows/stage190-provisional-v5-paper.yml']
+  schedule:
+    - cron: '7 18 * * *'
+      timezone: Europe/Dublin
+    - cron: '17 7,9,11,13,15 * * *'
+      timezone: Europe/Dublin
+permissions:
+  contents: write
+  actions: write
+concurrency:
+  group: stage190-v5-paper
+  cancel-in-progress: false
+jobs:
+  paper:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 200
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REQUESTED_DATE: ${{ inputs.selection_date }}
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Freeze V5 research routing and select today's or tomorrow's target
+        run: |
+          mkdir -p reports/stage190
+          cat > reports/stage190/route-map.json <<'ROUTES'
+          {
+            "period": [
+              "2026-10-25",
+              "2026-11-23"
+            ],
+            "excluded_race": [
+              "2026-11-19",
+              "lingfield",
+              "12:18"
+            ],
+            "source_run": 45491296882,
+            "routes": {
+              "AW_AUCTION_RESTRICTED_SALES": {
+                "model": "D142_LONG_CORE_FORM_HPR",
+                "settled": 20,
+                "strike_rate_pct": 55.0,
+                "roi_pct": 129.236111,
+                "tied_models": [
+                  "D142_LONG_CORE_FORM_HPR"
+                ]
+              },
+              "AW_HANDICAP": {
+                "model": "D142_LONG_CORE_FORM_HPR",
+                "settled": 150,
+                "strike_rate_pct": 22.666667,
+                "roi_pct": -9.841899,
+                "tied_models": [
+                  "D142_LONG_CORE_FORM_HPR"
+                ]
+              },
+              "AW_LISTED_PATTERN": {
+                "model": "D137_HPR_ABILITY_GRADE_OR_WEIGHT",
+                "settled": 3,
+                "strike_rate_pct": 66.666667,
+                "roi_pct": 266.666667,
+                "tied_models": [
+                  "D137_HPR_ABILITY_GRADE_OR_WEIGHT",
+                  "D137_HPR_ABILITY_GRADE_WEIGHT",
+                  "D142_LONG_CORE_FORM_OR_WEIGHT"
+                ]
+              },
+              "AW_MAIDEN": {
+                "model": "Z",
+                "settled": 3,
+                "strike_rate_pct": 66.666667,
+                "roi_pct": 181.481481,
+                "tied_models": [
+                  "Z"
+                ]
+              },
+              "AW_NOVICE": {
+                "model": "B_PROXY",
+                "settled": 27,
+                "strike_rate_pct": 37.037037,
+                "roi_pct": 102.708567,
+                "tied_models": [
+                  "B_PROXY"
+                ]
+              },
+              "AW_NURSERY": {
+                "model": "D(c)_RECONSTRUCTED",
+                "settled": 24,
+                "strike_rate_pct": 29.166667,
+                "roi_pct": 34.659091,
+                "tied_models": [
+                  "D(c)_RECONSTRUCTED"
+                ]
+              },
+              "AW_OTHER_OPEN": {
+                "model": "G5_ADAPTIVE_QUARTERLY",
+                "settled": 2,
+                "strike_rate_pct": 100.0,
+                "roi_pct": 775.0,
+                "tied_models": [
+                  "G5_ADAPTIVE_QUARTERLY",
+                  "G5_COMBINED_QUARTERLY",
+                  "G5_NETWORK_QUARTERLY"
+                ]
+              },
+              "AW_SELLING_CLAIMING": {
+                "model": "A_PROXY",
+                "settled": 2,
+                "strike_rate_pct": 50.0,
+                "roi_pct": 5.0,
+                "tied_models": [
+                  "A_PROXY",
+                  "B_PROXY",
+                  "D137_HPR_ABILITY_GRADE_OR_WEIGHT",
+                  "D137_HPR_ABILITY_OR_WEIGHT",
+                  "D142_LONG_CORE_FORM_HPR",
+                  "D142_LONG_CORE_FORM_OR_WEIGHT",
+                  "D_FORM_WEIGHT_GRADE__ROI"
+                ]
+              },
+              "CHASE_BEGINNERS": {
+                "model": "G5_ADAPTIVE_QUARTERLY",
+                "settled": 16,
+                "strike_rate_pct": 62.5,
+                "roi_pct": 43.259033,
+                "tied_models": [
+                  "G5_ADAPTIVE_QUARTERLY"
+                ]
+              },
+              "CHASE_GRADE_1": {
+                "model": "D142_LONG_CORE_FORM_HPR",
+                "settled": 2,
+                "strike_rate_pct": 50.0,
+                "roi_pct": 5.0,
+                "tied_models": [
+                  "D142_LONG_CORE_FORM_HPR"
+                ]
+              },
+              "CHASE_GRADE_2": {
+                "model": "D_FORM_WEIGHT_GRADE__ROI",
+                "settled": 7,
+                "strike_rate_pct": 85.714286,
+                "roi_pct": 130.248918,
+                "tied_models": [
+                  "D_FORM_WEIGHT_GRADE__ROI"
+                ]
+              },
+              "CHASE_GRADE_3": {
+                "model": "D_FORM_WEIGHT_GRADE__ROI",
+                "settled": 2,
+                "strike_rate_pct": 50.0,
+                "roi_pct": 250.0,
+                "tied_models": [
+                  "D_FORM_WEIGHT_GRADE__ROI"
+                ]
+              },
+              "CHASE_HANDICAP": {
+                "model": "G5_COMBINED_QUARTERLY",
+                "settled": 135,
+                "strike_rate_pct": 26.666667,
+                "roi_pct": 26.468186,
+                "tied_models": [
+                  "G5_COMBINED_QUARTERLY"
+                ]
+              },
+              "CHASE_LISTED": {
+                "model": "G5_NETWORK_QUARTERLY",
+                "settled": 3,
+                "strike_rate_pct": 66.666667,
+                "roi_pct": 261.111111,
+                "tied_models": [
+                  "G5_NETWORK_QUARTERLY"
+                ]
+              },
+              "CHASE_NOVICE": {
+                "model": "D137_HPR_ABILITY_OR_WEIGHT",
+                "settled": 2,
+                "strike_rate_pct": 100.0,
+                "roi_pct": 216.666667,
+                "tied_models": [
+                  "D137_HPR_ABILITY_OR_WEIGHT"
+                ]
+              },
+              "CHASE_NOVICE_HANDICAP": {
+                "model": "STAGE143_TYPE_EVIDENCE",
+                "settled": 1,
+                "strike_rate_pct": 100.0,
+                "roi_pct": 187.5,
+                "tied_models": [
+                  "STAGE143_TYPE_EVIDENCE",
+                  "STAGE143_TYPE_INTERACTIONS",
+                  "STAGE146_A_RETRAINED_TRENDS",
+                  "STAGE146_B_RETRAINED_TRENDS"
+                ]
+              },
+              "CHASE_OTHER_OPEN": {
+                "model": "G5_ADAPTIVE_QUARTERLY",
+                "settled": 2,
+                "strike_rate_pct": 100.0,
+                "roi_pct": 195.0,
+                "tied_models": [
+                  "G5_ADAPTIVE_QUARTERLY",
+                  "G5_COMBINED_QUARTERLY",
+                  "G5_NETWORK_QUARTERLY",
+                  "G5_STRENGTH_QUARTERLY"
+                ]
+              },
+              "HURDLE_GRADE_1": {
+                "model": "A_PROXY",
+                "settled": 1,
+                "strike_rate_pct": 100.0,
+                "roi_pct": 16.666667,
+                "tied_models": [
+                  "A_PROXY",
+                  "B_PROXY",
+                  "C_HISTORICAL_CORE",
+                  "D(c)_RECONSTRUCTED",
+                  "D137_HPR_ABILITY_GRADE_OR_WEIGHT",
+                  "D137_HPR_ABILITY_GRADE_WEIGHT",
+                  "D137_HPR_ABILITY_OR_WEIGHT",
+                  "D142_LONG_CORE_FORM_HPR",
+                  "D142_LONG_CORE_FORM_OR_WEIGHT",
+                  "D_FORM_WEIGHT_GRADE__ROI",
+                  "G5_ADAPTIVE_QUARTERLY",
+                  "G5_COMBINED_QUARTERLY",
+                  "G5_NETWORK_QUARTERLY",
+                  "G5_STRENGTH_QUARTERLY"
+                ]
+              },
+              "HURDLE_GRADE_2": {
+                "model": "D_FORM_WEIGHT_GRADE__ROI",
+                "settled": 7,
+                "strike_rate_pct": 28.571429,
+                "roi_pct": -6.122449,
+                "tied_models": [
+                  "D_FORM_WEIGHT_GRADE__ROI"
+                ]
+              },
+              "HURDLE_GRADE_3": {
+                "model": "B_PROXY",
+                "settled": 3,
+                "strike_rate_pct": 33.333333,
+                "roi_pct": 16.666667,
+                "tied_models": [
+                  "B_PROXY"
+                ]
+              },
+              "HURDLE_HANDICAP": {
+                "model": "D(c)_RECONSTRUCTED",
+                "settled": 157,
+                "strike_rate_pct": 21.656051,
+                "roi_pct": 0.139038,
+                "tied_models": [
+                  "D(c)_RECONSTRUCTED"
+                ]
+              },
+              "HURDLE_JUVENILE": {
+                "model": "D137_HPR_ABILITY_OR_WEIGHT",
+                "settled": 10,
+                "strike_rate_pct": 50.0,
+                "roi_pct": 79.464286,
+                "tied_models": [
+                  "D137_HPR_ABILITY_OR_WEIGHT"
+                ]
+              },
+              "HURDLE_LISTED": {
+                "model": "G5_ADAPTIVE_QUARTERLY",
+                "settled": 5,
+                "strike_rate_pct": 80.0,
+                "roi_pct": 230.0,
+                "tied_models": [
+                  "G5_ADAPTIVE_QUARTERLY"
+                ]
+              },
+              "HURDLE_MAIDEN": {
+                "model": "G5_STRENGTH_QUARTERLY",
+                "settled": 63,
+                "strike_rate_pct": 46.031746,
+                "roi_pct": 2.41269,
+                "tied_models": [
+                  "G5_STRENGTH_QUARTERLY"
+                ]
+              },
+              "HURDLE_NOVICE": {
+                "model": "STAGE143_TYPE_EVIDENCE",
+                "settled": 3,
+                "strike_rate_pct": 66.666667,
+                "roi_pct": 41.666667,
+                "tied_models": [
+                  "STAGE143_TYPE_EVIDENCE",
+                  "STAGE143_TYPE_INTERACTIONS",
+                  "STAGE146_A_RETRAINED_TRENDS",
+                  "STAGE146_B_RETRAINED_TRENDS"
+                ]
+              },
+              "HURDLE_NOVICE_HANDICAP": {
+                "model": "G5_STRENGTH_QUARTERLY",
+                "settled": 4,
+                "strike_rate_pct": 50.0,
+                "roi_pct": 375.0,
+                "tied_models": [
+                  "G5_STRENGTH_QUARTERLY"
+                ]
+              },
+              "HURDLE_OTHER_OPEN": {
+                "model": "C_HISTORICAL_CORE",
+                "settled": 39,
+                "strike_rate_pct": 38.461538,
+                "roi_pct": 3.148056,
+                "tied_models": [
+                  "C_HISTORICAL_CORE"
+                ]
+              },
+              "HURDLE_RATED": {
+                "model": "B_PROXY",
+                "settled": 1,
+                "strike_rate_pct": 100.0,
+                "roi_pct": 175.0,
+                "tied_models": [
+                  "B_PROXY",
+                  "D(c)_RECONSTRUCTED",
+                  "D137_HPR_ABILITY_GRADE_OR_WEIGHT",
+                  "D137_HPR_ABILITY_GRADE_WEIGHT",
+                  "D137_HPR_ABILITY_OR_WEIGHT",
+                  "D142_LONG_CORE_FORM_HPR",
+                  "D142_LONG_CORE_FORM_OR_WEIGHT",
+                  "D_FORM_WEIGHT_GRADE__ROI",
+                  "G5_ADAPTIVE_QUARTERLY",
+                  "G5_COMBINED_QUARTERLY",
+                  "G5_NETWORK_QUARTERLY",
+                  "G5_STRENGTH_QUARTERLY"
+                ]
+              },
+              "NH_FLAT_MAIDEN": {
+                "model": "B_PROXY",
+                "settled": 4,
+                "strike_rate_pct": 50.0,
+                "roi_pct": 108.333333,
+                "tied_models": [
+                  "B_PROXY"
+                ]
+              },
+              "NH_FLAT_OPEN": {
+                "model": "STAGE143_TYPE_EVIDENCE",
+                "settled": 32,
+                "strike_rate_pct": 21.875,
+                "roi_pct": 8.177083,
+                "tied_models": [
+                  "STAGE143_TYPE_EVIDENCE",
+                  "STAGE143_TYPE_INTERACTIONS"
+                ]
+              },
+              "NH_FLAT_PATTERN": {
+                "model": "G5_ADAPTIVE_QUARTERLY",
+                "settled": 1,
+                "strike_rate_pct": 100.0,
+                "roi_pct": 225.0,
+                "tied_models": [
+                  "G5_ADAPTIVE_QUARTERLY",
+                  "G5_COMBINED_QUARTERLY",
+                  "G5_NETWORK_QUARTERLY",
+                  "G5_STRENGTH_QUARTERLY"
+                ]
+              },
+              "TURF_AUCTION_RESTRICTED_SALES": {
+                "model": "A_PROXY",
+                "settled": 1,
+                "strike_rate_pct": 0.0,
+                "roi_pct": -100.0,
+                "tied_models": [
+                  "A_PROXY",
+                  "B_PROXY",
+                  "C_HISTORICAL_CORE",
+                  "D(c)_RECONSTRUCTED",
+                  "D137_HPR_ABILITY_GRADE_OR_WEIGHT",
+                  "D137_HPR_ABILITY_GRADE_WEIGHT",
+                  "D137_HPR_ABILITY_OR_WEIGHT",
+                  "D142_LONG_CORE_FORM_HPR",
+                  "D142_LONG_CORE_FORM_OR_WEIGHT",
+                  "D_FORM_WEIGHT_GRADE__ROI",
+                  "G5_ADAPTIVE_QUARTERLY",
+                  "G5_COMBINED_QUARTERLY",
+                  "G5_NETWORK_QUARTERLY",
+                  "G5_STRENGTH_QUARTERLY",
+                  "STAGE143_TYPE_EVIDENCE",
+                  "STAGE143_TYPE_INTERACTIONS",
+                  "STAGE146_A_RETRAINED_TRENDS",
+                  "STAGE146_B_RETRAINED_TRENDS"
+                ]
+              },
+              "TURF_GROUP_3": {
+                "model": "A_PROXY",
+                "settled": 2,
+                "strike_rate_pct": 50.0,
+                "roi_pct": -4.545455,
+                "tied_models": [
+                  "A_PROXY",
+                  "B_PROXY",
+                  "C_HISTORICAL_CORE",
+                  "D(c)_RECONSTRUCTED",
+                  "D137_HPR_ABILITY_GRADE_WEIGHT",
+                  "D_FORM_WEIGHT_GRADE__ROI",
+                  "G5_ADAPTIVE_QUARTERLY",
+                  "G5_COMBINED_QUARTERLY",
+                  "G5_NETWORK_QUARTERLY",
+                  "G5_STRENGTH_QUARTERLY",
+                  "Z"
+                ]
+              },
+              "TURF_HANDICAP": {
+                "model": "D137_HPR_ABILITY_OR_WEIGHT",
+                "settled": 47,
+                "strike_rate_pct": 23.404255,
+                "roi_pct": 81.884058,
+                "tied_models": [
+                  "D137_HPR_ABILITY_OR_WEIGHT"
+                ]
+              },
+              "TURF_LISTED": {
+                "model": "D(c)_RECONSTRUCTED",
+                "settled": 5,
+                "strike_rate_pct": 40.0,
+                "roi_pct": 57.5,
+                "tied_models": [
+                  "D(c)_RECONSTRUCTED"
+                ]
+              },
+              "TURF_MAIDEN": {
+                "model": "G5_NETWORK_QUARTERLY",
+                "settled": 4,
+                "strike_rate_pct": 50.0,
+                "roi_pct": 44.444444,
+                "tied_models": [
+                  "G5_NETWORK_QUARTERLY"
+                ]
+              },
+              "TURF_NOVICE": {
+                "model": "D(c)_RECONSTRUCTED",
+                "settled": 11,
+                "strike_rate_pct": 36.363636,
+                "roi_pct": 11.260331,
+                "tied_models": [
+                  "D(c)_RECONSTRUCTED"
+                ]
+              },
+              "TURF_NURSERY": {
+                "model": "G5_ADAPTIVE_QUARTERLY",
+                "settled": 5,
+                "strike_rate_pct": 60.0,
+                "roi_pct": 152.5,
+                "tied_models": [
+                  "G5_ADAPTIVE_QUARTERLY",
+                  "G5_COMBINED_QUARTERLY",
+                  "G5_NETWORK_QUARTERLY",
+                  "G5_STRENGTH_QUARTERLY"
+                ]
+              }
+            }
+          }
+          ROUTES
+          python - <<'PY'
+          import datetime as d, os,json,pathlib
+          from zoneinfo import ZoneInfo
+          n=d.datetime.now(ZoneInfo('Europe/Dublin'));today=n.date();tomorrow=today+d.timedelta(days=1)
+          target=os.environ.get('REQUESTED_DATE') or (tomorrow if n.hour>=18 else today).isoformat()
+          assert target in (today.isoformat(),tomorrow.isoformat()), 'No backdated paper predictions'
+          with open(os.environ['GITHUB_ENV'],'a') as f:f.write('TARGET_DAY='+target+'\n')
+          print('STAGE190_TARGET',target)
+          PY
+      - name: Dispatch existing independent paper scorers and collect fresh artifacts
+        run: |
+          python - <<'PY'
+          import datetime as d,json,os,pathlib as P,subprocess as S,time
+          root=P.Path('reports/stage190');day=os.environ['TARGET_DAY'];repo=os.environ['GITHUB_REPOSITORY'];utc=d.timezone.utc
+          workflows={'stage141-today-or-weight-paper.yml':'stage141-today-hpr-or-weight-', 'stage151-d142-core-form-or-weight-today.yml':'stage151-d142-core-form-weight-today-', 'stage152-best-roi-specialists-today.yml':'stage152-best-roi-specialists-', 'stage147-daily-143-146.yml':'stage147-daily-143-146-', 'stage128-g5-paper.yml':'stage128-g5-paper-'}
+          # These paper workflows produce artifacts only. Stage153 and its published feed are never dispatched or changed here.
+          status={};ids={};began={}
+          for wf in workflows:
+           began[wf]=d.datetime.now(utc)-d.timedelta(seconds=3)
+           x=S.run(['gh','workflow','run',wf,'--ref','main','-f','selection_date='+day],capture_output=True,text=True,timeout=60)
+           if x.returncode:status[wf]='DISPATCH_FAILED: '+x.stderr[-200:]
+          deadline=time.monotonic()+125*60
+          while time.monotonic()<deadline and len(status)<len(workflows):
+           for wf,prefix in workflows.items():
+            if wf in status:continue
+            try:
+             xs=json.loads(S.check_output(['gh','run','list','--workflow',wf,'--event','workflow_dispatch','--limit','15','--json','databaseId,createdAt,status,conclusion'],text=True,timeout=40))
+             fresh=[x for x in xs if d.datetime.fromisoformat(x['createdAt'].replace('Z','+00:00'))>=began[wf]]
+             if wf not in ids and fresh:ids[wf]=min(fresh,key=lambda x:x['databaseId'])['databaseId']
+             x=next((x for x in fresh if x['databaseId']==ids.get(wf)),None)
+             if not x or x['status']!='completed':continue
+             if x['conclusion']!='success':status[wf]=x['conclusion'];continue
+             dest=root/'sources'/wf.removesuffix('.yml');dest.mkdir(parents=True,exist_ok=True)
+             r=S.run(['gh','run','download',str(ids[wf]),'--repo',repo,'--name',prefix+str(ids[wf]),'--dir',str(dest)],capture_output=True,text=True,timeout=180)
+             status[wf]='success' if r.returncode==0 else 'ARTIFACT_UNAVAILABLE'
+            except (S.SubprocessError,ValueError) as e:print('POLL_WARNING',wf,str(e)[:160],flush=True)
+           (root/'source-status.json').write_text(json.dumps({'ids':ids,'status':status},indent=2));print('STAGE190_SOURCE_STATUS',status,flush=True)
+           if len(status)<len(workflows):time.sleep(35)
+          for wf in workflows:status.setdefault(wf,'TIMEOUT')
+          (root/'source-status.json').write_text(json.dumps({'ids':ids,'status':status},indent=2))
+          PY
+      - name: Assemble separate V5 paper rankings with no substitutes
+        run: |
+          git fetch origin main
+          git show origin/main:data/racecards.json > reports/stage190/cards.json
+          if git cat-file -e origin/main:data/strategy-v5-paper.json 2>/dev/null; then git show origin/main:data/strategy-v5-paper.json > reports/stage190/previous.json; fi
+          PYTHONPATH=scripts:. python - <<'PY'
+          import collections as C, datetime as D, json, pathlib as P,os,re
+          import stage153_roi_combined as S
+          root=P.Path('reports/stage190');target=os.environ['TARGET_DAY'];now=S.utcnow();cards=json.loads((root/'cards.json').read_text());route_doc=json.loads((root/'route-map.json').read_text());routes=route_doc['routes'];assert len(routes)==38
+          # Permit every frozen specialist plus classifier models to be ingested, not V1's route subset.
+          S.ROUTES={**{k:v['model'] for k,v in routes.items()},'classifier_a':'STAGE143_TYPE_EVIDENCE','classifier_b':'STAGE143_TYPE_INTERACTIONS','classifier_c':'STAGE146_A_RETRAINED_TRENDS','classifier_d':'STAGE146_B_RETRAINED_TRENDS'}
+          sources,stats,classified=S.read_sources([root/'sources'],target)
+          # Match active fields strictly and timestamp every selection before the scheduled off.
+          previous=json.loads((root/'previous.json').read_text()) if (root/'previous.json').exists() else {'races':[]};prior={(r['date'],r['time'],S.normalize(r['course'])):r for r in previous['races']};out=[];counts=C.Counter()
+          legacy={'A_PROXY','B_PROXY','C_HISTORICAL_CORE','D(c)_RECONSTRUCTED','Z'}
+          for (stamp,course_key),entries in sorted(S.declared(cards,target).items()):
+           off=D.datetime.strptime(stamp,'%Y-%m-%d %H:%M').replace(tzinfo=D.timezone.utc);clock=stamp[11:];k=(target,clock,course_key);old=prior.get(k)
+           # Preserve the first pre-off published paper selection, even if later withdrawals void it.
+           if old and old.get('selection'):out.append(old);counts['preserved']+=1;continue
+           route=classified.get((stamp,course_key));title=str(entries[0].get('race_name') or '');
+           if 'junior' in title.lower() and 'hurdle' in title.lower():route='HURDLE_JUVENILE'
+           model=routes.get(route,{}).get('model');active=[r for r in entries if not S.nonrunner(r)]
+           rec={'date':target,'course':entries[0]['course'],'time':clock,'race_time':S.iso(off),'race_name':title,'race_type':route,'source_model':model,'route_evidence':routes.get(route),'selection':None,'runners':[],'model':'V5_PROVISIONAL_PAPER','published_at':S.iso(now),'history_status':'G5/legacy recovery parity not certified; specialist input revision per source run'}
+           reason=None
+           if S.abandoned_race(entries):reason='ABANDONED'
+           elif off<=now:reason='NO_PREOFF_PUBLICATION'
+           elif not model:reason='NO_VERIFIED_RESEARCH_ROUTE_OR_CLASSIFICATION'
+           elif model in legacy:reason='EXACT_LIVE_REPLAY_NOT_AVAILABLE'
+           elif len(active)<2:reason='INSUFFICIENT_ACTIVE_RUNNERS'
+           else:
+            rows=sources.get((stamp,course_key,model),[]); names={S.normalize(r['horse']) for r in active}; ranked=sorted(rows,key=lambda r:int(float(r.get('rank') or 99999)))
+            if len(ranked)!=len(active) or {S.normalize(r.get('horse')) for r in ranked}!=names or [int(float(r.get('rank') or 0)) for r in ranked]!=list(range(1,len(active)+1)):reason='MISSING_OR_INCOMPLETE_EXACT_MODEL_FIELD'
+            else:
+             times=[S.parse_time(r.get('prediction_asof') or r.get('decision_utc') or r.get('scored_at') or r.get('cards_asof')) for r in ranked]
+             if any(t is None or t>=off or t>now for t in times):reason='UNVERIFIED_PREOFF_SOURCE_TIMESTAMP'
+             else:
+              rec['runners']=[{'horse':r['horse'],'rank':int(float(r['rank'])),'research_score':S.model_score(r)} for r in ranked];rec['selection']={'horse':ranked[0]['horse'],'rank':1,'published_at':S.iso(now),'pre_off_valid':True};rec['evidence_asof']=S.iso(max(times));reason='PAPER_RANKED'
+           rec['selection_status']=reason;counts[reason]+=1;out.append(rec)
+          assert out,'No declared target races; cannot generate paper selections'
+          newkeys={(r['date'],r['time'],S.normalize(r['course'])) for r in out}; retained=[r for k,r in prior.items() if k not in newkeys];payload={'model':'V5_PROVISIONAL_PAPER','day':target,'generated_at':S.iso(now),'research_route':route_doc,'coverage':dict(counts),'source_status':json.loads((root/'source-status.json').read_text()),'races':retained+out,'warning':'In-sample optimised, not validated; no wager placed; no substitutions; no V1 changes.'};(root/'v5.json').write_text(json.dumps(payload,indent=2));print('STAGE190_REPORT',json.dumps({'day':target,'coverage':dict(counts),'read_stats':dict(stats)}),flush=True)
+          PY
+      - name: Settle existing paper picks against archived final results
+        run: |
+          PYTHONPATH=scripts:. python - <<'PY'
+          import collections as C,json,pathlib as P
+          import stage153_roi_combined as S
+          from scripts.stage68_result_reconciler import sp_decimal
+          root=P.Path('reports/stage190');feed=json.loads((root/'v5.json').read_text());results={};missing=[]
+          for day in sorted({r['date'] for r in feed['races'] if r.get('selection')}):
+           path=P.Path('data/racing-results')/(day+'.json')
+           if not path.exists():missing.append(day);continue
+           doc=json.loads(path.read_text());rs=doc.get('results',doc.get('races',[]))
+           for r in rs:
+            if r.get('status')!='final':continue
+            off=S.parse_time(r.get('off_dt')); 
+            if off is not None:results[(day,S.normalize(r.get('course')),off.strftime('%H:%M'))]=r
+          rows=[];groups=C.defaultdict(list)
+          for p in feed['races']:
+           if not p.get('selection'):continue
+           key=(p['date'],S.normalize(p['course']),p['time']);r=results.get(key);horse=p['selection']['horse'];match=[h for h in r.get('runners',[]) if S.normalize(h.get('horse'))==S.normalize(horse)] if r else []
+           a={k:p.get(k) for k in ('date','course','time','race_type','source_model')};a.update(horse=horse,status='PENDING',won=None,sp_decimal=None,pnl_units=None)
+           if len(match)==1:
+            h=match[0];position=h.get('position');status=S.normalize(h.get('status'))
+            if status in ('nonrunner','nr','withdrawn','scratched','dns'):a['status']='VOID_NR'
+            elif position is not None or status in ('pu','pulledup','f','fell','ur','unseatedrider','bd','broughtdown','ro','ranout','refused','dq','disqualified','su','slippedup'):
+             a['status']='SETTLED';a['won']=int(str(position)=='1');a['position']=position
+             try:price=sp_decimal(h.get('sp'));price=float(price) if price is not None else None
+             except (TypeError,ValueError):price=None
+             if price is not None and price>1:a['sp_decimal']=price;a['pnl_units']=price-1 if a['won'] else -1
+           rows.append(a)
+           if a['status']=='SETTLED':
+            groups[('overall','all')].append(a);groups[('race_type',a['race_type'] or 'unknown')].append(a);t=a['race_type'] or '';groups[('discipline','AW' if t.startswith('AW_') else 'Turf Flat' if t.startswith('TURF_') else 'National Hunt' if t.startswith(('HURDLE_','CHASE_','NH_FLAT_')) else 'unknown')].append(a)
+          metrics=[]
+          for (dim,val),rs in sorted(groups.items()):
+           priced=[r['pnl_units'] for r in rs if r['pnl_units'] is not None];wins=sum(r['won'] for r in rs);metrics.append(dict(dimension=dim,value=val,settled=len(rs),winners=wins,strike_rate_pct=100*wins/len(rs),priced=len(priced),roi_pct=100*sum(priced)/len(priced) if priced else None))
+          (root/'v5-results.json').write_text(json.dumps({'model':'V5_PROVISIONAL_PAPER','rank':1,'updated_at':S.iso(S.utcnow()),'selections':rows,'metrics':metrics,'missing_result_days':missing},indent=2))
+          PY
+      - name: Publish only V5 paper feed and route audit (never V1)
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch origin main
+          git reset --hard origin/main
+          cp reports/stage190/v5.json data/strategy-v5-paper.json
+          cp reports/stage190/v5-results.json data/strategy-v5-paper-results.json
+          git add data/strategy-v5-paper.json data/strategy-v5-paper-results.json
+          git diff --cached --quiet && exit 0
+          git commit -m 'Stage190: independent V5 paper rankings and coverage audit'
+          git push origin HEAD:main
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage190-v5-paper-${{ github.run_id }}
+          path: |
+            reports/stage190/route-map.json
+            reports/stage190/source-status.json
+            reports/stage190/v5.json
+            reports/stage190/v5-results.json
+          if-no-files-found: warn
+          retention-days: 90

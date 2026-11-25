@@ -1,0 +1,74 @@
+name: Stage184-188 - Remaining model replay readiness and artifact inventory
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/stage184-188-replay-preflight-v2.yml']
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage184-188-replay-preflight
+  cancel-in-progress: false
+jobs:
+  inventory:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Inventory original code and retained model artifacts (read-only)
+        run: |
+          python - <<'PY'
+          import ast,collections,csv,hashlib,json,os,pathlib as P,re,subprocess as S
+          out=P.Path('reports/stage184-188-preflight');out.mkdir(parents=True,exist_ok=True);repo=os.environ['GITHUB_REPOSITORY']
+          groups={
+            '184_G_family':{'stages':[107,108,109,110,111,131,132,133,134,135,136],'models':['G','G2_FROZEN','G3_LEARNED','G4_SPECIALIST','G4 class/weight challengers']},
+            '185_E_F_HPR':{'stages':[86,89,92,94,95,96,97,98,99,101,105,106],'models':['E HPR','E V2 HPR overlay','E no HPR','E Balanced NH','F','D(c) NH specialist']},
+            '186_remaining_specialists':{'stages':[137,138,139,140,141,142,143,150],'models':['D137 SR/ROI','D138 eight pillars','D139/140 HPR arms','remaining D141/D142/D143 arms','Stage150 Long Form']},
+            '187_exact_legacy':{'stages':[30,38,81,83,94,101,116,148,149],'models':['A','B','B2','C','D(c)','Z']},
+            '188_experimental':{'stages':[37,50,51,52,102,103,104],'models':['D2 Enhanced','D2 trends','ML price-based variants']}}
+          def stage(p):
+           m=re.search(r'(?:rhp_)?stage(\d+)',p.name.lower());return int(m.group(1)) if m else None
+          def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
+          def command_defs(p):
+           try:tree=ast.parse(p.read_text());return [n.name for n in ast.walk(tree) if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef)) and any(t in n.name.lower() for t in ('score','predict','today','paper','train','replay','warmup','walkforward','forecast','load','main'))]
+           except (SyntaxError,UnicodeError):return []
+          def api(path,*args):return S.check_output(['gh','api',path,*args],text=True)
+          # GitHub artifact endpoint is paginated; retain metadata only. Expired items cannot be restored.
+          pages=[]; page=1
+          while True:
+           j=json.loads(api(f'repos/{repo}/actions/artifacts?per_page=100&page={page}'));a=j.get('artifacts',[]);pages.extend(a)
+           if len(a)<100:break
+           page+=1
+           if page>100:raise RuntimeError('Artifact inventory exceeded 100 pages; no completeness claim')
+          wf=list(P.Path('.github/workflows').glob('*.y*ml'));scripts=list(P.Path('scripts').glob('*.py'));files=wf+scripts;inventory={};records=[]
+          for group,cfg in groups.items():
+           st=set(cfg['stages']);ps=sorted(p for p in files if stage(p) in st);arts=[]
+           for a in pages:
+            n=a.get('name','');m=re.search(r'stage[ _-]?(\d+)',n.lower())
+            if not m or int(m.group(1)) not in st:continue
+            arts.append({k:a.get(k) for k in ('id','name','expired','created_at','expires_at','size_in_bytes','workflow_run')})
+           code=[dict(path=str(p),sha256=sha(p),stage=stage(p),candidate_entrypoints=command_defs(p) if p.suffix=='.py' else []) for p in ps]
+           for v in code:records.append(dict(group=group,**{**v,'candidate_entrypoints':';'.join(v['candidate_entrypoints'])}))
+           inventory[group]={'requested_models':cfg['models'],'source_code':code,'artifact_metadata':arts,'retained_artifacts':sum(not x['expired'] for x in arts),'status':'REPLAY_ADAPTER_AND_CUTOFF_VALIDATION_REQUIRED'}
+          report={'status':'READ_ONLY_PREFLIGHT_NOT_A_MODEL_REPLAY','period':['2026-10-25','2026-11-23'],'repository':repo,'commit':S.check_output(['git','rev-parse','HEAD'],text=True).strip(),'artifact_pages':page,'artifact_count':len(pages),'groups':inventory,'limitations':['Artifact names are discovery evidence only; original training cutoff, contents and live scoring parity still require verification.','No scoring or routing changes; no production writes.','Missing artifact is not permission to reconstruct with future outcomes.','Stage186a independently runs the actual Stage150 scorer.']}
+          (out/'report.json').write_text(json.dumps(report,indent=2))
+          with (out/'source-inventory.csv').open('w',newline='') as f:
+           w=csv.DictWriter(f,fieldnames=['group','path','sha256','stage','candidate_entrypoints']);w.writeheader();w.writerows(records)
+          print('STAGE184_188_PREFLIGHT',json.dumps({k:{'code_files':len(v['source_code']),'retained_artifacts':v['retained_artifacts'],'status':v['status']} for k,v in inventory.items()}),flush=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage184-188-replay-preflight
+          path: reports/stage184-188-preflight/
+          if-no-files-found: error
+          retention-days: 30
