@@ -1,0 +1,371 @@
+name: Stage182c - Promote 115 verified historical races
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/stage182c-promote-verified-history.yml']
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: stage171-daily-recent-history
+  cancel-in-progress: false
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      PYTHONPATH: '.:scripts'
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage177-shared-db
+          run-id: 45491296882
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/frozen
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage177-shared-inputs
+          run-id: 45491296882
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/frozen
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage181-unmatched-recovery-audit
+          run-id: 45515273975
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/audit
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage182b-metadata-repair-audit
+          run-id: 45518317420
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/approved182b
+      - name: Install pinned-source downloader
+        run: python -m pip install --disable-pip-version-check 'kagglehub>=0.3,<1'
+      - name: Prepare verified allowlist integration helper
+        run: |
+          cat > scripts/stage182c_verified_source.py <<'PYHELP'
+          """Stage182c: allowlisted, checksum-verified source-v132 historical additions.
+          Raw licensed source data stays private; only source IDs, hashes and metadata repairs are stored.
+          """
+          import collections as C, csv, hashlib, json, pathlib as P, sqlite3, tempfile
+          import import_historical_ukie as I
+          from scripts import stage180_archive_overlay as O
+
+          LEDGER=P.Path('data/stage182c-approved-history.json')
+          def signature(race,runners):
+           return hashlib.sha256(json.dumps([list(race),[list(x) for x in runners]],ensure_ascii=False,separators=(',',':'),allow_nan=False).encode()).hexdigest()
+          def fetch(c,rid):
+           race=c.execute('select * from historical_races where id=?',(rid,)).fetchone()
+           rows=c.execute('select * from historical_runs where race_id=? order by runner_key',(rid,)).fetchall()
+           if race is None or not rows: raise RuntimeError('Approved race missing: '+rid)
+           return race,rows
+
+          def apply(db,ref,source,target,ledger=LEDGER):
+           doc=json.loads(P.Path(ledger).read_text());assert doc['source_version']==132 and doc['approved_run']==45518317420 and len(doc['races'])==115
+           entries={e['id']:e for e in doc['races'] if e['date']<target};assert len(entries)==sum(e['date']<target for e in doc['races'])
+           if not entries:return {'new_races':0,'new_runners':0,'already_present':0}
+           with tempfile.TemporaryDirectory(prefix='stage182c-') as tmp:
+            delta=P.Path(tmp)/'delta.sqlite';first=min(e['date'] for e in entries.values());last=max(e['date'] for e in entries.values());I.process(source,delta,first,last,'import')
+            with sqlite3.connect(delta) as incoming:
+             for rid,e in entries.items():
+              for field,value in e['repairs'].items():
+               if field=='race_name':continue
+               assert field in ('race_type','surface','distance_f')
+               incoming.execute(f"update historical_races set {field}=? where id=? and ({field} is null or {field}='')",(value,rid));assert incoming.execute('select changes()').fetchone()[0]==1,(rid,field)
+              race,rows=fetch(incoming,rid)
+              assert signature(race,rows)==e['sha256'] and len(rows)==e['runners'],('Approved source changed',rid)
+             incoming.commit()
+            with P.Path(ref).open(encoding='utf-8-sig',newline='') as f:
+             r=csv.DictReader(f);fields=r.fieldnames;existing_ref={x['stage2_race_id']:x for x in r if x.get('stage2_race_id') in entries}
+            new=[];count=0;present=0
+            with sqlite3.connect(db) as c:
+             c.execute('pragma foreign_keys=ON');c.execute('attach database ? as incoming',(str(delta),));c.execute('begin immediate')
+             slots=C.defaultdict(set)
+             for rid,day,horse,hid in c.execute('select r.id,r.race_date,h.horse_name,h.horse_source_id from historical_races r join historical_runs h on r.id=h.race_id where r.race_date between ? and ?',(first,last)):
+              slots[(day,'name:'+O.name(horse))].add(rid)
+              if hid:slots[(day,'id:'+str(hid))].add(rid)
+             for rid,e in sorted(entries.items()):
+              if c.execute('select 1 from historical_races where id=?',(rid,)).fetchone():
+               assert signature(*fetch(c,rid))==e['sha256'] and rid in existing_ref,('Existing approved race differs',rid);present+=1;continue
+              assert rid not in existing_ref,('Orphan reference',rid)
+              day=e['date'];rr=[(h,hid) for h,hid,o in c.execute('select horse_name,horse_source_id,outcome from incoming.historical_runs where race_id=?',(rid,)) if O.M.norm(o) not in O.M.NR]
+              conflicts=set().union(*(slots[(day,'name:'+O.name(h))] for h,hid in rr),*(slots[(day,'id:'+str(hid))] for h,hid in rr if hid))
+              assert not conflicts,('Overlap: refuse duplicate',rid,sorted(conflicts))
+              c.execute('insert into historical_races select * from incoming.historical_races where id=?',(rid,));assert c.execute('select changes()').fetchone()[0]==1
+              c.execute('insert into historical_runs select * from incoming.historical_runs where race_id=?',(rid,));assert c.execute('select changes()').fetchone()[0]==e['runners'];count+=e['runners']
+              assert signature(*fetch(c,rid))==e['sha256'];new.append(e['reference'])
+              for h,hid in rr:
+               slots[(day,'name:'+O.name(h))].add(rid)
+               if hid:slots[(day,'id:'+str(hid))].add(rid)
+             assert c.execute('pragma quick_check').fetchone()[0]=='ok';c.commit()
+            if new:
+             with P.Path(ref).open('a',encoding='utf-8',newline='') as f:csv.DictWriter(f,fieldnames=fields,extrasaction='ignore').writerows(new)
+           result={'new_races':len(new),'new_runners':count,'already_present':present};print('STAGE182C_LIVE_ALLOWLIST',json.dumps(result),flush=True);return result
+          PYHELP
+          python -m py_compile scripts/stage182c_verified_source.py
+      - name: Recover candidate historical fields privately and verify baseline gap
+        run: |
+          python - <<'PY'
+          import collections as C, csv, datetime as D, hashlib, json, os, pathlib as P, re, sqlite3, shutil
+          import kagglehub
+          import import_historical_ukie as I
+          import stage4_match_all_recurring_races as R
+          from scripts import stage171_recent_history as M
+          T=P.Path(os.environ['RUNNER_TEMP']); B=T/'frozen'; OUT=P.Path('reports/stage182b'); OUT.mkdir(parents=True,exist_ok=True)
+          FIRST='2026-10-10'; LAST='2026-11-20'; TARGET='2026-11-25'
+          def load(p):return json.loads(p.read_text())
+          def dump(n,x):(OUT/n).write_text(json.dumps(x,indent=2,sort_keys=True,ensure_ascii=False)+'\n')
+          def sha(p):
+           with p.open('rb') as f:return hashlib.file_digest(f,'sha256').hexdigest()
+          def course(x):
+           n=M.course(x);return {'dundalkaw':'dundalk','dundalkire':'dundalk','dundalkawire':'dundalk','kemptonpark':'kempton','chelmsfordcity':'chelmsford','bangor':'bangorondee','galwayire':'galway','wexfordire':'wexford','curraghire':'curragh'}.get(n,n)
+          def horse(x):return M.norm(re.sub(r'\s*\([A-Za-z]{2,3}\)\s*$','',str(x or '')))
+          def outcome(h):
+           p=h.get('position');s=M.norm(h.get('status'));t=M.norm(p)
+           if s in M.NR or t in M.NR:return ('NR',None)
+           if s in M.TERMINAL or t in M.TERMINAL:return (M.TERMINAL.get(s) or M.TERMINAL.get(t),None)
+           if not isinstance(p,bool) and re.fullmatch(r'[0-9]+(?:\.0+)?',str(p)) and float(p)>0:return ('FINISHED',int(float(p)))
+           return ('UNKNOWN',None)
+          def src_out(o,p):
+           n=M.norm(o)
+           if n in M.NR:return ('NR',None)
+           if n in M.TERMINAL:return (M.TERMINAL[n],None)
+           return ('FINISHED',p) if n=='finished' and isinstance(p,int) and p>0 else ('UNKNOWN',None)
+          manifest=load(B/'history-manifest.json'); db=B/'candidate.sqlite'; ref=B/'candidate-reference.csv'
+          assert sha(db)==manifest['database_sha256'] and sha(ref)==manifest['reference_sha256'],'Frozen input checksum mismatch'
+          missing=load(T/'audit'/'unresolved-prior-runs.json'); report181=load(T/'audit'/'report.json')
+          assert len(missing)==report181['unresolved_archive_matches']==165 and report181['target']==TARGET
+          priority={horse(x) for x in ('Acclamique','Persian Coast',"Samantha's Lady",'Celestial Order')}
+          # Reconstruct the current Stage181 candidate in a private copy; no frozen file or production write.
+          candidate=T/'stage182-candidate.sqlite'; candidate_ref=T/'stage182-reference.csv'; shutil.copy2(db,candidate);shutil.copy2(ref,candidate_ref)
+          with sqlite3.connect(candidate) as c:
+           c.execute('delete from historical_runs where race_id in (select id from historical_races where race_date>?)',(M.BASE,));c.execute('delete from historical_races where race_date>?',(M.BASE,));c.commit()
+          with candidate_ref.open(encoding='utf-8-sig',newline='') as f:
+           rr=csv.DictReader(f);fields=rr.fieldnames;keep=[r for r in rr if r['date']<=M.BASE]
+          with candidate_ref.open('w',encoding='utf-8',newline='') as f:
+           w=csv.DictWriter(f,fieldnames=fields);w.writeheader();w.writerows(keep)
+          from scripts.stage180_archive_overlay import apply
+          apply(candidate,candidate_ref,TARGET); M.append_bridge(candidate,candidate_ref,TARGET,P.Path('data'))
+          # Original source version, not a new unvalidated version or a scraped dataset.
+          src=P.Path(kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025/versions/132'))
+          delta=T/'stage182-delta.sqlite'
+          imp=I.process(src,delta,FIRST,LAST,'import');assert imp['integrity']=='ok' and imp['inserted']>0
+          # Independently inspect raw source race IDs, metadata and duplicate runner signatures.
+          raw_meta={}; signatures={}; bad=set(); raw_counts=C.Counter(); bad_reasons=C.defaultdict(set); metadata_repairs={}; pedigree_repairs={}; diagnostics=C.Counter()
+          for filename,opener in I.source_iter(src):
+           with opener() as f:
+            reader=csv.DictReader(f); m=I.mapping(reader.fieldnames or [])
+            if not all(m.get(k) for k in ('race_date','course','horse','finish','race_id')):continue
+            for row in reader:
+             d=I.dateparse(I.value(row,m,'race_date')) if FIRST<=str(row.get(m['race_date'],'')).strip()[:10]<=LAST else None
+             if not d or not FIRST<=d<=LAST:continue
+             co=I.value(row,m,'course');raw=I.value(row,m,'race_id');h=I.value(row,m,'horse')
+             if not co or not raw or not h:continue
+             rid=I.SOURCE+':'+d+':'+I.normhead(co)+':'+re.sub('[^a-zA-Z0-9_-]','',raw)[:90]
+             facts=(d,co,I.value(row,m,'race_type'),next((str(row.get(k) or '').strip() for k in reader.fieldnames if I.normhead(k) in ('race_name','race_title','race_description','title') and str(row.get(k) or '').strip()),''),R.region(co),raw)
+             if rid in raw_meta and raw_meta[rid]!=facts:bad.add(rid);bad_reasons[rid].add('contradictory_raw_race_metadata')
+             raw_meta[rid]=facts; hid=I.value(row,m,'horse_id'); key=(rid,'id:'+hid if hid else 'name:'+I.normname(h))
+             sig=tuple(I.value(row,m,k) for k in ('horse','country','foaled','finish','trainer','jockey','rating','weight','sp','draw','age','sex','sire','dam','rpr','ts','comment','beaten','surface','distance','going','race_class'))
+             if key in signatures and signatures[key]!=sig:bad.add(rid);bad_reasons[rid].add('contradictory_raw_runner_duplicate')
+             signatures[key]=sig;raw_counts[d]+=1
+          # Compare complete archived race fields and outcomes with original source fields.
+          # Exact runner-set agreement is mandatory. No synthetic results or corrections to existing rows.
+          archive=C.defaultdict(list)
+          for day in sorted({x['prior_date'] for x in missing}):
+           p=P.Path('data/racing-results')/(day+'.json')
+           if not p.exists():continue
+           for r in load(p).get('results',[]):
+            if r.get('status')!='final':continue
+            rr=r.get('runners') or []; active=[h for h in rr if outcome(h)[0]!='NR']; names=[horse(h.get('horse')) for h in active]
+            if not names or not all(names) or len(set(names))!=len(names):continue
+            archive[(day,course(r.get('course')))].append((r,{horse(h.get('horse')):(outcome(h),h) for h in active}))
+          source_fields=C.defaultdict(dict); source_by_slot=C.defaultdict(list); source_info={}; coverage=C.defaultdict(C.Counter)
+          with sqlite3.connect(delta) as c:
+           for rid,d,co,typ,surface,dist in c.execute('select id,race_date,course,race_type,surface,distance_f from historical_races'):
+            source_info[rid]=(d,co,typ,surface,dist); source_by_slot[(d,course(co))].append(rid); coverage[d]['source_races']+=1
+           for rid,h,hid,sire,dam,o,p in c.execute('select race_id,horse_name,horse_source_id,sire,dam,outcome,finish_pos from historical_runs'):
+            st=src_out(o,p)
+            if st[0]=='NR':continue
+            n=horse(h)
+            if not n or n in source_fields[rid]:bad.add(rid);bad_reasons[rid].add('duplicate_normalized_runner_name')
+            source_fields[rid][n]=(st,hid,sire,dam);coverage[source_info[rid][0]]['source_runners']+=1
+          base_fields=C.defaultdict(set);base_slot=C.defaultdict(set);base_id=C.defaultdict(set);base_ids=set(); base_matches=C.defaultdict(list)
+          with sqlite3.connect(candidate) as c:
+           before=c.execute('select count(*) from historical_races').fetchone()[0];before_runs=c.execute('select count(*) from historical_runs').fetchone()[0]
+           for rid,d,co in c.execute('select id,race_date,course from historical_races where race_date between ? and ?',(FIRST,'2026-11-24')):
+            base_ids.add(rid);coverage[d]['baseline_races']+=1
+           for rid,d,co,h,hid,sire,dam,o,p in c.execute('select r.id,r.race_date,r.course,h.horse_name,h.horse_source_id,h.sire,h.dam,h.outcome,h.finish_pos from historical_races r join historical_runs h on h.race_id=r.id where r.race_date between ? and ?',(FIRST,'2026-11-24')):
+            n=horse(h);base_fields[rid].add(n);base_slot[(d,n)].add(rid)
+            if hid:base_id[(d,str(hid))].add(rid)
+            base_matches[(d,course(co),n)].append((rid,src_out(o,p),hid,sire,dam));coverage[d]['baseline_runners']+=1
+          # For each missing runner, locate its exact archived race, then a unique original-source full field.
+          # Require target pedigree concordance or matching source ID where the archive identifies the horse.
+          records=[];approved={};candidate_races=C.defaultdict(list)
+          for x in missing:
+           day=x['prior_date'];co=course(x['prior_course']);n=horse(x['horse']);expected=(x['outcome'],x['position']);z={'horse':x['horse'],'date':day,'course':x['prior_course'],'prior_time':x['prior_time'],'position':x['position'],'priority':n in priority,'stage181_race_id':x.get('race_id')}
+           matches=[(r,f) for r,f in archive[(day,co)] if n in f and M.off(r)==x['prior_time'] and (not x.get('race_id') or r.get('race_id')==x['race_id']) and f[n][0]==expected]
+           if len(matches)!=1:z['status']='ARCHIVE_RACE_NOT_UNIQUE';records.append(z);continue
+           r,af=matches[0];pool=source_by_slot[(day,co)];z['source_course_day_races']=len(pool)
+           if day>LAST:z['status']='OUTSIDE_PINNED_SOURCE_CUTOFF';records.append(z);continue
+           exact=[rid for rid in pool if set(source_fields[rid])==set(af)]
+           agreed=[rid for rid in exact if all(source_fields[rid][h][0]==af[h][0] and af[h][0][0]!='UNKNOWN' for h in af)]
+           z['exact_fields']=len(exact);z['outcome_agreed_fields']=len(agreed)
+           if len(agreed)!=1:
+            z['status']='NO_SOURCE_COURSE_DAY' if not pool else 'NO_EXACT_FIELD' if not exact else 'SOURCE_OUTCOME_CONFLICT_OR_AMBIGUOUS';records.append(z);continue
+           rid=agreed[0];z['source_race_id']=rid;facts=raw_meta.get(rid);s=source_fields[rid];d,sc,typ,surface,dist=source_info[rid]
+           # Never suppress duplicate or outcome conflicts. Diagnose each failing field independently.
+           flags=list(sorted(bad_reasons[rid])); archive_ok=(r.get('result_classification_source')=='stage71_archive_only_validated' and str(r.get('race_id') or '').startswith('rac_') and r.get('date')==day and R.region(r.get('course')) in ('GB','IRELAND'))
+           z['archive_metadata_eligible']=archive_ok
+           if not facts:flags.append('missing_raw_source_race_metadata')
+           if facts and facts[4] not in ('GB','IRELAND'):flags.append('invalid_region')
+           if len(s)<2:flags.append('insufficient_field')
+           if sum(v[0]==('FINISHED',1) for v in s.values())!=1:flags.append('winner_count_not_one')
+           if not facts or not facts[3]:diagnostics['original_missing_title']+=1
+           if not typ:diagnostics['original_missing_type']+=1
+           if not surface:diagnostics['original_missing_surface']+=1
+           if not dist:diagnostics['original_missing_distance']+=1
+           # Fill missing race metadata from the archived final race only when the full active field and every outcome already agree.
+           fixes={}; title=facts[3] if facts else ''
+           for field,old,alternate in [('race_name',title,r.get('race_name')),('race_type',typ,r.get('type')),('surface',surface,r.get('surface')),('distance_f',dist,I.distance_f(r.get('dist_f'),'distance_f'))]:
+            if not old:
+             if archive_ok and alternate and (field!='distance_f' or 0<float(alternate)<50):fixes[field]=alternate
+             else:flags.append('missing_'+field)
+           if dist and archive_ok and r.get('dist_f'):
+            archive_dist=I.distance_f(r['dist_f'],'distance_f')
+            if archive_dist and abs(float(dist)-archive_dist)>0.5:flags.append('source_archive_distance_conflict')
+           if flags:
+            z['status']='SOURCE_METADATA_REJECTED';z['validation_reasons']=flags;diagnostics.update(flags);records.append(z);continue
+           z['metadata_repairs']=fixes
+           # Independently verify target identity with source pedigree OR same stable app identity in archived prior and target card.
+           def pedigree_equal(a,b):return bool(all(a) and all(b) and tuple(horse(v) for v in a)==tuple(horse(v) for v in b))
+           def pedigree_conflict(a,b):return any(v and w and horse(v)!=horse(w) for v,w in zip(a,b))
+           _,sid,ss,sd=s[n]; prior=af[n][1]; pp=(prior.get('sire'),prior.get('dam'))
+           ident=False; identity_basis=[]
+           for a in x['tomorrow']:
+            tp=(a.get('sire'),a.get('dam'))
+            if pedigree_conflict((ss,sd),tp) or pedigree_conflict(pp,tp) or pedigree_conflict((ss,sd),pp):continue
+            if sid and a.get('horse_id') and str(sid)==str(a['horse_id']):identity_basis.append('source_id')
+            if pedigree_equal((ss,sd),tp):identity_basis.append('source_target_pedigree')
+            if archive_ok and prior.get('horse_id') and a.get('horse_id') and str(prior['horse_id'])==str(a['horse_id']):identity_basis.append('stable_app_prior_target_id')
+            if archive_ok and pedigree_equal(pp,tp):identity_basis.append('archive_target_pedigree')
+           ident=bool(identity_basis);z['identity_basis']=sorted(set(identity_basis))
+           if not ident:z['status']='TARGET_IDENTITY_UNVERIFIED';records.append(z);continue
+           # Also reject contradictory pedigree evidence anywhere in the matching field; enrich missing pedigree only, never overwrite.
+           repairs=[]; pedigree_conflicts=[]
+           for h,(_,source_hid,source_sire,source_dam) in s.items():
+            ah=af[h][1]; ap=(ah.get('sire'),ah.get('dam'))
+            if pedigree_conflict((source_sire,source_dam),ap):pedigree_conflicts.append(h)
+            if archive_ok and not pedigree_conflict((source_sire,source_dam),ap):
+             for column,old,new in [('sire',source_sire,ap[0]),('dam',source_dam,ap[1])]:
+              if not old and new:repairs.append((h,column,new))
+           if pedigree_conflicts:z['status']='FIELD_PEDIGREE_CONFLICT';z['conflicting_horses']=pedigree_conflicts;records.append(z);continue
+           metadata_repairs[rid]=fixes;pedigree_repairs[rid]=repairs
+           facts=(facts[0],facts[1],fixes.get('race_type',facts[2]),fixes.get('race_name',facts[3]),facts[4],facts[5])
+           conflicts=set().union(*(base_slot[(day,h)] for h in s),*(base_id[(day,str(v[1]))] for v in s.values() if v[1]))
+           if conflicts or rid in base_ids:
+            z['status']='BASELINE_OVERLAP_QUARANTINED';z['baseline_race_ids']=sorted(conflicts);records.append(z);continue
+           z['status']='VALIDATED_CANDIDATE';approved[rid]=facts;candidate_races[rid].append(len(records));records.append(z)
+          # Distinct source IDs must not share any runner name or ID on the same date.
+          seen=C.defaultdict(set)
+          for rid in approved:
+           day=source_info[rid][0]
+           for n,(_,hid,_,_) in source_fields[rid].items():
+            seen[(day,'name:'+n)].add(rid)
+            if hid:seen[(day,'id:'+str(hid))].add(rid)
+          collisions=set().union(*(v for v in seen.values() if len(v)>1))
+          for rid in collisions:
+           approved.pop(rid,None)
+           for i in candidate_races[rid]:records[i]['status']='CANDIDATE_CROSS_ID_COLLISION'
+          # Append complete, verified fields to the disposable SQLite and reference only.
+          with sqlite3.connect(delta) as c:
+           for rid in approved:
+            for field,val in metadata_repairs[rid].items():
+             if field=='race_name':continue
+             assert field in ('race_type','surface','distance_f')
+             c.execute(f"update historical_races set {field}=? where id=? and ({field} is null or {field}='')",(val,rid))
+             assert c.execute('select changes()').fetchone()[0]==1,(rid,field)
+            for n,col,val in pedigree_repairs[rid]:
+             assert col in ('sire','dam')
+             keys=[k for k,h in c.execute('select runner_key,horse_name from historical_runs where race_id=?',(rid,)) if horse(h)==n]
+             assert len(keys)==1,(rid,n)
+             c.execute(f"update historical_runs set {col}=? where race_id=? and runner_key=? and ({col} is null or {col}='')",(val,rid,keys[0]));assert c.execute('select changes()').fetchone()[0]==1
+           c.commit()
+          with sqlite3.connect(candidate) as c:
+           c.execute('attach database ? as incoming',(str(delta),));c.execute('create temp table approved(id text primary key)');c.executemany('insert into approved values(?)',[(r,) for r in approved]);c.execute('insert into historical_races select i.* from incoming.historical_races i join approved a on a.id=i.id');c.execute('insert into historical_runs select i.* from incoming.historical_runs i join approved a on a.id=i.race_id');c.commit()
+           after=c.execute('select count(*) from historical_races').fetchone()[0];after_runs=c.execute('select count(*) from historical_runs').fetchone()[0]
+           assert after==before+len(approved) and after_runs==before_runs+sum(len(source_fields[rid]) for rid in approved)+sum(1 for rid in approved for row in c.execute('select outcome,finish_pos from incoming.historical_runs where race_id=?',(rid,)) if src_out(*row)[0]=='NR')
+           assert c.execute('pragma quick_check').fetchone()[0]=='ok' and not c.execute('select count(*) from historical_races where race_date>=?',(TARGET,)).fetchone()[0]
+           for z in records:
+            if z['status']!='VALIDATED_CANDIDATE':continue
+            rid=z['source_race_id'];hits=[v for v in c.execute('select horse_name,outcome,finish_pos from historical_runs where race_id=?',(rid,)) if horse(v[0])==horse(z['horse'])];assert len(hits)==1 and hits[0][2]==z['position'];z['status']='RECOVERED_IN_PRIVATE_CANDIDATE'
+          with candidate_ref.open('a',encoding='utf-8',newline='') as f:
+           w=csv.DictWriter(f,fieldnames=fields,extrasaction='ignore')
+           for rid,(d,co,typ,title,region,raw) in approved.items():w.writerow(dict(stage2_race_id=rid,date=d,course=co,race_type=typ,race_name=title,region_scope=region,source_race_id=raw))
+          # Only derived audit evidence is uploaded, not raw Kaggle files, DB or reference CSV.
+          counts=C.Counter(z['status'] for z in records); rec=counts['RECOVERED_IN_PRIVATE_CANDIDATE']; assert len(records)==165
+          summary={'status':'PRIVATE_CANDIDATE_ONLY_NOT_DEPLOYED','target':TARGET,'source_version':132,'source_window':[FIRST,LAST],'production_import_window_start':'2026-10-23','baseline_unmatched':len(missing),'candidate_recovered_records':rec,'remaining_unmatched_in_candidate':len(missing)-rec,'candidate_new_races':after-before,'candidate_new_runner_rows':after_runs-before_runs,'baseline_race_count':before,'candidate_race_count':after,'baseline_differs_from_stage181':before!=report181['historical_races'],'source_import_races':imp['races'],'source_import_runs':imp['runs'],'status_counts':dict(counts),'priority':[z for z in records if z['priority']],'limitations':['Frozen Stage177b input unchanged; Stage181 baseline reconstructed privately.','Exact full-field and outcomes agreement plus target ID or pedigree required; overlaps quarantined.','Candidate does not change any live model, G5 or legacy history.','No external alternative source data added by this run; source gaps require separately verified licensed provider recovery.','Candidate count is scoped to original 165 audit records, not proof of complete career history.']}
+          summary['field_diagnostics']=dict(diagnostics);summary['approved_metadata_repairs']={rid:metadata_repairs[rid] for rid in approved};summary['approved_missing_pedigree_fields']=sum(len(pedigree_repairs[rid]) for rid in approved);dump('report.json',summary);dump('record-audit.json',records);dump('daily-source-coverage.json',{d:dict(v) for d,v in sorted(coverage.items())});dump('approved-source-race-ids.json',sorted(approved));print('STAGE182B_REPORT',json.dumps(summary),flush=True)
+          previous=load(T/'approved182b'/'report.json');prior_ids=load(T/'approved182b'/'approved-source-race-ids.json')
+          assert sorted(approved)==sorted(prior_ids) and len(approved)==115 and rec==147 and after-before==115 and after_runs-before_runs==1288
+          assert summary['approved_metadata_repairs']==previous['approved_metadata_repairs'] and summary['approved_missing_pedigree_fields']==previous['approved_missing_pedigree_fields']==0
+          from scripts import stage182c_verified_source as V
+          entries=[]
+          with sqlite3.connect(candidate) as c:
+           for rid,facts in sorted(approved.items()):
+            d,co,typ,title,region,raw=facts;race,rr=V.fetch(c,rid)
+            entries.append(dict(id=rid,date=d,repairs=metadata_repairs[rid],sha256=V.signature(race,rr),runners=len(rr),reference=dict(stage2_race_id=rid,date=d,course=co,race_type=typ,race_name=title,region_scope=region,source_race_id=raw)))
+          ledger=P.Path('data/stage182c-approved-history.json');assert not ledger.exists(),'Already deployed; do not overwrite approval ledger'
+          ledger.write_text(json.dumps(dict(source_version=132,approved_run=45518317420,races=entries),indent=2)+'\n')
+          # Prove the actual production helper reproduces every approved row.
+          with sqlite3.connect(candidate) as c:
+           c.executemany('delete from historical_runs where race_id=?',[(rid,) for rid in approved]);c.executemany('delete from historical_races where id=?',[(rid,) for rid in approved]);c.commit()
+          with candidate_ref.open(encoding='utf-8-sig',newline='') as f:
+           q=csv.DictReader(f);ff=q.fieldnames;remain=[x for x in q if x['stage2_race_id'] not in approved]
+          with candidate_ref.open('w',encoding='utf-8',newline='') as f:
+           w=csv.DictWriter(f,fieldnames=ff);w.writeheader();w.writerows(remain)
+          result=V.apply(candidate,candidate_ref,src,TARGET);assert result=={'new_races':115,'new_runners':1288,'already_present':0},result
+          with sqlite3.connect(candidate) as c:
+           assert c.execute('select count(*) from historical_races').fetchone()[0]==after
+           assert c.execute('select count(*) from historical_runs').fetchone()[0]==after_runs
+           assert all(V.signature(*V.fetch(c,e['id']))==e['sha256'] for e in entries)
+          # Future specialist jobs use the same pinned source and exact allowlist. G5 is intentionally excluded pending HPR-ledger validation.
+          hook=P.Path('scripts/stage167_validated_history.py');hs=hook.read_text();needle='            # STAGE180_ARCHIVE_OVERLAY'
+          assert hs.count(needle)==1 and 'STAGE182C_VERIFIED_SOURCE' not in hs
+          hs=hs.replace(needle,'            # STAGE182C_VERIFIED_SOURCE\n            from scripts.stage182c_verified_source import apply as apply_verified_source\n            apply_verified_source(db,ref,src,date)\n'+needle,1);compile(hs,str(hook),'exec');hook.write_text(hs)
+          remaining=[z for z in records if z['status']!='RECOVERED_IN_PRIVATE_CANDIDATE'];assert len(remaining)==18
+          dump('remaining18.json',remaining);dump('promotion-validation.json',dict(status='VALIDATED_FOR_PUBLICATION',recovered=rec,remaining=len(remaining),**result));print('STAGE182C_VALIDATED',json.dumps(result),flush=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage182c-promotion-audit
+          path: reports/stage182b/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Publish only verified allowlist and integration hook
+        run: |
+          set -euo pipefail
+          test -s reports/stage182b/promotion-validation.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add scripts/stage182c_verified_source.py scripts/stage167_validated_history.py data/stage182c-approved-history.json
+          git diff --cached --check
+          git commit -m 'Stage182c: integrate 115 verified v132 historical races'
+          BASE=$(git rev-parse HEAD^)
+          git fetch origin main
+          if ! git diff --quiet "$BASE" origin/main -- scripts/stage167_validated_history.py scripts/stage180_archive_overlay.py scripts/stage171_recent_history.py scripts/stage182c_verified_source.py data/stage182c-approved-history.json data/stage171-history data/stage180-history-overlay; then
+            echo 'Historical integration inputs changed concurrently; abort publication for revalidation'; exit 1
+          fi
+          git rebase origin/main
+          git push origin HEAD:main
+          echo STAGE182C_PUBLISHED
