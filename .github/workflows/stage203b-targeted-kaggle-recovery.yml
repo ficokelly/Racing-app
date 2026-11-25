@@ -1,0 +1,165 @@
+name: Stage203B - Targeted Kaggle history recovery and provider preflight
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/stage203b-targeted-kaggle-recovery.yml']
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage203b-targeted-kaggle-recovery
+  cancel-in-progress: false
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      PYTHONPATH: .:scripts
+      PYTHONUNBUFFERED: '1'
+      GH_TOKEN: ${{ github.token }}
+      OPENBLAS_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2 requests 'kagglehub>=0.3,<1'
+      - name: Restore validated baseline and Stage203 outstanding histories
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage152-specialists/source/stage2 reports/stage203b/{ref,previous,output}
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage2-historical-staging-database --dir reports/stage152-specialists/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage4-reference-named-events-and-winners --dir reports/stage203b/ref
+          gh run download 45710267932 --repo "$GITHUB_REPOSITORY" --name stage203-identity-recovery-45710267932 --dir reports/stage203b/previous
+      - name: Check provider authentication once (no repeated unauthorised requests)
+        env:
+          RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
+          RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
+        run: |
+          python - <<'PY'
+          import json,os,pathlib,requests
+          out={}
+          user=os.getenv('RACING_API_USERNAME');pw=os.getenv('RACING_API_PASSWORD')
+          if not user or not pw:out['status']='MISSING_CREDENTIALS'
+          else:
+              try:
+                  r=requests.get('https://api.theracingapi.com/v1/courses',auth=(user,pw),timeout=20)
+                  out['courses_http']=r.status_code
+                  if r.status_code==200:
+                      r=requests.get('https://api.theracingapi.com/v1/results',params={'start_date':'2026-11-16','end_date':'2026-11-16','limit':1},auth=(user,pw),timeout=20)
+                      out['historical_results_http']=r.status_code
+                  out['status']='CHECKED'
+              except requests.RequestException as e:out['status']=type(e).__name__
+          pathlib.Path('reports/stage203b/output/provider-preflight.json').write_text(json.dumps(out,indent=2))
+          print(json.dumps(out))
+          PY
+      - name: Recover exact missing dates into private candidate database
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/stage203b.py" <<'PY'
+          import collections as C,csv,json,pathlib as P,sqlite3,re,os
+          import kagglehub
+          import import_historical_ukie as I
+          import stage4_match_all_recurring_races as R
+          import stage108_model_g2 as G
+          from scripts import stage203_identity_recovery as E
+          from scripts import stage201_recent_history as S
+          from scripts.rhp_runner_eligibility import eligibility
+          from stage167_validated_history import refreshed_inputs
+          root=P.Path('reports/stage203b'); out=root/'output'; target='2026-11-26'
+          def dump(n,obj): (out/(n+'.json')).write_text(json.dumps(obj,indent=2,ensure_ascii=False)+'\n')
+          previous=json.loads((root/'previous/remaining.json').read_text())
+          focus={x['horse_id']:x for x in previous if x['identity_status']=='UNRESOLVED_HISTORY'}
+          assert len(focus)==58
+          allrows=[r for r in json.loads(P.Path('data/racecards.json').read_text())['runners'] if r.get('date')==target and eligibility(r)=='ACTIVE']
+          cards={r['horse_id']:r for r in allrows if r['horse_id'] in focus}
+          assert allrows and cards,'Original target racecards no longer available'
+          absent=sorted(set(focus)-set(cards)); dates={x['expected'] for x in focus.values() if x['expected']}
+          source=P.Path(kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025/versions/132'))
+          groups=C.defaultdict(dict); conflicts=set(); candidates=C.defaultdict(set); name_only=C.defaultdict(set); metadata={}; counters=C.Counter()
+          wanted=C.defaultdict(list)
+          for hid,r in cards.items():wanted[(focus[hid]['expected'],G.norm(r['horse']))].append(hid)
+          for filename,opener in I.source_iter(source):
+              with opener() as f:
+                  reader=csv.DictReader(f); m=I.mapping(reader.fieldnames or [])
+                  if not all(m.get(k) for k in ('race_date','race_id','course','horse','finish')):continue
+                  for row in reader:
+                      d=I.value(row,m,'race_date')[:10]
+                      if d not in dates:continue
+                      raw=I.value(row,m,'race_id'); co=I.value(row,m,'course'); h=I.value(row,m,'horse')
+                      if not (raw and co and h):continue
+                      rid=I.SOURCE+':'+d+':'+I.normhead(co)+':'+re.sub('[^a-zA-Z0-9_-]','',raw)[:90]
+                      hid=I.value(row,m,'horse_id'); key='id:'+hid if hid else 'name:'+I.normname(h)
+                      pos,st=I.intpos(I.value(row,m,'finish'))
+                      race=(rid,d,co,I.value(row,m,'race_type') or None,I.value(row,m,'surface') or None,I.distance_f(I.value(row,m,'distance'),m['distance'] or '') if m.get('distance') else None,I.value(row,m,'going') or None,I.value(row,m,'race_class') or None,I.SOURCE)
+                      facts=(race,str(row.get('race_name') or '').strip(),raw)
+                      if rid in metadata and metadata[rid]!=facts:conflicts.add(rid)
+                      metadata[rid]=facts
+                      def num(k):return I.number(I.value(row,m,k))
+                      def integer(k):return int(num(k)) if num(k) is not None else None
+                      def v(k):return I.value(row,m,k) or None
+                      run=(rid,key,hid or None,h,I.normname(h),v('country'),v('foaled'),pos,st,v('trainer'),v('jockey'),num('rating'),I.weight_lbs(v('weight')),I.odds(v('sp')),integer('draw'),integer('age'),v('sex'),v('sire'),v('dam'),num('rpr'),num('ts'),v('comment'),v('beaten'))
+                      if key in groups[rid] and groups[rid][key]!=run:conflicts.add(rid)
+                      groups[rid][key]=run
+                      ident={'horse':h,'horse_id':hid,'sire':v('sire'),'dam':v('dam')}
+                      for cid in wanted.get((d,G.norm(h)),[]):
+                          if E.exact(cards[cid],ident) and S.state({'position':pos,'status':st})[0] not in ('NR','UNKNOWN'):candidates[cid].add(rid)
+                          else:name_only[cid].add(rid)
+          refs=list((root/'ref').rglob('all_races_with_reference_event_ids.csv'));assert len(refs)==1
+          base=P.Path('reports/stage152-specialists/source/stage2/historical_ukie_staging.sqlite')
+          with refreshed_inputs(base,refs[0],target) as (db,ref):
+              hits,other=E.scan(db,list(cards.values()),target); before=E.classify(list(cards.values()),hits,other,target)
+              relevant={rid for ids in candidates.values() if len(ids)==1 for rid in ids}; decisions={}; approved=[]; newref=[]
+              with sqlite3.connect(db) as c:
+                  c.execute('pragma foreign_keys=on')
+                  with P.Path(ref).open(encoding='utf-8-sig',newline='') as f:
+                      rd=csv.DictReader(f); fields=rd.fieldnames; existingref={r['stage2_race_id'] for r in rd}
+                  for rid in sorted(relevant):
+                      race,title,raw=metadata[rid]; _,d,co,typ,surf,dist,going,cl,_=race
+                      rr=list(groups[rid].values()); active=[h for h in rr if S.state({'position':h[7],'status':h[8]})[0]!='NR']; states=[S.state({'position':h[7],'status':h[8]}) for h in active]; positions=sorted(p for s,p in states if p is not None)
+                      reason=None
+                      if rid in conflicts:reason='SOURCE_CONFLICT'
+                      elif not(title and typ and surf and dist and 0<dist<50 and going and R.region(co) in ('GB','IRELAND')):reason='MISSING_METADATA_OR_SCOPE'
+                      elif not positions or positions!=list(range(1,len(positions)+1)) or any(s=='UNKNOWN' for s,p in states):reason='INCOMPLETE_OR_AMBIGUOUS_FINISH_ORDER'
+                      elif len({G.norm(h[3]) for h in active})!=len(active) or any(not all(h[i] for i in (2,9,10,17,18)) for h in active):reason='MISSING_RUNNER_METADATA'
+                      elif rid in existingref or c.execute('select 1 from historical_races where id=?',(rid,)).fetchone():reason='EXISTING_RACE_REQUIRES_RECONCILIATION'
+                      else:
+                          # Never append overlapping or competing events, even under another source ID.
+                          old={G.norm(x[0]) for x in c.execute('select u.horse_name from historical_runs u join historical_races r on r.id=u.race_id where r.race_date=?',(d,))}
+                          if old & {G.norm(h[3]) for h in active}:reason='OVERLAP_REQUIRES_RECONCILIATION'
+                      if reason:decisions[rid]=reason;continue
+                      c.execute('insert into historical_races values(?,?,?,?,?,?,?,?,?)',race)
+                      c.executemany('insert into historical_runs values('+','.join('?' for _ in range(23))+')',active)
+                      decisions[rid]='PRIVATE_CANDIDATE_ADDED';approved.append(rid)
+                      newref.append(dict(stage2_race_id=rid,date=d,course=co,race_type=typ,race_name=title,region_scope=R.region(co),source_race_id=raw))
+                  assert c.execute('pragma quick_check').fetchone()[0]=='ok'
+                  assert c.execute('select max(race_date) from historical_races').fetchone()[0]<target
+                  c.commit()
+              if newref:
+                  with P.Path(ref).open('a',encoding='utf8',newline='') as f:csv.DictWriter(f,fieldnames=fields,extrasaction='ignore').writerows(newref)
+              hits2,other2=E.scan(db,list(cards.values()),target); after=E.classify(list(cards.values()),hits2,other2,target)
+              assert all(hits2[k] or not hits[k] for k in cards)
+              b={x['horse_id']:x for x in before}; a={x['horse_id']:x for x in after}
+              assert all(a[k]['starts']>=b[k]['starts'] for k in cards)
+              report=[]
+              for hid,x in focus.items():
+                  ids=sorted(candidates[hid]); y=a.get(hid,{})
+                  status=('NOT_IN_CURRENT_CARDS' if hid in absent else 'ALREADY_RESOLVED' if b[hid]['last_run_matched'] is True else 'RECOVERED_PRIVATE_CANDIDATE' if y.get('last_run_matched') is True else 'MULTIPLE_EXACT_SOURCE_RACES' if len(ids)>1 else decisions.get(ids[0],'HELD') if ids else 'NAME_ONLY_OR_IDENTITY_CONFLICT' if name_only[hid] else 'NOT_FOUND_IN_KAGGLE_ON_EXPECTED_DATE')
+                  report.append({'horse':x['horse'],'horse_id':hid,'expected':x['expected'],'status':status,'matching_source_race_ids':ids,'before_starts':b.get(hid,{}).get('starts'),'candidate_starts':y.get('starts'),'candidate_last_run_matched':y.get('last_run_matched')})
+              summary={'target':target,'outstanding_stage203':len(focus),'active_target_horses_checked':len(cards),'source_dates_examined':len(dates),'status_counts':dict(C.Counter(x['status'] for x in report)),'candidate_added_races':len(approved),'candidate_recovered_horses':sum(x['status']=='RECOVERED_PRIVATE_CANDIDATE' for x in report),'live_database_modified':False,'note':'No raw Kaggle rows or candidate database exported; exact source matches and review reasons only. No model changes or live deployment.'}
+              dump('summary',summary);dump('horse-review',report);dump('race-decisions',decisions)
+              print(json.dumps(summary,indent=2));P.Path(os.environ['GITHUB_STEP_SUMMARY']).write_text('## Stage203B targeted recovery\n\n```json\n'+json.dumps(summary,indent=2)+'\n```\n')
+          PY
+          python -m py_compile "$RUNNER_TEMP/stage203b.py"
+          python -u "$RUNNER_TEMP/stage203b.py"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage203b-targeted-recovery-${{ github.run_id }}
+          path: reports/stage203b/output/
+          if-no-files-found: warn
+          retention-days: 30
