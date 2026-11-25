@@ -1,0 +1,255 @@
+"""Targeted identity recovery from exact-ID provider results. No name-only merging."""
+import collections as C, csv, datetime as D, hashlib, json, os, pathlib as P, sqlite3, re, time
+import import_historical_ukie as I
+import stage4_match_all_recurring_races as R
+from scripts import stage201_recent_history as S
+from scripts import stage171_recent_history as M
+import stage108_model_g2 as G
+from scripts.rhp_runner_eligibility import eligibility
+LEDGER=P.Path('data/stage203-identity')
+SOURCE='STAGE203_EXACT_PROVIDER_RESULT'
+
+def dump(p,x):
+ p.parent.mkdir(parents=True,exist_ok=True);p.write_text(json.dumps(x,ensure_ascii=False,sort_keys=True,indent=2)+'\n')
+def val(x,*keys):
+ for k in keys:
+  v=x.get(k)
+  if v is not None and v!='':return v
+ return None
+def parent(x):return G.norm(x)
+def exact(a,b):
+ if G.norm(a.get('horse'))!=G.norm(b.get('horse')):return False
+ sameid=bool(a.get('horse_id') and a.get('horse_id')==b.get('horse_id'))
+ pairs=[(parent(a.get(k)),parent(b.get(k))) for k in ('sire','dam')]
+ if any(x and y and x!=y for x,y in pairs):return False
+ return sameid or all(x and y and x==y for x,y in pairs)
+def expected(r,target):
+ try:
+  n=int(r.get('last_run'));return (D.date.fromisoformat(target)-D.timedelta(days=n)).isoformat() if n>0 else None
+ except (TypeError,ValueError):return None
+def state(h):
+ p=val(h,'position','finish_pos');s=val(h,'status','outcome')
+ return S.state({'position':p,'status':s})
+def card(h):
+ return dict(horse=val(h,'horse','horse_name','name'),horse_id=val(h,'horse_id','horse_source_id'),sire=h.get('sire'),dam=h.get('dam'))
+def scan(db,rows,target):
+ hits=C.defaultdict(list);others=C.defaultdict(list); byname=C.defaultdict(list)
+ for r in rows:byname[G.norm(r['horse'])].append(r)
+ with sqlite3.connect(db) as c:
+  c.create_function('wanted',1,lambda s:int(G.norm(s) in byname),deterministic=True)
+  for d,rid,rk,n,hid,sire,dam,pos,st,co in c.execute('select r.race_date,r.id,u.runner_key,u.horse_name,u.horse_source_id,u.sire,u.dam,u.finish_pos,u.outcome,r.course from historical_runs u join historical_races r on r.id=u.race_id where r.race_date<? and wanted(u.horse_name)=1',(target,)):
+   if state({'position':pos,'status':st})[0] in ('NR','UNKNOWN'):continue
+   h={'horse':n,'horse_id':hid,'sire':sire,'dam':dam};event={'date':d,'race_id':rid,'runner_key':rk,'course':co,**h}
+   for r in byname[G.norm(n)]:
+    (hits if exact(r,h) else others)[r['horse_id']].append(event)
+ return hits,others
+def classify(rows,hits,others,target):
+ out=[]
+ for r in rows:
+  hid=r['horse_id'];e=expected(r,target); events=hits[hid];dates={x['date'] for x in events};known=bool(str(r.get('form') or '').strip('-/ ')) or bool(e)
+  out.append(dict(horse=r['horse'],horse_id=hid,course=r['course'],time=r['race_time'][11:16],expected=e,starts=len({(x['date'],x['race_id']) for x in events}),latest=max(dates,default=None),last_run_matched=e in dates if e else None,known_no_history=known and not events,possible_debut=not known and not events,unmatched_same_name_events=len(others[hid]),exact_pedigree_starts=sum(G.identity(x)==G.identity(r) for x in events)))
+ return out
+
+def full_race(r,known):
+ date=str(r.get('date') or '')[:10];rid=str(r.get('race_id') or '');co=r.get('course');typ=r.get('type');surf=r.get('surface');dist=I.number(str(val(r,'dist_f','distance_f') or '').rstrip('fF'));title=val(r,'race_name','name');going=r.get('going');reg=str(r.get('region') or '').upper()
+ if not (rid.startswith('rac_') and date and co and R.region(co) in ('GB','IRELAND') and reg in ('GB','IE','IRE','IRELAND','UK','') and typ in ('Flat','Hurdle','Chase','NH Flat') and surf in ('Turf','AW') and dist and 0<dist<50 and title and going):return None,'METADATA_OR_SCOPE'
+ rr=r.get('runners');
+ if not isinstance(rr,list) or not rr:return None,'EMPTY_FIELD'
+ records=[];seen=set();positions=[]
+ for h in rr:
+  st,pos=state(h)
+  if st=='NR':continue
+  ident=card(h);hid=ident['horse_id'];name=ident['horse']
+  if st=='UNKNOWN' or not name or not hid or hid in seen:return None,'OUTCOME_OR_ID'
+  if hid in known:
+   z=known[hid]
+   if not exact(z,ident):return None,'TARGET_IDENTITY_CONFLICT'
+   for k in ('sire','dam'):
+    if not ident[k]:ident[k]=z[k]
+  if not all(ident.get(k) for k in ('sire','dam')) or not h.get('trainer') or not h.get('jockey'):return None,'RUNNER_METADATA'
+  seen.add(hid)
+  if pos is not None:positions.append(pos)
+  records.append(dict(**ident,position=pos,outcome=st,trainer=h['trainer'],jockey=h['jockey'],ofr=I.number(val(h,'or','ofr')),weight=I.weight_lbs(val(h,'weight_lbs','lbs','weight')),sp=M.sp_decimal(h.get('sp')),draw=I.number(h.get('draw')),age=I.number(h.get('age')),sex=h.get('sex'),rpr=I.number(h.get('rpr')),ts=I.number(h.get('ts')),comment=h.get('comment') or h.get('race_comment'),beaten=I.number(h.get('overall_beaten'))))
+ if not positions or sorted(positions)!=list(range(1,len(positions)+1)) or len({S.norm(x['horse']) for x in records})!=len(records):return None,'FINISH_ORDER'
+ declared=I.number(r.get('field_size'))
+ if declared is not None and declared not in (len(rr),len(records)):return None,'FIELD_SIZE_MISMATCH'
+ return dict(date=date,race_id=rid,course=co,type=typ,surface=surf,distance=dist,going=going,race_class=val(r,'class','race_class'),race_name=title,runners=records,source='https://api.theracingapi.com/v1/results/'+rid),'VALID'
+
+def append(db,reference,target,root=P.Path('data')):
+ """Reproducible private overlay. No overwrite of existing race/result records."""
+ report=[];added=[];ledger=root/'stage203-identity'
+ with P.Path(reference).open(encoding='utf-8-sig',newline='') as f:
+  reader=csv.DictReader(f);fields=reader.fieldnames;refids={r['stage2_race_id'] for r in reader}
+ assert {'stage2_race_id','date','course','race_type','race_name','region_scope'}<=set(fields)
+ with sqlite3.connect(db) as c:
+  c.execute('pragma foreign_keys=on');assert c.execute('select max(race_date) from historical_races').fetchone()[0]<target
+  # Fill absent pedigree only when the historical record has the identical provider ID,
+  # name and no contradictory parent. Existing complete pedigree is never overwritten.
+  for p in sorted(ledger.glob('identity-*.json')):
+   doc=json.loads(p.read_text());assert doc['schema']=='stage203-identity-v1'
+   if doc['target']>target:continue
+   for e in doc['records']:
+    if e['date']>=target:continue
+    row=c.execute('select u.horse_name,u.horse_source_id,u.sire,u.dam,r.race_date from historical_runs u join historical_races r on r.id=u.race_id where u.race_id=? and u.runner_key=?',(e['race_id'],e['runner_key'])).fetchone()
+    if not row or row[4]!=e['date']:continue
+    old=dict(horse=row[0],horse_id=row[1],sire=row[2],dam=row[3]);new=e['card']
+    if old['horse_id']!=new['horse_id'] or not exact(old,new):continue
+    if old['sire'] and old['dam']:continue
+    c.execute('update historical_runs set sire=?,dam=? where race_id=? and runner_key=?',(old['sire'] or new['sire'],old['dam'] or new['dam'],e['race_id'],e['runner_key']))
+    report.append({'race':e['race_id'],'date':e['date'],'status':'PEDIGREE_FILLED','horse_id':new['horse_id']})
+  for p in sorted(ledger.glob('races-*.json')):
+   doc=json.loads(p.read_text());assert doc['schema']=='stage203-v1'
+   for r in doc['races']:
+    d=r['date'];co=r['course'];rr=r['runners'];src=r['race_id'];rid='stage203:'+d+':'+hashlib.sha256(src.encode()).hexdigest()[:24]
+    if d>=target:continue
+    if not (src.startswith('rac_') and R.region(co) in ('GB','IRELAND') and 0<r['distance']<50 and rr):raise RuntimeError('Invalid ledger metadata')
+    existing=[]
+    prior=C.defaultdict(list)
+    for oldid,h,hid,sire,dam,pos,st in c.execute('select r.id,u.horse_name,u.horse_source_id,u.sire,u.dam,u.finish_pos,u.outcome from historical_runs u join historical_races r on r.id=u.race_id where r.race_date=?',(d,)):
+     if state({'position':pos,'status':st})[0]=='NR':continue
+     prior[S.norm(h)].append((oldid,hid,sire,dam,pos,st))
+    for h in rr:existing.extend(prior[S.norm(h['horse'])])
+    if existing or rid in refids or c.execute('select 1 from historical_races where id=?',(rid,)).fetchone():
+     report.append({'race':src,'date':d,'status':'ALREADY_OR_OVERLAP'});continue
+    c.execute('insert into historical_races values(?,?,?,?,?,?,?,?,?)',(rid,d,co,r['type'],r['surface'],r['distance'],r['going'],r['race_class'],SOURCE))
+    for h in rr:
+     c.execute('insert into historical_runs values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(rid,'id:'+h['horse_id'],h['horse_id'],h['horse'],I.normname(h['horse']),None,None,h['position'],h['outcome'],h['trainer'],h['jockey'],h['ofr'],h['weight'],h['sp'],h['draw'],h['age'],h['sex'],h['sire'],h['dam'],h['rpr'],h['ts'],h['comment'],h['beaten']))
+    added.append(dict(stage2_race_id=rid,date=d,course=co,region_scope=R.region(co),race_type=r['type'],race_name=r['race_name'],source_race_id=src));refids.add(rid);report.append({'race':src,'date':d,'status':'ADDED','starters':len(rr)})
+  c.execute('insert or ignore into data_provenance values(?,?,?,?,?)',(SOURCE,'https://api.theracingapi.com/documentation','Existing authenticated provider results',D.datetime.now(D.timezone.utc).isoformat(),'Complete prior-date official result fields; exact horse identity; no imputed outcomes'))
+  assert c.execute('pragma quick_check').fetchone()[0]=='ok' and c.execute('select max(race_date) from historical_races').fetchone()[0]<target
+  c.commit()
+ if added:
+  with P.Path(reference).open('a',encoding='utf8',newline='') as f:csv.DictWriter(f,fieldnames=fields,extrasaction='ignore').writerows(added)
+ return report
+
+def selftest():
+ a={'horse':'Example (IRE)','horse_id':'hrs_1','sire':'Father','dam':'Mother'}
+ assert exact(a,{'horse':'Example','horse_id':'hrs_1','sire':None,'dam':'Mother'})
+ assert exact(a,{'horse':'Example','horse_id':'other','sire':'Father (GB)','dam':'Mother'})
+ assert not exact(a,{'horse':'Example','horse_id':'hrs_1','sire':'Wrong','dam':'Mother'})
+ assert not exact(a,{'horse':'Example','horse_id':'other','sire':None,'dam':'Mother'})
+ assert state({'position':None,'status':'ran'})[0]=='UNKNOWN'
+
+def run():
+ import requests
+ from zoneinfo import ZoneInfo
+ from stage167_validated_history import refreshed_inputs
+ target=os.getenv('ASKED_DATE') or '2026-11-26';today=D.datetime.now(ZoneInfo('Europe/Dublin')).date();assert D.date.fromisoformat(target) in (today,today+D.timedelta(days=1))
+ out=P.Path('reports/stage203/output');out.mkdir(parents=True,exist_ok=True)
+ rows=[r for r in json.loads(P.Path('data/racecards.json').read_text())['runners'] if r['date']==target and eligibility(r)=='ACTIVE'];known={r['horse_id']:r for r in rows};assert rows and len(known)==len(rows) and all(r.get('sire') and r.get('dam') for r in rows)
+ user=os.environ.get('RACING_API_USERNAME');password=os.environ.get('RACING_API_PASSWORD');assert user and password,'Provider credentials unavailable'
+ session=requests.Session();session.auth=(user,password);errors=[];calls=0;disabled=set()
+ def get(path,params=None):
+  nonlocal calls
+  if path.split('/')[2] in disabled:return None
+  if calls>=260:return None
+  calls+=1;time.sleep(.25)
+  try:
+   r=session.get('https://api.theracingapi.com'+path,params=params,timeout=30)
+   if r.status_code!=200:
+    errors.append({'path':path,'http':r.status_code})
+    if r.status_code==429:disabled.update(('horses','results','racecards'))
+    return None
+   return r.json()
+  except (requests.RequestException,ValueError) as e:errors.append({'path':path,'error':type(e).__name__});return None
+ def results(j):
+  if isinstance(j,list):return j
+  if isinstance(j,dict):
+   for k in ('results','races','racecards'):
+    if isinstance(j.get(k),list):return j[k]
+  return None
+ base=P.Path('reports/stage152-specialists/source/stage2/historical_ukie_staging.sqlite');refs=list(P.Path('reports/stage203/ref').rglob('all_races_with_reference_event_ids.csv'));assert len(refs)==1
+ with refreshed_inputs(base,refs[0],target) as (db,ref):
+  hits,others=scan(db,rows,target);before=classify(rows,hits,others,target);dump(out/'before.json',before)
+  fixes=[]
+  for hid,events in hits.items():
+   for e in events:
+    if e['horse_id']==hid and (not e['sire'] or not e['dam']):fixes.append({'date':e['date'],'race_id':e['race_id'],'runner_key':e['runner_key'],'card':card(known[hid])})
+  ip=LEDGER/('identity-'+target+'.json');oldfix=json.loads(ip.read_text())['records'] if ip.exists() else [];merged={(e['race_id'],e['runner_key']):e for e in oldfix};merged.update({(e['race_id'],e['runner_key']):e for e in fixes});dump(ip,{'schema':'stage203-identity-v1','target':target,'records':list(merged.values())})
+  gap=[r for r in before if r['last_run_matched'] is False or r['known_no_history'] or r['possible_debut']]; dates=sorted({r['expected'] for r in gap if r['expected'] and r['last_run_matched'] is False});need=C.defaultdict(set)
+  for x in gap:
+   if x['expected']:need[x['expected']].add(x['horse_id'])
+  candidates={}; rejected=[];proof=C.defaultdict(list)
+  def consider(r,scope,horse_endpoint=False):
+   if not isinstance(r,dict):return
+   d=str(r.get('date') or '')[:10];rid=r.get('race_id');rr=r.get('runners') or []
+   if not d or d>=target or not rid:return
+   matched=[h for h in rr if card(h)['horse_id'] in known and exact(known[card(h)['horse_id']],card(h)) and state(h)[0] not in ('NR','UNKNOWN')]
+   relevant=[h for h in matched if card(h)['horse_id'] in scope]
+   if not relevant:return
+   for h in relevant:
+    hid=card(h)['horse_id'];proof[hid].append({'date':d,'course':r.get('course'),'type':r.get('type'),'region':r.get('region'),'race_id':rid,'outcome':state(h)[0],'source':'exact provider ID and compatible pedigree'})
+   v,why=(None,'HORSE_ENDPOINT_REQUIRES_FULL_FIELD') if horse_endpoint else full_race(r,known)
+   if horse_endpoint and str(rid).startswith('rac_'):
+    full=get('/v1/results/'+rid)
+    if isinstance(full,dict):
+     actual=full.get('result') if isinstance(full.get('result'),dict) else full
+     if actual.get('race_id')==rid and str(actual.get('date') or '')[:10]==d:v,why=full_race(actual,known)
+   if v:
+    if rid in candidates and candidates[rid]!=v:rejected.append({'race':rid,'reason':'CONFLICTING_PROVIDER_PAYLOAD'});candidates[rid]=None
+    elif rid not in candidates:candidates[rid]=v
+   else:rejected.append({'race':rid,'date':d,'reason':why,'target_horses':[card(h)['horse_id'] for h in relevant]})
+  # Date-scoped full results first; supports the existing Standard plan.
+  for d in dates:
+   if (today-D.date.fromisoformat(d)).days>365:continue
+   for skip in range(0,250,50):
+    j=get('/v1/results',{'start_date':d,'end_date':d,'limit':50,'skip':skip});rr=results(j)
+    if rr is None:break
+    for r in rr:consider(r,need[d])
+    if len(rr)<50:break
+  # Per-horse endpoint for remaining no-history and debut cases, and dated gaps not found above.
+  for x in gap:
+   hid=x['horse_id']
+   if x['expected'] and any(p['date']==x['expected'] for p in proof[hid]) and not x['known_no_history']:continue
+   j=get('/v1/horses/'+hid+'/results',{'end_date':(D.date.fromisoformat(target)-D.timedelta(days=1)).isoformat(),'limit':50,'skip':0});rr=results(j);mode='full_horse_results'
+   if rr is None: j=get('/v1/racecards/'+hid+'/results');rr=results(j);mode='recent_horse_results'
+   if rr is None:continue
+   for r in rr:consider(r,{hid},horse_endpoint=True)
+   if not rr:
+    profile=get('/v1/horses/'+hid+'/standard')
+    # A zero-row response is evidence of provider coverage only, not proof of no PTP/foreign starts.
+    proof[hid].append({'empty_results':True,'endpoint':mode,'profile_available':isinstance(profile,dict)})
+  # Preserve previously accepted evidence; never silently overwrite an existing ledger.
+  p=LEDGER/('races-'+target+'.json');old=json.loads(p.read_text())['races'] if p.exists() else [];pool={r['race_id']:r for r in old}
+  for rid,r in candidates.items():
+   if r and rid not in pool:pool[rid]=r
+  dump(p,{'schema':'stage203-v1','target':target,'races':list(pool.values())})
+  actions=append(db,ref,target);afterhits,afterother=scan(db,rows,target);after=classify(rows,afterhits,afterother,target)
+  assert all(a['starts']>=b['starts'] for a,b in zip(after,before));assert not any(x['status'] in ('ADDED','PEDIGREE_FILLED') for x in append(db,ref,target))
+  DEBUT_EVIDENCE={
+   'hrs_60819150':('Clear Code','https://paddocksense.com/races/2026-11-26/chelmsford-aw/1900/'),
+   'hrs_17394428807':('Sexy','https://paddocksense.com/races/2026-11-26/chelmsford-aw/1900/'),
+   'hrs_61242566':('Intrastellar','https://paddocksense.com/races/2026-11-26/lingfield/1457/'),
+   'hrs_17396035027':('Wisebob','https://paddocksense.com/races/2026-11-26/market-rasen/1154/'),
+   'hrs_17396038156':('Oakworth','https://paddocksense.com/races/2026-11-26/market-rasen/1524/'),
+   'hrs_17396039199':('Sylvan Grove','https://paddocksense.com/races/2026-11-26/market-rasen/1524/'),
+   'hrs_17395621999':("Don't Tell Zoe",'https://paddocksense.com/races/2026-11-26/market-rasen/1524/'),
+   'hrs_17395685622':('Hawkpitt','https://paddocksense.com/races/2026-11-26/taunton/1515/'),
+   'hrs_17395299712':('Snowy Hill','https://paddocksense.com/races/2026-11-26/taunton/1515/'),
+   'hrs_17396011038':('Cad A Realta','https://paddocksense.com/races/2026-11-26/thurles/1321/'),
+   'hrs_17396012081':('Idaho Sunrise','https://paddocksense.com/races/2026-11-26/thurles/1321/'),
+   'hrs_17395529172':("Cracker's Diamond",'https://paddocksense.com/horses/cracker-s-diamond-17395529172/'),
+   'hrs_17395863975':('In Gusto','https://paddocksense.com/races/2026-11-26/thurles/1506/'),
+   'hrs_17396013124':('A Bitta Craic','https://paddocksense.com/races/2026-11-26/thurles/1506/'),
+   'hrs_17395528129':("Carey's Dream",'https://paddocksense.com/races/2026-11-26/thurles/1506/'),
+   'hrs_17394489301':('Pencil Hill','https://paddocksense.com/races/2026-11-26/thurles/1506/')}
+  POINT_EVIDENCE={
+   'hrs_17396043371':('True To My Word','https://m.attheraces.com/racecard/Lingfield/26-November-2026/1347'),
+   'hrs_17395399840':('Keeptheflagflying','https://news.paddypower.com/horse-racing/2026/11/25/horse-racing-tips-timeform-thursday-market-rasen-nov-26/'),
+   'hrs_17394063757':('Micky Haller','https://news.paddypower.com/horse-racing/2026/11/25/horse-racing-tips-timeform-thursday-market-rasen-nov-26/'),
+   'hrs_56559538':('Monjeu de Chaillac','https://news.paddypower.com/horse-racing/2026/11/25/horse-racing-tips-timeform-thursday-market-rasen-nov-26/')}
+  for x in after:
+   ev=proof[x['horse_id']];x['provider_evidence']=ev
+   if x['known_no_history'] or x['last_run_matched'] is False:x['identity_status']='UNRESOLVED_HISTORY' if not ev else 'PROVIDER_EVIDENCE_REVIEW_REQUIRED'
+   elif x['possible_debut']:x['identity_status']='NO_PROVIDER_PRIOR_RUNS_DEBUT_UNCONFIRMED' if any(e.get('empty_results') for e in ev) else 'DEBUT_UNCONFIRMED'
+   else:x['identity_status']='VERIFIED_PRIOR_HISTORY'
+   d=DEBUT_EVIDENCE.get(x['horse_id']);pt=POINT_EVIDENCE.get(x['horse_id'])
+   if target=='2026-11-26' and d and G.norm(d[0])==G.norm(x['horse']) and x['possible_debut'] and not any('date' in e for e in ev):
+    x['identity_status']='REPORTED_RULES_DEBUT_NO_MATCHED_PRIOR';x['racecard_evidence']=d[1]
+   if target=='2026-11-26' and pt and G.norm(pt[0])==G.norm(x['horse']) and x['known_no_history'] and not any('date' in e for e in ev):
+    x['identity_status']='REPORTED_RULES_DEBUT_PRIOR_POINT_FORM';x['racecard_evidence']=pt[1]
+  summary={'target':target,'active':len(rows),'unique_complete_card_ids':len(known),'gaps_before':sum(x['last_run_matched'] is False for x in before),'gaps_after':sum(x['last_run_matched'] is False for x in after),'no_history_before':sum(x['known_no_history'] for x in before),'no_history_after':sum(x['known_no_history'] for x in after),'possible_debuts':sum(x['possible_debut'] for x in after),'status_counts':dict(C.Counter(x['identity_status'] for x in after)),'new_races':sum(x['status']=='ADDED' for x in actions),'new_starters':sum(x.get('starters',0) for x in actions),'pedigrees_filled':sum(x['status']=='PEDIGREE_FILLED' for x in actions),'provider_calls':calls,'provider_errors':len(errors),'idempotence_passed':True,'unresolved_or_provider_review':sum(x['identity_status'] in ('UNRESOLVED_HISTORY','PROVIDER_EVIDENCE_REVIEW_REQUIRED','DEBUT_UNCONFIRMED','NO_PROVIDER_PRIOR_RUNS_DEBUT_UNCONFIRMED') for x in after),'notes':'Reported debut labels are pre-race source statements, not proof of no overseas/point starts. Prior point evidence is not imported as Rules form. Exact-ID match counts can differ from the previous pedigree-only audit.'}
+  for n,v in [('after',after),('remaining',[x for x in after if x['identity_status']!='VERIFIED_PRIOR_HISTORY']),('actions',actions),('rejected',rejected),('provider-errors',errors),('summary',summary)]:dump(out/(n+'.json'),v)
+  print(json.dumps(summary,indent=2));P.Path(os.environ['GITHUB_STEP_SUMMARY']).write_text('## Stage203 identity resolution\n\n```json\n'+json.dumps(summary,indent=2)+'\n```\n')
+if __name__=='__main__':
+ selftest();run()

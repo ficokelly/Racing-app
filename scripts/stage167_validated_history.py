@@ -52,6 +52,8 @@ def refreshed_inputs(history, reference, date):
             append_stage201(db,ref,date)
             from scripts.stage202b_verified_history import append as append_stage202b
             append_stage202b(db,ref,date)
+            from scripts.stage203_identity_recovery import append as append_stage203
+            append_stage203(db,ref,date)
         yield db,ref
 
 def build(base,ref,source,tmp):
