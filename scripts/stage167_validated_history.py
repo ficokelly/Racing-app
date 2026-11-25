@@ -43,7 +43,7 @@ def refreshed_inputs(history, reference, date):
             # STAGE180_ARCHIVE_OVERLAY
             from scripts.stage180_archive_overlay import apply as apply_archive_overlay
             apply_archive_overlay(db,ref,date)
-            from stage171_recent_history import append_bridge
+            from stage194_recent_bridge import append_bridge
             append_bridge(db,ref,date)
         yield db,ref
 
