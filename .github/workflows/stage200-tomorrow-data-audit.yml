@@ -1,0 +1,156 @@
+name: Stage200 - Full next-day runner and historical coverage audit
+on:
+  workflow_dispatch:
+    inputs:
+      target_date:
+        description: Target Dublin date; blank uses tomorrow
+        required: false
+        default: ''
+  push:
+    branches: [main]
+    paths: ['.github/workflows/stage200-tomorrow-data-audit.yml']
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage200-tomorrow-audit
+  cancel-in-progress: false
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    env:
+      PYTHONPATH: .:scripts
+      PYTHONUNBUFFERED: '1'
+      GH_TOKEN: ${{ github.token }}
+      OPENBLAS_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install source dependencies
+        run: pip install numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2 requests 'kagglehub>=0.3,<1'
+      - name: Restore immutable baseline and HPR ledger
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage152-specialists/source/stage2 reports/stage200/ref reports/stage200/output
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage2-historical-staging-database --dir reports/stage152-specialists/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage4-reference-named-events-and-winners --dir reports/stage200/ref
+          test -s reports/stage152-specialists/source/stage2/historical_ukie_staging.sqlite
+          python scripts/stage87_hpr_storage.py restore --dir data/hpr/shards --db reports/stage200/hpr.sqlite
+      - name: Audit every runner against the refreshed model database and HPR
+        env:
+          ASKED_DATE: ${{ inputs.target_date }}
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/stage200.py" <<'PY'
+          import collections as C, csv, datetime as D, json, os, pathlib as P, sqlite3
+          from zoneinfo import ZoneInfo
+          from rhp_runner_eligibility import eligibility
+          from stage167_validated_history import refreshed_inputs
+          import stage108_model_g2 as G
+          day=os.getenv('ASKED_DATE') or (D.datetime.now(ZoneInfo('Europe/Dublin')).date()+D.timedelta(days=1)).isoformat()
+          today=D.datetime.now(ZoneInfo('Europe/Dublin')).date()
+          assert D.date.fromisoformat(day) in (today,today+D.timedelta(days=1)), 'Only current or next Dublin date'
+          out=P.Path('reports/stage200/output');out.mkdir(parents=True,exist_ok=True)
+          card=json.loads(P.Path('data/racecards.json').read_text())
+          allrows=[r for r in card['runners'] if r.get('date')==day]
+          rows=[r for r in allrows if eligibility(r)=='ACTIVE'];assert rows,'No active target-day card'
+          names={G.norm(r['horse']) for r in rows};ids={G.identity(r) for r in rows};assert '' not in ids
+          groups=C.defaultdict(list)
+          for r in allrows:groups[(r['course'],r['race_time'],r['race_id'])].append(r)
+          def write(name,items):
+           if not items:return
+           with (out/name).open('w',newline='',encoding='utf8') as f:
+            w=csv.DictWriter(f,fieldnames=list(dict.fromkeys(k for r in items for k in r)));w.writeheader();w.writerows(items)
+          def missing(x):return x is None or str(x).strip() in ('','-','0')
+          def actual_starter(pos,st):
+           s=G.norm(st)
+           return s not in {'NR','NONRUNNER','NONSTARTER','SCRATCHED','WITHDRAWN','DNS','DIDNOTSTART','WD','RESERVE'} and (pos not in (None,'') or s in {'FINISHED','RAN','F','FELL','PU','PULLEDUP','UR','UNSEATED','BD','BROUGHTDOWN','REF','REFUSED','RO','RANOUT','DQ','DISQUALIFIED','SU','SLIPPEDUP','CO','CARRIEDOUT'})
+          assert actual_starter(1,'FINISHED') and not actual_starter(None,'NR')
+          def date_from_days(x):
+           try:return (D.date.fromisoformat(day)-D.timedelta(days=int(x))).isoformat() if int(x)>0 else ''
+           except (ValueError,TypeError):return ''
+          hpr=C.defaultdict(set);hpr_payload=C.defaultdict(list)
+          hp=P.Path('reports/stage200/hpr.sqlite')
+          with sqlite3.connect(f'file:{hp.resolve()}?mode=ro',uri=True) as c:
+           for key,race,date,ver,payload in c.execute('''SELECT h.horse_key,h.race_key,h.race_date,h.model_version,h.payload FROM hpr_ratings h JOIN (SELECT horse_key,race_key,model_version,MAX(revision) rev FROM hpr_ratings WHERE race_date<? GROUP BY horse_key,race_key,model_version) z ON h.horse_key=z.horse_key AND h.race_key=z.race_key AND h.model_version=z.model_version AND h.revision=z.rev WHERE h.race_date<?''',(day,day)):
+            if key not in ids:continue
+            x=json.loads(payload)
+            if actual_starter(x.get('position'),x.get('status')):
+             hpr[key].add((date,race));hpr_payload[key].append((date,race,ver,x))
+          base=P.Path('reports/stage152-specialists/source/stage2/historical_ukie_staging.sqlite')
+          refs=list(P.Path('reports/stage200/ref').rglob('all_races_with_reference_event_ids.csv'));assert len(refs)==1
+          hist=C.defaultdict(set);other=C.defaultdict(set);unresolved=C.defaultdict(set);byname=C.defaultdict(set);daily=C.defaultdict(set);people=C.Counter()
+          trainers={G.norm(r.get('trainer')) for r in rows};jockeys={G.norm(r.get('jockey')) for r in rows}
+          floor=(D.date.fromisoformat(day)-D.timedelta(days=30)).isoformat()
+          with refreshed_inputs(base,refs[0],day) as (db,ref):
+           with sqlite3.connect(f'file:{P.Path(db).resolve()}?mode=ro',uri=True) as c:
+            latest=c.execute('SELECT MAX(race_date) FROM historical_races').fetchone()[0];assert latest and latest<day
+            c.create_function('audit_norm',1,G.norm,deterministic=True)
+            c.create_function('audit_wanted',1,lambda x:int(G.norm(x) in names),deterministic=True)
+            q='''SELECT r.race_date,r.id,r.course,u.horse_name,u.horse_source_id,u.sire,u.dam,u.finish_pos,u.outcome FROM historical_runs u JOIN historical_races r ON r.id=u.race_id WHERE r.race_date<? AND audit_wanted(u.horse_name)=1'''
+            for date,rid,course,h,source_id,sire,dam,pos,st in c.execute(q,(day,)):
+             if not actual_starter(pos,st):continue
+             k=G.identity({'horse':h,'sire':sire,'dam':dam,'horse_source_id':source_id});n=G.norm(h);event=(date,rid,course)
+             byname[n].add(event)
+             if k.startswith('P|') and k in ids:hist[k].add(event)
+             elif not sire or not dam:unresolved[n].add(event)
+             else:other[n].add(event)
+            for date,rid,co,h,pos,st,tr,jo in c.execute('''SELECT r.race_date,r.id,r.course,u.horse_name,u.finish_pos,u.outcome,u.trainer,u.jockey FROM historical_races r JOIN historical_runs u ON r.id=u.race_id WHERE r.race_date>=? AND r.race_date<?''',(floor,day)):
+             if not actual_starter(pos,st):continue
+             daily[date].add((G.norm(co),G.norm(h),rid))
+             for typ,name,known in [('trainer',tr,trainers),('jockey',jo,jockeys)]:
+              n=G.norm(name)
+              if n in known:people[typ,n]+=1
+          report=[]
+          for r in rows:
+           k=G.identity(r);n=G.norm(r['horse']);events=hist[k];hp_events=hpr[k];expected=date_from_days(r.get('last_run'))
+           latest_hist=max((x[0] for x in events),default='');latest_hpr=max((x[0] for x in hp_events),default='')
+           has_form=bool(str(r.get('form') or '').strip().strip('-/'))
+           flags=[]
+           if not events and (has_form or expected):flags.append('KNOWN_FORM_NO_EXACT_PEDIGREE_HISTORY')
+           if expected and expected not in {x[0] for x in events}:flags.append('DECLARED_LAST_RUN_DATE_NOT_IN_EXACT_HISTORY')
+           if not has_form and expected:flags.append('BLANK_FORM_WITH_LAST_RUN')
+           if not has_form and not expected and not events:flags.append('POSSIBLE_DEBUT_NOT_CONFIRMED')
+           if other[n] or unresolved[n]:flags.append('NAME_COLLISION_OR_INCOMPLETE_PEDIGREE_REVIEW')
+           if (has_form or expected) and not hp_events:flags.append('NO_VERIFIED_HPR_PRIOR_RUN')
+           if expected and expected>'2025-12-31' and expected not in {x[0] for x in hp_events}:flags.append('G_LEGACY_HPR_LAST_RUN_GAP')
+           report.append(dict(course=r['course'],time=r['race_time'][11:16],race_id=r['race_id'],horse=r['horse'],horse_id=r['horse_id'],sire=r.get('sire'),dam=r.get('dam'),trainer=r.get('trainer'),jockey=r.get('jockey'),card_form=r.get('form'),last_run_days=r.get('last_run'),expected_last_run=expected,exact_archive_starts=len(events),latest_archive=latest_hist,archive_2026_starts=sum(x[0]>='2026-01-01' for x in events),other_pedigree_starts=len(other[n]),incomplete_pedigree_starts=len(unresolved[n]),hpr_events=len(hp_events),latest_hpr=latest_hpr,hpr_2026_events=sum(x[0]>='2026-01-01' for x in hp_events),trainer_name_30d_starts=people['trainer',G.norm(r.get('trainer'))],jockey_name_30d_starts=people['jockey',G.norm(r.get('jockey'))],flags=';'.join(flags)))
+          by_race=C.defaultdict(list)
+          for r in report:by_race[r['race_id']].append(r)
+          race_report=[]
+          for (co,off,rid),rr in sorted(groups.items(),key=lambda p:p[0][1]):
+           aa=by_race[rid];active=len(aa);first=rr[0]
+           race_report.append(dict(course=co,time=off[11:16],race_id=rid,race_name=first.get('race_name'),type=first.get('type'),surface=first.get('surface'),declared=len(rr),active=active,nonrunners=sum(eligibility(x)=='NON_RUNNER' for x in rr),reserves=sum(eligibility(x)=='RESERVE' for x in rr),field_size_conflict=any(str(x.get('field_size'))!=str(active) for x in rr),small_field_lt4=active<4,missing_or=sum(missing(x.get('ofr')) for x in rr if eligibility(x)=='ACTIVE'),known_form_no_exact_history=sum('KNOWN_FORM_NO_EXACT' in x['flags'] for x in aa),last_run_gaps=sum('DECLARED_LAST_RUN_DATE' in x['flags'] for x in aa),possible_debuts=sum('POSSIBLE_DEBUT' in x['flags'] for x in aa),g_hpr_gaps=sum('G_LEGACY_HPR_LAST_RUN_GAP' in x['flags'] for x in aa)))
+          recent=[]
+          for p in sorted(P.Path('data/racing-results').glob('????-??-??.json')):
+           if not '2026-11-20'<p.stem<day:continue
+           obj=json.loads(p.read_text());matches=C.Counter((a,b) for a,b,_ in daily[p.stem]);missing_results=[];expected=0;matched=0
+           for race in obj.get('results',[]):
+            if race.get('status')!='final':continue
+            for h in race.get('runners',[]):
+             if not actual_starter(h.get('position'),h.get('status')):continue
+             expected+=1; key=(G.norm(race['course']),G.norm(h['horse']))
+             if matches[key]==1:matched+=1
+             else:missing_results.append(dict(date=p.stem,course=race['course'],time=race.get('off_dt'),horse=h['horse'],matches=matches[key]))
+           recent.append(dict(date=p.stem,expected_archive_starters=expected,unique_name_course_matches=matched,unmatched_or_ambiguous=expected-matched,archive_collected_at=obj.get('collected_at')))
+           write('recent-result-gaps-'+p.stem+'.csv',missing_results)
+          flags=C.Counter(f for r in report for f in r['flags'].split(';') if f)
+          summary=dict(target=day,card_asof=card.get('collected_at'),historical_through=latest,races=len(groups),declared=len(allrows),active=len(rows),flags=dict(flags),recent_result_coverage=recent,notes=['Exact horse-name+sire+dam matching only; unmatched names never merged.','Provider last_run is a date check, not proof of a missing race without corroboration.','No form and no last run is possible debut only; external verification required.','HPR event count is not proof of identical saved model state.','Trainer/jockey name counts are diagnostics, not ID-verified strike rates.','Current-day results may be incomplete; refresh and re-audit before scoring.','No model or repository data modified.'])
+          write('runner-audit.csv',report);write('race-audit.csv',race_report);write('flagged-runners.csv',[r for r in report if r['flags']]);write('recent-coverage.csv',recent)
+          (out/'summary.json').write_text(json.dumps(summary,indent=2));print(json.dumps(summary,indent=2))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:f.write('## Next-day runner data audit\n\n```json\n'+json.dumps(summary,indent=2)+'\n```\n')
+          PY
+          python -m py_compile "$RUNNER_TEMP/stage200.py"
+          python -u "$RUNNER_TEMP/stage200.py"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage200-runner-audit-${{ github.run_id }}
+          path: reports/stage200/output/
+          if-no-files-found: warn
+          retention-days: 30
