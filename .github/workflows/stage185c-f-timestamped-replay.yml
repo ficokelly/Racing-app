@@ -138,7 +138,7 @@ jobs:
            for r in selected.to_dict('records'):
             k=(DAY,course(r['course']),r['off_utc']);h=horse(r['horse']);v=settlement.get(k);status='NO_RESULT';won=None;pnl=None;sp_pnl=None
             if v:
-             starter={horse(z['horse']) for z in v['starters']};nr={horse(z['horse']) for z in v['declared_nonrunners']};wins={horse(z['horse']):z['sp_decimal'] for z in v['winner_prices']}
+             starter={horse(z['horse']) for z in v['starters']};nr={horse(z) for z in v['declared_nonrunners']};wins={horse(z['horse']):z['sp_decimal'] for z in v['winner_prices']}
              if h in starter and wins:
               status='SETTLED';won=int(h in wins);pnl=float(r['price'])/len(wins)-1 if won else -1.
               if not v['price_conflicts'] and all(z is not None for z in wins.values()):sp_pnl=float(wins[h])/len(wins)-1 if won else -1.
