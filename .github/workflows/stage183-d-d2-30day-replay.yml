@@ -1,0 +1,317 @@
+name: Stage183 - Frozen D and D2 30-day rank1 replay
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/stage183-d-d2-30day-replay.yml']
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage183-d-d2-research
+  cancel-in-progress: false
+env:
+  PYTHONPATH: .:scripts
+  PYTHONUNBUFFERED: '1'
+  OPENBLAS_NUM_THREADS: '1'
+  OMP_NUM_THREADS: '1'
+  MKL_NUM_THREADS: '1'
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    outputs:
+      days: ${{ steps.days.outputs.days }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: a5987838b0e3f28b53686bac60d52cd164738718
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - id: days
+        run: |
+          python - <<'PY'
+          import datetime as d,json,os
+          days=[(d.date(2026,10,25)+d.timedelta(days=i)).isoformat() for i in range(30)]
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:print('days='+json.dumps(days,separators=(',',':')),file=f)
+          PY
+      - name: Locate original Stage50 D2 rank1 configuration
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p reports/stage183/config
+          python - <<'PY'
+          import json,os,pathlib as P,subprocess as S
+          out=P.Path('reports/stage183/config'); repo=os.environ['GITHUB_REPOSITORY']; found=None; error=None
+          try:
+           a=json.loads(S.check_output(['gh','api','-X','GET',f'repos/{repo}/actions/artifacts','-f','name=stage50-model-d2-optimisation','-f','per_page=100'],text=True))
+           for x in sorted(a.get('artifacts',[]),key=lambda x:x['created_at'],reverse=True):
+            if x.get('expired') or not x.get('workflow_run',{}).get('id'):continue
+            run=x['workflow_run']['id']; raw=json.loads(S.check_output(['gh','api',f'repos/{repo}/actions/runs/{run}'],text=True))
+            if raw.get('conclusion')!='success' or 'stage50-model-d2-optimise.yml' not in str(raw.get('path')):continue
+            S.run(['gh','run','download',str(run),'--repo',repo,'--name',x['name'],'--dir',str(out/'original')],check=True)
+            paths=list((out/'original').rglob('stage50_d2_summary.json'))
+            if len(paths)!=1:continue
+            doc=json.loads(paths[0].read_text()); assert doc['status']=='RESEARCH_ONLY' and doc['training_year']==2025 and doc['live_model_unchanged']
+            profiles={k:v for k,v in doc['results'].items() if k.endswith('|rank1')};assert 'all|rank1' in profiles
+            found={'source':'ORIGINAL_STAGE50_2025_WEIGHTS','run_id':run,'artifact_id':x['id'],'profiles':{k:{'weights_pct':v['weights_pct'],'selected_by_2025':v['selected_by_2025']} for k,v in profiles.items()}}
+            break
+          except Exception as e:error=repr(e)
+          if found:(out/'d2.json').write_text(json.dumps(found,indent=2));print('Original Stage50 weights recovered')
+          else:print('Original Stage50 artifact unavailable; use strictly 2025-only reconstruction',error)
+          PY
+      - uses: actions/download-artifact@v4
+        if: ${{ hashFiles('reports/stage183/config/d2.json') == '' }}
+        with:
+          name: stage177-shared-db
+          run-id: 45491296882
+          github-token: ${{ github.token }}
+          path: reports/stage177/shared
+      - uses: actions/download-artifact@v4
+        if: ${{ hashFiles('reports/stage183/config/d2.json') == '' }}
+        with:
+          name: stage177-shared-inputs
+          run-id: 45491296882
+          github-token: ${{ github.token }}
+          path: reports/stage177/shared
+      - name: Reconstruct D2 weights if original artifact expired (2025 only)
+        if: ${{ hashFiles('reports/stage183/config/d2.json') == '' }}
+        run: |
+          python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 scikit-learn==1.6.1
+          python - <<'PY'
+          import json,pathlib as P,sqlite3,hashlib, numpy as np
+          from stage50_model_d2_optimise import load,metrics,candidates,METRICS
+          b=P.Path('reports/stage177/shared');db=b/'candidate.sqlite';manifest=json.loads((b/'history-manifest.json').read_text())
+          with db.open('rb') as f:assert hashlib.file_digest(f,'sha256').hexdigest()==manifest['database_sha256']
+          with sqlite3.connect(db) as c:
+           c.execute("DELETE FROM historical_runs WHERE race_id IN (SELECT id FROM historical_races WHERE race_date>'2025-12-31')")
+           c.execute("DELETE FROM historical_races WHERE race_date>'2025-12-31'");c.commit()
+           assert c.execute('SELECT MAX(race_date) FROM historical_races').fetchone()[0]<='2025-12-31'
+          cfg=json.loads(P.Path('reports/stage30/stage30-summary.json').read_text())['model_results']['D'];assert cfg['chosen_combination']=='D-064-gap14'
+          frozen=np.array([cfg['weights_pct'][k]/100 for k in METRICS]);races=load(db);assert races and all(r['year']==2025 for r in races)
+          profiles={}
+          for kind in ('all','flat','aw','jumps','hurdle','chase','nh_flat'):
+           train=[r for r in races if kind=='all' or r['kind']==kind or r['subtype']==kind]
+           if len(train)<100:continue
+           best=None
+           for label,w in candidates(frozen,300,5049):
+            m=metrics(train,w)['rank1']
+            if m['bets']<len(train)*.8 or m['roi_pct'] is None:continue
+            if best is None or m['roi_pct']>best[0]:best=(m['roi_pct'],label,w.copy())
+           if best:profiles[kind+'|rank1']={'selected_by_2025':best[1],'weights_pct':dict(zip(METRICS,np.round(best[2]*100,3).tolist())),'training_races':len(train)}
+          assert 'all|rank1' in profiles
+          P.Path('reports/stage183/config/d2.json').write_text(json.dumps({'source':'RECONSTRUCTED_STAGE50_2025_ONLY_WEIGHTS','profiles':profiles,'note':'Uses frozen shared history through 2025; no 2026 outcomes. Original source parity unverified.'},indent=2));print('D2 profiles',list(profiles),flush=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage183-d2-config
+          path: reports/stage183/config/d2.json
+          if-no-files-found: error
+          retention-days: 14
+  score:
+    needs: prepare
+    name: ${{ matrix.day }} / D + D2
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        day: ${{ fromJSON(needs.prepare.outputs.days) }}
+    env:
+      DAY: ${{ matrix.day }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: a5987838b0e3f28b53686bac60d52cd164738718
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage177-shared-inputs
+          run-id: 45491296882
+          github-token: ${{ github.token }}
+          path: reports/stage177/shared
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage177-shared-db
+          run-id: 45491296882
+          github-token: ${{ github.token }}
+          path: reports/stage177/shared
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage183-d2-config
+          path: reports/stage183/config
+      - name: Install exact scoring dependencies
+        run: python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2 freezegun==1.5.5 requests
+      - name: Replay frozen Model D and Stage50 D2 on identical pre-off cards
+        run: |
+          python - <<'PY'
+          import collections as C,csv,datetime as DT,hashlib,json,os,pathlib as P,re,sqlite3,unicodedata
+          import numpy as np
+          from freezegun import freeze_time
+          import stage38_model_dz_live as D
+          from stage116_verified_form_live import resolve_verified,apply_d_row
+          day=os.environ['DAY'];b=P.Path('reports/stage177/shared');o=P.Path('reports/stage183/score');o.mkdir(parents=True,exist_ok=True)
+          def load(p):return json.loads(p.read_text())
+          def norm(s):return re.sub('[^a-z0-9]','',unicodedata.normalize('NFKD',str(s or '')).encode('ascii','ignore').decode().lower())
+          def horse(s):return norm(re.sub(r'\s*\((?:IRE|GB|FR|USA|GER|AUS|NZ|ITY|JPN)\)\s*$','',str(s or ''),flags=re.I))
+          def course(s):
+           n=norm(re.sub(r'\s*\((?:AW|GB|IRE)\)\s*$','',str(s or ''),flags=re.I));n={'galwayire':'galway','wexfordire':'wexford','dundalkawire':'dundalk','dundalkire':'dundalk','dundalkaw':'dundalk','fairyhouseire':'fairyhouse','clonmelire':'clonmel','gowranparkire':'gowranpark'}.get(n,n);return {'kemptonpark':'kempton','chelmsfordcity':'chelmsford','bangor':'bangorondee'}.get(n,n)
+          def stamp(s):
+           t=DT.datetime.fromisoformat(str(s).replace('Z','+00:00'));assert t.tzinfo;return t.astimezone(DT.timezone.utc)
+          def key(r):return (str(r['date']),course(r['course']),stamp(r['race_time']).strftime('%H:%M'))
+          def sub(r,kind):
+           t=D.OLD.normal(r.get('race_type') or r.get('type') or r.get('race_name') or '')
+           return ('hurdle' if 'hurdle' in t else 'chase' if any(x in t for x in ('chase','steeple')) else 'nh_flat' if any(x in t for x in ('bumper','nhflat','national hunt flat')) else 'nh_other') if kind=='jumps' else kind
+          def weights(x):
+           v=np.array([float(x[k])/100 for k in D.METRICS]);assert len(v)==8 and np.isfinite(v).all() and min(v)>=0 and abs(v.sum()-1)<.002;return v
+          audit={'date':day,'status':'STARTED','exclusions':{},'counts':{},'batches':[]};rows=[];reasons=C.Counter();counts=C.Counter()
+          cols=['date','course','time','model','horse','race_type','discipline','basis','gate_qualified','source_asof','cutoff','score','gap','profile','batch']
+          def save():
+           audit.update(exclusions=dict(reasons),counts=dict(counts));(o/'audit.json').write_text(json.dumps(audit,indent=2))
+           with (o/'rank1.csv').open('w',newline='') as f:w=csv.DictWriter(f,fieldnames=cols);w.writeheader();w.writerows(rows)
+          try:
+           manifest=load(b/'history-manifest.json');db=b/'candidate.sqlite'
+           with db.open('rb') as f:assert hashlib.file_digest(f,'sha256').hexdigest()==manifest['database_sha256']
+           with sqlite3.connect(db) as c:
+            c.execute('DELETE FROM historical_runs WHERE race_id IN (SELECT id FROM historical_races WHERE race_date>=?)',(day,));c.execute('DELETE FROM historical_races WHERE race_date>=?',(day,));c.commit()
+            latest=c.execute('SELECT MAX(race_date) FROM historical_races').fetchone()[0];assert latest<day
+           audit['prior_history_through']=latest
+           cfg=load(P.Path('reports/stage30/stage30-summary.json'));d=cfg['model_results']['D'];assert cfg['test_year']==2025 and cfg['status']=='RESEARCH_ONLY' and d['chosen_combination']=='D-064-gap14'
+           wd=weights(d['weights_pct']);gate=float(d['selection_margin']);assert abs(gate-.14)<1e-9
+           cfg2=load(P.Path('reports/stage183/config/d2.json'));p2={k:weights(v['weights_pct']) for k,v in cfg2['profiles'].items()};assert 'all|rank1' in p2
+           audit['d2_weight_source']=cfg2['source'];batches=load(b/(day+'-batches.json'))
+           if not batches:audit['status']='NO_ELIGIBLE_BATCH';save();raise SystemExit(0)
+           history=D.LivePast({});history_info=history.scan_until(db,day);audit['history_scan']=history_info
+           countries={}
+           for n,c in history.last:
+            if n not in countries:countries[n]=c
+            elif countries[n]!=c:countries[n]=None
+           seen=set()
+           for batch in batches:
+            cutoff=stamp(batch['cutoff']);meta={tuple(x['key']):x for x in batch['races']};cards=load(b/(batch['batch']+'.json'))['runners'];fields=C.defaultdict(list)
+            for r in cards:
+             if D.date_key(r.get('date') or r.get('race_time'))==day and r.get('course') and r.get('race_time') and r.get('horse') and not D.nonrunner(r):fields[key(r)].append(r)
+            with freeze_time(cutoff,real_asyncio=True):
+             aliases,identity_audit=resolve_verified(str(db),[r for rr in fields.values() for r in rr],day)
+             for k,h in meta.items():
+              rr=fields.get(k,[]);counts['scheduled']+=1
+              if k in seen:raise RuntimeError('Duplicate race '+str(k))
+              seen.add(k)
+              expected=set(h['declared_horses']);actual={horse(r['horse']) for r in rr}
+              if len(rr)<2 or len(rr)!=len(actual) or expected!=actual:reasons['FIELD_MISMATCH']+=1;continue
+              off=stamp(rr[0]['race_time']);asof=stamp(h['source_asof'])
+              if asof>cutoff or off<=cutoff+DT.timedelta(minutes=2) or any(stamp(r['race_time'])!=off for r in rr):reasons['PREOFF_TIME_GUARD']+=1;continue
+              # Reuse the frozen Model D live feature pipeline; do not run settlement hooks or write app files.
+              inputs=[apply_d_row(D.live_row(r,day,'MODEL-D-LIVE|'+day+'|'+str(rr[0]['course'])+'|'+D.clock(rr[0]['race_time']),countries),r,aliases) for r in rr]
+              race=history.score(inputs,live=True)
+              if race is None or len(race['x'])!=len(rr):reasons['SCORER_NO_COMPLETE_FIELD']+=1;continue
+              kind=race['kind']; subtype=sub(rr[0],kind); typ=h.get('legacy_type') or 'unclassified'
+              def emit(model,w,basis,profile,gate_value=None):
+               if model.startswith('D2'):
+                # Stage50 used float32 features; retain that precision and its exact discipline mask.
+                active=w.copy();active[4 if kind=='jumps' else 7]=0;active/=max(active.sum(),1e-9)
+                if active.sum()<=0:reasons['D2_ZERO_ACTIVE_WEIGHT']+=1;return
+                scores=np.asarray(race['x'][:,:8],dtype=np.float32)@active;order=np.argsort(-scores,kind='stable');gap=float(scores[order[0]]-scores[order[1]])
+               else:scores,order,gap=D.prediction_rows(race,w)
+               if not np.isfinite(scores).all():reasons['NONFINITE_SCORE']+=1;return
+               i=int(order[0]);qualified=gate_value is None or gap>=gate_value
+               if model=='D_FROZEN_GATE' and not qualified:counts['D_gate_not_met']+=1;return
+               rows.append(dict(date=k[0],course=k[1],time=k[2],model=model,horse=rr[i]['horse'],race_type=typ,discipline=kind,basis=basis,gate_qualified=qualified,source_asof=h['source_asof'],cutoff=batch['cutoff'],score=float(scores[i]),gap=gap,profile=profile,batch=batch['batch']));counts[model]+=1
+              emit('D_FROZEN_RANK1',wd,'STAGE38_FROZEN_LIVE_FEATURE_CORE','D-064-gap14',gate)
+              emit('D_FROZEN_GATE',wd,'STAGE38_FROZEN_LIVE_FEATURE_CORE','D-064-gap14',gate)
+              emit('D2_STAGE50_ALL',p2['all|rank1'],cfg2['source']+'__LIVE_FEATURE_ADAPTATION','all|rank1')
+              kp=kind+'|rank1';sp=subtype+'|rank1'
+              if kp in p2:emit('D2_STAGE50_DISCIPLINE',p2[kp],cfg2['source']+'__LIVE_FEATURE_ADAPTATION',kp)
+              else:reasons['D2_DISCIPLINE_PROFILE_ABSENT']+=1
+              if sp in p2:emit('D2_STAGE50_SUBTYPE',p2[sp],cfg2['source']+'__LIVE_FEATURE_ADAPTATION',sp)
+              elif kind=='jumps':reasons['D2_SUBTYPE_PROFILE_ABSENT']+=1
+            audit['batches'].append({'batch':batch['batch'],'identity_audit':identity_audit,'scheduled':len(meta)})
+            save()
+           audit['status']='COMPLETE_WITH_EXCLUSIONS' if reasons else 'COMPLETE';save();print('STAGE183_SCORE',json.dumps(audit),flush=True)
+          except Exception as e:
+           audit['status']='FAILED';audit['error']=repr(e);save();raise
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage183-ranks-${{ matrix.day }}
+          path: reports/stage183/score/
+          if-no-files-found: error
+          retention-days: 14
+  compare:
+    needs: [prepare,score]
+    if: always() && needs.prepare.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage177-shared-inputs
+          run-id: 45491296882
+          github-token: ${{ github.token }}
+          path: shared
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: stage183-ranks-*
+          path: results
+          merge-multiple: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage183-d2-config
+          path: config
+      - name: Settle rank1 with the same Stage177b prices; report coverage and common cohorts
+        run: |
+          python - <<'PY'
+          import collections as C,csv,json,pathlib as P,re,unicodedata
+          out=P.Path('summary');out.mkdir(exist_ok=True)
+          def horse(s):return re.sub('[^a-z0-9]','',unicodedata.normalize('NFKD',re.sub(r'\s*\((?:IRE|GB|FR|USA|GER|AUS|NZ|ITY|JPN)\)\s*$','',str(s or ''),flags=re.I)).encode('ascii','ignore').decode().lower())
+          def key(r):return (r['date'],r['course'],r['time'])
+          def write(name,rs):
+           p=out/name
+           if not rs:p.write_text('');return
+           with p.open('w',newline='') as f:w=csv.DictWriter(f,fieldnames=list(dict.fromkeys(k for r in rs for k in r)));w.writeheader();w.writerows(rs)
+          s={key(x):x for x in json.loads(P.Path('shared/settlement-prices.json').read_text())};rows=[];seen=set();audits=[]
+          for p in P.Path('results').rglob('audit.json'):audits.append(json.loads(p.read_text()))
+          for p in P.Path('results').rglob('rank1.csv'):
+           for r in csv.DictReader(p.open()):
+            k=key(r);mk=(k,r['model']);assert mk not in seen;seen.add(mk)
+            status='NO_RESULT';won=None;pnl=None
+            if k in s:
+             v=s[k];h=horse(r['horse']);starter={horse(x['horse']) for x in v['starters']};nr={horse(x) for x in v['declared_nonrunners']};wins={horse(x['horse']):x['sp_decimal'] for x in v['winner_prices']}
+             if h not in starter:status='VOID_NR' if h in nr else 'UNMATCHED'
+             else:
+              status='SETTLED';won=int(h in wins)
+              if wins and not v['price_conflicts'] and all(x is not None for x in wins.values()):pnl=float(wins[h])/len(wins)-1 if won else -1.
+            rows.append(dict(r,status=status,won=won,pnl=pnl))
+          def metric(rs):
+           settled=[r for r in rs if r['status']=='SETTLED'];priced=[r for r in settled if r['pnl'] is not None];wins=sum(r['won'] for r in settled);profit=sum(r['pnl'] for r in priced)
+           return {'selections':len(rs),'settled':len(settled),'wins':wins,'strike_rate_pct':round(100*wins/len(settled),4) if settled else None,'priced':len(priced),'pnl_units':round(profit,4),'roi_pct':round(100*profit/len(priced),4) if priced else None,'excluded_or_void':len(rs)-len(settled)}
+          groups=C.defaultdict(list)
+          for r in rows:
+           for dimension,value in [('overall','all'),('day',r['date']),('discipline',r['discipline']),('race_type',r['race_type'])]:groups[(r['model'],dimension,value)].append(r)
+          metrics=[dict(model=m,dimension=d,value=v,**metric(rs)) for (m,d,v),rs in sorted(groups.items())]
+          models=sorted({r['model'] for r in rows});by=C.defaultdict(dict)
+          for r in rows:
+           if r['status']=='SETTLED' and r['pnl'] is not None:by[key(r)][r['model']]=r
+          paired=[]
+          for m in models:
+           if m=='D_FROZEN_RANK1':continue
+           pairs=[x for x in by.values() if 'D_FROZEN_RANK1' in x and m in x]
+           for n in ('D_FROZEN_RANK1',m):paired.append(dict(comparison=m,model=n,**metric([x[n] for x in pairs])))
+          write('rank1-settlement.csv',rows);write('model-performance.csv',metrics);write('paired-d-comparison.csv',paired)
+          cfg=json.loads(P.Path('config/d2.json').read_text());report={'status':'RESEARCH_ONLY_NOT_ROUTING_CERTIFIED','period':['2026-10-25','2026-11-23'],'expected_days':30,'reported_days':len({a['date'] for a in audits}),'day_status':dict(C.Counter(a['status'] for a in audits)),'d2_weight_source':cfg['source'],'overall':[x for x in metrics if x['dimension']=='overall'],'paired':paired,'limitations':['D uses the frozen Stage38 ranking core with current pinned prior-only features, not verified historic live selection parity.','D2 Stage50 rank1 profiles are adapted to pre-off live features; exact historical parity unverified.','Stage51 enhanced D2 is not included.','No model routing or production changes.','If days or fields are missing, do not treat this as complete 30-day coverage.']}
+          (out/'report.json').write_text(json.dumps(report,indent=2));(out/'day-audits.json').write_text(json.dumps(audits,indent=2));print('STAGE183_REPORT',json.dumps(report),flush=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage183-d-d2-comparison
+          path: summary/
+          if-no-files-found: error
+          retention-days: 30
