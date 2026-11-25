@@ -47,6 +47,9 @@ def refreshed_inputs(history, reference, date):
             append_bridge(db,ref,date)
             from scripts.stage196_verified_backfill import append as backfill_verified
             backfill_verified(db,ref,src,date)
+            # STAGE201_VERIFIED_RECENT_HISTORY
+            from scripts.stage201_recent_history import append as append_stage201
+            append_stage201(db,ref,date)
         yield db,ref
 
 def build(base,ref,source,tmp):
