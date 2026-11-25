@@ -1,0 +1,314 @@
+name: Stage203D - Archived full-field and independent result recovery
+on:
+  workflow_dispatch:
+    inputs:
+      target_date:
+        description: Dublin target date (blank uses tomorrow)
+        required: false
+        default: ''
+  push:
+    branches: [main]
+    paths: ['.github/workflows/stage203d-archive-full-field-recovery-recovery.yml']
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: stage203d-archive-full-field-recovery
+  cancel-in-progress: false
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      PYTHONPATH: .:scripts
+      PYTHONUNBUFFERED: '1'
+      GH_TOKEN: ${{ github.token }}
+      OPENBLAS_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install existing validated dependencies
+        run: pip install numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2 requests 'kagglehub>=0.3,<1'
+      - name: Restore immutable history and race reference
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage152-specialists/source/stage2 reports/stage203d/{ref,output}
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage2-historical-staging-database --dir reports/stage152-specialists/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage4-reference-named-events-and-winners --dir reports/stage203d/ref
+      - name: Reconcile rich results, pinned declarations and independently verified races
+        env:
+          ASKED_DATE: ${{ inputs.target_date }}
+        run: |
+          set -euo pipefail
+          cat > scripts/stage203d_archive_recovery.py <<'PY'
+          """Independent full-field recovery with immutable source hashes. No model logic changes."""
+          import collections as C,datetime as D,hashlib,json,os,pathlib as P,sqlite3
+          import import_historical_ukie as I
+          import stage4_match_all_recurring_races as R
+          from scripts import stage203c_consolidated_history as V,stage203_identity_recovery as E,stage201_recent_history as S,stage171_recent_history as M
+          from scripts.rhp_runner_eligibility import eligibility
+          ROOT=P.Path('data'); LEDGER=ROOT/'stage203d-history'; n=V.n; digest=V.digest
+          # Independently inspected public result facts, not synthetic runner records.
+          PUBLIC={
+           'kaggle-deltaromeo-ukie:2024-04-13:chepstow:863224':('https://www.racingpost.com/results/12/chepstow/2024-04-13/863224/',"Casa No Mento|She's My Shadow|Either Or|Jaminska|Get Sky High|Ellies Sister|Gone Away Madam|Extra Cover",{},'DragonBet Born From The Betting Ring Mares Novices Hurdle','Hurdle','Turf',16.05,'Good To Soft'),
+           'kaggle-deltaromeo-ukie:2025-05-14:newton_abbot:892971':('https://insights.betfred.com/horse-racing/results/2025-05-14/newton-abbot/892971/14-50/', 'Get The Value|Stinginhisstep|Square Du Roule|Oval Street|Inchagoill Lady|Byzantium|Mr Zee|Kintaro|Ventara',{'Pink Eyed Pancho':'PU'},'Novices Handicap Hurdle','Hurdle','Turf',18.5,'Good'),
+           'kaggle-deltaromeo-ukie:2025-04-20:market_rasen:890605':('https://gg.co.uk/racecards/2025-04-20/market-rasen-1620/','Robbers Bridge|Greatness Awaits|Livano Bello|Aquitaine Boy|Gms Prince|Zucayan|Ikigai Star|Sambezi|Macho Sun|Takes Time',{'Red Trail':'PU'},'Malton Marquees Handicap Hurdle','Hurdle','Turf',18.6364,'Good')}
+          OUTSIDE={'Amber Dancer':('POINT_TO_POINT','https://thoroughbid.co.uk/auction/Amber-Dancer'),'Getinthekew':('POINT_TO_POINT','https://www.irishracing.com/raceresults/Sun-8th-Nov-2026/Knockmullen-House-P2P/1300'),'Venetian Beauty':('OVERSEAS','https://www.sportinglife.com/racing/results/2026-10-29/fontainebleau/946606/prix-du-massif-forestier-claiming-hurdle')}
+          OUTSIDE.update({
+           'True To My Word':('POINT_TO_POINT','https://www.irishracing.com/horse/True-To-My-Word-IRE/861024'),
+           'Keeptheflagflying':('POINT_TO_POINT','https://www.irishracing.com/horse/Keeptheflagflying-IRE/857857'),
+           'Push Push':('POINT_TO_POINT','https://www.racingpost.com/results/422/dungarvan/2026-01-25/912252'),
+           'Micky Haller':('POINT_TO_POINT','https://www.racingpost.com/results/543/charlton-horethorne/2026-03-08/915181/'),
+           'Monjeu de Chaillac':('POINT_TO_POINT','https://www.racingpost.com/results/358/castletown-geoghegan/2026-04-19/918516/'),
+           'Jack Dandy':('POINT_TO_POINT','https://www.racingpost.com/results/409/dromahane/2026-04-26/919355/'),
+           'Mahollia':('OVERSEAS','https://www.geny.com/en/course/1634345-2026-02-21-fontainebleau-prix-des-haras-nationaux/arrivee-rapports'),
+           'Moment Of Grace':('OVERSEAS','https://www.geny.com/course/1612660-2025-11-01-durtal-prix-useful/arrivee-rapports')})
+          OUTSIDE_DATES={'Amber Dancer':'2026-02-22','Getinthekew':'2026-11-08','Venetian Beauty':'2026-10-29','True To My Word':'2026-03-08','Keeptheflagflying':'2026-02-01','Push Push':'2026-01-25','Micky Haller':'2026-03-08','Monjeu de Chaillac':'2026-04-19','Jack Dandy':'2026-04-26','Mahollia':'2026-02-21','Moment Of Grace':'2025-11-01'}
+          def keycourse(x):
+           v=S.course(x);return {'chelmsfordcityaw':'chelmsford','chelmsfordaw':'chelmsford','chelmsfordcity':'chelmsford'}.get(v,v)
+          def resultfield(r):
+           rr=r.get('runners') or []; out={}
+           for h in rr:
+            k=n(h.get('horse'));s=S.state(h)
+            if s[0]=='NR':continue
+            if not k or k in out:return {}
+            out[k]=h
+           return out
+          def states(af):return {k:S.state(h) for k,h in af.items()}
+          def complete(st):
+           p=sorted(v[1] for v in st.values() if v[1] is not None)
+           return bool(p and p==list(range(1,len(p)+1)) and all(v[0] not in ('UNKNOWN','NR') for v in st.values()))
+          def day_arch(root,day):
+           p=root/'racing-results'/(day+'.json');return json.loads(p.read_text()).get('results',[]) if p.exists() else []
+          def declarations(root,day,r):
+           p=root/'stage178-history-evidence'/(day+'.json');out=[]
+           if not p.exists():return out
+           for e in json.loads(p.read_text()).get('races',[]):
+            k=e.get('key',[]);rr=e.get('declared_field') or []
+            if len(k)!=3 or k[0]!=day or keycourse(k[1])!=keycourse(r.get('course')) or M.off({'off':k[2]})!=M.off(r) or not rr or not e.get('source_commit'):continue
+            try:
+             from zoneinfo import ZoneInfo
+             observed=D.datetime.fromisoformat(e['source_asof'].replace('Z','+00:00')); off=D.datetime.fromisoformat(rr[0]['race_time'].replace('Z','+00:00'))
+             if observed>=off:continue
+            except (ValueError,TypeError,KeyError):continue
+            by={n(h['horse']):h for h in rr}
+            if len(by)==len(rr):out.append((e,by))
+           return out
+          def source_field(groups,rid):
+           by=C.defaultdict(list)
+           for vv in groups[rid].values():
+            for x in vv:
+             if V.st(x)[0]!='NR':by[n(x[3])].append(x)
+           return by
+          def known_agrees(by,st):
+           return set(by)==set(st) and all({V.st(x) for x in vv if V.st(x)[0]!='UNKNOWN'} in (set(),{st[k]}) for k,vv in by.items())
+          def build(rid,groups,meta,root,mode,anchor,other=None):
+           race,md=V.merge_values(meta[rid]); by=source_field(groups,rid); day=race[1]; actual=None; cards={}; extra={}; public=PUBLIC.get(rid)
+           if mode=='public':
+            if not public or anchor!=public[0]:return None,'PUBLIC_SCOPE'
+            st={n(h):('FINISHED',i) for i,h in enumerate(public[1].split('|'),1)};st.update({n(h):(v,None) for h,v in public[2].items()})
+            if not known_agrees(by,st):return None,'PUBLIC_FIELD_CONFLICT'
+            for i,v in [(3,public[4]),(4,public[5]),(5,public[6]),(6,public[7]),(9,public[3])]:
+             if V.blank(race[i]):race[i]=v
+           else:
+            ar=day_arch(root,day); rr=[r for r in ar if digest(r)==anchor];
+            if len(rr)!=1:return None,'ARCHIVE_CHANGED'
+            actual=rr[0];af=resultfield(actual);st=states(af)
+            if not complete(st) or keycourse(race[2])!=keycourse(actual.get('course')):return None,'FIELD_OR_COURSE'
+            if not known_agrees(by,st):return None,'SOURCE_OUTCOME_OR_FIELD_CONFLICT'
+            if mode=='rich':
+             # Rich archived results can be used when the pinned Kaggle field agrees on every outcome.
+             if not str(actual.get('race_id','')).startswith('rac_') or not all(h.get('horse_id') and h.get('sire') and h.get('dam') for h in af.values()):return None,'RICH_IDENTITY'
+             # When a rich cross-checked result and a separate complete final field agree,
+             # use the actual provider field rather than failing on unrelated Kaggle blanks.
+             if actual.get('result_classification_source')=='stage71_provider_cross_checked':
+              peers=[]
+              for peer in ar:
+               if digest(peer)==anchor or not S.trusted(peer) or keycourse(peer.get('course'))!=keycourse(actual.get('course')) or M.off(peer)!=M.off(actual):continue
+               pf=resultfield(peer)
+               if states(pf)==st:peers.append(pf)
+              if peers:
+               rr=json.loads(json.dumps(actual)); safe=True
+               for h in rr['runners']:
+                k=n(h.get('horse'))
+                if k not in st:continue
+                values={M.sp_decimal(p[k].get('sp')) for p in peers};values.discard(None)
+                price=M.sp_decimal(h.get('sp'))
+                if len(values)>1 or (price is not None and values and price not in values):safe=False;break
+                if price is None and values:h['sp']=next(iter(values))
+               if safe:
+                data,why=V.build_archive(rr,resultfield(rr),{})
+                if data:
+                 rrace,runs,title,raw=data;rrace[0]=rid
+                 for x in runs:x[0]=rid
+                 return (rrace,sorted(runs,key=lambda x:x[1]),title,raw),'VERIFIED_RICH_AND_SECOND_RESULT'
+            elif mode=='declarations':
+             options=[(e,c) for e,c in declarations(root,day,actual) if digest(e)==other and set(af)<=set(c)]
+             if len(options)!=1 or not S.trusted(actual):return None,'DECLARATION_EVIDENCE'
+             e,cards=options[0];extra=next(iter(cards.values()))
+            else:return None,'MODE'
+            for i,v in [(3,actual.get('type') or extra.get('type')),(4,actual.get('surface') or extra.get('surface')),(5,I.distance_f(actual.get('dist_f') or extra.get('distance_f'),'distance_f')),(6,actual.get('going') or extra.get('going')),(7,actual.get('class') or extra.get('race_class')),(9,actual.get('race_name') or extra.get('race_name'))]:
+             if V.blank(race[i]):race[i]=v
+            # AW course aliases are spelling only; region derived from the validated archive/declaration venue.
+            if R.region(race[2]) not in ('GB','IRELAND') and R.region(actual.get('course')) in ('GB','IRELAND'):race[2]=actual['course']
+           if md:return None,'SOURCE_RACE_CONFLICT:'+str(md)
+           if not (race[9] and race[3] and race[4] and race[5] and 0<race[5]<50 and race[6] and R.region(race[2]) in ('GB','IRELAND')):return None,'METADATA_INCOMPLETE'
+           rows=[]
+           for k,vv in sorted(by.items()):
+            x,diff=V.merge_values(vv,ignore=(7,8,13));h=(af[k] if actual else {});card=cards.get(k,{})
+            # Keep the source outcomes and every source field unless authoritative evidence fills a blank.
+            if diff:return None,'SOURCE_CONFLICT:'+k+':'+str(diff)
+            if any(V.conflict(V.aid(z),h) or V.conflict(V.aid(z),card) for z in vv):return None,'PEDIGREE_CONFLICT:'+k
+            if V.conflict(h,card):return None,'ARCHIVE_DECLARATION_CONFLICT:'+k
+            if mode=='rich':
+             # Prefer actual provider identity and pedigree; exact field and outcomes already corroborated.
+             for i,f in ((2,'horse_id'),(17,'sire'),(18,'dam')):x[i]=h[f]
+             x[1]='id:'+str(x[2]);x[3]=h['horse'];x[4]=I.normname(x[3])
+            else:
+             for i,f in ((2,'horse_id'),(17,'sire'),(18,'dam')):
+              if V.blank(x[i]):x[i]=h.get(f) or card.get(f)
+             if x[2] and x[1].startswith('name:'):x[1]='id:'+str(x[2])
+            # Declared trainer/jockey is not substituted for actual result values.
+            for i,f in ((9,'trainer'),(10,'jockey')):
+             if V.blank(x[i]):x[i]=h.get(f)
+            if not all(x[i] for i in (2,9,10,17,18)):return None,'RUNNER_METADATA:'+k
+            p={z[13] for z in vv if z[13] is not None};ap=M.sp_decimal(h.get('sp'))
+            if len(p)>1:
+             if ap is None or not any(abs(ap-v)<1e-7 for v in p):return None,'PRICE_CONFLICT:'+k
+             x[13]=ap
+            elif p:x[13]=next(iter(p))
+            elif ap is not None:x[13]=ap
+            if ap is not None and x[13] is not None and abs(ap-x[13])>1e-7:return None,'PRICE_DISAGREEMENT:'+k
+            x[7],x[8]=st[k][1],st[k][0];rows.append(x)
+           if len({h[1] for h in rows})!=len(rows):return None,'DUPLICATE_ID'
+           return (race[:9],sorted(rows,key=lambda x:x[1]),race[9],race[10]),'VERIFIED'
+          def options(rid,groups,meta,root):
+           d=meta[rid][0][1];by=source_field(groups,rid);output=[];errors=[]
+           for r in day_arch(root,d):
+            af=resultfield(r)
+            if set(af)!=set(by) or keycourse(r.get('course'))!=keycourse(meta[rid][0][2]):continue
+            modes=[('rich',None)] if str(r.get('race_id','')).startswith('rac_') else [('declarations',digest(e)) for e,c in declarations(root,d,r)]
+            for mode,other in modes:
+             data,why=build(rid,groups,meta,root,mode,digest(r),other)
+             if data:output.append(({'id':rid,'date':d,'mode':mode,'anchor':digest(r),'other':other,'sha256':digest(data)},data))
+             else:errors.append(why)
+           if rid in PUBLIC:
+            data,why=build(rid,groups,meta,root,'public',PUBLIC[rid][0])
+            if data:output.append(({'id':rid,'date':d,'mode':'public','anchor':PUBLIC[rid][0],'other':None,'sha256':digest(data)},data))
+            else:errors.append(why)
+           # Prefer rich actual results over declarations, but never choose conflicting full fields.
+           if output:
+            rich=[o for o in output if o[0]['mode']=='rich'];output=rich or output
+            if len({o[0]['sha256'] for o in output})!=1:return None,['AMBIGUOUS_CORROBORATED_RECORDS']
+            return sorted(output,key=lambda o:o[0]['anchor'])[0],errors
+           return None,errors
+
+          def append(db,ref,src,target,root=ROOT):
+           entries={}
+           for p in sorted((root/'stage203d-history').glob('*.json')):
+            doc=json.loads(p.read_text());assert doc['schema']=='stage203d-v1' and doc['source_version']==132
+            for e in doc['races']:
+             if e['date']<target:
+              if e['id'] in entries:assert entries[e['id']]==e
+              entries[e['id']]=e
+           if not entries:return []
+           groups,meta=V.load_source(src,{e['date'] for e in entries.values()});fields,ids=V.refs(ref);adds=[];report=[]
+           with sqlite3.connect(db) as c:
+            c.execute('pragma foreign_keys=on')
+            for e in sorted(entries.values(),key=lambda x:x['id']):
+             data,why=build(e['id'],groups,meta,root,e['mode'],e['anchor'],e.get('other'));assert data and digest(data)==e['sha256'],(e['id'],why)
+             status,ar=V.apply_one(c,data,ids);report.append({'id':e['id'],'status':status})
+             if ar:adds.append(ar)
+            assert c.execute('pragma quick_check').fetchone()[0]=='ok' and c.execute('select max(race_date) from historical_races').fetchone()[0]<target;c.commit()
+           V.write_refs(ref,fields,adds);print('STAGE203D_SHARED',dict(C.Counter(x['status'] for x in report)));return report
+
+          def run():
+           import kagglehub
+           from stage167_validated_history import refreshed_inputs
+           from zoneinfo import ZoneInfo
+           target=os.getenv('ASKED_DATE','').strip() or '2026-11-26';now=D.datetime.now(ZoneInfo('Europe/Dublin')).date();assert D.date.fromisoformat(target) in (now,now+D.timedelta(days=1))
+           rows=[r for r in json.loads((ROOT/'racecards.json').read_text())['runners'] if r['date']==target and eligibility(r)=='ACTIVE'];assert rows
+           cards={r['horse_id']:r for r in rows};src=P.Path(kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025/versions/132'));out=P.Path('reports/stage203d/output');out.mkdir(parents=True,exist_ok=True)
+           refs=list(P.Path('reports/stage203d/ref').rglob('all_races_with_reference_event_ids.csv'));assert len(refs)==1
+           base=P.Path('reports/stage152-specialists/source/stage2/historical_ukie_staging.sqlite')
+           with refreshed_inputs(base,refs[0],target) as (db,ref):
+            hits,others=E.scan(db,rows,target);before=E.classify(rows,hits,others,target);focus=[x for x in before if x['last_run_matched'] is False or x['known_no_history']]; dates={x['expected'] for x in focus if x['expected']};groups,meta=V.load_source(src,dates);ix=C.defaultdict(set)
+            for rid in groups:
+             for k in source_field(groups,rid):ix[(meta[rid][0][1],k)].add(rid)
+            approved={};report=[];cache={};fields,ids=V.refs(ref);adds=[]
+            for x in focus:
+             d=x['expected'];h=x['horse'];card=cards[x['horse_id']];z={**x,'candidates':[],'reasons':[]};opts=[]
+             for rid in sorted(ix[d,n(h)]):
+              if rid not in cache:cache[rid]=options(rid,groups,meta,ROOT)
+              opt,errs=cache[rid];z['reasons'].extend(errs)
+              if opt and any(E.exact(card,V.aid(r)) for r in opt[1][1] if n(r[3])==n(h)):opts.append(opt)
+             z['candidates']=[o[0]['id'] for o in opts]
+             if len(opts)==1:approved[opts[0][0]['id']]=opts[0];z['status']='CANDIDATE'
+             elif h in OUTSIDE and OUTSIDE_DATES[h]==d:z['status'],z['source']=OUTSIDE[h]
+             else:z['status']='AMBIGUOUS' if opts else 'UNRESOLVED';
+             report.append(z)
+            occupied=C.defaultdict(set)
+            for rid,(e,data) in approved.items():
+             for h in data[1]:occupied[(e['date'],n(h[3]))].add(rid)
+            collisions={rid for v in occupied.values() if len(v)>1 for rid in v};published=[];decisions={}
+            with sqlite3.connect(db) as c:
+             c.execute('pragma foreign_keys=on')
+             for rid,(e,data) in sorted(approved.items()):
+              if rid in collisions:decisions[rid]='CANDIDATE_COLLISION';continue
+              status,ar=V.apply_one(c,data,ids);decisions[rid]=status
+              if ar:
+               published.append(e);adds.append(ar)
+               again,_=V.apply_one(c,data,ids);assert again=='ALREADY_PRESENT',(rid,again)
+             assert c.execute('pragma quick_check').fetchone()[0]=='ok' and c.execute('select max(race_date) from historical_races').fetchone()[0]<target;c.commit()
+            V.write_refs(ref,fields,adds);hits2,others2=E.scan(db,rows,target);after=E.classify(rows,hits2,others2,target);a={x['horse_id']:x for x in after};b={x['horse_id']:x for x in before};assert all(a[k]['starts']>=b[k]['starts'] for k in a)
+            for x in report:
+             y=a[x['horse_id']];x['after']=y;x['decisions']={r:decisions.get(r) for r in x['candidates']}
+             if y['last_run_matched'] is True or (not y['known_no_history'] and y['last_run_matched'] is not False):x['status']='RECOVERED'
+            path=LEDGER/(target+'.json');pool={e['id']:e for e in json.loads(path.read_text())['races']} if path.exists() else {}
+            for e in published:pool[e['id']]=e
+            if published:V.dump(path,{'schema':'stage203d-v1','source_version':132,'races':list(pool.values())})
+            summary={'target':target,'focus_before':len(focus),'gaps_after':sum(x['last_run_matched'] is False or x['known_no_history'] for x in after),'new_races':len(published),'status_counts':dict(C.Counter(x['status'] for x in report)),'decisions':dict(C.Counter(decisions.values())),'idempotence_passed':True,'note':'Public results are corroboration only. Overseas and point form not imported as Rules. No model changes. Existing races not overwritten.'};V.dump(out/'summary.json',summary);V.dump(out/'horse-review.json',report);V.dump(out/'race-decisions.json',decisions);print(json.dumps(summary,indent=2));P.Path(os.environ['GITHUB_STEP_SUMMARY']).write_text('## Stage203D\n```json\n'+json.dumps(summary,indent=2)+'\n```\n')
+          if __name__=='__main__':run()
+          PY
+          python -m py_compile scripts/stage203d_archive_recovery.py
+          python -u scripts/stage203d_archive_recovery.py
+      - name: Wire validated ledger into shared historical reconstruction
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pathlib
+          p=pathlib.Path('scripts/stage167_validated_history.py')
+          s=p.read_text()
+          marker='            append_stage203c(db,ref,src,date)'
+          hook='            from scripts.stage203d_archive_recovery import append as append_stage203d\n            append_stage203d(db,ref,src,date)'
+          if hook not in s:
+              assert s.count(marker)==1, 'Shared history hook changed; refuse publication'
+              p.write_text(s.replace(marker,marker+'\n'+hook))
+          PY
+          python -m py_compile scripts/stage167_validated_history.py
+      - name: Publish only validated ledger and replay code
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add scripts/stage203d_archive_recovery.py scripts/stage167_validated_history.py
+          if test -d data/stage203d-history; then git add data/stage203d-history; fi
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Stage203D: verified archived race and external result recovery'
+          for attempt in 1 2 3 4 5; do
+            git pull --rebase origin main || { git rebase --abort || true; exit 1; }
+            if git push origin HEAD:main; then exit 0; fi
+            sleep $((attempt*3))
+          done
+          exit 1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage203d-archive-full-field-recovery-${{ github.run_id }}
+          path: reports/stage203d/output/
+          if-no-files-found: warn
+          retention-days: 30
