@@ -37,6 +37,9 @@ def refreshed_inputs(history, reference, date):
             # STAGE182C_VERIFIED_SOURCE
             from scripts.stage182c_verified_source import apply as apply_verified_source
             apply_verified_source(db,ref,src,date)
+            # STAGE182H_VERIFIED_HISTORY
+            from scripts.stage182h_verified_history import apply as apply_final_history
+            apply_final_history(db,ref,src,date)
             # STAGE180_ARCHIVE_OVERLAY
             from scripts.stage180_archive_overlay import apply as apply_archive_overlay
             apply_archive_overlay(db,ref,date)
