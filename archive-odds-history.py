@@ -36,6 +36,59 @@ def write_json(path, obj):
     temp.replace(path)
 
 
+# Stage197: compact display history from raw archive plus live snapshots.
+def publish_chart_history():
+    from math import isfinite
+    from zoneinfo import ZoneInfo
+    now = datetime.now(timezone.utc)
+    dublin = ZoneInfo('Europe/Dublin')
+    today = now.astimezone(dublin).date()
+    race_days = {(today + timedelta(days=n)).isoformat() for n in (-1, 0, 1)}
+    groups = {}
+    def ingest(snapshots):
+        for snap in snapshots:
+            if not isinstance(snap, dict):
+                continue
+            for p in snap.get('prices', []):
+                if not isinstance(p, dict) or p.get('stale') is True:
+                    continue
+                rid, horse, course, off, book = (p.get(k) for k in ('race_id', 'horse', 'course', 'race_time', 'bookmaker'))
+                if not all((rid, horse, course, off, book)):
+                    continue
+                off_dt = timestamp(off)
+                at = timestamp(p.get('collected_at') or snap.get('collected_at'))
+                if at.year < 2000 or off_dt.year < 2000 or at > off_dt:
+                    continue
+                race_day = off_dt.astimezone(dublin).date().isoformat()
+                if race_day not in race_days:
+                    continue
+                try:
+                    od = float(p.get('decimal_odds'))
+                except (TypeError, ValueError):
+                    continue
+                if not isfinite(od) or od <= 1:
+                    continue
+                k = (race_day, str(rid), str(horse), str(course), str(book), str(off))
+                if k not in groups:
+                    groups[k] = {'race_id': rid, 'horse': horse, 'course': course, 'race_time': off, 'bookmaker': book, 'points': {}}
+                groups[k]['points'][int(at.timestamp() * 1000)] = od
+    # Five collection dates cover the day before each displayed race date
+    # (including midnight/DST boundaries) and earlier available quotes.
+    for n in range(4, -1, -1):
+        day = (now.date() - timedelta(days=n)).isoformat()
+        for path in sorted(ARCHIVE.glob(f'{day}-part-*.json')):
+            ingest(json.loads(path.read_text(encoding='utf-8')))
+    ingest(json.loads(LIVE.read_text(encoding='utf-8')))
+    series = []
+    for group in groups.values():
+        group['points'] = sorted(group['points'].items())
+        series.append(group)
+    if not series:
+        raise RuntimeError('No valid chart observations; refusing to publish empty compact history')
+    write_json(ARCHIVE / 'chart-history.json', {'version': 1, 'generated_at': now.isoformat(), 'race_days': sorted(race_days), 'series': series})
+    print(f'Chart history: {len(series)} series; {sum(len(s["points"]) for s in series)} observations')
+
+
 def main():
     if not LIVE.exists():
         raise SystemExit('No odds history to archive')
@@ -82,6 +135,10 @@ def main():
             if p.name not in {f'{day}-part-{i:03d}.json' for i in range(1, len(parts)+1)}:
                 p.unlink()
     write_json(LIVE, history)
+    try:
+        publish_chart_history()
+    except Exception as exc:
+        print(f"::warning::Chart history refresh failed; preserving latest odds: {exc}")
     print(f'Archived {len(removed)} snapshots; {len(history)} remain in live history ({LIVE.stat().st_size:,} bytes)')
     print(f'Archive directory: {ARCHIVE}')
 

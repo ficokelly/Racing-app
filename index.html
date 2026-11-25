@@ -831,18 +831,18 @@ function supplementRacecardsFromMarket(){
 }
 function build(latest,history){
  const series=new Map(); const current=(Array.isArray(latest.prices)?latest.prices:[]).filter(p=>p&&!rhpIsAbandoned(p.course,dateKey(p.race_time),clock(p.race_time)));
- for(const snap of history){if(!snap||!Array.isArray(snap.prices))continue;for(const p of snap.prices){if(!p||p.stale===true)continue;const od=num(p.decimal_odds);if(od===null||od<=1)continue;const k=key(p);if(!series.has(k))series.set(k,[]);series.get(k).push({at:p.collected_at||snap.collected_at,od});}}
- for(const [k,pts] of series){const dedup=new Map();for(const p of pts)if(p.at)dedup.set(p.at,p);series.set(k,[...dedup.values()].sort((a,b)=>Date.parse(a.at)-Date.parse(b.at)));}
+ for(const snap of history){if(!snap||!Array.isArray(snap.prices))continue;for(const p of snap.prices){if(!p||p.stale===true)continue;const od=num(p.decimal_odds);if(od===null||od<=1)continue;const at=p.collected_at||snap.collected_at;if(!Number.isFinite(Date.parse(at))||Date.parse(at)>Date.parse(p.race_time))continue;const k=rhpChartKey(p);if(!series.has(k))series.set(k,[]);series.get(k).push({at,od});}}
+ for(const [k,pts] of series){const dedup=new Map();for(const p of pts)if(Number.isFinite(Date.parse(p.at)))dedup.set(Date.parse(p.at),p);series.set(k,[...dedup.values()].sort((a,b)=>Date.parse(a.at)-Date.parse(b.at)));}
  const markets=new Map();for(const p of current){if(!p||p.stale===true||!p.race_id||!p.horse||!p.bookmaker)continue;const od=num(p.decimal_odds);if(od===null||od<=1)continue;const k=JSON.stringify([p.race_id,bookName(p.bookmaker)]);if(!markets.has(k))markets.set(k,new Map());markets.get(k).set(p.horse,{...p,bookmaker:bookName(p.bookmaker),decimal_odds:od});}
  const out=[];
  for(const runners of markets.values()){const sorted=[...runners.values()].sort((a,b)=>a.decimal_odds-b.decimal_odds);if(!sorted.length)continue;const fav=sorted[0],second=sorted[1],tie=second&&fav.decimal_odds===second.decimal_odds;
- for(const p of sorted){const points=series.get(key(p))||[];const cur=p.decimal_odds, prior=points.find(x=>Date.parse(x.at)<Date.parse(latest.collected_at)), opener=num(p.opening_odds);
+ for(const p of sorted){const points=series.get(rhpChartKey(p))||[];const cur=p.decimal_odds, prior=points.find(x=>Date.parse(x.at)<Date.parse(latest.collected_at)), opener=num(p.opening_odds);
  const baseline=prior?prior.od:opener!==null&&opener>1?opener:null;const move=baseline!==null?(baseline-cur)/(baseline-1)*100:null;
  const isFav=!tie&&p.horse===fav.horse&&!!second;const qualifies=!!(isFav&&cur<3&&second.decimal_odds>=4&&move!==null&&move>0);
  const rc=racecardIndex.get(racecardKey(p.horse,p.course,dateKey(p.race_time)));
   const trainer=rc?.trainer||p.trainer||null,jockey=rc?.jockey||p.jockey||null;
   const trainer_id=rc?.trainer_id||p.trainer_id||null,jockey_id=rc?.jockey_id||p.jockey_id||null;
- out.push({raceType:String(rc?.type||rc?.race_type||p.race_type||p.type||'').toLowerCase(),surface:String(rc?.surface||p.surface||'').toLowerCase(),id:key(p),race_id:p.race_id,horse:p.horse,course:p.course||'Unknown',country:p.country,starts:p.race_time,day:dateKey(p.race_time),time:clock(p.race_time),bookmaker:bookName(p.bookmaker),current:cur,earlier:baseline,baselineAt:prior?prior.at:null,baselineLabel:prior?'First recorded':'API open (unverified)',move,points,first:points.length?points[0].od:null,latest:points.length?points[points.length-1].od:null,qualifies,isFav,favName:fav.horse,favOdds:fav.decimal_odds,secondName:second?.horse||null,secondOdds:second?.decimal_odds||null,tie,trainer,jockey,trainer_id,jockey_id,trainerWins:num(p.trainer_wins_14d),trainerRuns:num(p.trainer_runs_14d),jockeyWins:num(p.jockey_wins_14d),jockeyRuns:num(p.jockey_rides_14d),courseWin:p.course_winner??null,distanceWin:p.distance_winner??null,cdWin:p.course_distance_winner??null});
+ out.push({raceType:String(rc?.type||rc?.race_type||p.race_type||p.type||'').toLowerCase(),surface:String(rc?.surface||p.surface||'').toLowerCase(),id:key(p),race_id:p.race_id,horse:p.horse,course:p.course||'Unknown',country:p.country,starts:p.race_time,day:dateKey(p.race_time),time:clock(p.race_time),bookmaker:bookName(p.bookmaker),current:cur,earlier:baseline,baselineAt:prior?prior.at:null,baselineLabel:prior?(rhpChartHistoryReady?'First recorded':'First available (partial)'):'API open (unverified)',move,points,first:points.length?points[0].od:null,latest:points.length?points[points.length-1].od:null,qualifies,isFav,favName:fav.horse,favOdds:fav.decimal_odds,secondName:second?.horse||null,secondOdds:second?.decimal_odds||null,tie,trainer,jockey,trainer_id,jockey_id,trainerWins:num(p.trainer_wins_14d),trainerRuns:num(p.trainer_runs_14d),jockeyWins:num(p.jockey_wins_14d),jockeyRuns:num(p.jockey_rides_14d),courseWin:p.course_winner??null,distanceWin:p.distance_winner??null,cdWin:p.course_distance_winner??null});
  }}return out;
 }
 const selOpts=(id,opts,selected)=>{$(id).innerHTML=opts.map(([v,t])=>`<option value="${safe(v)}">${safe(t)}</option>`).join('');$(id).value=selected};
@@ -867,14 +867,92 @@ function rhpGraphTimeAxis(pts,xStart,xEnd){
  chosen.sort((a,b)=>Date.parse(a.at)-Date.parse(b.at));
  return chosen.map((p,i)=>{
   const t=Date.parse(p.at),x=xStart+(xEnd-xStart)*(t-first)/(last-first);
-  const label=new Intl.DateTimeFormat('en-IE',{timeZone:'Europe/Dublin',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(t));
+  const label=dateKey(first)!==dateKey(last)?new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Dublin',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date(t)):clock(t);
   return `<text x="${x.toFixed(1)}" y="134" text-anchor="${i===0?'start':i===chosen.length-1?'end':'middle'}" class="chartlabel">${safe(label)}</text>`;
  }).join('');
 }
-function miniGraph(pts){if(!pts.length)return '<p class="hint">No saved observations yet.</p>';const first=pts[0],last=pts[pts.length-1];let plot='<p class="hint">Only one recorded price — a trend needs at least two observations.</p>';
- if(pts.length>1){const w=330,h=143,p=20;let low=Math.min(...pts.map(x=>x.od)),high=Math.max(...pts.map(x=>x.od));const span=high-low||1,times=pts.map(x=>Date.parse(x.at)),tmin=Math.min(...times),tmax=Math.max(...times),path=pts.map((pt,i)=>`${i?'L':'M'} ${(p+(tmax>tmin?(times[i]-tmin)/(tmax-tmin):i/(pts.length-1))*(w-2*p)).toFixed(1)} ${(96-((pt.od-low)/span)*76).toFixed(1)}`).join(' ');
- const dots=pts.map((pt,i)=>{let x=p+(tmax>tmin?(times[i]-tmin)/(tmax-tmin):i/(pts.length-1))*(w-2*p),y=96-((pt.od-low)/span)*76;return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="#b3ffe0"><title>${safe(when(pt.at))} — ${fmt(pt.od)}</title></circle>`}).join('');plot=`<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Recorded decimal bookmaker odds over time"><line x1="20" y1="96" x2="310" y2="96" stroke="#37635b"/><line x1="20" y1="20" x2="20" y2="96" stroke="#37635b"/><path d="${path}" stroke="#76e7b9" stroke-width="2.6" fill="none" stroke-linecap="round"/>${dots}<text x="26" y="14" class="chartlabel">${high.toFixed(2)} decimal</text><text x="26" y="110" class="chartlabel">${low.toFixed(2)} decimal</text>${rhpGraphTimeAxis(pts,20,310)}</svg>`;}
- return `<div class="graph"><div class="graph-values"><div><small>First recorded · ${safe(when(first.at))}</small><b>${fmt(first.od)} <span class="hint">(${first.od.toFixed(2)})</span></b></div><div style="text-align:right"><small>Latest recorded · ${safe(when(last.at))}</small><b>${fmt(last.od)} <span class="hint">(${last.od.toFixed(2)})</span></b></div></div>${plot}<p class="hint">Line shows decimal odds. A downward line means shorter odds. Only saved observations are plotted.</p></div>`;
+
+// Stage197: complete chart history; raw archives remain authoritative.
+let rhpChartHistoryReady=false;
+function rhpChartKey(p){
+ const day=dateKey(p.race_time),course=courseMatchKey(p.course),horse=horseMatchKey(p.horse);
+ const book=bookName(p.bookmaker).toLowerCase().replace(/[^a-z0-9]/g,'');
+ return day&&course&&horse&&book?JSON.stringify([day,course,horse,book]):key(p);
+}
+function rhpDecodeChartHistory(j){
+ if(j?.version!==1||!Array.isArray(j.series)||!j.series.length||!Array.isArray(j.race_days)||!j.race_days.includes(marketDateFor('today')))throw Error('Invalid or out-of-date chart history');
+ const snaps=new Map();
+ for(const {points,...meta} of j.series){
+  if(!Array.isArray(points))continue;
+  for(const [ms,od] of points){
+   if(!Number.isFinite(ms)||!Number.isFinite(od)||od<=1||ms>Date.parse(meta.race_time))continue;
+   let snap=snaps.get(ms);
+   if(!snap){snap={collected_at:new Date(ms).toISOString(),prices:[]};snaps.set(ms,snap);}
+   snap.prices.push({...meta,decimal_odds:od,collected_at:snap.collected_at});
+  }
+ }
+ if(!snaps.size)throw Error('Empty chart history');
+ return [...snaps.entries()].sort((a,b)=>a[0]-b[0]).map(x=>x[1]);
+}
+async function rhpFetchChartHistory(q){
+ for(const base of [RHP_FAST_ODDS_BASE,'./data/']){
+  try{const data=await rhpFetchTimed(base+'odds-archive/chart-history.json'+q);return rhpDecodeChartHistory(data);}catch(e){}
+ }
+ return null;
+}
+function rhpMergeChartHistory(older,newer){
+ // Prefer newer/full snapshots with the same collection millisecond.
+ const merged=new Map();
+ for(const snap of [...(older||[]),...(newer||[])]){
+  const ms=Date.parse(snap?.collected_at);if(!Number.isFinite(ms)||!Array.isArray(snap.prices))continue;
+  const prior=merged.get(ms);
+  if(!prior){merged.set(ms,snap);continue;}
+  const quotes=new Map(prior.prices.filter(Boolean).map(p=>[rhpChartKey(p),p]));
+  for(const p of snap.prices)if(p&&p.stale!==true)quotes.set(rhpChartKey(p),p);
+  merged.set(ms,{...snap,prices:[...quotes.values()]});
+ }
+ return [...merged.entries()].sort((a,b)=>a[0]-b[0]).map(x=>x[1]);
+}
+function rhpOddsInteractivePlot(raw,options={}){
+ const pts=(raw||[]).filter(p=>Number.isFinite(p.od)&&p.od>1&&Number.isFinite(Date.parse(p.at))).sort((a,b)=>Date.parse(a.at)-Date.parse(b.at));
+ if(!pts.length)return '<p class="hint">No saved observations yet.</p>';
+ const w=330,h=116,left=12,right=318,top=12,bottom=76;
+ const lo=Math.min(...pts.map(p=>p.od)),hi=Math.max(...pts.map(p=>p.od)),t0=Date.parse(pts[0].at),t1=Date.parse(pts[pts.length-1].at);
+ const xy=pts.map(p=>[t1===t0?(left+right)/2:left+(Date.parse(p.at)-t0)/(t1-t0)*(right-left),hi===lo?(top+bottom)/2:bottom-(p.od-lo)/(hi-lo)*(bottom-top),p.at,p.od]);
+ const color=options.color||'#76e7b9';
+ const line=xy.map(p=>p[0].toFixed(2)+','+p[1].toFixed(2)).join(' ');
+ const dots=xy.map(p=>'<circle cx="'+p[0].toFixed(2)+'" cy="'+p[1].toFixed(2)+'" r="'+(xy.length===1?3.5:1.7)+'" fill="'+color+'" opacity="0.85"/>').join('');
+ const axis=pts.length===1?'<text x="165" y="101" text-anchor="middle" class="chartlabel">'+safe(when(pts[0].at))+'</text>':rhpGraphTimeAxis(pts,left,right).replaceAll('y="134"','y="101"');
+ return '<div data-rhp-odds-wrap><svg viewBox="0 0 '+w+' '+h+'" tabindex="0" role="img" aria-label="Recorded bookmaker odds; tap a point or use left and right arrows to inspect" data-rhp-odds-points="'+safe(JSON.stringify(xy))+'" style="width:100%;height:auto;touch-action:pan-y;cursor:crosshair"><polyline points="'+line+'" stroke="'+color+'" fill="none" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>'+dots+axis+'<g data-rhp-odds-marker visibility="hidden" pointer-events="none"><line x1="0" x2="0" y1="5" y2="83" stroke="currentColor" stroke-width="1.25" stroke-dasharray="3 2"/><circle cx="0" cy="0" r="5" fill="'+color+'" stroke="currentColor" stroke-width="1.5"/></g></svg><div data-rhp-odds-readout class="hint" aria-live="polite" style="min-height:1.5em">Tap or slide along the graph to see the recorded time and odds.</div></div>';
+}
+function rhpSelectOddsPoint(svg,index){
+ const points=JSON.parse(svg.dataset.rhpOddsPoints||'[]');if(!points.length)return;
+ index=Math.max(0,Math.min(points.length-1,index));svg.dataset.rhpOddsIndex=String(index);
+ const [x,y,at,od]=points[index],marker=svg.querySelector('[data-rhp-odds-marker]');if(!marker)return;
+ const line=marker.querySelector('line'),dot=marker.querySelector('circle');
+ line.setAttribute('x1',x);line.setAttribute('x2',x);dot.setAttribute('cx',x);dot.setAttribute('cy',y);marker.setAttribute('visibility','visible');
+ const label=svg.closest('[data-rhp-odds-wrap]')?.querySelector('[data-rhp-odds-readout]');
+ if(label){label.textContent=when(at)+' · '+fmt(od)+' ('+od.toFixed(2)+' decimal)';label.style.fontWeight='700';}
+}
+function rhpOddsPointer(e){
+ const svg=e.target.closest?.('svg[data-rhp-odds-points]');if(!svg)return;
+ const matrix=svg.getScreenCTM();if(!matrix)return;
+ const local=svg.createSVGPoint();local.x=e.clientX;local.y=e.clientY;
+ const x=local.matrixTransform(matrix.inverse()).x,pts=JSON.parse(svg.dataset.rhpOddsPoints||'[]');
+ let best=0;for(let i=1;i<pts.length;i++)if(Math.abs(pts[i][0]-x)<Math.abs(pts[best][0]-x))best=i;
+ rhpSelectOddsPoint(svg,best);
+}
+document.addEventListener('pointerdown',rhpOddsPointer);
+document.addEventListener('pointermove',e=>{if(e.buttons===1||e.pointerType==='touch'&&e.buttons>0)rhpOddsPointer(e);});
+document.addEventListener('click',rhpOddsPointer);
+document.addEventListener('keydown',e=>{const svg=e.target.closest?.('svg[data-rhp-odds-points]');if(!svg||!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const n=JSON.parse(svg.dataset.rhpOddsPoints||'[]').length;const i=Number(svg.dataset.rhpOddsIndex??0);rhpSelectOddsPoint(svg,e.key==='Home'?0:e.key==='End'?n-1:i+(e.key==='ArrowRight'?1:-1));});
+function rhpChartHistoryNote(){return rhpChartHistoryReady?'':'<p class="hint">Earlier archived history is unavailable; showing saved live observations only.</p>';}
+
+function miniGraph(pts){
+ pts=(pts||[]).filter(p=>Number.isFinite(p.od)&&p.od>1&&Number.isFinite(Date.parse(p.at))).sort((a,b)=>Date.parse(a.at)-Date.parse(b.at));
+ if(!pts.length)return '<p class="hint">No saved observations yet.</p>';
+ const first=pts[0],last=pts[pts.length-1];
+ return `<div class="graph"><div class="graph-values"><div><small>First saved · ${safe(when(first.at))}</small><b>${fmt(first.od)} <span class="hint">(${first.od.toFixed(2)})</span></b></div><div style="text-align:right"><small>Latest saved · ${safe(when(last.at))}</small><b>${fmt(last.od)} <span class="hint">(${last.od.toFixed(2)})</span></b></div></div>${rhpOddsInteractivePlot(pts)}${rhpChartHistoryNote()}<p class="hint">Only recorded observations are plotted. Down = shortening; up = drifting.</p></div>`;
 }
 function viewRace(id){
  const chosen=rows.find(x=>x.id===id);if(!chosen)return;
@@ -1193,15 +1271,12 @@ function hotPriceRow(r){
 }
 function hotSpark(row){
  if(!row)return '<p class="hint">Price trend unavailable until bookmaker quotes are matched.</p>';
- const pts=(row.points||[]).filter(p=>Number.isFinite(p.od)&&Number.isFinite(Date.parse(p.at)));
- if(pts.length<2)return '<p class="hint">Only one saved odds observation — no trend yet.</p>';
+ const pts=(row.points||[]).filter(p=>Number.isFinite(p.od)&&p.od>1&&Number.isFinite(Date.parse(p.at))).sort((a,b)=>Date.parse(a.at)-Date.parse(b.at));
+ if(!pts.length)return '<p class="hint">No saved odds observations yet.</p>';
  const a=pts[0].od,z=pts[pts.length-1].od,delta=z-a;
  const label=delta < -0.001?'Shortening':delta > 0.001?'Drifting':'Unchanged';
  const col=delta < -0.001?'#82f3c5':delta > 0.001?'#ff8585':'#b9d0d1';
- const min=Math.min(...pts.map(p=>p.od)),max=Math.max(...pts.map(p=>p.od)),span=max-min||1;
- const times=pts.map(p=>Date.parse(p.at)),left=Math.min(...times),right=Math.max(...times);
- const points=pts.map((p,i)=>`${(8+(right>left?(times[i]-left)/(right-left):i/(pts.length-1))*304).toFixed(1)},${(64-((p.od-min)/span)*52).toFixed(1)}`).join(' ');
- return `<div class="graph" style="padding:9px;margin:9px 0"><div class="foot"><strong style="color:${col}">${label} · ${fmt(a)} → ${fmt(z)}</strong><span>${pts.length} observations</span></div><svg viewBox="0 0 320 110" role="img" aria-label="Odds over time; downward means shortening and upward means drifting" style="width:100%;height:auto"><polyline class="${delta < -0.001 ? 'rhp-shortening-line' : delta > 0.001 ? 'rhp-drifting-line' : 'rhp-unchanged-line'}" points="${points}" stroke="${col}" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>${rhpGraphTimeAxis(pts,8,312).replaceAll('y="134"','y="93"')}</svg><div class="hint">Down = shorter odds (backed/shortening), up = drifting. Price moves alone do not prove betting volume.</div></div>`;
+ return `<div class="graph" style="padding:9px;margin:9px 0"><div class="foot"><strong style="color:${col}">${label} · ${fmt(a)} → ${fmt(z)}</strong><span>${pts.length} observations</span></div><div class="hint">First saved: ${safe(when(pts[0].at))} · Latest: ${safe(when(pts[pts.length-1].at))}</div>${rhpOddsInteractivePlot(pts,{color:col})}${rhpChartHistoryNote()}<div class="hint">Down = shorter odds (backed/shortening), up = drifting. Price moves alone do not prove betting volume.</div></div>`;
 }
 function hotWatchButton(r){const idx=racecardRunners.indexOf(r),row=hotPriceRow(r),k=watchKey({horse:r.horse,course:r.course,day:r.date||dateKey(r.race_time)});const exists=watchlist.some(w=>w.key===k);return `<button type="button" class="action small outline" data-hot-watch="${idx}" ${exists?'disabled':''}>${exists?'★ On Watchlist':'☆ Add to Watchlist'}</button>`}
 
@@ -1842,17 +1917,20 @@ async function rhpFetchNewerOdds(q,pages){
  }catch(e){return null}
 }
 let rhpInitialFeedBusy=false,rhpLiveOdds=null,rhpLiveHistory=[],rhpCardHistory=[],rhpLiveCards=null;
-async function loadFeed(){rhpInitialFeedBusy=true;loadForm();loadFinishedRaceFeed();try{const q='?v='+Date.now(),responses=await Promise.all([fetch('./data/latest-odds.json'+q,{cache:'no-store'}),fetch('./data/odds-history.json'+q,{cache:'no-store'}),fetch('./data/racecards.json'+q,{cache:'no-store'}).catch(()=>null)]);
-  if(responses[2]?.ok){try{const live=await responses[2].json();let history=[];try{const a=await fetch('./data/racecards-archive.json?v='+Date.now(),{cache:'no-store'});if(a.ok){const j=await a.json();history=Array.isArray(j.runners)?j.runners:[]}}catch(e){}rhpLiveCards=live;rhpCardHistory=history;rhpMergeLiveCards(live,history)}catch(e){loadRacecardIndex(null)}}if(!responses[0].ok||!responses[1].ok)throw Error('Odds files unavailable');let latest=await responses[0].json(),hist=await responses[1].json();
+async function loadFeed(){rhpInitialFeedBusy=true;loadForm();loadFinishedRaceFeed();try{const q='?v='+Date.now(),responses=await Promise.all([fetch('./data/latest-odds.json'+q,{cache:'no-store'}),rhpFetchChartHistory(q),fetch('./data/racecards.json'+q,{cache:'no-store'}).catch(()=>null)]);
+  if(responses[2]?.ok){try{const live=await responses[2].json();let history=[];try{const a=await fetch('./data/racecards-archive.json?v='+Date.now(),{cache:'no-store'});if(a.ok){const j=await a.json();history=Array.isArray(j.runners)?j.runners:[]}}catch(e){}rhpLiveCards=live;rhpCardHistory=history;rhpMergeLiveCards(live,history)}catch(e){loadRacecardIndex(null)}}if(!responses[0].ok)throw Error('Odds files unavailable');let latest=await responses[0].json(),hist=responses[1];rhpChartHistoryReady=Array.isArray(hist)&&hist.length>0;if(!rhpChartHistoryReady){const old=await fetch('./data/odds-history.json'+q,{cache:'no-store'});if(!old.ok)throw Error('Odds history unavailable');hist=await old.json();}
  const newer=await rhpFetchNewerOdds(q,latest);
  if(newer){
   latest=newer;
+  if(!rhpChartHistoryReady){
   // Use matching recent odds history when the raw feed is ahead of Pages.
   try{
    const h=await fetch(RHP_FAST_ODDS_BASE+'odds-history.json'+q,{cache:'no-store'});
    if(h.ok){const rawHistory=await h.json();if(Array.isArray(rawHistory))hist=rawHistory}
   }catch(e){}
+  }
  }
+ hist=rhpMergeChartHistory(hist,[latest]);
  if(!Array.isArray(hist)||!Array.isArray(latest.prices))throw Error('Invalid JSON feed');rhpLiveOdds=latest;rhpLiveHistory=hist;rows=build(latest,hist);rhp158HistoricHotRows=rhp158BuildHistoricHotRows(hist);rhpSyncBookControl();rhpApplyBookPreference(rhpGlobalBook,{redraw:false});supplementRacecardsFromMarket();autoWatchQualifiers();historyCount=hist.length;const rhpOddsAgeMinutes=(Date.now()-Date.parse(latest.collected_at))/60000;$('status').textContent=Number.isFinite(rhpOddsAgeMinutes)&&rhpOddsAgeMinutes>=20?'⚠ ODDS STALE · '+Math.floor(rhpOddsAgeMinutes)+'m':'● ODDS SYNCED';$('asof').textContent=`Last collected: ${when(latest.collected_at)} (Irish time) · ${latest.races_returned} races · ${latest.prices_collected} bookmaker quotes · ${hist.length} snapshots`;
  const dates=[...new Set(rows.map(x=>x.day).filter(Boolean))].sort().reverse();selectedDate=['today','tomorrow'].map(marketDateFor).includes(selectedDate)?selectedDate:marketDateFor('today');selOpts('race-date',[['all','All available dates'],...dates.map(d=>[d,d])],selectedDate);refreshSelects();renderPersonFilters('markets');renderPersonFilters('power');renderMarkets();await loadAw2Stats();renderPower();renderStrategyA();renderStrategyB();renderHot();rcSetupFilters();restoreRefreshFiltersAfterFeed();renderRacecards();showTab(activeTab,true);if(refreshScrollPosition!==null){const pos=refreshScrollPosition;refreshScrollPosition=null;requestAnimationFrame(()=>setTimeout(()=>window.scrollTo(0,pos),160))}}catch(e){$('status').textContent='NO DATA';$('asof').textContent='Could not load odds feed: '+e.message;}finally{rhpInitialFeedBusy=false;}}
 // Within each card/list area, opening one collapsible card closes its siblings.
@@ -2044,7 +2122,7 @@ async function checkPublishedData(force=false){
   for(const {file,url,signature,data} of received){
    if(file==='latest-odds.json'){
     if(!rhpLiveOdds||Date.parse(data.collected_at)>Date.parse(rhpLiveOdds.collected_at)){rhpLiveOdds=data;marketChanged=true;changed=true;
-     if(!rhpLiveHistory.some(h=>h.collected_at===data.collected_at))rhpLiveHistory.push(data);}
+     rhpLiveHistory=rhpMergeChartHistory(rhpLiveHistory,[data]);const complete=await rhpFetchChartHistory("?v="+Date.now());if(complete){rhpChartHistoryReady=true;rhpLiveHistory=rhpMergeChartHistory(complete,rhpLiveHistory);}}
    }else if(file==='racecards.json'){
     if(!rhpLiveCards||Date.parse(data.collected_at)>Date.parse(rhpLiveCards.collected_at)){rhpLiveCards=data;rhpMergeLiveCards(data,rhpCardHistory);marketChanged=true;changed=true;}
    }else if(file==='strategy-roi-combined.json'){
