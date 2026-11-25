@@ -107,6 +107,8 @@ def person_totals(rows):
 def fetch_rows(source,start,end):
     days=C.defaultdict(dict); problems=C.defaultdict(C.Counter); races=C.defaultdict(set); maxdate=''; scanned=0
     dash=C.defaultdict(list); known_nr=C.defaultdict(set)
+    unresolved_dash=C.defaultdict(list)
+    from scripts.form_dated_evidence import verified_dash
     for filename,opener in I.source_iter(source):
         with opener() as f:
             sample=f.read(8192);f.seek(0)
@@ -144,9 +146,13 @@ def fetch_rows(source,start,end):
             if (match and match['race']==rid) or (co,horse,rid) in known_nr[day]:
                 problems[day]['excluded_redundant_dash_row']+=1
             else:
-                problems[day]['unresolved_dash:'+co]+=1
+                verdict=verified_dash(day,co,horse,rid,days[day])
+                if verdict:problems[day]['excluded_verified_nonrunner']+=1
+                else:
+                    problems[day]['unresolved_dash:'+co]+=1
+                    unresolved_dash[day].append({'course_key':co,'horse_key':horse,'source_race_id':rid})
     if not maxdate or not scanned:raise RuntimeError('No usable recent Kaggle source records')
-    return days,problems,races,maxdate
+    return days,problems,races,maxdate,unresolved_dash
 
 def api_rows(day):
     rows={}; races=set(); problems=C.Counter()
@@ -193,7 +199,7 @@ def compare(day,k,kr,kissues,api,ar,ai,expected,api_count):
     if len(kr)<len(ar):reasons.append('fewer_kaggle_races')
     if unmatched:reasons.append('unmatched_saved_races')
     if any(gaps.values()):reasons.append('missing_kaggle_persons')
-    if any(key not in ('excluded_explicit_foreign_course','excluded_redundant_dash_row') for key in kissues) or ai:reasons.append('source_quality_issues')
+    if any(key not in ('excluded_explicit_foreign_course','excluded_redundant_dash_row','excluded_verified_nonrunner') for key in kissues) or ai:reasons.append('source_quality_issues')
     if not reasons and len(k)==len(api) and all(sum(x['runs'] for x in ag[g].values())==len(api) for g in ('trainers','jockeys')):reasons.append('no_demonstrated_coverage_improvement')
     return {'date':day,'api_starters':len(api),'kaggle_starters':len(k),'api_races':len(ar),'kaggle_races':len(kr),'shared_starters':len(common),'api_only_starters':len(missing),'kaggle_only_starters':len(k.keys()-api.keys()),'finish_disagreements':different,'person_disagreements':people_diff,'kaggle_identity_gaps':gaps,'unmatched_saved_races':unmatched,'kaggle_issues':dict(kissues),'api_issues':dict(ai),'approved':not reasons,'reasons':reasons},stats
 
@@ -206,7 +212,7 @@ def main():
     if version<old.get('version',0):raise RuntimeError('Refusing baseline downgrade')
     end=(dt.datetime.now(ZoneInfo('Europe/Dublin')).date()-dt.timedelta(days=1)).isoformat(); start=(dt.date.fromisoformat(end)-dt.timedelta(days=13)).isoformat()
     source=Path(kagglehub.dataset_download(DATASET+'/versions/'+str(version)))
-    kdays,kissues,kraces,cutoff=fetch_rows(source,start,end)
+    kdays,kissues,kraces,cutoff,unresolved_dash=fetch_rows(source,start,end)
     cache=F.cache_index(F.load_json(F.CACHE_FILE)); audit=C.Counter()
     for pth in (Path('data/racecards-archive.json'),Path('data/racecards.json')):
         F.combine_person_cache(cache,F.load_json(pth),pth.name,audit)
@@ -242,6 +248,7 @@ def main():
             for kind in ('trainer','jockey'):
                 if ar[kind] and F.person_key(ar[kind])!=F.person_key(kr[kind]):
                     pair_conflicts.append({'kind':kind,'api_name':ar[kind],'kaggle_name':kr[kind],'course_key':co,'horse_key':horse})
+        r['unresolved_dash_rows']=unresolved_dash.get(day,[])
         r['enriched_pair_conflicts']=len(pair_conflicts)
         r['enriched_pair_examples']=pair_conflicts
         if pair_conflicts:
