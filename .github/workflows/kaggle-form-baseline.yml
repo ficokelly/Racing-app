@@ -3,11 +3,11 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Kaggle version to compare (blank checks latest; 132 is known)'
+        description: 'Kaggle version (132 for this repair; blank checks latest)'
         required: false
         default: '132'
       audit_only:
-        description: 'Compare without activating approved days'
+        description: 'Compare without publishing form changes'
         type: boolean
         default: false
   schedule:
@@ -28,132 +28,124 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install Kaggle download client
+      - name: Install Kaggle client
         run: pip install 'kagglehub>=0.3,<1'
-      - name: Verify deployed V4 prerequisite files
+      - name: Install and test exact evidence repair
         run: |
-          test -f scripts/form_person_aliases.py
-          test -f data/form-person-aliases.json
-          test -f scripts/kaggle_form_baseline.py
-          test -f scripts/audit_kaggle_form.py
-          python -m py_compile scripts/form_person_aliases.py scripts/kaggle_form_baseline.py scripts/audit_kaggle_form.py scripts/stage32_form_rebuild.py
-      - name: Validate dated non-runners and reconcile published late results
-        env:
-          AUDIT_ONLY: ${{ inputs.audit_only }}
-        run: |
-          cat > scripts/form_dated_evidence.py <<'DATED_PY'
+          cat > scripts/form_final_evidence.py <<'HELPER_PY'
+          """Dated evidence for duplicate declarations and authoritative final person identities."""
+          from collections import defaultdict
+          from functools import lru_cache
           from pathlib import Path
-          import json, collections
-          from scripts import stage32_form_rebuild as F
-          REGISTRY=Path('data/form-dated-evidence.json')
+          import json
 
-          def read(p): return json.loads(p.read_text()) if p.exists() else {}
-          def save(p,obj):
-              p.parent.mkdir(parents=True,exist_ok=True)
-              tmp=p.with_suffix('.tmp');tmp.write_text(json.dumps(obj,indent=2,ensure_ascii=False)+'\n');tmp.replace(p)
-          def racekey(r):
-              return (str(r.get('date') or '')[:10],F.course_key(r.get('course')),F.off_key(r.get('off_dt') or r.get('race_time') or r.get('off')))
-          def verified_dash(day,co,horse,rid,known):
-              # A dated meeting is eligible only if every published winner and field size matches a unique Kaggle race.
-              ev=read(REGISTRY).get('meetings',{}).get(day+'|'+co)
-              if not ev:return None
-              groups=collections.defaultdict(dict)
-              for (c,h),x in known.items():
-                  if c==co:groups[x['race']][h]=x
-              lookup={}
-              for winner,size,nr in ev['races']:
-                  w=F.horse_key(winner)
-                  matches=[key for key,rs in groups.items() if w in rs and rs[w]['outcome']==1 and len(rs)==size]
-                  if len(matches)!=1 or matches[0] in lookup:return None
-                  lookup[matches[0]]={F.horse_key(h) for h in nr}
-              if set(lookup)!=set(groups):return None
-              if rid in lookup and horse in lookup[rid] and (co,horse) not in known:return 'externally_verified_nonrunner'
-              # Some exports use a separate race ID for the declaration-only copy. A named withdrawal is safe only if
-              # unique across the independently verified meeting and not a starter anywhere in it.
-              if (co,horse) not in known and sum(horse in names for names in lookup.values())==1:return 'externally_verified_nonrunner'
-              return None
+          DECLARATION_SOURCE='https://www.sportinglife.com/racing/racecards/2026-11-19/thurles/live-show/949080/irish-stallion-farms-ebf-beginners-chase'
+          RESULT_SOURCE='https://www.racingpost.com/results/198/thurles/2026-11-19/933391/'
+          # 12:05 declaration is not a second race; 12:08 final contains eight of the fourteen.
+          FINISH={'doctorsteinberg':1,'fortdino':2,'courtcompliance':3,'walksinjune':4,'franciscanrock':5,'farnahoerebel':6,'firecoral':7,'stedebonnet':'NONFINISH'}
+          DECLARED=set(FINISH)|{'countyfinal','hecantdance','notimetowait','portauthority','timesareachanging','yeshil'}
 
-          def apply():
-              ev=read(REGISTRY); assert ev['schema']=='form-dated-evidence-v1'
-              p=Path('data/rhp-stage72-race-exceptions.json');doc=read(p);existing=doc.setdefault('races',[])
-              keys={(x['day'],F.course_key(x['course']),x['time']) for x in existing}
-              for x in ev['abandoned']:
-                  k=(x['day'],F.course_key(x['course']),x['time'])
-                  if k not in keys:existing.append(x);keys.add(k)
-              save(p,doc)
-              ledger=read(F.AUDIT_FILE).get('coverage_guard',{}).get('expected_races',{})
-              report=[]
-              for r in ev['final_results']:
-                  day,co,off=racekey(r); k='|'.join((day,co,off)); card=ledger.get(k,{})
-                  p=Path('data/racing-results')/(day+'.json');doc=read(p); current=doc.get('results',[])
-                  rows=r['runners']; starters={F.horse_key(x['horse']) for x in rows if F.is_starter(x)}; allhorses={F.horse_key(x['horse']) for x in rows}
-                  assert len(starters)==r['external_verification']['starters'] and len(allhorses)==len(rows)
-                  assert sum(F.is_win(x) for x in rows)==1 and all(x.get('trainer') and x.get('jockey') for x in rows if F.is_starter(x))
-                  same=[x for x in current if racekey(x)==(day,co,off) and x.get('status')!='superseded']
-                  overlaps=[x for x in current if x.get('status')!='superseded' and F.course_key(x.get('course'))==co and starters & {F.horse_key(z.get('horse')) for z in x.get('runners',[]) if F.is_starter(z)}]
-                  if same or overlaps:
-                      report.append({'race':k,'status':'EXISTING_OR_OVERLAPPING_RESULT_PRESERVED'});continue
-                  # No inferred horse IDs or new race identity. Require exact match to every known starter and no extra active declarations.
-                  if not card or not starters.issubset(set(card)) or set(h for h,s in card.items() if s!='NR')-allhorses:
-                      report.append({'race':k,'status':'HELD_CARD_MISMATCH','missing_from_card':sorted(starters-set(card)),'unresolved_card_horses':sorted(set(h for h,s in card.items() if s!='NR')-allhorses)});continue
-                  # A stale withdrawal flag cannot be used to invent an actual starter. Published final result is authoritative.
-                  current.append(r);doc['results']=current;doc['date']=day;save(p,doc)
-                  report.append({'race':k,'status':'ADDED','starters':len(starters)})
-              save(Path('reports/stage32/form-dated-recovery.json'),{'results':report,'abandoned_races_verified':len(ev['abandoned']),'note':'Only exact dated result fields are added. Existing archive records are not overwritten; raw Kaggle data not published.'})
-              print(json.dumps(report,indent=2))
-          if __name__=='__main__':apply()
-          DATED_PY
-      - name: Stage dated evidence records
-        run: |
-          cat > .form_dated_seed.json <<'DATED_JSON'
-          {"schema":"form-dated-evidence-v1","meetings":{"2026-11-16|plumpton":{"source":"https://www.oddschecker.com/horse-racing/results/2026-11-16/plumpton","races":[["Mysterland",6,[]],["Prairie Diamond",12,[]],["Clap Of Thunder",6,[]],["Norman Fletcher",10,[]],["Of Corse I Can",7,["Alan Bresil"]],["Daring Plan",5,[]],["Sense Of Reason",8,[]]]},"2026-11-16|wolverhampton":{"source":"https://www.oddschecker.com/horse-racing/results/2026-11-16/wolverhampton","races":[["Lord Ragnar",9,["Roosike","Big Hitter"]],["Desert Romance",13,[]],["Leading Role",9,[]],["Splintered",9,[]],["Law Of Average",11,[]],["Giorgio M",11,[]],["Galba",12,[]],["The Sweet Escape",12,["Cancan In The Rain"]],["Its A Love Thing",11,[]]]},"2026-11-19|thurles":{"source":"https://www.oddschecker.com/horse-racing/results/2026-11-19/thurles","races":[["Doctor Steinberg",8,[]],["Doctor Confusion",12,["Roc My Haarth","Giant Haystacks","Clonbury Bridge"]],["Minella Emperor",4,[]],["Jury Time",14,["Sea Swirl"]],["Cock And Bull",13,["River Vale","Ollie La Ba Ba","Mont Star","Liberated Light"]],["Figero",17,[]],["Legendary Status",12,[]]]}},"abandoned":[{"day":"2026-11-22","course":"Fakenham","time":"12:43","disposition":"ABANDONED","reason":"Entire meeting confirmed abandoned; no race starters.","source":"https://www.fakenhamracecourse.co.uk/our-events/autumn-raceday-4616688"},{"day":"2026-11-22","course":"Fakenham","time":"13:13","disposition":"ABANDONED","reason":"Entire meeting confirmed abandoned; no race starters.","source":"https://www.fakenhamracecourse.co.uk/our-events/autumn-raceday-4616688"},{"day":"2026-11-22","course":"Fakenham","time":"13:43","disposition":"ABANDONED","reason":"Entire meeting confirmed abandoned; no race starters.","source":"https://www.fakenhamracecourse.co.uk/our-events/autumn-raceday-4616688"},{"day":"2026-11-22","course":"Fakenham","time":"14:13","disposition":"ABANDONED","reason":"Entire meeting confirmed abandoned; no race starters.","source":"https://www.fakenhamracecourse.co.uk/our-events/autumn-raceday-4616688"},{"day":"2026-11-22","course":"Fakenham","time":"14:43","disposition":"ABANDONED","reason":"Entire meeting confirmed abandoned; no race starters.","source":"https://www.fakenhamracecourse.co.uk/our-events/autumn-raceday-4616688"},{"day":"2026-11-22","course":"Fakenham","time":"15:13","disposition":"ABANDONED","reason":"Entire meeting confirmed abandoned; no race starters.","source":"https://www.fakenhamracecourse.co.uk/our-events/autumn-raceday-4616688"},{"day":"2026-11-24","course":"Wincanton","time":"12:53","disposition":"ABANDONED","reason":"Entire meeting confirmed abandoned; no race starters.","source":"https://www.irishracing.com/racecards/Tue-24th-November-2026/Wincanton"},{"day":"2026-11-24","course":"Wincanton","time":"13:23","disposition":"ABANDONED","reason":"Entire meeting confirmed abandoned; no race starters.","source":"https://www.irishracing.com/racecards/Tue-24th-November-2026/Wincanton"},{"day":"2026-11-24","course":"Wincanton","time":"13:53","disposition":"ABANDONED","reason":"Entire meeting confirmed abandoned; no race starters.","source":"https://www.irishracing.com/racecards/Tue-24th-November-2026/Wincanton"},{"day":"2026-11-24","course":"Wincanton","time":"14:23","disposition":"ABANDONED","reason":"Entire meeting confirmed abandoned; no race starters.","source":"https://www.irishracing.com/racecards/Tue-24th-November-2026/Wincanton"},{"day":"2026-11-24","course":"Wincanton","time":"14:53","disposition":"ABANDONED","reason":"Entire meeting confirmed abandoned; no race starters.","source":"https://www.irishracing.com/racecards/Tue-24th-November-2026/Wincanton"},{"day":"2026-11-24","course":"Wincanton","time":"15:23","disposition":"ABANDONED","reason":"Entire meeting confirmed abandoned; no race starters.","source":"https://www.irishracing.com/racecards/Tue-24th-November-2026/Wincanton"}],"final_results":[{"date":"2026-11-21","course":"Newcastle (AW)","off_dt":"2026-11-21T19:00:00Z","region":"GB","status":"final","source":"Stage V5 independently published result","external_verification":{"source_url":"https://www.racingpost.com/results/1353/newcastle-aw/2026-11-21/931799/","source_race_id":"931799","starters":13,"verified_on":"2026-11-25"},"runners":[{"horse":"Jimmy Knocker","position":"1","trainer":"Andi Brown","jockey":"Sean Kirrane","sp":"13/2"},{"horse":"Habrdi","position":"2","trainer":"Ruth Carr","jockey":"James Sullivan","sp":"33/1"},{"horse":"Havanagreattime","position":"2","trainer":"Ruth Carr","jockey":"Joanna Mason","sp":"11/1"},{"horse":"Showtime Mahomes","position":"4","trainer":"Grant Tuer","jockey":"Oliver Stammers","sp":"12/1"},{"horse":"Red Dahlia","position":"5","trainer":"Lawrence Mullaney","jockey":"Hollie Doyle","sp":"20/1"},{"horse":"Miss Rainbow","position":"6","trainer":"Tracy Waggott","jockey":"Jason Hart","sp":"22/1"},{"horse":"Roaring Ralph","position":"7","trainer":"Michael Dods","jockey":"Rhys Elliott","sp":"12/1"},{"horse":"Too Much","position":"8","trainer":"David Thompson","jockey":"David Allan","sp":"9/1"},{"horse":"Bright","position":"9","trainer":"Mark Loughnane","jockey":"Finley Marsh","sp":"11/2"},{"horse":"Wish This","position":"10","trainer":"Alan Brown","jockey":"Tom Eaves","sp":"6/1"},{"horse":"Rousham","position":"11","trainer":"Nigel Tinkler","jockey":"Faye McManoman","sp":"10/1"},{"horse":"Blue Force","position":"12","trainer":"Antony Brittain","jockey":"Cam Hardie","sp":"12/1"},{"horse":"Educating Rita","position":"PU","trainer":"Philip Kirby","jockey":"Kevin Stott","sp":"100/30"},{"horse":"Generous Rascal","position":"NR","status":"non-runner"}]},{"date":"2026-11-22","course":"Cork","off_dt":"2026-11-22T15:49:00Z","region":"IRE","status":"final","source":"Stage V5 independently published result","external_verification":{"source_url":"https://www.racingpost.com/results/596/cork/2026-11-22/933631/","source_race_id":"933631","starters":16,"verified_on":"2026-11-25"},"runners":[{"horse":"Drumconnor Hill","position":"1","trainer":"Cian Collins","jockey":"Jordan Gainford","sp":"10/1"},{"horse":"The Rebel Fox","position":"2","trainer":"Ross O'Sullivan","jockey":"Ricky Doyle","sp":"9/1"},{"horse":"Its Not Over Yet","position":"3","trainer":"Oliver McKiernan","jockey":"Conor Smithers","sp":"20/1"},{"horse":"West Of Bally","position":"4","trainer":"E McNamara","jockey":"Gearoid Brouder","sp":"50/1"},{"horse":"Bergamasquo","position":"5","trainer":"Gavin Cromwell","jockey":"Eoin Staples","sp":"12/1"},{"horse":"Ney","position":"6","trainer":"Edward Buckley","jockey":"Kieren Buckley","sp":"33/1"},{"horse":"John The Diva","position":"7","trainer":"M A Cahill","jockey":"Paddy Cody","sp":"16/1"},{"horse":"Tiger Twins","position":"8","trainer":"Eoin Christopher McCarthy","jockey":"Thomas O'Connor","sp":"12/1"},{"horse":"Big Debates","position":"9","trainer":"Robert Tyner","jockey":"Anna McGuinness","sp":"28/1"},{"horse":"King Of The Greys","position":"10","trainer":"Peter Fahey","jockey":"Sam Ewing","sp":"3/1"},{"horse":"Strange Currency","position":"11","trainer":"Brian M McMahon","jockey":"Evan Nugent","sp":"20/1"},{"horse":"Jackmoon","position":"12","trainer":"J P Flavin","jockey":"Jordan Canavan","sp":"17/2"},{"horse":"Scotty Joe","position":"13","trainer":"P J Rothwell","jockey":"Tiernan Power Roche","sp":"40/1"},{"horse":"Toor Khov","position":"14","trainer":"Ms M Flynn","jockey":"Liam Quinlan","sp":"22/1"},{"horse":"The Miracle Man","position":"PU","trainer":"Gordon Elliott","jockey":"Patrick M O'Brien","sp":"25/1"},{"horse":"Cock And Bull","position":"PU","trainer":"Emmet Mullins","jockey":"Donagh Meyler","sp":"9/4"},{"horse":"Born Bright","position":"NR","status":"non-runner"},{"horse":"Custers Mistake","position":"NR","status":"non-runner"},{"horse":"Political Stance","position":"NR","status":"non-runner"}]},{"date":"2026-11-23","course":"Wolverhampton (AW)","off_dt":"2026-11-23T20:30:00Z","region":"GB","status":"final","source":"Stage V5 independently published result","external_verification":{"source_url":"https://www.racingpost.com/results/513/wolverhampton-aw/2026-11-23/931829/","source_race_id":"931829","starters":10,"verified_on":"2026-11-25"},"runners":[{"horse":"Hitched","position":"1","trainer":"David Simcock","jockey":"Luke Morris","sp":"7/4"},{"horse":"Galileo Island","position":"2","trainer":"Tom Ward","jockey":"Sean Levey","sp":"50/1"},{"horse":"He's A Gentleman","position":"3","trainer":"Hugo Palmer","jockey":"David Egan","sp":"11/1"},{"horse":"Sovereign Bay","position":"4","trainer":"James Owen","jockey":"Jason Watson","sp":"3/1"},{"horse":"Shadowmere","position":"5","trainer":"George Baker","jockey":"Callum Shepherd","sp":"9/1"},{"horse":"Galba","position":"6","trainer":"Kevin & Lauren Frost","jockey":"Matthew Lloyd Slater","sp":"9/2"},{"horse":"Law Supreme","position":"7","trainer":"Ian Williams","jockey":"Edward Greatrex","sp":"28/1"},{"horse":"Pipily","position":"8","trainer":"T J Kent","jockey":"Clifford Lee","sp":"11/1"},{"horse":"Ecclefechan","position":"9","trainer":"Scott Dixon","jockey":"Kieran O'Neill","sp":"16/1"},{"horse":"Clatford","position":"10","trainer":"Scott Dixon","jockey":"Christian Howarth","sp":"125/1"}]},{"date":"2026-11-24","course":"Wolverhampton (AW)","off_dt":"2026-11-24T20:30:00Z","region":"GB","status":"final","source":"Stage V5 independently published result","external_verification":{"source_url":"https://www.racingpost.com/results/513/wolverhampton-aw/2026-11-24/931840/","source_race_id":"931840","starters":9,"verified_on":"2026-11-25"},"runners":[{"horse":"Moe's Legacy","position":"1","trainer":"Ronald Harris","jockey":"Cieren Fallon","sp":"22/1"},{"horse":"Rye","position":"2","trainer":"Tony Carroll","jockey":"Hollie Doyle","sp":"8/1"},{"horse":"Showtime Mahomes","position":"3","trainer":"Grant Tuer","jockey":"Laura Pearson","sp":"6/1"},{"horse":"Beaumadier","position":"4","trainer":"Mark Loughnane","jockey":"Hope Regan","sp":"9/1"},{"horse":"Truly Glamorous","position":"5","trainer":"Christopher Mason","jockey":"Gina Mangan","sp":"10/1"},{"horse":"Maharajas Express","position":"6","trainer":"Ian Williams","jockey":"Billy Loughnane","sp":"5/2"},{"horse":"Grandlad","position":"7","trainer":"James Horton","jockey":"Daniel Muscutt","sp":"5/1"},{"horse":"Campenaerts","position":"8","trainer":"Jonathan Portman","jockey":"Rob Hornby","sp":"9/2"},{"horse":"Burdett Estate","position":"9","trainer":"Brian Toomey","jockey":"Kieran Shoemark","sp":"16/1"},{"horse":"Sunlit Sea","position":"NR","status":"non-runner"}]}]}
-          DATED_JSON
-      - name: Install and test dated evidence integration
-        env:
-          AUDIT_ONLY: ${{ inputs.audit_only }}
-        run: |
-          python - <<'PY_PATCH'
+          def thurles_duplicate(day, records, known):
+              if day!='2026-11-19': return set()
+              d=[(c,h,r) for c,h,r in records if c=='thurles' and str(r)=='949080']
+              if len(d)!=len(DECLARED) or {h for c,h,r in d}!=DECLARED:return set()
+              # Every final starter and placing must be present in exactly one other source race.
+              final=[known.get(('thurles',h)) for h in FINISH]
+              if any(x is None for x in final):return set()
+              ids={str(x['race']) for x in final}
+              if len(ids)!=1 or '949080' in ids:return set()
+              rid=next(iter(ids))
+              actual={h:x['outcome'] for (c,h),x in known.items() if c=='thurles' and str(x['race'])==rid}
+              if actual!=FINISH:return set()
+              if any(('thurles',h) in known for h in DECLARED-set(FINISH)):return set()
+              return set(d)
+
+          @lru_cache(maxsize=1)
+          def evidence():
+              p=Path('data/form-dated-evidence.json')
+              return json.loads(p.read_text()) if p.exists() else {}
+
+          def verified_final_person(race, runner, kind, F):
+              # A URL or source label alone is insufficient. Require exact matching archived
+              # final race and independently reviewed horse, placing, trainer and rider.
+              if kind not in ('trainer','jockey') or race.get('status')!='final':return False
+              if race.get('source')!='Stage V5 independently published result':return False
+              meta=race.get('external_verification') or {}
+              if not meta.get('source_url') or not meta.get('source_race_id'):return False
+              key=lambda r:(str(r.get('date') or '')[:10], F.course_key(r.get('course')), F.off_key(r.get('off_dt') or r.get('race_time') or r.get('off')))
+              def signature(rows):
+                  return sorted((F.horse_key(h.get('horse')),str(h.get('position') or '').upper(),F.person_key(h.get('trainer')),F.person_key(h.get('jockey'))) for h in rows if F.is_starter(h))
+              for original in evidence().get('final_results',[]):
+                  if key(original)!=key(race) or original.get('external_verification')!=meta:continue
+                  a,b=signature(original.get('runners',[])),signature(race.get('runners',[]))
+                  if a!=b or len(a)!=meta.get('starters') or len({x[0] for x in a})!=len(a):return False
+                  entry=(F.horse_key(runner.get('horse')),str(runner.get('position') or '').upper(),F.person_key(runner.get('trainer')),F.person_key(runner.get('jockey')))
+                  return bool(runner.get(kind)) and entry in a
+              return False
+          HELPER_PY
+          cat > .form_v6_install.py <<'INSTALL_PY'
+
           from pathlib import Path
-          import json,py_compile
-          p=Path('data/form-dated-evidence.json');seed=json.loads(Path('.form_dated_seed.json').read_text())
-          if p.exists():
-              existing=json.loads(p.read_text());assert existing['schema']==seed['schema']
-              for key,value in seed['meetings'].items():
-                  assert key not in existing['meetings'] or existing['meetings'][key]==value
-                  existing['meetings'][key]=value
-              for key in ('abandoned','final_results'):
-                  for row in seed[key]:
-                      if row not in existing[key]:existing[key].append(row)
-              seed=existing
-          p.write_text(json.dumps(seed,ensure_ascii=False,indent=2)+'\n')
-          p=Path('scripts/audit_kaggle_form.py');s=p.read_text()
-          def patch(old,new):
-              global s
+          import py_compile
+
+          def patch(path,old,new):
+              p=Path(path);s=p.read_text()
               if new in s:return
-              assert s.count(old)==1,old[:100]
-              s=s.replace(old,new,1)
-          patch('    dash=C.defaultdict(list); known_nr=C.defaultdict(set)','    dash=C.defaultdict(list); known_nr=C.defaultdict(set)\n    unresolved_dash=C.defaultdict(list)\n    from scripts.form_dated_evidence import verified_dash')
-          patch("                problems[day]['unresolved_dash:'+co]+=1", "                verdict=verified_dash(day,co,horse,rid,days[day])\n                if verdict:problems[day]['excluded_verified_nonrunner']+=1\n                else:\n                    problems[day]['unresolved_dash:'+co]+=1\n                    unresolved_dash[day].append({'course_key':co,'horse_key':horse,'source_race_id':rid})")
-          patch('    return days,problems,races,maxdate','    return days,problems,races,maxdate,unresolved_dash')
-          patch('kdays,kissues,kraces,cutoff=fetch_rows(source,start,end)','kdays,kissues,kraces,cutoff,unresolved_dash=fetch_rows(source,start,end)')
-          patch("('excluded_explicit_foreign_course','excluded_redundant_dash_row')", "('excluded_explicit_foreign_course','excluded_redundant_dash_row','excluded_verified_nonrunner')")
-          patch("        r['enriched_pair_conflicts']=len(pair_conflicts)", "        r['unresolved_dash_rows']=unresolved_dash.get(day,[])\n        r['enriched_pair_conflicts']=len(pair_conflicts)")
-          p.write_text(s);py_compile.compile(str(p),doraise=True);py_compile.compile('scripts/form_dated_evidence.py',doraise=True)
-          from scripts.form_dated_evidence import verified_dash
-          # All fields must match independent evidence before treating a dash as a withdrawal.
-          from scripts import stage32_form_rebuild as F
-          e=seed['meetings']['2026-11-16|plumpton']['races'];known={}
-          for i,(winner,n,nr) in enumerate(e):
-              known['plumpton',F.horse_key(winner)]={'race':str(i),'outcome':1}
-              for j in range(n-1):known['plumpton',f'test{i}x{j}']={'race':str(i),'outcome':j+2}
-          assert verified_dash('2026-11-16','plumpton','alanbresil','4',known)=='externally_verified_nonrunner'
-          assert verified_dash('2026-11-16','plumpton','unknownhorse','4',known) is None
-          known.pop(('plumpton','test0x0'));assert verified_dash('2026-11-16','plumpton','alanbresil','4',known) is None
-          print('Dated evidence regression checks passed')
-          PY_PATCH
-          rm .form_dated_seed.json
-          if [ "$AUDIT_ONLY" != true ]; then python -m scripts.form_dated_evidence; fi
-      - name: Check version and compare historical days
+              if s.count(old)!=1:raise RuntimeError(f'Unexpected source version: {path}: {old[:120]}')
+              p.write_text(s.replace(old,new,1))
+
+          A='scripts/audit_kaggle_form.py'; F='scripts/stage32_form_rebuild.py'
+          patch(A, '    for day,records in dash.items():\n        for co,horse,rid in records:', "    from scripts.form_final_evidence import thurles_duplicate\n    for day,records in dash.items():\n        duplicate=thurles_duplicate(day,records,days[day])\n        for co,horse,rid in records:\n            if (co,horse,rid) in duplicate:\n                problems[day]['excluded_verified_duplicate_declaration']+=1\n                continue")
+          patch(A, "('excluded_explicit_foreign_course','excluded_redundant_dash_row','excluded_verified_nonrunner')", "('excluded_explicit_foreign_course','excluded_redundant_dash_row','excluded_verified_nonrunner','excluded_verified_duplicate_declaration')")
+          # The registry is already deployed. Verify a final row before overriding a stale
+          # declaration, and never attach a different person's pre-race ID.
+          for kind in ('trainer','jockey'):
+              old=f"                    elif stage75_approved_result_alias(race, runner, ref, '{kind}'):"
+              new=f"""                    elif verified_dated_final_person(race, runner, '{kind}'):
+                                  if person_key(original_{kind}) != person_key(ref.get('{kind}')):
+                                      {kind}_id=str(runner.get('{kind}_id') or '')
+                                  audit['verified_dated_final_{kind}_preferred'] += 1
+          {old}"""
+              patch(F,old,new)
+          patch(F, 'def get_best_rows(as_of: dt.date, cache: dict, audit: collections.Counter):', 'def verified_dated_final_person(race, runner, kind):\n    # Import lazily to avoid a circular import during startup.\n    import sys\n    try:\n        from scripts.form_final_evidence import verified_final_person\n    except ModuleNotFoundError:\n        from form_final_evidence import verified_final_person\n    return verified_final_person(race,runner,kind,sys.modules[__name__])\n\ndef get_best_rows(as_of: dt.date, cache: dict, audit: collections.Counter):')
+          # Make canonical aliases/claim suffixes equivalent for both regular API and recovered rows.
+          for kind in ('trainer','jockey'):
+              patch(F,f"compact(original_{kind})!=compact(ref['{kind}'])",f"person_key(original_{kind})!=person_key(ref['{kind}'])")
+          # Keep raw archive gaps, but distinguish those already covered by approved Kaggle days.
+          G='scripts/form_coverage_guard.py'
+          patch(G,"        selected=[v for d,v in byday.items() if d>=lower]","        selected=[v for d,v in byday.items() if d>=lower]\n        approved=set(p.get('kaggle_days',[]))\n        effective=[v for d,v in byday.items() if d>=lower and d not in approved]\n        p['effective_form_coverage']={'api_missing_or_ambiguous_races':sum(len(v['missing_or_ambiguous_races']) for v in effective),'api_unresolved_declarations':sum(len(x['declared_horses_without_result_or_withdrawal']) for v in effective for x in v['unresolved_declarations']),'api_unknown_fixture_days':sum(v['fixture_coverage_unknown'] for v in effective),'approved_kaggle_days':sorted(approved),'note':'Approved Kaggle days replace API aggregates; raw archive gaps remain in coverage_guard. External complete fixture census not established.'}")
+          for path in (A,F,G,'scripts/form_final_evidence.py'):py_compile.compile(path,doraise=True)
+          INSTALL_PY
+          python .form_v6_install.py
+          python .form_v6_install.py
+          rm .form_v6_install.py
+          python - <<'TEST_PY'
+          from scripts import form_final_evidence as E, stage32_form_rebuild as F
+          from pathlib import Path
+          from copy import deepcopy
+          import json
+          # Exact declaration and actual starter set must agree; no blanket dash exclusion.
+          known={('thurles',h):{'race':'final-result','outcome':v} for h,v in E.FINISH.items()}
+          rows=[('thurles',h,'949080') for h in E.DECLARED]
+          assert len(E.thurles_duplicate('2026-11-19',rows,known))==14
+          assert not E.thurles_duplicate('2026-11-19',rows[:-1],known)
+          bad=deepcopy(known);bad[('thurles','doctorsteinberg')]['outcome']=2
+          assert not E.thurles_duplicate('2026-11-19',rows,bad)
+          assert not E.thurles_duplicate('2026-11-20',rows,known)
+          registry=json.loads(Path('data/form-dated-evidence.json').read_text())
+          checked=0
+          for r in registry['final_results']:
+              for h in r['runners']:
+                  if not F.is_starter(h):continue
+                  assert E.verified_final_person(r,h,'trainer',F)
+                  assert E.verified_final_person(r,h,'jockey',F)
+                  checked+=1
+              bad=deepcopy(r);bad['runners'][0]['jockey']='Not the verified rider'
+              assert not E.verified_final_person(bad,bad['runners'][0],'jockey',F)
+          assert checked==48, checked
+          print('Exact declaration and 48 final-result identity checks passed.')
+          TEST_PY
+      - name: Compare and approve historical dates
         env:
           VERSION: ${{ inputs.version }}
           AUDIT_ONLY: ${{ inputs.audit_only }}
@@ -162,31 +154,35 @@ jobs:
           if [ -n "$VERSION" ]; then args+=(--version "$VERSION"); fi
           if [ "$AUDIT_ONLY" = true ]; then args+=(--audit-only); fi
           python -m scripts.audit_kaggle_form "${args[@]}"
-      - name: Rebuild form with approved baseline and API bridge
+      - name: Rebuild and verify form counts
         if: ${{ inputs.audit_only != true }}
         run: |
           DAY=$(python -c 'from datetime import datetime,timedelta; from zoneinfo import ZoneInfo; print((datetime.now(ZoneInfo("Europe/Dublin")).date()-timedelta(days=1)).isoformat())')
           python calculate-strike-rates.py --as-of "$DAY" --no-wrapper
-      - name: Retain comparison report even if final rebuild fails
+          python - <<'VERIFY_PY'
+          import json
+          from pathlib import Path
+          x=json.loads(Path('data/strike-rates.json').read_text())
+          for n,p in x['periods'].items():
+              for group,kind,denom in [('trainers','trainer','runs'),('jockeys','jockey','rides')]:
+                  assert sum(z[denom] for z in p[group].values())+p['identity_gaps'][kind]==p['runners'],(n,kind)
+          p=x['periods']['14']; print(json.dumps({'runners':p['runners'],'identity_gaps':p['identity_gaps'],'kaggle_days':p.get('kaggle_days'),'effective_form_coverage':p.get('effective_form_coverage')},indent=2))
+          VERIFY_PY
+      - name: Retain comparison diagnostics
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: kaggle-form-comparison-${{ github.run_id }}
           path: reports/stage32/kaggle-form-comparison.json
           if-no-files-found: warn
-      - name: Publish comparison and approved derived form (no raw Kaggle data)
-        env:
-          AUDIT_ONLY: ${{ inputs.audit_only }}
+      - name: Publish verified form and persistent repair
+        if: ${{ inputs.audit_only != true }}
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add reports/stage32/kaggle-form-comparison.json
-          if [ "$AUDIT_ONLY" != true ]; then
-            git add scripts/form_dated_evidence.py data/form-dated-evidence.json data/rhp-stage72-race-exceptions.json reports/stage32/form-dated-recovery.json data/racing-results/ data/form-person-aliases.json scripts/form_person_aliases.py index.html scripts/kaggle_form_baseline.py scripts/audit_kaggle_form.py scripts/stage32_form_rebuild.py data/strike-rates.json data/form-identity-cache.json reports/stage32/form-rebuild-audit.json
-            if [ -f data/kaggle-form-baseline.json ]; then git add data/kaggle-form-baseline.json; fi
-          fi
+          git add scripts/form_final_evidence.py scripts/audit_kaggle_form.py scripts/stage32_form_rebuild.py scripts/form_coverage_guard.py data/kaggle-form-baseline.json data/strike-rates.json data/form-identity-cache.json reports/stage32/kaggle-form-comparison.json reports/stage32/form-rebuild-audit.json
           if git diff --cached --quiet; then exit 0; fi
-          git commit -m 'Kaggle form V5: dated nonrunner verification and late result recovery'
+          git commit -m 'Form V6: reconcile Thurles declaration duplicate and verified final jockey identities'
           for attempt in 1 2 3 4; do
             if git pull --rebase origin main && git push origin HEAD:main; then exit 0; fi
             git rebase --abort || true
