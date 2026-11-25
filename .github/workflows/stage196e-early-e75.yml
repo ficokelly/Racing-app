@@ -1,0 +1,176 @@
+name: Stage196E - Early four-race E75 paper scoring
+on:
+  workflow_dispatch:
+    inputs:
+      selection_date:
+        description: Dublin date, blank for today
+        required: false
+        default: ''
+  push:
+    branches: [main]
+    paths: ['.github/workflows/stage196e-early-e75.yml']
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage196e-early-e75
+  cancel-in-progress: false
+jobs:
+  combined:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      PYTHONPATH: .:scripts
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned scoring dependencies
+        run: pip install numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2 freezegun==1.5.5 requests 'kagglehub>=0.3,<1'
+      - name: Validate current date and refresh declarations
+        env:
+          ASKED_DATE: ${{ inputs.selection_date }}
+          RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
+          RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
+        run: |
+          set -euo pipefail
+          TODAY="$(TZ=Europe/Dublin date +%F)"
+          TARGET="${ASKED_DATE:-$TODAY}"
+          test "$TARGET" = "$TODAY"
+          test "$TARGET" = "2026-11-25"
+          echo "TARGET_DAY=$TARGET" >> "$GITHUB_ENV"
+          if [ -n "$RACING_API_USERNAME" ] && [ -n "$RACING_API_PASSWORD" ]; then python collect-racecards.py; fi
+      - name: Run exact E75 recipes for four early fields
+        run: |
+          mkdir -p stage196-early-work stage196-early-output
+          cat > stage196-early-work/engine.py <<'PY'
+          import csv,datetime as dt,json,os,pathlib as P,re,subprocess as S,sys,unicodedata,collections as C,sqlite3,hashlib,shutil
+          from zoneinfo import ZoneInfo
+          ROOT=P.Path.cwd(); W=(ROOT/'stage196-early-work').resolve(); O=(ROOT/'stage196-early-output').resolve(); O.mkdir(exist_ok=True); W.mkdir(exist_ok=True)
+          DAY=os.environ['TARGET_DAY']; NOW=lambda:dt.datetime.now(dt.timezone.utc); UTC=dt.timezone.utc
+          pin='a5987838b0e3f28b53686bac60d52cd164738718'; workflow_pin='278c2d1a3065f6b32ae705c68be221f47b201724'
+          def norm(s):return re.sub('[^a-z0-9]','',unicodedata.normalize('NFKD',str(s or '')).encode('ascii','ignore').decode().lower())
+          def horse(s):return norm(re.sub(r'\s*\([A-Za-z]{2,3}\)\s*$','',str(s or '')))
+          def course(s):
+           n=norm(re.sub(r'\s*\((?:AW|GB|IRE|UK)\)\s*$','',str(s or ''),flags=re.I));return {'galwayire':'galway','wexfordire':'wexford','dundalkawire':'dundalk','dundalkire':'dundalk','dundalkaw':'dundalk','fairyhouseire':'fairyhouse','clonmelire':'clonmel','gowranparkire':'gowranpark','kemptonpark':'kempton','chelmsfordcity':'chelmsford','bangor':'bangorondee'}.get(n,n)
+          def stamp(s):
+           t=dt.datetime.fromisoformat(str(s).replace('Z','+00:00'));assert t.tzinfo;return t.astimezone(UTC)
+          def cardkey(r):return (DAY,course(r['course']),stamp(r['race_time']).strftime('%H:%M'))
+          def rowkey(r):return (str(r.get('date','')),course(r.get('course') or r.get('meeting')),str(r.get('time_utc') or r.get('off_utc') or r.get('time') or '')[:5])
+          def dump(p,x):p.write_text(json.dumps(x,indent=2,default=str))
+          def writecsv(p,rows,fields=None):
+           fields=fields or list(dict.fromkeys(k for r in rows for k in r)) or ['date','course','time','status'];
+           with p.open('w',newline='') as f:w=csv.DictWriter(f,fieldnames=fields,extrasaction='ignore');w.writeheader();w.writerows(rows)
+          def git(*args):return S.check_output(['git',*args],text=True)
+          def download(run,name,dest):
+           dest.mkdir(parents=True,exist_ok=True);S.run(['gh','run','download',str(run),'--repo',os.environ['GITHUB_REPOSITORY'],'--name',name,'--dir',str(dest)],check=True,timeout=1200)
+          def exactly(root,name):
+           a=list(root.rglob(name));assert len(a)==1,(root,name,len(a));return a[0].resolve()
+          def extract(workflow,filename):
+           # Extract the complete original Python heredoc verbatim from its immutable workflow revision.
+           text=git('show',workflow_pin+':.github/workflows/'+workflow)
+           pattern=r"(?m)^([ ]*)cat > scripts/"+re.escape(filename)+r" <<'PY'\n([\s\S]*?)^\1PY[ ]*$"
+           m=re.search(pattern,text);assert m,('missing exact adapter',workflow,filename)
+           indent=len(m.group(1));body='\n'.join(x[indent:] if x.startswith(' '*indent) else x for x in m.group(2).splitlines())+'\n';compile(body,filename,'exec');p=ROOT/'scripts'/filename;p.write_text(body);return p
+
+          def run(name,script,args,filename,env=None,label=None):
+           dest=W/name;dest.mkdir(exist_ok=True); record={'family':name,'script':str(script),'status':'FAILED','started':NOW().isoformat()}; result=[]
+           try:
+            command=[sys.executable,'-u',str(script),*map(str,args),'--out',str(dest)];record['command']=command
+            with (O/(name+'.log')).open('w') as f:ret=S.run(command,stdout=f,stderr=S.STDOUT,env={**os.environ,**(env or {})},timeout=7200)
+            if ret.returncode:raise RuntimeError('scorer exit '+str(ret.returncode))
+            with (dest/filename).open(newline='',encoding='utf-8-sig') as f:result=list(csv.DictReader(f))
+            if label:
+             for r in result:r['model']=label
+            if not result:raise RuntimeError('no scorer rows')
+            record.update(status='SUCCESS',rows=len(result),models=sorted({r['model'] for r in result}))
+           except Exception as e:record['error']=repr(e)
+           finally:
+            record['finished']=NOW().isoformat();audit['families'].append(record);dump(O/'audit.json',audit)
+            # Keep the rank output in memory and copy small provenance reports; release private multi-GB scratch files.
+            for report in dest.glob('*audit.json'):
+             if report.stat().st_size<2_000_000:shutil.copy2(report,O/(name+'-'+report.name))
+            shutil.rmtree(dest,ignore_errors=True)
+           return result
+
+          audit={'version':'STAGE196_E75_EARLY','day':DAY,'families':[],'issues':[]}
+          # These files contain no target-day results; use the existing validated source builder once.
+          base=W/'base'; refdir=W/'ref'; download(43089770857,'stage2-historical-staging-database',base);download(43089770857,'stage4-reference-named-events-and-winners',refdir)
+          # The helper recognises the canonical Stage152 source path. Use exactly that path in this disposable checkout.
+          canonical=ROOT/'reports/stage152-specialists/source/stage2';canonical.mkdir(parents=True,exist_ok=True)
+          basefile=exactly(base,'historical_ukie_staging.sqlite');target=canonical/basefile.name;shutil.move(str(basefile),target)
+          reference=exactly(refdir,'all_races_with_reference_event_ids.csv')
+          from stage167_validated_history import refreshed_inputs
+          with refreshed_inputs(target,reference,DAY) as (db0,ref0):
+           db=W/'prior.sqlite';ref=W/'prior-reference.csv';shutil.copy2(db0,db);shutil.copy2(ref0,ref)
+          # The refreshed private database is independent; discard the restored baseline copy to conserve runner disk.
+          target.unlink(missing_ok=True)
+          with sqlite3.connect(db) as c:
+           c.execute('DELETE FROM historical_runs WHERE race_id IN (SELECT id FROM historical_races WHERE race_date>=?)',(DAY,));c.execute('DELETE FROM historical_races WHERE race_date>=?',(DAY,));c.commit();latest=c.execute('SELECT MAX(race_date) FROM historical_races').fetchone()[0];assert latest and latest<DAY
+          ref_tmp=W/'filtered-reference.csv'
+          with ref.open(encoding='utf-8-sig',newline='') as f,ref_tmp.open('w',newline='') as g:
+           rr=csv.DictReader(f);assert 'date' in rr.fieldnames;ww=csv.DictWriter(g,fieldnames=rr.fieldnames);ww.writeheader();ww.writerows(r for r in rr if r['date']<DAY)
+          ref_tmp.replace(ref);audit['history_through']=latest
+          # Use the current HPR ledger, not a later result or a reconstructed target-day rating.
+          hpr=W/'hpr.sqlite';S.run([sys.executable,'scripts/stage87_hpr_storage.py','restore','--dir','data/hpr/shards','--db',str(hpr)],check=True,timeout=1200)
+          # Freeze model source and root imports to original replay commit, while retaining current validated data and Git history.
+          # Keep the current script files outside the source tree for provenance; replace tracked Python code only in this disposable job.
+          paths=git('ls-tree','-r','--name-only',pin).splitlines();frozen=[p for p in paths if p.endswith('.py') and (p.startswith('scripts/') or '/' not in p)]
+          S.run(['git','restore','--source',pin,'--worktree','--',*frozen],check=True)
+          for p in ['data/strategy-historical-model.json','data/strategy-model-b-historical.json','data/strategy-model-c-historical.json','data/roi-racetype-route-map.json','reports/stage30/stage30-summary.json']:
+           if p in paths:S.run(['git','restore','--source',pin,'--worktree','--',p],check=True)
+          extract('stage185a-e75-hpr-replay.yml','stage185a_local_replay.py')
+          targets={('wetherby','12:16'):'E_75_25_WITH_HPR',('hereford','12:31'):'E_75_25_WITH_HPR',('wetherby','12:46'):'E_75_25_NO_HPR',('hereford','13:01'):'E_75_25_WITH_HPR'}
+          # Capture only genuine, fresh declarations for the target day. Remove settlement fields and current price inputs.
+          from rhp_runner_eligibility import active_runner
+          cards=json.loads((ROOT/'data/racecards.json').read_text());collected=stamp(cards['collected_at']);assert 0<= (NOW()-collected).total_seconds()<=4*3600,'Stale or future racecard snapshot'
+          fields=C.defaultdict(list);outcome={'position','finish_pos','result','outcome','sp','sp_decimal','starting_price','beaten','race_result','result_status','overall_beaten','distance_beaten_total'};prices={'odds','price','bookmaker_odds','current_odds','paddypower_decimal','paddy_power_decimal'}
+          for r in cards.get('runners',[]):
+           if str(r.get('date'))!=DAY or not r.get('race_time') or not r.get('horse') or not active_runner(r):continue
+           if norm(r.get('race_status')) in {'finished','resulted','final','completed','abandoned','cancelled','canceled','void'}:continue
+           if any(r.get(k) not in (None,'',[],{}) for k in outcome):continue
+           if cardkey(r)[1:] not in targets or stamp(r['race_time'])<=NOW()+dt.timedelta(minutes=2):continue
+           fields[cardkey(r)].append({k:v for k,v in r.items() if k not in outcome|prices})
+          fields={k:v for k,v in fields.items() if len(v)>=2 and len({horse(r['horse']) for r in v})==len(v)};assert fields,'No verified remaining fields'
+          cardpath=W/'cards.json';dump(cardpath,dict(cards,runners=[r for v in fields.values() for r in v]));audit.update(card_asof=collected.isoformat(),remaining_fields=len(fields));dump(O/'audit.json',audit)
+          common=['today','--db',db,'--reference',ref,'--cards',cardpath,'--date',DAY]
+          raw=run('E75','scripts/stage185a_local_replay.py',[*common,'--hpr',hpr],'stage185a-all-runners.csv')
+          results=[]
+          for (coursekey,time),model in targets.items():
+           k=(DAY,coursekey,time); v=fields.get(k,[]); result=dict(date=DAY,course=coursekey,time=time,model=model,rank1='',rank2='',status='NO_VALID_PREOFF_FIELD',published_at=NOW().isoformat())
+           if v:
+            result['course']=v[0]['course']; result['status']='NO_EXACT_MODEL_OUTPUT'
+            if stamp(v[0]['race_time'])<=NOW()+dt.timedelta(minutes=2):result['status']='RACE_OFF_OR_IMMINENT_AT_PUBLICATION'
+            else:
+             rows=[r for r in raw if rowkey(r)==k and r.get('model')==model]
+             if rows:
+              try:
+               ordered=sorted(rows,key=lambda r:int(float(r['rank'])));expected={horse(r['horse']) for r in v}
+               assert len(ordered)==len(expected) and [int(float(r['rank'])) for r in ordered]==list(range(1,len(expected)+1)) and {horse(r['horse']) for r in ordered}==expected
+               result.update(rank1=ordered[0]['horse'],rank2=ordered[1]['horse'],status='PAPER_SELECTION')
+              except (AssertionError,KeyError,ValueError,TypeError):result['status']='FIELD_OR_RANK_MISMATCH'
+           results.append(result)
+          writecsv(O/'early-e75-selections.csv',results);audit['coverage']=dict(C.Counter(r['status'] for r in results));dump(O/'audit.json',audit)
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
+           f.write('# Early E75 paper selections\n\n|Time|Course|Model|Rank 1|Rank 2|Status|\n|---|---|---|---|---|---|\n')
+           for r in results:f.write('| '+' | '.join(str(r[k]) for k in ('time','course','model','rank1','rank2','status'))+' |\n')
+          print(json.dumps(results,indent=2),flush=True)
+          assert any(r['status']=='PAPER_SELECTION' for r in results),'No verified pre-off selections'
+          PY
+          python -m py_compile stage196-early-work/engine.py
+          python -u stage196-early-work/engine.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage196e-early-e75-${{ github.run_id }}
+          path: stage196-early-output/
+          retention-days: 14
+          if-no-files-found: warn
