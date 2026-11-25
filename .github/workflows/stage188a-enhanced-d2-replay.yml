@@ -1,0 +1,246 @@
+name: Stage188a - Enhanced D2 frozen Stage51 rank1 replay
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/stage188a-enhanced-d2-replay.yml']
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage188a-enhanced-d2-research
+  cancel-in-progress: false
+env:
+  PYTHONPATH: .:scripts
+  PYTHONUNBUFFERED: '1'
+  OPENBLAS_NUM_THREADS: '1'
+  OMP_NUM_THREADS: '1'
+  MKL_NUM_THREADS: '1'
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    outputs:
+      days: ${{ steps.days.outputs.days }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: a5987838b0e3f28b53686bac60d52cd164738718
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - id: days
+        run: |
+          python - <<'PY'
+          import datetime as d,json,os
+          days=[(d.date(2026,10,25)+d.timedelta(days=i)).isoformat() for i in range(30)]
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:print('days='+json.dumps(days,separators=(',',':')),file=f)
+          PY
+  score:
+    needs: prepare
+    name: ${{ matrix.day }} / Enhanced D2
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        day: ${{ fromJSON(needs.prepare.outputs.days) }}
+    env:
+      DAY: ${{ matrix.day }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: a5987838b0e3f28b53686bac60d52cd164738718
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage177-shared-inputs
+          run-id: 45491296882
+          github-token: ${{ github.token }}
+          path: reports/stage177/shared
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage177-shared-db
+          run-id: 45491296882
+          github-token: ${{ github.token }}
+          path: reports/stage177/shared
+      - name: Install exact scoring dependencies
+        run: python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2 freezegun==1.5.5 requests
+      - name: Restore original 2025 profiles and install isolated Stage51 adapter
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p restore50 restore51
+          gh run download 42107290218 --repo "$GITHUB_REPOSITORY" --name stage50-model-d2-optimisation --dir restore50
+          gh run download 42111552889 --repo "$GITHUB_REPOSITORY" --name stage51-model-d2-form-enhancements --dir restore51
+          cat > scripts/stage188a_local_replay.py <<'PY'
+          import argparse,pathlib,json,re,collections,datetime as dt
+          import numpy as np
+          import stage141_today_or_weight_paper as L
+          from stage51_model_d2_form_enhancements import METRICS, FEATURES
+          from stage30_gap_aware_abcd import normal
+          from freezegun import freeze_time
+          p=argparse.ArgumentParser();p.add_argument('command');p.add_argument('--date');p.add_argument('--db',type=pathlib.Path);p.add_argument('--reference',type=pathlib.Path);p.add_argument('--cards',type=pathlib.Path);p.add_argument('--out',type=pathlib.Path);args=p.parse_args()
+          def exactly_one(root,name):
+              matches=list(pathlib.Path(root).rglob(name));assert len(matches)==1,(root,name,matches);return json.loads(matches[0].read_text())
+          weights=exactly_one('restore50','stage50_d2_summary.json');enhanced=exactly_one('restore51','stage51_summary.json')
+          assert weights['status']==enhanced['status']=='RESEARCH_ONLY' and weights['live_model_unchanged'] and enhanced['live_model_unchanged']
+          assert enhanced['features_tested']==FEATURES and '2025 select enhancement strength' in enhanced['method']
+          profiles={}
+          def alpha(label):
+              v=np.zeros(4)
+              if label=='no_enhancement':return v
+              key,value=label.rsplit('_',1);a=float(value)
+              if key=='all':assert a in (.1,.3);return np.ones(4)*a
+              fields=key.split('+');assert all(f in FEATURES for f in fields)
+              assert len(fields) in (1,2) and a in ((.05,.15,.3,.6) if len(fields)==1 else (.1,.3))
+              for f in fields:v[FEATURES.index(f)]=a
+              return v
+          for row in enhanced['results']:
+              if row['strategy']!='rank1':continue
+              k=row['discipline'];w=np.array([weights['results'][k+'|rank1']['weights_pct'][f]/100 for f in METRICS]);assert np.isfinite(w).all() and min(w)>=0 and abs(w.sum()-1)<.002
+              profiles[k]=(w,alpha(row['selected_2025']))
+          assert 'all' in profiles
+          cards,ca=L.today_cards(args.cards,args.date);assert cards
+          scratch,ref,latest=L._scratch_archive_original(args.db,args.reference,cards,args.date,args.out);assert latest<args.date
+          # Preserve original Stage51 counters and feature functions; only change date cursor and record identity.
+          source=pathlib.Path('scripts/stage51_model_d2_form_enhancements.py').read_text();prefix=source.split('def metric_enhanced(')[0]
+          assert prefix.count("if str(g[0][1])>='2025-01-01':")==1 and prefix.count("('2026-11-03',)")==1 and prefix.count("out.append(dict(date=r['date'],")==1
+          prefix=prefix.replace("if str(g[0][1])>='2025-01-01':","if str(g[0][1])==TARGET:").replace("('2026-11-03',)","(TARGET,)").replace("out.append(dict(date=r['date'],","out.append(dict(race_id=g[0][0],horses=[z[9] for z in starters],date=r['date'],")
+          # The current day is never included in past.update; Stage51's pending day is not flushed after the last race.
+          assert 'finish(group);cx.close()' in prefix
+          ns={'__name__':'stage188a_stage51_adapter','TARGET':args.date};exec(compile(prefix,'stage51-prior-only-adapter','exec'),ns)
+          races=ns['load'](scratch);bycard={r['id']:r for r in cards};rows=[]
+          for r in races:
+              rid=r['race_id'];assert str(r['date'])==args.date and rid in bycard
+              c=bycard[rid];assert len(r['horses'])==r['n']==len(c['field']) and set(r['horses'])=={h['horse'] for h in c['field']}
+              for model,profile in [('D2_ENHANCED_ALL','all'),('D2_ENHANCED_DISCIPLINE',r['kind']),('D2_ENHANCED_SUBTYPE',r['subtype'])]:
+                  if profile not in profiles:continue
+                  w,a=profiles[profile];active=w.copy();active[4 if r['kind']=='jumps' else 7]=0;active/=max(active.sum(),1e-9)
+                  scores=r['x']@active+r['extra']@a;assert np.isfinite(scores).all()
+                  for rank,i in enumerate(np.argsort(-scores,kind='stable'),1):
+                      rows.append(dict(date=args.date,time_utc=c['off'].strftime('%H:%M'),meeting=c['course'],race_id=rid,race_type=r['subtype'],discipline=r['kind'],model=model,rank=rank,horse=r['horses'][i],score=float(scores[i]),profile=profile))
+          assert rows
+          L.csvwrite(args.out/'stage188a-all-runners.csv',rows)
+          (args.out/'stage188a-audit.json').write_text(json.dumps(dict(trained_through='2025-12-31',historical_source_through=latest,models=sorted({r['model'] for r in rows}),source='ORIGINAL_STAGE50_AND_STAGE51_2025_CONFIG'),indent=2))
+          PY
+          python -m py_compile scripts/stage188a_local_replay.py
+      - name: Replay original Stage51 enhanced D2 recipes on frozen pre-off inputs
+        run: |
+          python - <<'PY'
+          import collections as C,csv,datetime as D,hashlib,json,os,pathlib as P,re,sqlite3,subprocess as S,sys,unicodedata,tempfile,shutil
+          DAY=os.environ['DAY'];B=P.Path('reports/stage177/shared').resolve();O=P.Path('reports/stage188a/score').resolve();O.mkdir(parents=True,exist_ok=True)
+          def read(p):return json.loads(p.read_text())
+          def norm(s):return re.sub('[^a-z0-9]','',unicodedata.normalize('NFKD',str(s or '')).encode('ascii','ignore').decode().lower())
+          def horse(s):return norm(re.sub(r'\s*\([A-Za-z]{2,3}\)\s*$','',str(s or '')))
+          def course(s):
+           n=norm(re.sub(r'\s*\((?:AW|GB|IRE)\)\s*$','',str(s or ''),flags=re.I));return {'galwayire':'galway','wexfordire':'wexford','dundalkawire':'dundalk','dundalkire':'dundalk','dundalkaw':'dundalk','fairyhouseire':'fairyhouse','clonmelire':'clonmel','gowranparkire':'gowranpark','kemptonpark':'kempton','chelmsfordcity':'chelmsford','bangor':'bangorondee'}.get(n,n)
+          def digest(p):
+           with p.open('rb') as f:return hashlib.file_digest(f,'sha256').hexdigest()
+          cols=['date','course','time','model','horse','race_type','discipline','basis','source_asof','cutoff','batch'];out=[];audit={'date':DAY,'status':'STARTED','batches':[]}
+          def save():
+           (O/'audit.json').write_text(json.dumps(audit,indent=2));
+           with (O/'rank1.csv').open('w',newline='') as f:w=csv.DictWriter(f,fieldnames=cols);w.writeheader();w.writerows(out)
+          try:
+           manifest=read(B/'history-manifest.json');db=B/'candidate.sqlite';assert digest(db)==manifest['database_sha256'] and digest(B/'candidate-reference.csv')==manifest['reference_sha256']
+           batches=read(B/(DAY+'-batches.json'))
+           with sqlite3.connect(db) as c:
+            c.execute('delete from historical_runs where race_id in (select id from historical_races where race_date>=?)',(DAY,));c.execute('delete from historical_races where race_date>=?',(DAY,));c.commit();assert c.execute('select max(race_date) from historical_races').fetchone()[0]<DAY
+           with tempfile.TemporaryDirectory() as td:
+            T=P.Path(td);ref=T/'prior-reference.csv'
+            with (B/'candidate-reference.csv').open(encoding='utf-8-sig',newline='') as f,ref.open('w',newline='') as g:
+             r=csv.DictReader(f);w=csv.DictWriter(g,fieldnames=r.fieldnames);w.writeheader();w.writerows(x for x in r if x['date']<DAY)
+            wrapper=T/'clock.py';wrapper.write_text('import sys,runpy\nfrom freezegun import freeze_time\nclock,script,*args=sys.argv[1:]\nsys.argv=[script,*args]\nwith freeze_time(clock,real_asyncio=True):\n runpy.run_path(script,run_name="__main__")\n')
+            for b in batches:
+             bid=b['batch'];work=T/bid;work.mkdir();rep={'batch':bid,'status':'FAILED'};meta={tuple(x['key']):x for x in b['races']};seen=set();exclude=C.Counter()
+             try:
+              args=[sys.executable,str(wrapper),b['cutoff'],str(P.Path('scripts/stage188a_local_replay.py').resolve()),'today','--db',str(db),'--reference',str(ref),'--cards',str(B/(bid+'.json')),'--date',DAY,'--out',str(work)]
+              with (O/(bid+'.log')).open('w') as f:rc=S.run(args,stdout=f,stderr=S.STDOUT,timeout=6000).returncode
+              assert rc==0,'Scorer failed: '+str(rc)
+              sa=read(work/'stage188a-audit.json');assert sa['trained_through']=='2025-12-31' and sa['historical_source_through']<DAY
+              raw=list(csv.DictReader((work/'stage188a-all-runners.csv').open()));groups=C.defaultdict(list)
+              for r in raw:groups[((r['date'],course(r['meeting']),r['time_utc']),r['model'])].append(r)
+              for (k,model),rs in groups.items():
+               if k not in meta:exclude['unmatched_race']+=1;continue
+               m=meta[k];top=[r for r in rs if r['rank']=='1'];declared=set(m['declared_horses'])
+               if len(top)!=1 or len(rs)!=len(declared) or {horse(r['horse']) for r in rs}!=declared:exclude['incomplete_field_or_rank']+=1;continue
+               r=top[0];assert (k,model) not in seen;seen.add((k,model))
+               out.append(dict(date=k[0],course=k[1],time=k[2],model=r['model'],horse=r['horse'],race_type=r['race_type'],discipline=r['discipline'],basis='STAGE51_ORIGINAL_2025_ENHANCEMENTS_PREOFF_ADAPTER',source_asof=m['source_asof'],cutoff=b['cutoff'],batch=bid))
+              rep.update(status='SCORED' if seen else 'NO_ACCEPTED_RANK1',rank1=len(seen),excluded=dict(exclude),scheduled=len(meta))
+             except Exception as e:rep['error']=repr(e)
+             finally:audit['batches'].append(rep);save();shutil.rmtree(work,ignore_errors=True)
+           audit['status']='COMPLETE' if batches and all(x['status']=='SCORED' for x in audit['batches']) else 'PARTIAL_OR_FAILED';save();print('STAGE188A_SCORE',json.dumps(audit),flush=True)
+          except Exception as e:audit.update(status='FAILED',error=repr(e));save();raise
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage188a-ranks-${{ matrix.day }}
+          path: reports/stage188a/score/
+          if-no-files-found: error
+          retention-days: 14
+  compare:
+    needs: [prepare,score]
+    if: always() && needs.prepare.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage177-shared-inputs
+          run-id: 45491296882
+          github-token: ${{ github.token }}
+          path: shared
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: stage188a-ranks-*
+          path: results
+          merge-multiple: false
+      - name: Settle rank1 with the same Stage177b prices; report coverage and common cohorts
+        run: |
+          python - <<'PY'
+          import collections as C,csv,json,pathlib as P,re,unicodedata
+          out=P.Path('summary');out.mkdir(exist_ok=True)
+          def horse(s):return re.sub('[^a-z0-9]','',unicodedata.normalize('NFKD',re.sub(r'\s*\((?:IRE|GB|FR|USA|GER|AUS|NZ|ITY|JPN)\)\s*$','',str(s or ''),flags=re.I)).encode('ascii','ignore').decode().lower())
+          def key(r):return (r['date'],r['course'],r['time'])
+          def write(name,rs):
+           p=out/name
+           if not rs:p.write_text('');return
+           with p.open('w',newline='') as f:w=csv.DictWriter(f,fieldnames=list(dict.fromkeys(k for r in rs for k in r)));w.writeheader();w.writerows(rs)
+          s={key(x):x for x in json.loads(P.Path('shared/settlement-prices.json').read_text())};rows=[];seen=set();audits=[]
+          for p in P.Path('results').rglob('audit.json'):audits.append(json.loads(p.read_text()))
+          for p in P.Path('results').rglob('rank1.csv'):
+           for r in csv.DictReader(p.open()):
+            k=key(r);mk=(k,r['model']);assert mk not in seen;seen.add(mk)
+            status='NO_RESULT';won=None;pnl=None
+            if k in s:
+             v=s[k];h=horse(r['horse']);starter={horse(x['horse']) for x in v['starters']};nr={horse(x) for x in v['declared_nonrunners']};wins={horse(x['horse']):x['sp_decimal'] for x in v['winner_prices']}
+             if h not in starter:status='VOID_NR' if h in nr else 'UNMATCHED'
+             else:
+              status='SETTLED';won=int(h in wins)
+              if wins and not v['price_conflicts'] and all(x is not None for x in wins.values()):pnl=float(wins[h])/len(wins)-1 if won else -1.
+            rows.append(dict(r,status=status,won=won,pnl=pnl))
+          def metric(rs):
+           settled=[r for r in rs if r['status']=='SETTLED'];priced=[r for r in settled if r['pnl'] is not None];wins=sum(r['won'] for r in settled);profit=sum(r['pnl'] for r in priced)
+           return {'selections':len(rs),'settled':len(settled),'wins':wins,'strike_rate_pct':round(100*wins/len(settled),4) if settled else None,'priced':len(priced),'pnl_units':round(profit,4),'roi_pct':round(100*profit/len(priced),4) if priced else None,'excluded_or_void':len(rs)-len(settled)}
+          groups=C.defaultdict(list)
+          for r in rows:
+           for dimension,value in [('overall','all'),('day',r['date']),('discipline',r['discipline']),('race_type',r['race_type'])]:groups[(r['model'],dimension,value)].append(r)
+          metrics=[dict(model=m,dimension=d,value=v,**metric(rs)) for (m,d,v),rs in sorted(groups.items())]
+          write('rank1-settlement.csv',rows);write('model-performance.csv',metrics)
+          report={'status':'RESEARCH_ONLY_NOT_ROUTING_CERTIFIED','period':['2026-10-25','2026-11-23'],'expected_days':30,'reported_days':len({a['date'] for a in audits}),'day_status':dict(C.Counter(a['status'] for a in audits)),'overall':[x for x in metrics if x['dimension']=='overall'],'limitations':['Frozen 2025 Stage50 weights and Stage51 enhancements, preoff synthetic field extraction with prior-day-only stats; no original live parity claim.','No production change. Missing fields and failed batches excluded.']}
+          (out/'report.json').write_text(json.dumps(report,indent=2));(out/'day-audits.json').write_text(json.dumps(audits,indent=2));print('STAGE188A_REPORT',json.dumps(report),flush=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage188a-enhanced-d2-comparison
+          path: summary/
+          if-no-files-found: error
+          retention-days: 30
