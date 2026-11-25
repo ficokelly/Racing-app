@@ -1,0 +1,128 @@
+name: Stage189c - Master comparison of completed frozen model replays
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/stage189c-master-with-e92.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pandas==2.2.3
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage177-30day-comparison
+          run-id: 45491296882
+          github-token: ${{ github.token }}
+          path: inputs/stage177-30day-comparison
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage183-d-d2-comparison
+          run-id: 45517401663
+          github-token: ${{ github.token }}
+          path: inputs/stage183-d-d2-comparison
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage184a-g-family-comparison
+          run-id: 45527320989
+          github-token: ${{ github.token }}
+          path: inputs/stage184a-g-family-comparison
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage185a-e75-hpr-comparison
+          run-id: 45528653138
+          github-token: ${{ github.token }}
+          path: inputs/stage185a-e75-hpr-comparison
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage186a-d142-long-form-comparison
+          run-id: 45525288055
+          github-token: ${{ github.token }}
+          path: inputs/stage186a-d142-long-form-comparison
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage186b-remaining-specialists-comparison
+          run-id: 45527321044
+          github-token: ${{ github.token }}
+          path: inputs/stage186b-remaining-specialists-comparison
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage186c-d137-d138-comparison
+          run-id: 45528801699
+          github-token: ${{ github.token }}
+          path: inputs/stage186c-d137-d138-comparison
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage188a-enhanced-d2-comparison
+          run-id: 45527321046
+          github-token: ${{ github.token }}
+          path: inputs/stage188a-enhanced-d2-comparison
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage185b-e92-presets-comparison
+          run-id: 45574519783
+          github-token: ${{ github.token }}
+          path: inputs/stage185b-e92-presets-comparison
+      - name: Canonical race key join and frozen route evaluation
+        run: |
+          cat > "$RUNNER_TEMP/master.py" <<'PY'
+          import pandas as pd, pathlib as P, json, argparse, zipfile
+          p=argparse.ArgumentParser();p.add_argument('--input',type=P.Path,required=True);p.add_argument('--out',type=P.Path,required=True);a=p.parse_args();a.out.mkdir(parents=True,exist_ok=True)
+          keys=['date','course','time']; groups=[]; sources=[]
+          for path in sorted(a.input.rglob('*.zip')):
+           with zipfile.ZipFile(path) as z:
+            for name in ('underlying-rank1-settlement.csv','rank1-settlement.csv'):
+             if name in z.namelist():
+              d=pd.read_csv(z.open(name),dtype={'date':str,'course':str,'time':str});d['source']=path.stem;groups.append(d);sources.append((path.stem,len(d)));break
+          for path in sorted(a.input.rglob('*settlement.csv')):
+           if path.name not in ('underlying-rank1-settlement.csv','rank1-settlement.csv'):continue
+           d=pd.read_csv(path,dtype={'date':str,'course':str,'time':str});d['source']=path.parent.name;groups.append(d);sources.append((path.parent.name,len(d)))
+          assert groups
+          base=[d for d in groups if 'version' in d and (d.version=='UNDERLYING').all()];assert len(base)==1
+          b=base[0];assert len(b)==15479 and b.model.nunique()==19
+          assert not b.duplicated(keys+['model']).any()
+          assert (b.groupby(keys).race_type.nunique()==1).all() and (b.groupby(keys).discipline.nunique()==1).all()
+          canon=b[keys+['race_type','discipline']].drop_duplicates();assert len(canon)==907
+          all_data=pd.concat(groups,ignore_index=True);all_data=all_data[all_data.date.between('2026-10-25','2026-11-23')].copy();assert not all_data.duplicated(keys+['model']).any(), 'duplicate model/race rows'
+          all_data=all_data.rename(columns={'race_type':'source_race_type','discipline':'source_discipline'}).merge(canon,on=keys,how='left',validate='many_to_one')
+          all_data['classified']=all_data.race_type.notna();all_data['outlier_race']=(all_data.date=='2026-11-19')&(all_data.course=='lingfield')&(all_data.time=='12:18')
+          all_data['settled']=all_data.status.eq('SETTLED');all_data['wins']=all_data.won.fillna(0).where(all_data.settled,0);all_data['priced']=all_data.settled&all_data.pnl.notna();all_data['profit']=all_data.pnl.where(all_data.priced,0).fillna(0)
+          # Verify price/settlement parity for identical horses, quarantine conflicting observations before routing.
+          all_data['horse_key']=all_data.horse.astype(str).str.lower().str.replace(r'\s*\([a-z]{2,3}\)$','',regex=True).str.replace(r'[^a-z0-9]','',regex=True)
+          settled=all_data[all_data.settled]; conflicts=settled.groupby(keys+['horse_key']).agg(w=('won','nunique'),pmin=('pnl','min'),pmax=('pnl','max')).reset_index();conflicts=conflicts[(conflicts.w>1)|((conflicts.pmax-conflicts.pmin).abs()>0.00001)]
+          conflicts.to_csv(a.out/'settlement-conflicts.csv',index=False)
+          all_data=all_data.merge(conflicts[keys+['horse_key']].assign(settlement_conflict=True),on=keys+['horse_key'],how='left',validate='many_to_one');all_data['settlement_conflict']=all_data.settlement_conflict.fillna(False).astype(bool)
+          all_data.to_csv(a.out/'all-model-rank1.csv',index=False)
+          def metric(d,k):
+           m=d.groupby(k,dropna=False,as_index=False).agg(selections=('model','size'),settled=('settled','sum'),wins=('wins','sum'),priced=('priced','sum'),profit_units=('profit','sum'));m['strike_rate_pct']=100*m.wins/m.settled.where(m.settled>0);m['roi_pct']=100*m.profit_units/m.priced.where(m.priced>0);return m
+          usable=all_data[~all_data.settlement_conflict].copy()
+          for label,x in [('all',usable),('exclude_200_1',usable[~usable.outlier_race])]:
+           for dim,cols in [('overall',['model']),('day',['model','date']),('discipline',['model','discipline']),('race-type',['model','race_type'])]:metric(x,cols).to_csv(a.out/f'{label}-{dim}.csv',index=False)
+          route=usable[usable.classified&~usable.outlier_race&~usable.model.eq('D_FROZEN_GATE')].copy();base_names=set(b.model)
+          def choose(d,mins=1):
+           m=metric(d,['race_type','model']);m=m[(m.priced>=mins)];return m.sort_values(['race_type','roi_pct','strike_rate_pct','settled','model'],ascending=[True,False,False,False,True]).drop_duplicates('race_type')
+          results=[]
+          for label,pop in [('frozen_v5',route[route.model.isin(base_names)]),('expanded',route)]:
+           for minimum in [1,5,10,20,30]:
+            for mode,train,test in [('in_sample',pop,pop),('chronological',pop[pop.date<'2026-11-09'],pop[pop.date>='2026-11-09'])]:
+             best=choose(train,minimum);best.to_csv(a.out/f'{label}-{mode}-min{minimum}-routes.csv',index=False)
+             r=test.merge(best[['race_type','model']],on=['race_type','model'],validate='many_to_one');r.to_csv(a.out/f'{label}-{mode}-min{minimum}-selections.csv',index=False)
+             n=int(r.settled.sum());w=int(r.wins.sum());priced=int(r.priced.sum());profit=float(r.profit.sum());results.append(dict(population=label,evaluation=mode,minimum_priced_training=minimum,routes=len(best),selections=len(r),settled=n,wins=w,priced=priced,profit_units=profit,sr=100*w/n if n else None,roi=100*profit/priced if priced else None))
+          report={'status':'PROVISIONAL_RESEARCH_NOT_ROUTING_CERTIFIED','sources':sources,'model_count':int(all_data.model.nunique()),'rows':len(all_data),'canonical_races':907,'unclassified_rows':int((~all_data.classified).sum()),'settlement_conflicts':len(conflicts),'results':results,'limitations':['Stage177b frozen history excludes later Stage182 recoveries; input history intentionally unchanged for comparison.','Exact legacy, G4 challengers, adaptive E V2/F, D138 incomplete; do not publish routing.','All routes use only shared Stage177b canonical classification; unmatched keys retained for overall coverage, excluded from route fitting.','In-sample routing is optimistic; chronological split is retrospective, not a genuinely unseen prospective test.','D_FROZEN_GATE excluded from all-race routing; published archive results compared separately.']}
+          (a.out/'report.json').write_text(json.dumps(report,indent=2));pd.DataFrame(results).to_csv(a.out/'routing-sensitivity.csv',index=False);print(json.dumps(report,indent=2))
+          PY
+          python "$RUNNER_TEMP/master.py" --input inputs --out summary
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage189c-master-comparison
+          path: summary/
+          retention-days: 90
+          if-no-files-found: error
