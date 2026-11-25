@@ -1,0 +1,272 @@
+name: Stage197 - Complete odds history and interactive graphs
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: rhp-stage162-odds-publisher
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Patch chart archive and app
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/stage197_patch.py <<'PY'
+          from pathlib import Path
+          import re
+          
+          def once(s, old, new):
+              if s.count(old) != 1:
+                  raise RuntimeError(f'Expected exactly one patch anchor: {old[:110]} (found {s.count(old)})')
+              return s.replace(old, new, 1)
+          
+          archive = Path('archive-odds-history.py')
+          a = archive.read_text()
+          if 'def publish_chart_history():' not in a:
+              addition = '''
+          # Stage197: compact display history from raw archive plus live snapshots.
+          def publish_chart_history():
+              from math import isfinite
+              from zoneinfo import ZoneInfo
+              now = datetime.now(timezone.utc)
+              dublin = ZoneInfo('Europe/Dublin')
+              today = now.astimezone(dublin).date()
+              race_days = {(today + timedelta(days=n)).isoformat() for n in (-1, 0, 1)}
+              groups = {}
+              def ingest(snapshots):
+                  for snap in snapshots:
+                      if not isinstance(snap, dict):
+                          continue
+                      for p in snap.get('prices', []):
+                          if not isinstance(p, dict) or p.get('stale') is True:
+                              continue
+                          rid, horse, course, off, book = (p.get(k) for k in ('race_id', 'horse', 'course', 'race_time', 'bookmaker'))
+                          if not all((rid, horse, course, off, book)):
+                              continue
+                          off_dt = timestamp(off)
+                          at = timestamp(p.get('collected_at') or snap.get('collected_at'))
+                          if at.year < 2000 or off_dt.year < 2000 or at > off_dt:
+                              continue
+                          race_day = off_dt.astimezone(dublin).date().isoformat()
+                          if race_day not in race_days:
+                              continue
+                          try:
+                              od = float(p.get('decimal_odds'))
+                          except (TypeError, ValueError):
+                              continue
+                          if not isfinite(od) or od <= 1:
+                              continue
+                          k = (race_day, str(rid), str(horse), str(course), str(book), str(off))
+                          if k not in groups:
+                              groups[k] = {'race_id': rid, 'horse': horse, 'course': course, 'race_time': off, 'bookmaker': book, 'points': {}}
+                          groups[k]['points'][int(at.timestamp() * 1000)] = od
+              # Five collection dates cover the day before each displayed race date
+              # (including midnight/DST boundaries) and earlier available quotes.
+              for n in range(4, -1, -1):
+                  day = (now.date() - timedelta(days=n)).isoformat()
+                  for path in sorted(ARCHIVE.glob(f'{day}-part-*.json')):
+                      ingest(json.loads(path.read_text(encoding='utf-8')))
+              ingest(json.loads(LIVE.read_text(encoding='utf-8')))
+              series = []
+              for group in groups.values():
+                  group['points'] = sorted(group['points'].items())
+                  series.append(group)
+              if not series:
+                  raise RuntimeError('No valid chart observations; refusing to publish empty compact history')
+              write_json(ARCHIVE / 'chart-history.json', {'version': 1, 'generated_at': now.isoformat(), 'race_days': sorted(race_days), 'series': series})
+              print(f'Chart history: {len(series)} series; {sum(len(s["points"]) for s in series)} observations')
+          '''
+              a = once(a, '\ndef main():', addition + '\n\ndef main():')
+              a = once(a, '    write_json(LIVE, history)\n', '    write_json(LIVE, history)\n    try:\n        publish_chart_history()\n    except Exception as exc:\n        print(f\"::warning::Chart history refresh failed; preserving latest odds: {exc}\")\n')
+              compile(a, str(archive), 'exec')
+              archive.write_text(a)
+          
+          app = Path('index.html')
+          s = app.read_text()
+          if 'Stage197: complete chart history' not in s:
+              # Keep the existing odds collection schedule and latest quote feed.
+              # Only the chart/market history uses the compact archive.
+              helpers = r'''
+          // Stage197: complete chart history; raw archives remain authoritative.
+          let rhpChartHistoryReady=false;
+          function rhpChartKey(p){
+           const day=dateKey(p.race_time),course=courseMatchKey(p.course),horse=horseMatchKey(p.horse);
+           const book=bookName(p.bookmaker).toLowerCase().replace(/[^a-z0-9]/g,'');
+           return day&&course&&horse&&book?JSON.stringify([day,course,horse,book]):key(p);
+          }
+          function rhpDecodeChartHistory(j){
+           if(j?.version!==1||!Array.isArray(j.series)||!j.series.length||!Array.isArray(j.race_days)||!j.race_days.includes(marketDateFor('today')))throw Error('Invalid or out-of-date chart history');
+           const snaps=new Map();
+           for(const {points,...meta} of j.series){
+            if(!Array.isArray(points))continue;
+            for(const [ms,od] of points){
+             if(!Number.isFinite(ms)||!Number.isFinite(od)||od<=1||ms>Date.parse(meta.race_time))continue;
+             let snap=snaps.get(ms);
+             if(!snap){snap={collected_at:new Date(ms).toISOString(),prices:[]};snaps.set(ms,snap);}
+             snap.prices.push({...meta,decimal_odds:od,collected_at:snap.collected_at});
+            }
+           }
+           if(!snaps.size)throw Error('Empty chart history');
+           return [...snaps.entries()].sort((a,b)=>a[0]-b[0]).map(x=>x[1]);
+          }
+          async function rhpFetchChartHistory(q){
+           for(const base of [RHP_FAST_ODDS_BASE,'./data/']){
+            try{const data=await rhpFetchTimed(base+'odds-archive/chart-history.json'+q);return rhpDecodeChartHistory(data);}catch(e){}
+           }
+           return null;
+          }
+          function rhpMergeChartHistory(older,newer){
+           // Prefer newer/full snapshots with the same collection millisecond.
+           const merged=new Map();
+           for(const snap of [...(older||[]),...(newer||[])]){
+            const ms=Date.parse(snap?.collected_at);if(!Number.isFinite(ms)||!Array.isArray(snap.prices))continue;
+            const prior=merged.get(ms);
+            if(!prior){merged.set(ms,snap);continue;}
+            const quotes=new Map(prior.prices.filter(Boolean).map(p=>[rhpChartKey(p),p]));
+            for(const p of snap.prices)if(p&&p.stale!==true)quotes.set(rhpChartKey(p),p);
+            merged.set(ms,{...snap,prices:[...quotes.values()]});
+           }
+           return [...merged.entries()].sort((a,b)=>a[0]-b[0]).map(x=>x[1]);
+          }
+          function rhpOddsInteractivePlot(raw,options={}){
+           const pts=(raw||[]).filter(p=>Number.isFinite(p.od)&&p.od>1&&Number.isFinite(Date.parse(p.at))).sort((a,b)=>Date.parse(a.at)-Date.parse(b.at));
+           if(!pts.length)return '<p class="hint">No saved observations yet.</p>';
+           const w=330,h=116,left=12,right=318,top=12,bottom=76;
+           const lo=Math.min(...pts.map(p=>p.od)),hi=Math.max(...pts.map(p=>p.od)),t0=Date.parse(pts[0].at),t1=Date.parse(pts[pts.length-1].at);
+           const xy=pts.map(p=>[t1===t0?(left+right)/2:left+(Date.parse(p.at)-t0)/(t1-t0)*(right-left),hi===lo?(top+bottom)/2:bottom-(p.od-lo)/(hi-lo)*(bottom-top),p.at,p.od]);
+           const color=options.color||'#76e7b9';
+           const line=xy.map(p=>p[0].toFixed(2)+','+p[1].toFixed(2)).join(' ');
+           const dots=xy.map(p=>'<circle cx="'+p[0].toFixed(2)+'" cy="'+p[1].toFixed(2)+'" r="'+(xy.length===1?3.5:1.7)+'" fill="'+color+'" opacity="0.85"/>').join('');
+           const axis=pts.length===1?'<text x="165" y="101" text-anchor="middle" class="chartlabel">'+safe(when(pts[0].at))+'</text>':rhpGraphTimeAxis(pts,left,right).replaceAll('y="134"','y="101"');
+           return '<div data-rhp-odds-wrap><svg viewBox="0 0 '+w+' '+h+'" tabindex="0" role="img" aria-label="Recorded bookmaker odds; tap a point or use left and right arrows to inspect" data-rhp-odds-points="'+safe(JSON.stringify(xy))+'" style="width:100%;height:auto;touch-action:pan-y;cursor:crosshair"><polyline points="'+line+'" stroke="'+color+'" fill="none" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>'+dots+axis+'<g data-rhp-odds-marker visibility="hidden" pointer-events="none"><line x1="0" x2="0" y1="5" y2="83" stroke="currentColor" stroke-width="1.25" stroke-dasharray="3 2"/><circle cx="0" cy="0" r="5" fill="'+color+'" stroke="currentColor" stroke-width="1.5"/></g></svg><div data-rhp-odds-readout class="hint" aria-live="polite" style="min-height:1.5em">Tap or slide along the graph to see the recorded time and odds.</div></div>';
+          }
+          function rhpSelectOddsPoint(svg,index){
+           const points=JSON.parse(svg.dataset.rhpOddsPoints||'[]');if(!points.length)return;
+           index=Math.max(0,Math.min(points.length-1,index));svg.dataset.rhpOddsIndex=String(index);
+           const [x,y,at,od]=points[index],marker=svg.querySelector('[data-rhp-odds-marker]');if(!marker)return;
+           const line=marker.querySelector('line'),dot=marker.querySelector('circle');
+           line.setAttribute('x1',x);line.setAttribute('x2',x);dot.setAttribute('cx',x);dot.setAttribute('cy',y);marker.setAttribute('visibility','visible');
+           const label=svg.closest('[data-rhp-odds-wrap]')?.querySelector('[data-rhp-odds-readout]');
+           if(label){label.textContent=when(at)+' · '+fmt(od)+' ('+od.toFixed(2)+' decimal)';label.style.fontWeight='700';}
+          }
+          function rhpOddsPointer(e){
+           const svg=e.target.closest?.('svg[data-rhp-odds-points]');if(!svg)return;
+           const matrix=svg.getScreenCTM();if(!matrix)return;
+           const local=svg.createSVGPoint();local.x=e.clientX;local.y=e.clientY;
+           const x=local.matrixTransform(matrix.inverse()).x,pts=JSON.parse(svg.dataset.rhpOddsPoints||'[]');
+           let best=0;for(let i=1;i<pts.length;i++)if(Math.abs(pts[i][0]-x)<Math.abs(pts[best][0]-x))best=i;
+           rhpSelectOddsPoint(svg,best);
+          }
+          document.addEventListener('pointerdown',rhpOddsPointer);
+          document.addEventListener('pointermove',e=>{if(e.buttons===1||e.pointerType==='touch'&&e.buttons>0)rhpOddsPointer(e);});
+          document.addEventListener('click',rhpOddsPointer);
+          document.addEventListener('keydown',e=>{const svg=e.target.closest?.('svg[data-rhp-odds-points]');if(!svg||!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const n=JSON.parse(svg.dataset.rhpOddsPoints||'[]').length;const i=Number(svg.dataset.rhpOddsIndex??0);rhpSelectOddsPoint(svg,e.key==='Home'?0:e.key==='End'?n-1:i+(e.key==='ArrowRight'?1:-1));});
+          function rhpChartHistoryNote(){return rhpChartHistoryReady?'':'<p class="hint">Earlier archived history is unavailable; showing saved live observations only.</p>';}
+          '''
+              s = once(s, 'function miniGraph(pts){', helpers + '\nfunction miniGraph(pts){')
+              # Replace the two renderers with a common touch-capable renderer.
+              start = s.index('function miniGraph(pts){')
+              end = s.index('\nfunction viewRace(', start)
+              s = s[:start] + r'''function miniGraph(pts){
+           pts=(pts||[]).filter(p=>Number.isFinite(p.od)&&p.od>1&&Number.isFinite(Date.parse(p.at))).sort((a,b)=>Date.parse(a.at)-Date.parse(b.at));
+           if(!pts.length)return '<p class="hint">No saved observations yet.</p>';
+           const first=pts[0],last=pts[pts.length-1];
+           return `<div class="graph"><div class="graph-values"><div><small>First saved · ${safe(when(first.at))}</small><b>${fmt(first.od)} <span class="hint">(${first.od.toFixed(2)})</span></b></div><div style="text-align:right"><small>Latest saved · ${safe(when(last.at))}</small><b>${fmt(last.od)} <span class="hint">(${last.od.toFixed(2)})</span></b></div></div>${rhpOddsInteractivePlot(pts)}${rhpChartHistoryNote()}<p class="hint">Only recorded observations are plotted. Down = shortening; up = drifting.</p></div>`;
+          }''' + s[end:]
+              start = s.index('function hotSpark(row){')
+              end = s.index('\nfunction hotWatchButton(', start)
+              s = s[:start] + r'''function hotSpark(row){
+           if(!row)return '<p class="hint">Price trend unavailable until bookmaker quotes are matched.</p>';
+           const pts=(row.points||[]).filter(p=>Number.isFinite(p.od)&&p.od>1&&Number.isFinite(Date.parse(p.at))).sort((a,b)=>Date.parse(a.at)-Date.parse(b.at));
+           if(!pts.length)return '<p class="hint">No saved odds observations yet.</p>';
+           const a=pts[0].od,z=pts[pts.length-1].od,delta=z-a;
+           const label=delta < -0.001?'Shortening':delta > 0.001?'Drifting':'Unchanged';
+           const col=delta < -0.001?'#82f3c5':delta > 0.001?'#ff8585':'#b9d0d1';
+           return `<div class="graph" style="padding:9px;margin:9px 0"><div class="foot"><strong style="color:${col}">${label} · ${fmt(a)} → ${fmt(z)}</strong><span>${pts.length} observations</span></div><div class="hint">First saved: ${safe(when(pts[0].at))} · Latest: ${safe(when(pts[pts.length-1].at))}</div>${rhpOddsInteractivePlot(pts,{color:col})}${rhpChartHistoryNote()}<div class="hint">Down = shorter odds (backed/shortening), up = drifting. Price moves alone do not prove betting volume.</div></div>`;
+          }''' + s[end:]
+              # Add date to axis when the first observation is on a previous day.
+              s = once(s, "const label=new Intl.DateTimeFormat('en-IE',{timeZone:'Europe/Dublin',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(t));", "const label=dateKey(first)!==dateKey(last)?new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Dublin',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date(t)):clock(t);")
+              # Use stable runner/course/date/bookmaker identity and numeric timestamp deduplication.
+              s = once(s, "const k=key(p);if(!series.has(k))series.set(k,[]);series.get(k).push({at:p.collected_at||snap.collected_at,od});", "const at=p.collected_at||snap.collected_at;if(!Number.isFinite(Date.parse(at))||Date.parse(at)>Date.parse(p.race_time))continue;const k=rhpChartKey(p);if(!series.has(k))series.set(k,[]);series.get(k).push({at,od});")
+              s = once(s, 'if(p.at)dedup.set(p.at,p);', 'if(Number.isFinite(Date.parse(p.at)))dedup.set(Date.parse(p.at),p);')
+              s = once(s, 'const points=series.get(key(p))||[];', 'const points=series.get(rhpChartKey(p))||[];')
+              # Initial load: use compact history with raw/Pages fallback; don't replace it with the truncated live file.
+              s = once(s, "fetch('./data/odds-history.json'+q,{cache:'no-store'})", 'rhpFetchChartHistory(q)')
+              s = once(s, "if(!responses[0].ok||!responses[1].ok)throw Error('Odds files unavailable');let latest=await responses[0].json(),hist=await responses[1].json();", "if(!responses[0].ok)throw Error('Odds files unavailable');let latest=await responses[0].json(),hist=responses[1];rhpChartHistoryReady=Array.isArray(hist)&&hist.length>0;if(!rhpChartHistoryReady){const old=await fetch('./data/odds-history.json'+q,{cache:'no-store'});if(!old.ok)throw Error('Odds history unavailable');hist=await old.json();}")
+              s = once(s, "if(newer){\n  latest=newer;", "if(newer){\n  latest=newer;\n  if(!rhpChartHistoryReady){")
+              s = once(s, "if(h.ok){const rawHistory=await h.json();if(Array.isArray(rawHistory))hist=rawHistory}\n  }catch(e){}\n }", "if(h.ok){const rawHistory=await h.json();if(Array.isArray(rawHistory))hist=rawHistory}\n  }catch(e){}\n  }\n }\n hist=rhpMergeChartHistory(hist,[latest]);")
+              # During normal refresh, recover any observations missed while the app was closed or offline.
+              s = once(s, 'if(!rhpLiveHistory.some(h=>h.collected_at===data.collected_at))rhpLiveHistory.push(data);', 'rhpLiveHistory=rhpMergeChartHistory(rhpLiveHistory,[data]);const complete=await rhpFetchChartHistory("?v="+Date.now());if(complete){rhpChartHistoryReady=true;rhpLiveHistory=rhpMergeChartHistory(complete,rhpLiveHistory);}')
+              # If history is not available, avoid implying the baseline is the actual opening price.
+              s = once(s, "baselineLabel:prior?'First recorded':'API open (unverified)'", "baselineLabel:prior?(rhpChartHistoryReady?'First recorded':'First available (partial)'):'API open (unverified)'")
+              app.write_text(s)
+          print('Stage197 source patch applied')
+          PY
+          python /tmp/stage197_patch.py
+          python -m py_compile archive-odds-history.py
+          # Validate all executable inline JavaScript before publishing.
+          python - <<'PY'
+          import re
+          from pathlib import Path
+          s=Path('index.html').read_text()
+          i=0
+          for m in re.finditer(r'<script\b([^>]*)>(.*?)</script\s*>',s,re.S|re.I):
+              attrs,body=m.groups()
+              if 'src=' in attrs or re.search(r'type\s*=\s*["\'](?:application/json|application/ld\+json)',attrs,re.I) or not body.strip(): continue
+              i+=1
+              Path(f'/tmp/stage197-inline-{i}.js').write_text(body)
+          assert i, 'No inline JS found'
+          PY
+          for f in /tmp/stage197-inline-*.js; do node --check "$f"; done
+      - name: Rebuild compact chart history and verify previous-day prices
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Call the display-only publisher without pruning or rewriting raw archives.
+          python - <<'PY'
+          import runpy, json
+          from pathlib import Path
+          from datetime import datetime, timezone
+          from zoneinfo import ZoneInfo
+          m=runpy.run_path('archive-odds-history.py')
+          m['publish_chart_history']()
+          j=json.loads(Path('data/odds-archive/chart-history.json').read_text())
+          z=ZoneInfo('Europe/Dublin'); total=0; previous=0
+          today=datetime.now(z).date()
+          for s in j['series']:
+              points=s['points']; assert points and all(a[0]<b[0] for a,b in zip(points,points[1:]))
+              assert all(p[1]>1 for p in points)
+              off=datetime.fromisoformat(s['race_time'].replace('Z','+00:00'))
+              assert points[-1][0]<=int(off.timestamp()*1000)
+              first=datetime.fromtimestamp(points[0][0]/1000,timezone.utc).astimezone(z)
+              if off.astimezone(z).date()==today and first.date()<today: previous+=1
+              if 'prairie queen' in s['horse'].lower() and 'paddy' in s['bookmaker'].lower():
+                  print('PRAIRIE QUEEN',s['course'],s['race_time'],first.isoformat(),points[0][1],'observations',len(points))
+              total+=len(points)
+          assert total>0
+          print('Total observations:',total,'Today runner/bookmaker series with prior-day quotes:',previous)
+          if not previous: print('::warning::No previous-day quotes were available for today; no observations were fabricated')
+          PY
+      - name: Commit and publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add archive-odds-history.py index.html data/odds-archive/chart-history.json
+          if git diff --cached --quiet; then echo 'Already applied'; exit 0; fi
+          git commit -m 'Stage197: restore full recorded bookmaker history and interactive chart crosshair'
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:main; then exit 0; fi
+            git pull --rebase origin main
+            sleep 2
+          done
+          echo '::error::Could not publish changes'; exit 1
