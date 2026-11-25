@@ -50,6 +50,8 @@ def refreshed_inputs(history, reference, date):
             # STAGE201_VERIFIED_RECENT_HISTORY
             from scripts.stage201_recent_history import append as append_stage201
             append_stage201(db,ref,date)
+            from scripts.stage202b_verified_history import append as append_stage202b
+            append_stage202b(db,ref,date)
         yield db,ref
 
 def build(base,ref,source,tmp):
