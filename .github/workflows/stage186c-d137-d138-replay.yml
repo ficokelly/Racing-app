@@ -1,0 +1,268 @@
+name: Stage186c - Stage137 Stage138 and HPR ninth quarterly replay
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/stage186c-d137-d138-replay.yml']
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage186c-research
+  cancel-in-progress: false
+env:
+  PYTHONPATH: .:scripts
+  PYTHONUNBUFFERED: '1'
+  OPENBLAS_NUM_THREADS: '1'
+  OMP_NUM_THREADS: '1'
+  MKL_NUM_THREADS: '1'
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    outputs:
+      days: ${{ steps.days.outputs.days }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: a5987838b0e3f28b53686bac60d52cd164738718
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - id: days
+        run: |
+          python - <<'PY'
+          import datetime as d,json,os
+          days=[(d.date(2026,10,25)+d.timedelta(days=i)).isoformat() for i in range(30)]
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:print('days='+json.dumps(days,separators=(',',':')),file=f)
+          PY
+  score:
+    needs: prepare
+    name: ${{ matrix.day }} / ${{ matrix.engine }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        day: ${{ fromJSON(needs.prepare.outputs.days) }}
+        engine: [D137, D138]
+    env:
+      DAY: ${{ matrix.day }}
+      ENGINE: ${{ matrix.engine }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: a5987838b0e3f28b53686bac60d52cd164738718
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage177-shared-inputs
+          run-id: 45491296882
+          github-token: ${{ github.token }}
+          path: reports/stage177/shared
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage177-shared-db
+          run-id: 45491296882
+          github-token: ${{ github.token }}
+          path: reports/stage177/shared
+      - name: Install exact scoring dependencies
+        run: python -m pip install --disable-pip-version-check numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2 freezegun==1.5.5 requests
+      - name: Install original quarterly scoring adapter
+        run: |
+          cat > scripts/stage186c_local_replay.py <<'PY'
+          from __future__ import annotations
+          import pathlib as P,argparse,json,collections,datetime as dt,inspect,os,gc
+          import numpy as np
+          import stage141_today_or_weight_paper as L
+          import stage141_grade_weight_2026 as J
+          import stage152_best_roi_specialists_today as Q
+          import stage137_frozen_d_race_type_walkforward as S
+          import stage138_integrated_eight_pillars as T
+          import stage139_hpr_137_138_walkforward as H
+          p=argparse.ArgumentParser();p.add_argument('command');p.add_argument('--date');p.add_argument('--db',type=P.Path);p.add_argument('--reference',type=P.Path);p.add_argument('--cards',type=P.Path);p.add_argument('--out',type=P.Path);a=p.parse_args();date=a.date;engine=os.environ['ENGINE'];a.out.mkdir(parents=True,exist_ok=True)
+          cutoff=Q.quarter_end(date);assert cutoff=='2026-09-30'
+          cards,audit=L.today_cards(a.cards,date);scratch,ref,latest=L.scratch_archive(a.db,a.reference,cards,date,a.out);assert latest<date
+          Q.original_frozen_weights();bycard={r['id']:r for r in cards}
+          if engine=='D137':
+           races,_,_=J.construct_2026(scratch,ref,date)
+          else:
+           # Original Stage138 feature builder is unchanged except extending the exact historical read end date.
+           source=inspect.getsource(T._load_and_construct);assert source.count("'2025-12-31'")==2
+           source=source.replace("'2025-12-31'",repr(date));ns=dict(T.__dict__);exec(compile(source,'stage138-date-extension','exec'),ns);races,_,_=ns['_load_and_construct'](scratch,ref)
+          train=[r for r in races if '2023-01-01'<=r['date']<=cutoff];live=[r for r in races if r['date']==date];assert len(train)>100 and live and all(str(r['race_id']) in bycard for r in live)
+          # Reconstruct original v3.1 strictly prior-day HPR. Never use target synthetic positions for a later score.
+          ids={k for r in races for k in r['identity'] if k};old=H.END
+          try:
+           H.END=date;hpr,ha=H.hpr_history(scratch,ref,a.out,ids)
+          finally:H.END=old
+          H.attach_hpr(races,hpr,collections.Counter())
+          rows=[]
+          def record(name,r,v):
+           assert len(v)==len(r['horse']) and np.isfinite(v).all();rid=str(r['race_id']);c=bycard[rid]
+           if c['off']<=L.utcnow()+dt.timedelta(minutes=2):return
+           for rank,i in enumerate(np.argsort(-v,kind='stable'),1):rows.append(dict(date=date,time_utc=c['off'].strftime('%H:%M'),meeting=r['course'],race_id=rid,race_type=r['subtype'],discipline=r['kind'],model=name,rank=rank,horse=r['horse'][int(i)]))
+          # Existing 2024/25 folds plus sequential continuation through 2026 Q3, with no target-quarter outcomes in weights.
+          folds=list(S.PERIODS)+[('2026Q1','2026-01-01','2026-03-31'),('2026Q2','2026-04-01','2026-06-30'),('2026Q3','2026-07-01','2026-09-30')]
+          first=[r for r in train if r['date']<'2023-10-01'];cal=[r for r in train if '2023-10-01'<=r['date']<='2023-12-31'];assert first and cal
+          if engine=='D137':
+           bank=S.train_banks(train);weights=S.fit_weight_banks(train)
+           for r in live:
+            for mode in ('SR','ROI'):
+             w,_,_=S.select_weights(weights,r,mode);record('D_PILLAR_'+mode,r,r['x8']@w)
+            v,_=S.predict_bank(bank,r);record('D_RACETYPE_NLP',r,v)
+           # The original HPR ability variant is already in Stage186b (unchanged Stage141 arm).
+           # Ninth pillar exactly follows Stage139 select_gamma on prior OOF predictions.
+           prev=[];b=H.l137_ml_banks(first)
+           for r in cal:
+            v,_=S.predict_bank(b,r);prev.append({'race':r,'base':H.standardized_logit(v),'origin':'2023Q4_OOF'})
+           del b
+           for q,start,end in folds:
+            training=[r for r in train if r['date']<start];test=[r for r in train if start<=r['date']<=end];assert training and test
+            b=H.l137_ml_banks(training)
+            for r in test:
+             v,_=S.predict_bank(b,r);prev.append({'race':r,'base':H.standardized_logit(v),'origin':q})
+            del b;gc.collect();print('STAGE186C_OOF',engine,q,len(prev),flush=True)
+           for r in live:
+            v,_=S.predict_bank(bank,r);g,*_=H.select_gamma(prev,r);record('D137_HPR_NINTH',r,(1-g)*H.standardized_logit(v)+g*r['hpr_z'])
+          else:
+           # Preserve Stage138 exact eight-pillar learners and Stage139's independent HPR ninth recipe.
+           prev=[];prev_ab=[];f,_=T.fit_pillars(first);abank=H.ability_models_138(first)
+           for r in cal:
+            ab,old,_=H.predict_138(f,abank,r);prev.append({'race':r,'scores':old,'origin':'2023Q4_OOF'});prev_ab.append({'race':r,'scores':ab,'origin':'2023Q4_OOF'})
+           del f,abank
+           for q,start,end in folds:
+            training=[r for r in train if r['date']<start];test=[r for r in train if start<=r['date']<=end];assert training and test
+            f,_=T.fit_pillars(training);abank=H.ability_models_138(training)
+            for r in test:
+             ab,old,_=H.predict_138(f,abank,r);prev.append({'race':r,'scores':old,'origin':q});prev_ab.append({'race':r,'scores':ab,'origin':q})
+            del f,abank;gc.collect();print('STAGE186C_OOF',engine,q,len(prev),flush=True)
+           f,_=T.fit_pillars(train);abank=H.ability_models_138(train);decisions={}
+           for r in live:
+            k=(r['subtype'],r['group'],r['broad'])
+            if k not in decisions:
+             w,wm=T.weights_for(prev,r);wa,wam=T.weights_for(prev_ab,r);g,*_=H.select_gamma([{'race':z['race'],'base':z['scores']@w} for z in prev],r);decisions[k]=(w,wa,g)
+            w,wa,g=decisions[k];ab,old,_=H.predict_138(f,abank,r);record('D_138_EIGHT_PILLARS',r,old@w);record('D138_HPR_ABILITY',r,ab@wa);record('D138_HPR_NINTH',r,(1-g)*(old@w)+g*r['hpr_z'])
+          assert rows
+          L.csvwrite(a.out/'stage186c-all-runners.csv',rows)
+          (a.out/'stage186c-audit.json').write_text(json.dumps(dict(trained_through=cutoff,historical_source_through=latest,models=sorted({r['model'] for r in rows}),engine=engine,training_races=len(train),oof_periods=[q[0] for q in folds]),indent=2))
+          PY
+          python -m py_compile scripts/stage186c_local_replay.py
+      - name: Replay original Stage137-139 quarterly recipes on frozen pre-off inputs
+        run: |
+          python - <<'PY'
+          import collections as C,csv,datetime as D,hashlib,json,os,pathlib as P,re,sqlite3,subprocess as S,sys,unicodedata,tempfile,shutil
+          DAY=os.environ['DAY'];B=P.Path('reports/stage177/shared').resolve();O=P.Path('reports/stage186c/score').resolve();O.mkdir(parents=True,exist_ok=True)
+          def read(p):return json.loads(p.read_text())
+          def norm(s):return re.sub('[^a-z0-9]','',unicodedata.normalize('NFKD',str(s or '')).encode('ascii','ignore').decode().lower())
+          def horse(s):return norm(re.sub(r'\s*\([A-Za-z]{2,3}\)\s*$','',str(s or '')))
+          def course(s):
+           n=norm(re.sub(r'\s*\((?:AW|GB|IRE)\)\s*$','',str(s or ''),flags=re.I));return {'galwayire':'galway','wexfordire':'wexford','dundalkawire':'dundalk','dundalkire':'dundalk','dundalkaw':'dundalk','fairyhouseire':'fairyhouse','clonmelire':'clonmel','gowranparkire':'gowranpark','kemptonpark':'kempton','chelmsfordcity':'chelmsford','bangor':'bangorondee'}.get(n,n)
+          def digest(p):
+           with p.open('rb') as f:return hashlib.file_digest(f,'sha256').hexdigest()
+          cols=['date','course','time','model','horse','race_type','discipline','basis','source_asof','cutoff','batch'];out=[];audit={'date':DAY,'engine':os.environ['ENGINE'],'status':'STARTED','batches':[]}
+          def save():
+           (O/'audit.json').write_text(json.dumps(audit,indent=2));
+           with (O/'rank1.csv').open('w',newline='') as f:w=csv.DictWriter(f,fieldnames=cols);w.writeheader();w.writerows(out)
+          try:
+           manifest=read(B/'history-manifest.json');db=B/'candidate.sqlite';assert digest(db)==manifest['database_sha256'] and digest(B/'candidate-reference.csv')==manifest['reference_sha256']
+           batches=read(B/(DAY+'-batches.json'))
+           with sqlite3.connect(db) as c:
+            c.execute('delete from historical_runs where race_id in (select id from historical_races where race_date>=?)',(DAY,));c.execute('delete from historical_races where race_date>=?',(DAY,));c.commit();assert c.execute('select max(race_date) from historical_races').fetchone()[0]<DAY
+           with tempfile.TemporaryDirectory() as td:
+            T=P.Path(td);ref=T/'prior-reference.csv'
+            with (B/'candidate-reference.csv').open(encoding='utf-8-sig',newline='') as f,ref.open('w',newline='') as g:
+             r=csv.DictReader(f);w=csv.DictWriter(g,fieldnames=r.fieldnames);w.writeheader();w.writerows(x for x in r if x['date']<DAY)
+            wrapper=T/'clock.py';wrapper.write_text('import sys,runpy\nfrom freezegun import freeze_time\nclock,script,*args=sys.argv[1:]\nsys.argv=[script,*args]\nwith freeze_time(clock,real_asyncio=True):\n runpy.run_path(script,run_name="__main__")\n')
+            for b in batches:
+             bid=b['batch'];work=T/bid;work.mkdir();rep={'batch':bid,'status':'FAILED'};meta={tuple(x['key']):x for x in b['races']};seen=set();exclude=C.Counter()
+             try:
+              args=[sys.executable,str(wrapper),b['cutoff'],str(P.Path('scripts/stage186c_local_replay.py').resolve()),'today','--db',str(db),'--reference',str(ref),'--cards',str(B/(bid+'.json')),'--date',DAY,'--out',str(work)]
+              with (O/(bid+'.log')).open('w') as f:rc=S.run(args,stdout=f,stderr=S.STDOUT,timeout=19000).returncode
+              assert rc==0,'Scorer failed: '+str(rc)
+              sa=read(work/'stage186c-audit.json');assert sa['trained_through']=='2026-09-30' and sa['historical_source_through']<DAY
+              raw=list(csv.DictReader((work/'stage186c-all-runners.csv').open()));groups=C.defaultdict(list)
+              for r in raw:groups[((r['date'],course(r['meeting']),r['time_utc']),r['model'])].append(r)
+              for (k,model),rs in groups.items():
+               if k not in meta:exclude['unmatched_race']+=1;continue
+               m=meta[k];top=[r for r in rs if r['rank']=='1'];declared=set(m['declared_horses'])
+               if len(top)!=1 or len(rs)!=len(declared) or {horse(r['horse']) for r in rs}!=declared:exclude['incomplete_field_or_rank']+=1;continue
+               r=top[0];assert (k,model) not in seen;seen.add((k,model))
+               out.append(dict(date=k[0],course=k[1],time=k[2],model=r['model'],horse=r['horse'],race_type=r['race_type'],discipline=r['discipline'],basis='STAGE137_138_139_QUARTERLY_CONTINUATION_PREOFF_ADAPTER',source_asof=m['source_asof'],cutoff=b['cutoff'],batch=bid))
+              rep.update(status='SCORED' if seen else 'NO_ACCEPTED_RANK1',rank1=len(seen),excluded=dict(exclude),scheduled=len(meta))
+             except Exception as e:rep['error']=repr(e)
+             finally:audit['batches'].append(rep);save();shutil.rmtree(work,ignore_errors=True)
+           audit['status']='COMPLETE' if batches and all(x['status']=='SCORED' for x in audit['batches']) else 'PARTIAL_OR_FAILED';save();print('STAGE186C_SCORE',json.dumps(audit),flush=True)
+          except Exception as e:audit.update(status='FAILED',error=repr(e));save();raise
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage186c-ranks-${{ matrix.day }}-${{ matrix.engine }}
+          path: reports/stage186c/score/
+          if-no-files-found: error
+          retention-days: 14
+  compare:
+    needs: [prepare,score]
+    if: always() && needs.prepare.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage177-shared-inputs
+          run-id: 45491296882
+          github-token: ${{ github.token }}
+          path: shared
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: stage186c-ranks-*
+          path: results
+          merge-multiple: false
+      - name: Settle rank1 with the same Stage177b prices; report coverage and common cohorts
+        run: |
+          python - <<'PY'
+          import collections as C,csv,json,pathlib as P,re,unicodedata
+          out=P.Path('summary');out.mkdir(exist_ok=True)
+          def horse(s):return re.sub('[^a-z0-9]','',unicodedata.normalize('NFKD',re.sub(r'\s*\((?:IRE|GB|FR|USA|GER|AUS|NZ|ITY|JPN)\)\s*$','',str(s or ''),flags=re.I)).encode('ascii','ignore').decode().lower())
+          def key(r):return (r['date'],r['course'],r['time'])
+          def write(name,rs):
+           p=out/name
+           if not rs:p.write_text('');return
+           with p.open('w',newline='') as f:w=csv.DictWriter(f,fieldnames=list(dict.fromkeys(k for r in rs for k in r)));w.writeheader();w.writerows(rs)
+          s={key(x):x for x in json.loads(P.Path('shared/settlement-prices.json').read_text())};rows=[];seen=set();audits=[]
+          for p in P.Path('results').rglob('audit.json'):audits.append(json.loads(p.read_text()))
+          for p in P.Path('results').rglob('rank1.csv'):
+           for r in csv.DictReader(p.open()):
+            k=key(r);mk=(k,r['model']);assert mk not in seen;seen.add(mk)
+            status='NO_RESULT';won=None;pnl=None
+            if k in s:
+             v=s[k];h=horse(r['horse']);starter={horse(x['horse']) for x in v['starters']};nr={horse(x) for x in v['declared_nonrunners']};wins={horse(x['horse']):x['sp_decimal'] for x in v['winner_prices']}
+             if h not in starter:status='VOID_NR' if h in nr else 'UNMATCHED'
+             else:
+              status='SETTLED';won=int(h in wins)
+              if wins and not v['price_conflicts'] and all(x is not None for x in wins.values()):pnl=float(wins[h])/len(wins)-1 if won else -1.
+            rows.append(dict(r,status=status,won=won,pnl=pnl))
+          def metric(rs):
+           settled=[r for r in rs if r['status']=='SETTLED'];priced=[r for r in settled if r['pnl'] is not None];wins=sum(r['won'] for r in settled);profit=sum(r['pnl'] for r in priced)
+           return {'selections':len(rs),'settled':len(settled),'wins':wins,'strike_rate_pct':round(100*wins/len(settled),4) if settled else None,'priced':len(priced),'pnl_units':round(profit,4),'roi_pct':round(100*profit/len(priced),4) if priced else None,'excluded_or_void':len(rs)-len(settled)}
+          groups=C.defaultdict(list)
+          for r in rows:
+           for dimension,value in [('overall','all'),('day',r['date']),('discipline',r['discipline']),('race_type',r['race_type'])]:groups[(r['model'],dimension,value)].append(r)
+          metrics=[dict(model=m,dimension=d,value=v,**metric(rs)) for (m,d,v),rs in sorted(groups.items())]
+          write('rank1-settlement.csv',rows);write('model-performance.csv',metrics)
+          report={'status':'RESEARCH_ONLY_NOT_ROUTING_CERTIFIED','period':['2026-10-25','2026-11-23'],'expected_days':30,'reported_days':len({a['date'] for a in audits}),'day_status':dict(C.Counter(a['status'] for a in audits)),'overall':[x for x in metrics if x['dimension']=='overall'],'limitations':['Original Stage137/138/139 functions on 2026 preoff cards with 2026 Q1-Q3 continuation. Not original historic app selections.','No production change. Missing fields and failed batches excluded.']}
+          (out/'report.json').write_text(json.dumps(report,indent=2));(out/'day-audits.json').write_text(json.dumps(audits,indent=2));print('STAGE186C_REPORT',json.dumps(report),flush=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage186c-d137-d138-comparison
+          path: summary/
+          if-no-files-found: error
+          retention-days: 30
