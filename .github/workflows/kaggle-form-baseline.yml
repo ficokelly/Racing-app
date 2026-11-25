@@ -32,6 +32,51 @@ jobs:
         run: pip install 'kagglehub>=0.3,<1'
       - name: Install guarded day replacement and test
         run: |
+          cat > scripts/form_person_aliases.py <<'ALIASES_PY'
+          from pathlib import Path
+          import json,re,unicodedata
+          from functools import lru_cache
+          PATH=Path(__file__).resolve().parent.parent/'data/form-person-aliases.json'
+          def raw_key(s):
+              s=re.sub(r'\s*\(\d+\)\s*$','',str(s or ''))
+              s=unicodedata.normalize('NFKD',s)
+              return re.sub(r'[^a-z0-9]+','', ''.join(c for c in s if not unicodedata.combining(c)).lower())
+          @lru_cache(maxsize=1)
+          def aliases():
+              doc=json.loads(PATH.read_text())
+              if doc.get('schema')!='form-person-aliases-v1':raise ValueError('Unexpected person registry schema')
+              out={}
+              for e in doc['entries']:
+                  assert e['kind'] in ('trainer','jockey') and e['evidence_url'].startswith('https://')
+                  k,v=raw_key(e['alias']),raw_key(e['canonical'])
+                  assert k and v and (k not in out or out[k]==v), ('Conflicting alias',k)
+                  out[k]=v
+              assert all(out.get(v,v)==v for v in out.values()), 'Alias chains require explicit review'
+              return out
+
+          def person_key(s):
+              k=raw_key(s)
+              return aliases().get(k,k)
+          ALIASES_PY
+          cat > .form_alias_seed.py <<'SEED_PY'
+          import json
+          from pathlib import Path
+          p=Path('data/form-person-aliases.json')
+          seed=json.loads('{"schema": "form-person-aliases-v1", "entries": [{"kind": "trainer", "alias": "A W Carroll", "canonical": "Tony Carroll", "evidence_url": "https://www.flatstats.co.uk/turf/trainer/a-w-carroll", "matched_starters_v132": 14, "verified_on": "2026-11-25", "evidence_method": "dated paired source records plus published racing profile/result"}, {"kind": "trainer", "alias": "B R Summers", "canonical": "Rob Summers", "evidence_url": "https://www.racingtv.com/profiles/horse/ukantango", "matched_starters_v132": 1, "verified_on": "2026-11-25", "evidence_method": "dated paired source records plus published racing profile/result"}, {"kind": "trainer", "alias": "D McCain Jnr", "canonical": "Donald McCain", "evidence_url": "https://www.flatstats.co.uk/both/trainer/d-mccain-jnr/", "matched_starters_v132": 14, "verified_on": "2026-11-25", "evidence_method": "dated paired source records plus published racing profile/result"}, {"kind": "trainer", "alias": "A M Thomson", "canonical": "Sandy Thomson", "evidence_url": "https://paddocksense.com/trainers/sandy-thomson-trn-190809/", "matched_starters_v132": 7, "verified_on": "2026-11-25", "evidence_method": "dated paired source records plus published racing profile/result"}, {"kind": "trainer", "alias": "W Coltherd", "canonical": "Stuart Coltherd", "evidence_url": "https://www.racingtv.com/profiles/horse/medal-of-freedom", "matched_starters_v132": 2, "verified_on": "2026-11-25", "evidence_method": "dated paired source records plus published racing profile/result"}, {"kind": "trainer", "alias": "J W Mullins", "canonical": "Seamus Mullins", "evidence_url": "https://www.flatstats.co.uk/turf/trainer/j-w-mullins", "matched_starters_v132": 9, "verified_on": "2026-11-25", "evidence_method": "dated paired source records plus published racing profile/result"}, {"kind": "trainer", "alias": "P D Evans", "canonical": "David Evans", "evidence_url": "https://www.racingtv.com/profiles/horse/tie-em-up-tel", "matched_starters_v132": 6, "verified_on": "2026-11-25", "evidence_method": "dated paired source records plus published racing profile/result"}, {"kind": "trainer", "alias": "Sir Mark Prescott", "canonical": "Sir Mark Prescott Bt", "evidence_url": "https://www.racingtv.com/profiles/trainer/sir-mark-prescott", "matched_starters_v132": 3, "verified_on": "2026-11-25", "evidence_method": "dated paired source records plus published racing profile/result"}, {"kind": "trainer", "alias": "D M Loughnane", "canonical": "Mark Loughnane", "evidence_url": "https://www.racing971.ae/form/trainer/D-M-Loughnane/1001949?raceid=1617652", "matched_starters_v132": 6, "verified_on": "2026-11-25", "evidence_method": "dated paired source records plus published racing profile/result"}, {"kind": "trainer", "alias": "F Brennan", "canonical": "Barry Brennan", "evidence_url": "https://race.watch/horses/he-is-a-cracker-22567370", "matched_starters_v132": 3, "verified_on": "2026-11-25", "evidence_method": "dated paired source records plus published racing profile/result"}, {"kind": "trainer", "alias": "B R Millman", "canonical": "Rod Millman", "evidence_url": "https://www.flatstats.co.uk/turf/trainer/b-r-millman", "matched_starters_v132": 2, "verified_on": "2026-11-25", "evidence_method": "dated paired source records plus published racing profile/result"}, {"kind": "jockey", "alias": "Thomas Bellamy", "canonical": "Tom Bellamy", "evidence_url": "https://www.irishracing.com/galway-races/horse/Es-Perfecto-IRE/586459", "matched_starters_v132": 16, "verified_on": "2026-11-25", "evidence_method": "dated paired source records plus published racing profile/result"}, {"kind": "jockey", "alias": "Billy Lee", "canonical": "W. J. Lee", "evidence_url": "https://www.irishracing.com/jockey/W-J-Lee/5694", "matched_starters_v132": 19, "verified_on": "2026-11-25", "evidence_method": "dated paired source records plus published racing profile/result"}, {"kind": "jockey", "alias": "Tpr Elizabeth Feakes", "canonical": "Miss Elizabeth Feakes", "evidence_url": "https://insights.betfred.com/horse-racing/results/2026-11-16/plumpton/931537/13-15/", "matched_starters_v132": 1, "verified_on": "2026-11-25", "evidence_method": "dated paired source records plus published racing profile/result"}, {"kind": "jockey", "alias": "Mid Milica Dusanovic", "canonical": "Miss Milica Jovana Dusanovic", "evidence_url": "https://www.racingpost.com/results/44/plumpton/2026-11-16/931537/", "matched_starters_v132": 1, "verified_on": "2026-11-25", "evidence_method": "dated paired source records plus published racing profile/result"}, {"kind": "jockey", "alias": "Mr O McGill", "canonical": "Mr Oran McGill", "evidence_url": "https://paddocksense.com/jockeys/mr-oran-mcgill/", "matched_starters_v132": 1, "verified_on": "2026-11-25", "evidence_method": "dated paired source records plus published racing profile/result"}, {"kind": "jockey", "alias": "William Featherstone", "canonical": "Will Featherstone", "evidence_url": "https://www.skysports.com/racing/news/12426/10160640/first-double-for-featherstone-at-fakenham", "matched_starters_v132": 1, "verified_on": "2026-11-25", "evidence_method": "dated paired source records plus published racing profile/result"}]}')
+          from scripts.form_person_aliases import raw_key
+          existing=json.loads(p.read_text()) if p.exists() else {'schema':seed['schema'],'entries':[]}
+          assert existing['schema']==seed['schema']
+          seen={raw_key(x['alias']):x for x in existing['entries']}
+          for x in seed['entries']:
+              k=raw_key(x['alias'])
+              if k in seen:
+                  assert raw_key(seen[k]['canonical'])==raw_key(x['canonical']) and seen[k]['kind']==x['kind'],('Alias conflict',x)
+              else:
+                  existing['entries'].append(x);seen[k]=x
+          p.parent.mkdir(exist_ok=True);p.write_text(json.dumps(existing,indent=2,ensure_ascii=False)+'\n')
+          SEED_PY
+          python .form_alias_seed.py
+          rm .form_alias_seed.py
           cat > scripts/kaggle_form_baseline.py <<'BASELINE_PY'
           """Use approved daily Kaggle aggregates as a replacement, never an additive overlay.
           Raw historical rows remain in the workflow runner; no raw CSVs are published.
@@ -193,6 +238,7 @@ jobs:
 
           def fetch_rows(source,start,end):
               days=C.defaultdict(dict); problems=C.defaultdict(C.Counter); races=C.defaultdict(set); maxdate=''; scanned=0
+              dash=C.defaultdict(list); known_nr=C.defaultdict(set)
               for filename,opener in I.source_iter(source):
                   with opener() as f:
                       sample=f.read(8192);f.seek(0)
@@ -214,12 +260,23 @@ jobs:
                               problems[day]['unresolved_course:'+course[:80]]+=1;continue
                           co=F.course_key(course);horse=F.horse_key(I.value(row,m,'horse'));rid=I.value(row,m,'race_id') or I.value(row,m,'race_no') or I.value(row,m,'off_time')
                           pos=outcome(I.value(row,m,'finish'))
+                          if all((co,horse,rid)) and I.value(row,m,'finish').strip() in ('-','–','—'):
+                              dash[day].append((co,horse,rid));continue
                           if not all((co,horse,rid)) or pos=='UNKNOWN':problems[day]['invalid_identity_or_finish:'+course[:40]+':'+str(I.value(row,m,'finish'))[:30]]+=1;continue
-                          if pos=='NR':continue
+                          if pos=='NR':known_nr[day].add((co,horse,rid));continue
                           x={'outcome':pos,'trainer':I.value(row,m,'trainer'),'jockey':I.value(row,m,'jockey'),'race':rid}
                           key=(co,horse); old=days[day].get(key)
                           if old and old!=x:problems[day]['contradictory_duplicate']+=1;continue
                           days[day][key]=x;races[day].add((co,rid))
+              # A dash is NOT a finishing position and is never automatically a non-runner.
+              # An exact source race/horse with a separate known finish or explicit NR is redundant.
+              for day,records in dash.items():
+                  for co,horse,rid in records:
+                      match=days[day].get((co,horse))
+                      if (match and match['race']==rid) or (co,horse,rid) in known_nr[day]:
+                          problems[day]['excluded_redundant_dash_row']+=1
+                      else:
+                          problems[day]['unresolved_dash:'+co]+=1
               if not maxdate or not scanned:raise RuntimeError('No usable recent Kaggle source records')
               return days,problems,races,maxdate
 
@@ -268,7 +325,7 @@ jobs:
               if len(kr)<len(ar):reasons.append('fewer_kaggle_races')
               if unmatched:reasons.append('unmatched_saved_races')
               if any(gaps.values()):reasons.append('missing_kaggle_persons')
-              if any(key!='excluded_explicit_foreign_course' for key in kissues) or ai:reasons.append('source_quality_issues')
+              if any(key not in ('excluded_explicit_foreign_course','excluded_redundant_dash_row') for key in kissues) or ai:reasons.append('source_quality_issues')
               if not reasons and len(k)==len(api) and all(sum(x['runs'] for x in ag[g].values())==len(api) for g in ('trainers','jockeys')):reasons.append('no_demonstrated_coverage_improvement')
               return {'date':day,'api_starters':len(api),'kaggle_starters':len(k),'api_races':len(ar),'kaggle_races':len(kr),'shared_starters':len(common),'api_only_starters':len(missing),'kaggle_only_starters':len(k.keys()-api.keys()),'finish_disagreements':different,'person_disagreements':people_diff,'kaggle_identity_gaps':gaps,'unmatched_saved_races':unmatched,'kaggle_issues':dict(kissues),'api_issues':dict(ai),'approved':not reasons,'reasons':reasons},stats
 
@@ -316,9 +373,9 @@ jobs:
                       ar=matches[0]
                       for kind in ('trainer','jockey'):
                           if ar[kind] and F.person_key(ar[kind])!=F.person_key(kr[kind]):
-                              pair_conflicts.append({'kind':kind,'api_name':ar[kind],'kaggle_name':kr[kind]})
+                              pair_conflicts.append({'kind':kind,'api_name':ar[kind],'kaggle_name':kr[kind],'course_key':co,'horse_key':horse})
                   r['enriched_pair_conflicts']=len(pair_conflicts)
-                  r['enriched_pair_examples']=pair_conflicts[:20]
+                  r['enriched_pair_examples']=pair_conflicts
                   if pair_conflicts:
                       r['reasons'].append('enriched_runner_identity_disagreement');r['approved']=False
                   r['enriched_person_losses']=losses
@@ -402,7 +459,8 @@ jobs:
               s=s.replace(old,new,1)
           change("                normalized = {'date':race_date, 'trainer':trainer, 'trainer_id':trainer_id,",
                  "                normalized = {'date':race_date, 'form_course':course_key(course), 'form_horse':horse_key(runner.get('horse')), 'trainer':trainer, 'trainer_id':trainer_id,")
-          change('def horse_key(name: object) -> str:',
+          if '# FORM_PERSON_REGISTRY_V4' not in s:
+              change('def horse_key(name: object) -> str:',
                  "def person_key(name: object) -> str:\n    # Jockey claim changes do not create a new person.\n    return compact(re.sub(r'\\s*\\(\\d+\\)\\s*$', '', str(name or '')))\n\n\ndef horse_key(name: object) -> str:")
           change("nm=compact(row.get(typ) or '')", "nm=person_key(row.get(typ) or '')")
           change('person=byname[compact(name)]','person=byname[person_key(name)]')
@@ -413,6 +471,29 @@ jobs:
           if new_ui not in html:
               assert html.count(old_ui)==1, 'Unexpected app form-name helper'
               ui.write_text(html.replace(old_ui,new_ui,1))
+          # FORM_PERSON_REGISTRY_V4: same key used for daily API and historical aggregate.
+          from scripts.form_person_aliases import aliases
+          before="    return compact(re.sub(r'\\s*\\(\\d+\\)\\s*$', '', str(name or '')))"
+          after="""    # FORM_PERSON_REGISTRY_V4
+              try:
+                  from scripts.form_person_aliases import person_key as registered_key
+              except ModuleNotFoundError:
+                  from form_person_aliases import person_key as registered_key
+              return registered_key(name)"""
+          if '# FORM_PERSON_REGISTRY_V4' not in s:
+              assert s.count(before)==1, 'Unexpected V3 person key'
+              s=s.replace(before,after,1)
+          # Render the registry into the app helper; replace only the exact original line or its prior V4 version.
+          import re,json
+          html=ui.read_text()
+          pattern=r"(?m)^const formName=s=>[^\n]+;$"
+          hits=re.findall(pattern,html)
+          assert len(hits)==1,'Unexpected app formName helper'
+          raw="String(s||'').replace(/\\s*\\(\\d+\\)\\s*$/,'').normalize('NFKD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'')"
+          line="const formName=s=>String(s||'').replace(/\\s*\\(\\d+\\)\\s*$/,'').normalize('NFKD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'').replace(/^(?:"+'|'.join(sorted(aliases()))+")$/,k=>({"+','.join(json.dumps(k)+':'+json.dumps(v) for k,v in sorted(aliases().items()))+"})[k]);"
+          # Only patch a known helper, not unrelated application code.
+          assert hits[0].startswith("const formName=s=>String(s||'').replace("),hits[0]
+          ui.write_text(html.replace(hits[0],line,1))
           p.write_text(s)
           for path in ('scripts/stage32_form_rebuild.py','scripts/kaggle_form_baseline.py','scripts/audit_kaggle_form.py'):
               py_compile.compile(path,doraise=True)
@@ -455,6 +536,11 @@ jobs:
           a[1]['jockey']='Hugh Skelton'; m,report=crosswalk(k,a)
           assert 'hskelton' not in m['jockey']
           print('V3 exact-runner crosswalk and ambiguous-name tests passed')
+          assert person_key('A W Carroll')==person_key('Tony Carroll')
+          assert person_key('Billy Lee')==person_key('W. J. Lee')
+          assert person_key('Mr O McGill(5)')==person_key('Mr Oran McGill(7)')
+          assert person_key('Harry Skelton')!=person_key('Dan Skelton')
+          print('V4 persistent identity registry regression tests passed')
           TEST_PY
           python .kaggle_form_install.py
           python .kaggle_form_test.py
@@ -488,11 +574,11 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add reports/stage32/kaggle-form-comparison.json
           if [ "$AUDIT_ONLY" != true ]; then
-            git add index.html scripts/kaggle_form_baseline.py scripts/audit_kaggle_form.py scripts/stage32_form_rebuild.py data/strike-rates.json data/form-identity-cache.json reports/stage32/form-rebuild-audit.json
+            git add data/form-person-aliases.json scripts/form_person_aliases.py index.html scripts/kaggle_form_baseline.py scripts/audit_kaggle_form.py scripts/stage32_form_rebuild.py data/strike-rates.json data/form-identity-cache.json reports/stage32/form-rebuild-audit.json
             if [ -f data/kaggle-form-baseline.json ]; then git add data/kaggle-form-baseline.json; fi
           fi
           if git diff --cached --quiet; then exit 0; fi
-          git commit -m 'Kaggle form V3: reconcile source identities and validate historical baseline'
+          git commit -m 'Kaggle form V4: persistent verified aliases and guarded duplicate-dash recovery'
           for attempt in 1 2 3 4; do
             if git pull --rebase origin main && git push origin HEAD:main; then exit 0; fi
             git rebase --abort || true
