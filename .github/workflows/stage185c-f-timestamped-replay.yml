@@ -1,0 +1,192 @@
+name: Stage185c - Model F original sealed test and timestamped post-training replay
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/stage185c-f-timestamped-replay.yml']
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage185c-f-research
+  cancel-in-progress: false
+env:
+  PYTHONPATH: .:scripts
+  PYTHONUNBUFFERED: '1'
+  OPENBLAS_NUM_THREADS: '1'
+  OMP_NUM_THREADS: '1'
+jobs:
+  original:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 6e488b1211ebe6c27d2b81bf1562d71d8039da1e
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage104-all-bookmakers-winner-first-43128767572
+          run-id: 43128767572
+          github-token: ${{ github.token }}
+          path: source
+      - name: Reproduce original sealed Stage106 train validation and holdout
+        run: |
+          set -euo pipefail
+          python scripts/stage106_model_f.py self-test
+          INPUT=$(find source -name stage104-all-ranked-selections.csv -type f)
+          test -f "$INPUT"
+          python -u scripts/stage106_model_f.py backtest --input "$INPUT" --out out
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage185c-original-sealed-F
+          path: out/
+          retention-days: 90
+          if-no-files-found: warn
+  replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        day: ['2026-11-02','2026-11-03','2026-11-04','2026-11-05','2026-11-06','2026-11-07','2026-11-08','2026-11-09','2026-11-10','2026-11-11','2026-11-12','2026-11-13','2026-11-14','2026-11-15','2026-11-16','2026-11-17','2026-11-18','2026-11-19','2026-11-20','2026-11-21','2026-11-22','2026-11-23']
+    name: ${{ matrix.day }} / F archive
+    env:
+      DAY: ${{ matrix.day }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: a5987838b0e3f28b53686bac60d52cd164738718
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage104-all-bookmakers-winner-first-43128767572
+          run-id: 43128767572
+          github-token: ${{ github.token }}
+          path: source
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage177-shared-inputs
+          run-id: 45491296882
+          github-token: ${{ github.token }}
+          path: shared
+      - name: Rebuild original F calibration from sealed training data; replay archived D(c) and quotes
+        run: |
+          python - <<'PY'
+          import collections as C,csv,datetime as D,json,math,os,pathlib as P,re,subprocess as S,unicodedata
+          import pandas as pd
+          import stage106_model_f as F
+          DAY=os.environ['DAY'];out=P.Path('out');out.mkdir(exist_ok=True)
+          cutoff=D.datetime.fromisoformat(DAY+'T09:45:00+00:00');assert F.TRAIN_END=='2026-11-01' and DAY>F.TRAIN_END
+          audit=dict(date=DAY,decision_cutoff=cutoff.isoformat(),train_through=F.TRAIN_END,price_basis='OBSERVED_WILLIAM_HILL_QUOTE_NOT_SP',status='STARTED',cohort='POST_TRAINING_ARCHIVED_DC_NOT_ORIGINAL_STAGE104_PARITY')
+          rows=[];issues=C.Counter()
+          columns=['date','course','time','model','horse','status','won','price','pnl','sp_pnl','basis','source_dc_commit','source_odds_commit','decision_cutoff']
+          def save():
+           audit['issues']=dict(issues);(out/'audit.json').write_text(json.dumps(audit,indent=2,default=str))
+           with (out/'rank1-settlement.csv').open('w',newline='') as f:w=csv.DictWriter(f,fieldnames=columns);w.writeheader();w.writerows(rows)
+          def norm(s):return re.sub('[^a-z0-9]','',unicodedata.normalize('NFKD',str(s or '')).encode('ascii','ignore').decode().lower())
+          def horse(s):return norm(re.sub(r'\s*\([A-Za-z]{2,3}\)\s*$','',str(s or '')))
+          def course(s):
+           n=norm(re.sub(r'\s*\((?:AW|GB|IRE|UK)\)\s*$','',str(s or ''),flags=re.I));return {'galwayire':'galway','wexfordire':'wexford','dundalkawire':'dundalk','dundalkire':'dundalk','dundalkaw':'dundalk','fairyhouseire':'fairyhouse','clonmelire':'clonmel','gowranparkire':'gowranpark','kemptonpark':'kempton','chelmsfordcity':'chelmsford','bangor':'bangorondee'}.get(n,n)
+          def read(path):return json.loads(P.Path(path).read_text())
+          def archived(path):
+           log=S.check_output(['git','log','HEAD','-1','--before='+cutoff.isoformat(),'--format=%H|%cI','--',path],text=True).strip()
+           if not log:return None,None,None
+           sha,stamp=log.split('|');committed=F.utc(stamp);assert committed and committed<=cutoff
+           doc=json.loads(S.check_output(['git','show',sha+':'+path]));return doc,sha,committed
+          try:
+           paths=list(P.Path('source').rglob('stage104-all-ranked-selections.csv'));assert len(paths)==1
+           historical,reject=F.historical_candidates(paths[0]);train=historical[historical.date<=F.TRAIN_END].copy();assert len(train) and train.date.max()<=F.TRAIN_END and train.date.nunique()>=3
+           fitted=F.fit_model(train);audit.update(training_rows=len(train),training_dates=int(train.date.nunique()),training_timestamp_rejections=len(reject))
+           batches=read(P.Path('shared')/(DAY+'-batches.json'));meta={tuple(x['key']):x for b in batches for x in b['races']}
+           settlement={(x['date'],x['course'],x['time']):x for x in read('shared/settlement-prices.json')};audit['frozen_fields']=len(meta)
+           dc,dcsha,dct=archived('data/strategy-dc-probabilities.json');odds,osh,ot=archived('data/latest-odds.json')
+           audit.update(dc_commit=dcsha,dc_commit_time=str(dct),odds_commit=osh,odds_commit_time=str(ot))
+           if dc is None or odds is None:
+            audit['status']='NO_VERIFIED_PREOFF_SNAPSHOT';save();raise SystemExit(0)
+           # Source data must have existed in Git before decision; no later archive/SP substitution.
+           safe_dc={'races':[]};generated=F.utc(dc.get('generated_at'))
+           for r in dc.get('races',[]):
+            off=F.utc(r.get('race_time'));published=F.utc(r.get('published_at')) or generated
+            if r.get('date')!=DAY or not off or off<=cutoff+D.timedelta(minutes=5):continue
+            if not published or published>cutoff or published>dct+D.timedelta(minutes=1):issues['unverified_dc_timestamp']+=1;continue
+            k=(DAY,course(r.get('course')),off.strftime('%H:%M'));m=meta.get(k)
+            if not m:issues['not_in_frozen_race_universe']+=1;continue
+            rr=r.get('runners') or [];names={horse(x.get('horse')) for x in rr}
+            if len(rr)<3 or len(names)!=len(rr) or names!=set(m['declared_horses']):issues['field_mismatch']+=1;continue
+            try:ranks=[int(x['rank']) for x in rr]
+            except (TypeError,ValueError,KeyError):issues['missing_original_ranks']+=1;continue
+            if sorted(ranks)!=list(range(1,len(rr)+1)):issues['invalid_original_ranks']+=1;continue
+            safe_dc['races'].append({**r,'published_at':published.isoformat(),'runners':[dict(x,rank=int(x['rank'])) for x in rr]})
+           # The original Stage106 live candidate rules enforce quote timestamps, quote freshness,
+           # preferred bookmaker, field coverage, non-favourite gap and independent-book count.
+           candidates,skips=F.live_candidates(safe_dc,odds,DAY,cutoff,'williamhill');issues.update(skips)
+           audit['eligible_dc_fields']=len(safe_dc['races']);audit['candidate_rows']=len(candidates)
+           if candidates.empty:audit['status']='NO_VERIFIED_PRICE_CANDIDATES';save();raise SystemExit(0)
+           selected=F.select_races(F.predict_rows(candidates,fitted));audit['selected_rows']=len(selected)
+           for r in selected.to_dict('records'):
+            k=(DAY,course(r['course']),r['off_utc']);h=horse(r['horse']);v=settlement.get(k);status='NO_RESULT';won=None;pnl=None;sp_pnl=None
+            if v:
+             starter={horse(z['horse']) for z in v['starters']};nr={horse(z['horse']) for z in v['declared_nonrunners']};wins={horse(z['horse']):z['sp_decimal'] for z in v['winner_prices']}
+             if h in starter and wins:
+              status='SETTLED';won=int(h in wins);pnl=float(r['price'])/len(wins)-1 if won else -1.
+              if not v['price_conflicts'] and all(z is not None for z in wins.values()):sp_pnl=float(wins[h])/len(wins)-1 if won else -1.
+             elif h in nr:status='VOID_NR'
+             elif h not in starter:status='UNMATCHED'
+            rows.append(dict(date=DAY,course=k[1],time=k[2],model=F.MODEL,horse=r['horse'],status=status,won=won,price=float(r['price']),pnl=pnl,sp_pnl=sp_pnl,basis='ORIGINAL_F_CALIBRATOR_ON_ARCHIVED_DC_AND_VERIFIED_WH_QUOTES',source_dc_commit=dcsha,source_odds_commit=osh,decision_cutoff=cutoff.isoformat()))
+           audit['status']='COMPLETE';save();print('STAGE185C_DAY',json.dumps(audit),flush=True)
+          except Exception as exc:audit.update(status='FAILED',error=repr(exc));save();raise
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage185c-F-${{ matrix.day }}
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
+  compare:
+    needs: replay
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: stage185c-F-*
+          path: results
+          merge-multiple: false
+      - name: Aggregate available post-training results, keeping observed bookmaker ROI separate from SP
+        run: |
+          python - <<'PY'
+          import csv,json,collections as C,pathlib as P
+          out=P.Path('summary');out.mkdir(exist_ok=True);audits=[];rows=[]
+          for p in P.Path('results').rglob('audit.json'):audits.append(json.loads(p.read_text()))
+          for p in P.Path('results').rglob('rank1-settlement.csv'):rows.extend(csv.DictReader(p.open()))
+          assert len({(r['date'],r['course'],r['time']) for r in rows})==len(rows)
+          def stats(rs):
+           s=[r for r in rs if r['status']=='SETTLED'];p=[r for r in s if r['pnl']!=''];sp=[r for r in s if r['sp_pnl']!=''];w=sum(int(r['won']) for r in s);profit=sum(float(r['pnl']) for r in p);sp_profit=sum(float(r['sp_pnl']) for r in sp)
+           return dict(selections=len(rs),settled=len(s),wins=w,strike_rate_pct=100*w/len(s) if s else None,quoted_price_settled=len(p),quoted_profit_units=profit,quoted_roi_pct=100*profit/len(p) if p else None,sp_settled=len(sp),sp_profit_units=sp_profit,sp_roi_pct=100*sp_profit/len(sp) if sp else None)
+          report=dict(status='RESEARCH_ONLY_NOT_ROUTING_CERTIFIED',train_end='2026-11-01',post_training_period=['2026-11-02','2026-11-23'],expected_days=22,reported_days=len(audits),day_status=dict(C.Counter(x['status'] for x in audits)),overall=stats(rows),sealed_period_subset=stats([r for r in rows if r['date']<='2026-11-07']),later_archived_subset=stats([r for r in rows if r['date']>'2026-11-07']),limitations=['Days through Nov 1 used for training; not out-of-sample results.','Only verified 09:45 preoff archived D(c) ranks and bookmaker quotes; archived coverage may be incomplete.','Original Stage104 reconstructed D_C parity is unverified; original sealed test retained separately.','Not a guaranteed executable price; no SP substitution for missing quote and no automatic routing.'])
+          (out/'report.json').write_text(json.dumps(report,indent=2));(out/'day-audits.json').write_text(json.dumps(audits,indent=2))
+          if rows:
+           with (out/'rank1-settlement.csv').open('w',newline='') as f:w=csv.DictWriter(f,fieldnames=list(rows[0]));w.writeheader();w.writerows(rows)
+          print('STAGE185C_REPORT',json.dumps(report),flush=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage185c-F-post-training-comparison
+          path: summary/
+          retention-days: 90
+          if-no-files-found: error
