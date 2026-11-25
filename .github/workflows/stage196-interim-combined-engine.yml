@@ -1,0 +1,627 @@
+name: Stage196 - Standalone interim exact-recipe ROI race-type engine (paper)
+on:
+  workflow_dispatch:
+    inputs:
+      selection_date:
+        description: Dublin date, blank for today
+        required: false
+        default: ''
+  push:
+    branches: [main]
+    paths: ['.github/workflows/stage196-interim-combined-engine.yml']
+  schedule:
+    - cron: '20 5 * * *'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage196-interim-combined
+  cancel-in-progress: false
+jobs:
+  combined:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    env:
+      PYTHONPATH: .:scripts
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned scoring dependencies
+        run: pip install numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2 freezegun==1.5.5 requests 'kagglehub>=0.3,<1'
+      - name: Validate current date and refresh declarations
+        env:
+          ASKED_DATE: ${{ inputs.selection_date }}
+          RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
+          RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
+        run: |
+          set -euo pipefail
+          TODAY="$(TZ=Europe/Dublin date +%F)"
+          TARGET="${ASKED_DATE:-$TODAY}"
+          test "$TARGET" = "$TODAY"
+          echo "TARGET_DAY=$TARGET" >> "$GITHUB_ENV"
+          if [ -n "$RACING_API_USERNAME" ] && [ -n "$RACING_API_PASSWORD" ]; then python collect-racecards.py; fi
+      - name: Materialize route map and consolidated engine
+        run: |
+          mkdir -p stage196-work stage196-output
+          cat > stage196-work/routes.json <<'ROUTES'
+          {
+            "AW_AUCTION_RESTRICTED_SALES": {
+              "model": "D137_HPR_ABILITY_GRADE",
+              "priced": 20,
+              "roi_pct": 129.2361,
+              "strike_rate_pct": 55.0,
+              "selection_policy": "minimum_10_preferred",
+              "unrestricted_model": "D137_HPR_ABILITY_GRADE",
+              "unrestricted_roi_pct": 129.2361
+            },
+            "AW_HANDICAP": {
+              "model": "E92_PRESET_PEOPLE_HEAVY",
+              "priced": 153,
+              "roi_pct": 4.6116,
+              "strike_rate_pct": 25.3247,
+              "selection_policy": "minimum_10_preferred",
+              "unrestricted_model": "E92_PRESET_PEOPLE_HEAVY",
+              "unrestricted_roi_pct": 4.6116
+            },
+            "AW_LISTED_PATTERN": {
+              "model": "D137_HPR_ABILITY_GRADE",
+              "priced": 3,
+              "roi_pct": 266.6667,
+              "strike_rate_pct": 66.6667,
+              "selection_policy": "sparse_absolute_leader",
+              "unrestricted_model": "D137_HPR_ABILITY_GRADE",
+              "unrestricted_roi_pct": 266.6667
+            },
+            "AW_MAIDEN": {
+              "model": "E92_PRESET_PEOPLE_HEAVY",
+              "priced": 22,
+              "roi_pct": 56.615,
+              "strike_rate_pct": 45.4545,
+              "selection_policy": "minimum_10_preferred",
+              "unrestricted_model": "Z",
+              "unrestricted_roi_pct": 181.4815
+            },
+            "AW_NOVICE": {
+              "model": "D_FORM_DEBUT_EIGHT_PILLARS__SR",
+              "priced": 27,
+              "roi_pct": 103.4156,
+              "strike_rate_pct": 40.7407,
+              "selection_policy": "minimum_10_preferred",
+              "unrestricted_model": "D_FORM_DEBUT_EIGHT_PILLARS__SR",
+              "unrestricted_roi_pct": 103.4156
+            },
+            "AW_NURSERY": {
+              "model": "D_FORM_WEIGHT_OR_GRADE__ROI",
+              "priced": 21,
+              "roi_pct": 49.4048,
+              "strike_rate_pct": 30.4348,
+              "selection_policy": "minimum_10_preferred",
+              "unrestricted_model": "D_FORM_WEIGHT_OR_GRADE__ROI",
+              "unrestricted_roi_pct": 49.4048
+            },
+            "AW_OTHER_OPEN": {
+              "model": "E92_PRESET_FROZEN_D_PRIOR",
+              "priced": 2,
+              "roi_pct": 775.0,
+              "strike_rate_pct": 100.0,
+              "selection_policy": "sparse_absolute_leader",
+              "unrestricted_model": "E92_PRESET_FROZEN_D_PRIOR",
+              "unrestricted_roi_pct": 775.0
+            },
+            "AW_SELLING_CLAIMING": {
+              "model": "D2_ENHANCED_ALL",
+              "priced": 2,
+              "roi_pct": 200.0,
+              "strike_rate_pct": 50.0,
+              "selection_policy": "sparse_absolute_leader",
+              "unrestricted_model": "D2_ENHANCED_ALL",
+              "unrestricted_roi_pct": 200.0
+            },
+            "CHASE_BEGINNERS": {
+              "model": "G5_ADAPTIVE_QUARTERLY",
+              "priced": 16,
+              "roi_pct": 43.259,
+              "strike_rate_pct": 62.5,
+              "selection_policy": "minimum_10_preferred",
+              "unrestricted_model": "G5_ADAPTIVE_QUARTERLY",
+              "unrestricted_roi_pct": 43.259
+            },
+            "CHASE_GRADE_1": {
+              "model": "D2_ENHANCED_ALL",
+              "priced": 3,
+              "roi_pct": 270.0,
+              "strike_rate_pct": 66.6667,
+              "selection_policy": "sparse_absolute_leader",
+              "unrestricted_model": "D2_ENHANCED_ALL",
+              "unrestricted_roi_pct": 270.0
+            },
+            "CHASE_GRADE_2": {
+              "model": "D_FORM_WEIGHT_OR_GRADE__ROI",
+              "priced": 6,
+              "roi_pct": 138.0682,
+              "strike_rate_pct": 83.3333,
+              "selection_policy": "sparse_absolute_leader",
+              "unrestricted_model": "D_FORM_WEIGHT_OR_GRADE__ROI",
+              "unrestricted_roi_pct": 138.0682
+            },
+            "CHASE_GRADE_3": {
+              "model": "D2_ENHANCED_ALL",
+              "priced": 2,
+              "roi_pct": 250.0,
+              "strike_rate_pct": 50.0,
+              "selection_policy": "sparse_absolute_leader",
+              "unrestricted_model": "D2_ENHANCED_ALL",
+              "unrestricted_roi_pct": 250.0
+            },
+            "CHASE_HANDICAP": {
+              "model": "G5_COMBINED_QUARTERLY",
+              "priced": 135,
+              "roi_pct": 26.4682,
+              "strike_rate_pct": 26.6667,
+              "selection_policy": "minimum_10_preferred",
+              "unrestricted_model": "G5_COMBINED_QUARTERLY",
+              "unrestricted_roi_pct": 26.4682
+            },
+            "CHASE_LISTED": {
+              "model": "G2_FROZEN",
+              "priced": 3,
+              "roi_pct": 261.1111,
+              "strike_rate_pct": 66.6667,
+              "selection_policy": "sparse_absolute_leader",
+              "unrestricted_model": "G2_FROZEN",
+              "unrestricted_roi_pct": 261.1111
+            },
+            "CHASE_NOVICE": {
+              "model": "D137_HPR_ABILITY_OR",
+              "priced": 2,
+              "roi_pct": 216.6667,
+              "strike_rate_pct": 100.0,
+              "selection_policy": "sparse_absolute_leader",
+              "unrestricted_model": "D137_HPR_ABILITY_OR",
+              "unrestricted_roi_pct": 216.6667
+            },
+            "CHASE_NOVICE_HANDICAP": {
+              "model": "STAGE143_TYPE_EVIDENCE",
+              "priced": 1,
+              "roi_pct": 187.5,
+              "strike_rate_pct": 100.0,
+              "selection_policy": "sparse_absolute_leader",
+              "unrestricted_model": "STAGE143_TYPE_EVIDENCE",
+              "unrestricted_roi_pct": 187.5
+            },
+            "CHASE_OTHER_OPEN": {
+              "model": "G",
+              "priced": 2,
+              "roi_pct": 195.0,
+              "strike_rate_pct": 100.0,
+              "selection_policy": "sparse_absolute_leader",
+              "unrestricted_model": "G",
+              "unrestricted_roi_pct": 195.0
+            },
+            "HURDLE_GRADE_1": {
+              "model": "C_HISTORICAL_CORE",
+              "priced": 1,
+              "roi_pct": 16.6667,
+              "strike_rate_pct": 100.0,
+              "selection_policy": "sparse_absolute_leader",
+              "unrestricted_model": "C_HISTORICAL_CORE",
+              "unrestricted_roi_pct": 16.6667
+            },
+            "HURDLE_GRADE_2": {
+              "model": "G4_BLENDED",
+              "priced": 5,
+              "roi_pct": 137.5,
+              "strike_rate_pct": 40.0,
+              "selection_policy": "sparse_absolute_leader",
+              "unrestricted_model": "G4_BLENDED",
+              "unrestricted_roi_pct": 137.5
+            },
+            "HURDLE_GRADE_3": {
+              "model": "G4_BLENDED",
+              "priced": 2,
+              "roi_pct": 155.7692,
+              "strike_rate_pct": 100.0,
+              "selection_policy": "sparse_absolute_leader",
+              "unrestricted_model": "G4_BLENDED",
+              "unrestricted_roi_pct": 155.7692
+            },
+            "HURDLE_HANDICAP": {
+              "model": "E_75_25_NO_HPR",
+              "priced": 156,
+              "roi_pct": -1.1163,
+              "strike_rate_pct": 21.0191,
+              "selection_policy": "minimum_10_preferred",
+              "unrestricted_model": "E_75_25_NO_HPR",
+              "unrestricted_roi_pct": -1.1163
+            },
+            "HURDLE_JUVENILE": {
+              "model": "D142_LONG_FORM_HPR",
+              "priced": 10,
+              "roi_pct": 119.4643,
+              "strike_rate_pct": 60.0,
+              "selection_policy": "minimum_10_preferred",
+              "unrestricted_model": "G4_SPECIALIST",
+              "unrestricted_roi_pct": 136.7347
+            },
+            "HURDLE_LISTED": {
+              "model": "G5_ADAPTIVE_QUARTERLY",
+              "priced": 5,
+              "roi_pct": 230.0,
+              "strike_rate_pct": 80.0,
+              "selection_policy": "sparse_absolute_leader",
+              "unrestricted_model": "G5_ADAPTIVE_QUARTERLY",
+              "unrestricted_roi_pct": 230.0
+            },
+            "HURDLE_MAIDEN": {
+              "model": "G2_FROZEN",
+              "priced": 66,
+              "roi_pct": 5.7408,
+              "strike_rate_pct": 46.2687,
+              "selection_policy": "minimum_10_preferred",
+              "unrestricted_model": "G2_FROZEN",
+              "unrestricted_roi_pct": 5.7408
+            },
+            "HURDLE_NOVICE": {
+              "model": "D2_ENHANCED_ALL",
+              "priced": 10,
+              "roi_pct": 166.0,
+              "strike_rate_pct": 60.0,
+              "selection_policy": "minimum_10_preferred",
+              "unrestricted_model": "D2_ENHANCED_ALL",
+              "unrestricted_roi_pct": 166.0
+            },
+            "HURDLE_NOVICE_HANDICAP": {
+              "model": "G5_STRENGTH_QUARTERLY",
+              "priced": 4,
+              "roi_pct": 375.0,
+              "strike_rate_pct": 50.0,
+              "selection_policy": "sparse_absolute_leader",
+              "unrestricted_model": "G5_STRENGTH_QUARTERLY",
+              "unrestricted_roi_pct": 375.0
+            },
+            "HURDLE_OTHER_OPEN": {
+              "model": "E_75_25_WITH_HPR",
+              "priced": 36,
+              "roi_pct": 18.7275,
+              "strike_rate_pct": 58.3333,
+              "selection_policy": "minimum_10_preferred",
+              "unrestricted_model": "E_75_25_WITH_HPR",
+              "unrestricted_roi_pct": 18.7275
+            },
+            "HURDLE_RATED": {
+              "model": "D137_HPR_ABILITY_GRADE",
+              "priced": 1,
+              "roi_pct": 175.0,
+              "strike_rate_pct": 100.0,
+              "selection_policy": "sparse_absolute_leader",
+              "unrestricted_model": "D137_HPR_ABILITY_GRADE",
+              "unrestricted_roi_pct": 175.0
+            },
+            "NH_FLAT_MAIDEN": {
+              "model": "G3_LEARNED",
+              "priced": 2,
+              "roi_pct": 225.0,
+              "strike_rate_pct": 50.0,
+              "selection_policy": "sparse_absolute_leader",
+              "unrestricted_model": "G3_LEARNED",
+              "unrestricted_roi_pct": 225.0
+            },
+            "NH_FLAT_OPEN": {
+              "model": "D137_HPR_ABILITY_OR",
+              "priced": 39,
+              "roi_pct": 22.0551,
+              "strike_rate_pct": 41.0256,
+              "selection_policy": "minimum_10_preferred",
+              "unrestricted_model": "D137_HPR_ABILITY_OR",
+              "unrestricted_roi_pct": 22.0551
+            },
+            "NH_FLAT_PATTERN": {
+              "model": "D_FROZEN_RANK1",
+              "priced": 1,
+              "roi_pct": 225.0,
+              "strike_rate_pct": 100.0,
+              "selection_policy": "sparse_absolute_leader",
+              "unrestricted_model": "D_FROZEN_RANK1",
+              "unrestricted_roi_pct": 225.0
+            },
+            "TURF_AUCTION_RESTRICTED_SALES": {
+              "model": "C_HISTORICAL_CORE",
+              "priced": 1,
+              "roi_pct": -100.0,
+              "strike_rate_pct": 0.0,
+              "selection_policy": "sparse_absolute_leader",
+              "unrestricted_model": "C_HISTORICAL_CORE",
+              "unrestricted_roi_pct": -100.0
+            },
+            "TURF_GROUP_3": {
+              "model": "C_HISTORICAL_CORE",
+              "priced": 2,
+              "roi_pct": -4.5455,
+              "strike_rate_pct": 50.0,
+              "selection_policy": "sparse_absolute_leader",
+              "unrestricted_model": "C_HISTORICAL_CORE",
+              "unrestricted_roi_pct": -4.5455
+            },
+            "TURF_HANDICAP": {
+              "model": "D137_HPR_ABILITY_OR_WEIGHT",
+              "priced": 46,
+              "roi_pct": 81.8841,
+              "strike_rate_pct": 23.4043,
+              "selection_policy": "minimum_10_preferred",
+              "unrestricted_model": "D137_HPR_ABILITY_OR_WEIGHT",
+              "unrestricted_roi_pct": 81.8841
+            },
+            "TURF_LISTED": {
+              "model": "D2_ENHANCED_DISCIPLINE",
+              "priced": 5,
+              "roi_pct": 57.5,
+              "strike_rate_pct": 40.0,
+              "selection_policy": "sparse_absolute_leader",
+              "unrestricted_model": "D2_ENHANCED_DISCIPLINE",
+              "unrestricted_roi_pct": 57.5
+            },
+            "TURF_MAIDEN": {
+              "model": "G",
+              "priced": 4,
+              "roi_pct": 158.3333,
+              "strike_rate_pct": 50.0,
+              "selection_policy": "sparse_absolute_leader",
+              "unrestricted_model": "G",
+              "unrestricted_roi_pct": 158.3333
+            },
+            "TURF_NOVICE": {
+              "model": "D2_ENHANCED_ALL",
+              "priced": 11,
+              "roi_pct": 11.2603,
+              "strike_rate_pct": 36.3636,
+              "selection_policy": "minimum_10_preferred",
+              "unrestricted_model": "D2_ENHANCED_ALL",
+              "unrestricted_roi_pct": 11.2603
+            },
+            "TURF_NURSERY": {
+              "model": "G5_ADAPTIVE_QUARTERLY",
+              "priced": 5,
+              "roi_pct": 152.5,
+              "strike_rate_pct": 60.0,
+              "selection_policy": "sparse_absolute_leader",
+              "unrestricted_model": "G5_ADAPTIVE_QUARTERLY",
+              "unrestricted_roi_pct": 152.5
+            }
+          }
+          ROUTES
+          cat > stage196-work/engine.py <<'PY'
+          import csv,datetime as dt,json,os,pathlib as P,re,subprocess as S,sys,unicodedata,collections as C,sqlite3,hashlib,shutil
+          from zoneinfo import ZoneInfo
+          ROOT=P.Path.cwd(); W=(ROOT/'stage196-work').resolve(); O=(ROOT/'stage196-output').resolve(); O.mkdir(exist_ok=True); W.mkdir(exist_ok=True)
+          DAY=os.environ['TARGET_DAY']; NOW=lambda:dt.datetime.now(dt.timezone.utc); UTC=dt.timezone.utc
+          routes=json.loads((W/'routes.json').read_text()); pin='a5987838b0e3f28b53686bac60d52cd164738718'; workflow_pin='278c2d1a3065f6b32ae705c68be221f47b201724'
+          assert len(routes)==38 and not any('D138' in v['model'] for v in routes.values())
+
+          def norm(s):return re.sub('[^a-z0-9]','',unicodedata.normalize('NFKD',str(s or '')).encode('ascii','ignore').decode().lower())
+          def horse(s):return norm(re.sub(r'\s*\([A-Za-z]{2,3}\)\s*$','',str(s or '')))
+          def course(s):
+           n=norm(re.sub(r'\s*\((?:AW|GB|IRE|UK)\)\s*$','',str(s or ''),flags=re.I));return {'galwayire':'galway','wexfordire':'wexford','dundalkawire':'dundalk','dundalkire':'dundalk','dundalkaw':'dundalk','fairyhouseire':'fairyhouse','clonmelire':'clonmel','gowranparkire':'gowranpark','kemptonpark':'kempton','chelmsfordcity':'chelmsford','bangor':'bangorondee'}.get(n,n)
+          def stamp(s):
+           t=dt.datetime.fromisoformat(str(s).replace('Z','+00:00'));assert t.tzinfo;return t.astimezone(UTC)
+          def cardkey(r):return (DAY,course(r['course']),stamp(r['race_time']).strftime('%H:%M'))
+          def rowkey(r):return (str(r.get('date','')),course(r.get('course') or r.get('meeting')),str(r.get('time_utc') or r.get('off_utc') or r.get('time') or '')[:5])
+          def dump(p,x):p.write_text(json.dumps(x,indent=2,default=str))
+          def writecsv(p,rows,fields=None):
+           fields=fields or list(dict.fromkeys(k for r in rows for k in r)) or ['date','course','time','status'];
+           with p.open('w',newline='') as f:w=csv.DictWriter(f,fieldnames=fields,extrasaction='ignore');w.writeheader();w.writerows(rows)
+          def git(*args):return S.check_output(['git',*args],text=True)
+          def download(run,name,dest):
+           dest.mkdir(parents=True,exist_ok=True);S.run(['gh','run','download',str(run),'--repo',os.environ['GITHUB_REPOSITORY'],'--name',name,'--dir',str(dest)],check=True,timeout=1200)
+          def exactly(root,name):
+           a=list(root.rglob(name));assert len(a)==1,(root,name,len(a));return a[0].resolve()
+          def extract(workflow,filename):
+           # Extract the complete original Python heredoc verbatim from its immutable workflow revision.
+           text=git('show',workflow_pin+':.github/workflows/'+workflow)
+           pattern=r"(?m)^([ ]*)cat > scripts/"+re.escape(filename)+r" <<'PY'\n([\s\S]*?)^\1PY[ ]*$"
+           m=re.search(pattern,text);assert m,('missing exact adapter',workflow,filename)
+           indent=len(m.group(1));body='\n'.join(x[indent:] if x.startswith(' '*indent) else x for x in m.group(2).splitlines())+'\n';compile(body,filename,'exec');p=ROOT/'scripts'/filename;p.write_text(body);return p
+
+          def run(name,script,args,filename,env=None,label=None):
+           dest=W/name;dest.mkdir(exist_ok=True); record={'family':name,'script':str(script),'status':'FAILED','started':NOW().isoformat()}; result=[]
+           try:
+            command=[sys.executable,'-u',str(script),*map(str,args),'--out',str(dest)];record['command']=command
+            with (O/(name+'.log')).open('w') as f:ret=S.run(command,stdout=f,stderr=S.STDOUT,env={**os.environ,**(env or {})},timeout=7200)
+            if ret.returncode:raise RuntimeError('scorer exit '+str(ret.returncode))
+            with (dest/filename).open(newline='',encoding='utf-8-sig') as f:result=list(csv.DictReader(f))
+            if label:
+             for r in result:r['model']=label
+            if not result:raise RuntimeError('no scorer rows')
+            record.update(status='SUCCESS',rows=len(result),models=sorted({r['model'] for r in result}))
+           except Exception as e:record['error']=repr(e)
+           finally:
+            record['finished']=NOW().isoformat();audit['families'].append(record);dump(O/'audit.json',audit)
+            # Keep the rank output in memory and copy small provenance reports; release private multi-GB scratch files.
+            for report in dest.glob('*audit.json'):
+             if report.stat().st_size<2_000_000:shutil.copy2(report,O/(name+'-'+report.name))
+            shutil.rmtree(dest,ignore_errors=True)
+           return result
+
+          audit={'version':'STAGE196_INTERIM_EXACT_RECIPE_ROUTER','day':DAY,'mode':'PAPER_ONLY_NOT_PRODUCTION','historical_period':['2026-10-25','2026-11-23'],'historical_replay_source':pin,'adapter_workflow_source':workflow_pin,'route_policy':'highest ROI with >=10 priced observations where available; otherwise highest ROI, sparse flagged','excluded_replays':['stage184b incomplete','stage186d deferred','unverified A/B and D(c) proxies'],'families':[],'issues':[]}
+          # These files contain no target-day results; use the existing validated source builder once.
+          base=W/'base'; refdir=W/'ref'; download(43089770857,'stage2-historical-staging-database',base);download(43089770857,'stage4-reference-named-events-and-winners',refdir)
+          # The helper recognises the canonical Stage152 source path. Use exactly that path in this disposable checkout.
+          canonical=ROOT/'reports/stage152-specialists/source/stage2';canonical.mkdir(parents=True,exist_ok=True)
+          basefile=exactly(base,'historical_ukie_staging.sqlite');target=canonical/basefile.name;shutil.move(str(basefile),target)
+          reference=exactly(refdir,'all_races_with_reference_event_ids.csv')
+          from stage167_validated_history import refreshed_inputs
+          with refreshed_inputs(target,reference,DAY) as (db0,ref0):
+           db=W/'prior.sqlite';ref=W/'prior-reference.csv';shutil.copy2(db0,db);shutil.copy2(ref0,ref)
+          # The refreshed private database is independent; discard the restored baseline copy to conserve runner disk.
+          target.unlink(missing_ok=True)
+          with sqlite3.connect(db) as c:
+           c.execute('DELETE FROM historical_runs WHERE race_id IN (SELECT id FROM historical_races WHERE race_date>=?)',(DAY,));c.execute('DELETE FROM historical_races WHERE race_date>=?',(DAY,));c.commit();latest=c.execute('SELECT MAX(race_date) FROM historical_races').fetchone()[0];assert latest and latest<DAY
+          ref_tmp=W/'filtered-reference.csv'
+          with ref.open(encoding='utf-8-sig',newline='') as f,ref_tmp.open('w',newline='') as g:
+           rr=csv.DictReader(f);assert 'date' in rr.fieldnames;ww=csv.DictWriter(g,fieldnames=rr.fieldnames);ww.writeheader();ww.writerows(r for r in rr if r['date']<DAY)
+          ref_tmp.replace(ref);audit['history_through']=latest
+          # Use the current HPR ledger, not a later result or a reconstructed target-day rating.
+          hpr=W/'hpr.sqlite';S.run([sys.executable,'scripts/stage87_hpr_storage.py','restore','--dir','data/hpr/shards','--db',str(hpr)],check=True,timeout=1200)
+          # Freeze model source and root imports to original replay commit, while retaining current validated data and Git history.
+          # Keep the current script files outside the source tree for provenance; replace tracked Python code only in this disposable job.
+          paths=git('ls-tree','-r','--name-only',pin).splitlines();frozen=[p for p in paths if p.endswith('.py') and (p.startswith('scripts/') or '/' not in p)]
+          S.run(['git','restore','--source',pin,'--worktree','--',*frozen],check=True)
+          for p in ['data/strategy-historical-model.json','data/strategy-model-b-historical.json','data/strategy-model-c-historical.json','data/roi-racetype-route-map.json','reports/stage30/stage30-summary.json']:
+           if p in paths:S.run(['git','restore','--source',pin,'--worktree','--',p],check=True)
+          for workflow,filename in [('stage185a-e75-hpr-replay.yml','stage185a_local_replay.py'),('stage185b-e92-presets-replay.yml','stage185b_local_replay.py'),('stage186b-remaining-specialists-replay.yml','stage186b_local_replay.py'),('stage188a-enhanced-d2-replay.yml','stage188a_local_replay.py')]:extract(workflow,filename)
+          # Capture only genuine, fresh declarations for the target day. Remove settlement fields and current price inputs.
+          from rhp_runner_eligibility import active_runner
+          cards=json.loads((ROOT/'data/racecards.json').read_text());collected=stamp(cards['collected_at']);assert 0<= (NOW()-collected).total_seconds()<=4*3600,'Stale or future racecard snapshot'
+          fields=C.defaultdict(list);outcome={'position','finish_pos','result','outcome','sp','sp_decimal','starting_price','beaten','race_result','result_status','overall_beaten','distance_beaten_total'};prices={'odds','price','bookmaker_odds','current_odds','paddypower_decimal','paddy_power_decimal'}
+          for r in cards.get('runners',[]):
+           if str(r.get('date'))!=DAY or not r.get('race_time') or not r.get('horse') or not active_runner(r):continue
+           if norm(r.get('race_status')) in {'finished','resulted','final','completed','abandoned','cancelled','canceled','void'}:continue
+           if any(r.get(k) not in (None,'',[],{}) for k in outcome):continue
+           if stamp(r['race_time'])<=NOW()+dt.timedelta(minutes=2):continue
+           fields[cardkey(r)].append({k:v for k,v in r.items() if k not in outcome|prices})
+          fields={k:v for k,v in fields.items() if len(v)>=2 and len({horse(r['horse']) for r in v})==len(v)};assert fields,'No verified remaining fields'
+          cardpath=W/'cards.json';dump(cardpath,dict(cards,runners=[r for v in fields.values() for r in v]));audit.update(card_asof=collected.isoformat(),remaining_fields=len(fields));dump(O/'audit.json',audit)
+          common=['today','--db',db,'--reference',ref,'--cards',cardpath,'--date',DAY]
+          allrows=[]; byfamily={}
+          # Stage147 supplies the exact canonical classifier used in Stage177b. Its local scores are also available for the Stage143 route.
+          rr=run('classifier','scripts/stage147_daily_143_146.py',[*common,'--config',ROOT/'scripts/stage143_race_type_specialist_config.json'],'stage146-today-all-runners.csv');allrows+=rr
+          from stage153_roi_combined import type_for,STAGE156_ROUTES
+          legacy={'maiden hurdle':'HURDLE_MAIDEN','handicap hurdle':'HURDLE_HANDICAP','novice hurdle':'HURDLE_NOVICE','novice handicap hurdle':'HURDLE_NOVICE_HANDICAP','beginners chase':'CHASE_BEGINNERS','handicap chase':'CHASE_HANDICAP','novice handicap chase':'CHASE_NOVICE_HANDICAP','nh flat open':'NH_FLAT_OPEN','aw maiden':'AW_MAIDEN','aw nursery':'AW_NURSERY','aw handicap':'AW_HANDICAP','auction restricted':'AW_AUCTION_RESTRICTED_SALES'}
+          codes=C.defaultdict(set)
+          for r in rr:
+           if r.get('route') in STAGE156_ROUTES:codes[rowkey(r)].add(r['route'])
+          assigned={}; pending=[]
+          for k,v in sorted(fields.items()):
+           c=codes[k];title=str(v[0].get('race_name') or '').lower()
+           if len(c)>1:typ=None;reason='CLASSIFICATION_CONFLICT'
+           elif 'junior' in title and 'hurdle' in title:typ='HURDLE_JUVENILE';reason=''
+           elif len(c)==1:typ=next(iter(c));reason=''
+           else:typ=legacy.get(type_for(v));reason='' if typ else 'NO_VERIFIED_CLASSIFICATION'
+           assigned[k]=typ
+           if typ not in routes:pending.append(dict(date=DAY,course=v[0]['course'],time=k[2],race_type=typ or '',status=reason or 'NO_HISTORICAL_ROUTE'))
+          needed={routes[t]['model'] for t in assigned.values() if t in routes};audit['needed_models']=sorted(needed);dump(O/'audit.json',audit)
+          # Execute local original scoring functions on the shared snapshot, no external daily workflow outputs.
+          if any(m.startswith('E92_') for m in needed):allrows+=run('E92','scripts/stage185b_local_replay.py',[*common,'--hpr',hpr],'stage185b-all-runners.csv')
+          if any(m.startswith('E_75_25') for m in needed):allrows+=run('E75','scripts/stage185a_local_replay.py',[*common,'--hpr',hpr],'stage185a-all-runners.csv')
+          if any(m.startswith('D2_ENHANCED') for m in needed):
+           try:
+            download(42107290218,'stage50-model-d2-optimisation',ROOT/'restore50');download(42111552889,'stage51-model-d2-form-enhancements',ROOT/'restore51');allrows+=run('D2','scripts/stage188a_local_replay.py',common,'stage188a-all-runners.csv')
+           except Exception as e:audit['issues'].append({'family':'D2','error':repr(e)})
+          if any(m in needed for m in ['D137_HPR_ABILITY_GRADE','D137_HPR_ABILITY_OR','D_FORM_DEBUT_EIGHT_PILLARS__SR','D_FORM_WEIGHT_OR_GRADE__ROI']):allrows+=run('D_specialists','scripts/stage186b_local_replay.py',common,'stage186b-all-runners.csv')
+          if 'D137_HPR_ABILITY_OR_WEIGHT' in needed:allrows+=run('D137_OR_WEIGHT','scripts/stage141_today_or_weight_paper.py',common[1:],'stage141-today-all-runners.csv')
+          if 'D142_LONG_FORM_HPR' in needed:allrows+=run('D142_LONG_FORM','scripts/stage150_d142_long_form_today.py',common,'stage150-d142-all-runners.csv')
+          # G5 uses its original 2025 bank. Preserve the original training and HPR guards.
+          if any(m.startswith('G5_') for m in needed):
+           try:
+            g3=W/'g3';g5=W/'g5';download(43407036838,'stage109-g3-learning-43407036838',g3);download(43539599590,'stage127-g5-quarterly-43539599590',g5)
+            allrows+=run('G5','scripts/stage128_g5_today_paper.py',['paper','--date',DAY,'--cutoff',NOW().isoformat(),'--state',exactly(g3,'stage109-prior-form-state.joblib'),'--g3',exactly(g3,'stage109-future-form-model.joblib'),'--models',g5,'--db',db,'--reference',ref,'--hpr',hpr,'--cards',cardpath],'stage128-g5-all-horses.csv')
+           except Exception as e:audit['issues'].append({'family':'G5','error':repr(e)})
+          # Frozen G2 and learned G3 are the Stage109 outputs, not the distinct G2_ORIGINAL arm.
+          empty=W/'empty-odds.json';empty.write_text('{}')
+          if needed&{'G2_FROZEN','G3_LEARNED'}:
+           try:
+            g3=W/'g3';
+            if not g3.exists():download(43407036838,'stage109-g3-learning-43407036838',g3)
+            allrows+=run('G2_G3','scripts/stage109_model_g3.py',['paper','--model',exactly(g3,'stage109-future-form-model.joblib'),'--state',exactly(g3,'stage109-prior-form-state.joblib'),'--g2-frozen',exactly(g3,'stage109-frozen-g2-original.joblib'),'--cards',cardpath,'--date',DAY,'--cutoff',NOW().isoformat(),'--hpr',hpr,'--odds',empty,'--bookmaker','williamhill'],'stage109-paper-all-horses.csv')
+           except Exception as e:audit['issues'].append({'family':'G2_G3','error':repr(e)})
+          if 'G' in needed:
+           try:
+            g=W/'g';download(43292937252,'stage107-model-g-43292937252',g)
+            allrows+=run('G','scripts/stage107_model_g.py',['paper','--model',exactly(g,'stage107-frozen-form-model.joblib'),'--state',exactly(g,'stage107-prior-form-state.joblib'),'--cards',cardpath,'--date',DAY,'--cutoff',NOW().isoformat(),'--hpr',hpr,'--odds',empty,'--bookmaker','williamhill'],'stage107-paper-all-rankings.csv',label='G')
+           except Exception as e:audit['issues'].append({'family':'G','error':repr(e)})
+          if needed&{'G4_BLENDED','G4_SPECIALIST'}:
+           try:
+            g=W/'g4';download(43422655754,'stage111-g4-specialists-43422655754',g)
+            allrows+=run('G4','scripts/stage111_model_g4.py',['paper','--model',exactly(g,'stage111-paper-specialists.joblib'),'--state',exactly(g,'stage111-prior-form-state.joblib'),'--cards',cardpath,'--date',DAY,'--cutoff',NOW().isoformat(),'--hpr',hpr],'stage111-paper-all-horses.csv')
+           except Exception as e:audit['issues'].append({'family':'G4','error':repr(e)})
+          # D_FROZEN_RANK1: reuse the original Stage183 exact feature and rank pipeline locally.
+          if 'D_FROZEN_RANK1' in needed:
+           try:
+            import numpy as np
+            import stage38_model_dz_live as D
+            from stage116_verified_form_live import resolve_verified,apply_d_row
+            cfg=json.loads((ROOT/'reports/stage30/stage30-summary.json').read_text());d=cfg['model_results']['D'];assert cfg['test_year']==2025 and cfg['status']=='RESEARCH_ONLY' and d['chosen_combination']=='D-064-gap14'
+            w=np.array([float(d['weights_pct'][k])/100 for k in D.METRICS]);assert len(w)==8 and np.isfinite(w).all() and abs(w.sum()-1)<.002
+            history=D.LivePast({});history.scan_until(db,DAY);countries={}
+            for n,c in history.last:
+             if n not in countries:countries[n]=c
+             elif countries[n]!=c:countries[n]=None
+            aliases,_=resolve_verified(str(db),[r for v in fields.values() for r in v],DAY)
+            count=0
+            for k,v in fields.items():
+             if assigned[k] not in routes or routes[assigned[k]]['model']!='D_FROZEN_RANK1':continue
+             inputs=[apply_d_row(D.live_row(r,DAY,'MODEL-D-LIVE|'+DAY+'|'+str(v[0]['course'])+'|'+D.clock(v[0]['race_time']),countries),r,aliases) for r in v];race=history.score(inputs,live=True)
+             if race is None or len(race['x'])!=len(v):continue
+             scores,order,gap=D.prediction_rows(race,w);assert np.isfinite(scores).all()
+             for rank,i in enumerate(order,1):allrows.append(dict(date=DAY,course=v[0]['course'],time=k[2],model='D_FROZEN_RANK1',horse=v[int(i)]['horse'],rank=rank));count+=1
+            audit['families'].append(dict(family='D_FROZEN_RANK1',status='SUCCESS',rows=count))
+           except Exception as e:audit['issues'].append({'family':'D_FROZEN_RANK1','error':repr(e)})
+          # Reproduce the exact Stage177 historical-core recipe, not live Model C or its unrecovered tips.
+          if 'C_HISTORICAL_CORE' in needed:
+           try:
+            import numpy as np
+            # The pinned installer reconstructs only the original historical scoring modules.
+            installer='.github/workflows/stage21-model-c-live.yml'; S.run(['git','restore','--source',pin,'--worktree','--',installer],check=True)
+            S.run([sys.executable,'scripts/stage101_all_models_compare.py','install-engines'],check=True,timeout=300)
+            import stage101_all_models_compare as M
+            entries=[dict(date=DAY,course=v[0]['course'],time=k[2],key=(DAY,M.norm(v[0]['course']),M.clock(v[0]['race_time'])),cards=v) for k,v in fields.items() if assigned[k] in routes and routes[assigned[k]]['model']=='C_HISTORICAL_CORE']
+            issues=[]; scored=M.card_models_original(db,ref,entries,issues);count=0
+            for entry in entries:
+             model=scored.get(entry['key'],{}).get(M.REPLAY_C)
+             if not model:continue
+             scores=np.asarray(model['scores'],dtype=float);assert len(scores)==len(entry['cards']) and np.isfinite(scores).all()
+             for rank,i in enumerate(np.argsort(-scores,kind='stable'),1):allrows.append(dict(date=DAY,course=entry['course'],time=entry['time'],model='C_HISTORICAL_CORE',horse=entry['cards'][int(i)]['horse'],rank=rank));count+=1
+            audit['families'].append(dict(family='C_HISTORICAL_CORE',status='RESEARCH_CORE_ONLY',rows=count,issues=issues))
+           except Exception as e:audit['issues'].append({'family':'C_HISTORICAL_CORE','error':repr(e)})
+
+          # Reconcile exact model IDs and full fields. Do not rerank after non-runners; any disagreement is an explicit no-selection.
+          rankings=C.defaultdict(list)
+          for r in allrows:
+           k=rowkey(r);m=r.get('model')
+           if k in fields and m in needed:rankings[(k,m)].append(r)
+          results=[];full=[]
+          for k,v in sorted(fields.items()):
+           typ=assigned[k];base=dict(date=DAY,course=v[0]['course'],time=k[2],race_name=v[0].get('race_name',''),race_type=typ or '',model='',rank1='',rank2='',historical_roi_pct='',historical_priced='',historical_strike_rate_pct='',sample_status='',status='',published_at=NOW().isoformat())
+           if typ not in routes:base['status']='NO_HISTORICAL_ROUTE' if typ else 'NO_VERIFIED_CLASSIFICATION';results.append(base);continue
+           route=routes[typ];m=route['model'];base.update(model=m,model_basis='HISTORICAL_CORE_NO_LIVE_TIPS' if m=='C_HISTORICAL_CORE' else 'ORIGINAL_REPLAY_RECIPE',historical_roi_pct=route['roi_pct'],historical_priced=route['priced'],historical_strike_rate_pct=route['strike_rate_pct'],sample_status='SPARSE' if route['priced']<10 else 'MIN10')
+           raw=rankings[(k,m)]; expected={horse(r['horse']) for r in v};reason=''
+           if stamp(v[0]['race_time'])<=NOW()+dt.timedelta(minutes=2):reason='RACE_OFF_OR_IMMINENT_AT_PUBLICATION'
+           elif not raw:reason='NO_EXACT_MODEL_OUTPUT'
+           else:
+            try:
+             ordered=sorted(raw,key=lambda r:int(float(r['rank'])));assert [int(float(r['rank'])) for r in ordered]==list(range(1,len(expected)+1));assert len(ordered)==len(expected) and {horse(r['horse']) for r in ordered}==expected
+             base.update(rank1=ordered[0]['horse'],rank2=ordered[1]['horse'],status='PAPER_SELECTION')
+             # Do not relabel raw scores as probabilities. Only preserve explicitly named source probability fields.
+             if m.startswith('G5_'):
+              base['source_win_probability']=ordered[0].get('win_probability','');base['rank2_source_win_probability']=ordered[1].get('win_probability','')
+             for r in ordered:full.append(dict(date=DAY,course=v[0]['course'],time=k[2],race_type=typ,model=m,rank=r['rank'],horse=r['horse'],raw_source_probability=r.get('win_probability','') if m.startswith('G5_') else ''))
+            except (AssertionError,KeyError,ValueError,TypeError):reason='FIELD_OR_RANK_MISMATCH'
+           if reason:base['status']=reason
+           results.append(base)
+          writecsv(O/'interim-combined.csv',results);writecsv(O/'all-runners.csv',full);dump(O/'routes.json',routes)
+          audit['coverage']=dict(C.Counter(r['status'] for r in results));audit['selected']=sum(r['status']=='PAPER_SELECTION' for r in results);dump(O/'audit.json',audit)
+          print('STAGE196_COVERAGE',json.dumps(audit['coverage']),flush=True)
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
+           f.write('# Stage196 consolidated paper engine\n\nHistorical leaders, no production write.\n\n|Time UTC|Meeting|Race type|Model|Rank 1|Rank 2|Status|\n|---|---|---|---|---|---|---|\n')
+           for r in results:f.write('| '+' | '.join(str(r[k]).replace('|','/') for k in ('time','course','race_type','model','rank1','rank2','status'))+' |\n')
+          assert audit['selected']>0,'No verified picks; inspect audit'
+          if audit['selected']!=len(results):raise SystemExit('PARTIAL COVERAGE: valid selections preserved; inspect missing races')
+          PY
+          python -m py_compile stage196-work/engine.py
+      - name: Run the combined engine locally (no individual daily jobs)
+        run: python -u stage196-work/engine.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage196-interim-combined-${{ github.run_id }}
+          path: stage196-output/
+          retention-days: 90
+          if-no-files-found: warn
