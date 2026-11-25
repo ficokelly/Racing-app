@@ -147,8 +147,12 @@ jobs:
                           maxdate=max(maxdate,day)
                           if day<start:continue
                           scanned+=1; course=I.value(row,m,'course')
-                          if R.region(course) not in ('GB','IRELAND'):
-                              problems[day]['unresolved_or_foreign_course']+=1;continue
+                          region=R.region(course)
+                          # Explicitly foreign courses are outside the UK/IE metric, not evidence of a missing UK/IE result.
+                          if region=='OTHER':
+                              problems[day]['excluded_explicit_foreign_course']+=1;continue
+                          if region not in ('GB','IRELAND'):
+                              problems[day]['unresolved_course:'+course[:80]]+=1;continue
                           co=F.course_key(course);horse=F.horse_key(I.value(row,m,'horse'));rid=I.value(row,m,'race_id') or I.value(row,m,'race_no') or I.value(row,m,'off_time')
                           pos=outcome(I.value(row,m,'finish'))
                           if not all((co,horse,rid)) or pos=='UNKNOWN':problems[day]['invalid_identity_or_finish']+=1;continue
@@ -205,7 +209,7 @@ jobs:
               if len(kr)<len(ar):reasons.append('fewer_kaggle_races')
               if unmatched:reasons.append('unmatched_saved_races')
               if any(gaps.values()):reasons.append('missing_kaggle_persons')
-              if kissues or ai:reasons.append('source_quality_issues')
+              if any(key!='excluded_explicit_foreign_course' for key in kissues) or ai:reasons.append('source_quality_issues')
               if not reasons and len(k)==len(api) and all(sum(x['runs'] for x in ag[g].values())==len(api) for g in ('trainers','jockeys')):reasons.append('no_demonstrated_coverage_improvement')
               return {'date':day,'api_starters':len(api),'kaggle_starters':len(k),'api_races':len(ar),'kaggle_races':len(kr),'shared_starters':len(common),'api_only_starters':len(missing),'kaggle_only_starters':len(k.keys()-api.keys()),'finish_disagreements':different,'person_disagreements':people_diff,'kaggle_identity_gaps':gaps,'unmatched_saved_races':unmatched,'kaggle_issues':dict(kissues),'api_issues':dict(ai),'approved':not reasons,'reasons':reasons},stats
 
@@ -229,7 +233,20 @@ jobs:
               for day,k in sorted(kdays.items()):
                   a,ar,ai=api_rows(day)
                   expected={key:v for key,v in ledger.items() if key.startswith(day+'|') and key not in exceptions}
-                  r,stats=compare(day,k,kraces[day],kissues[day],a,ar,ai,expected,counts[day]); comparisons.append(r)
+                  r,stats=compare(day,k,kraces[day],kissues[day],a,ar,ai,expected,counts[day])
+                  # The raw archive may omit identities supplied by the existing card cache.
+                  # Do not replace a day if its enriched known person totals would decrease.
+                  enriched=person_totals([{'trainer':x['trainer'],'jockey':x['jockey'],'outcome':1 if F.is_win(x) else 2} for x in api if x['date']==day])
+                  losses=[]
+                  for group in ('trainers','jockeys'):
+                      for nm,stat in enriched[group].items():
+                          candidate=stats[group].get(nm,{})
+                          if candidate.get('runs',0)<stat['runs'] or candidate.get('wins',0)<stat['wins']:
+                              losses.append({'group':group,'name':stat['name'],'api_runs':stat['runs'],'candidate_runs':candidate.get('runs',0),'api_wins':stat['wins'],'candidate_wins':candidate.get('wins',0)})
+                  r['enriched_person_losses']=losses
+                  if losses:
+                      r['reasons'].append('known_enriched_person_totals_would_decrease');r['approved']=False
+                  comparisons.append(r)
                   if r['approved']:approved[day]=stats
               def examples(approved_days):
                   base=person_totals([{'trainer':r['trainer'],'jockey':r['jockey'],'outcome':1 if F.is_win(r) else 2} for r in api if r['date'] not in approved_days])
@@ -270,11 +287,35 @@ jobs:
                   report['kaggle_cutoff']=output['kaggle_cutoff']
                   report['kaggle_days']=output['periods']['14']['kaggle_days']
                   report['api_days']=output['periods']['14']['api_days']
+                  report['fourteen_day_form_runners']=output['periods']['14']['runners']
+                  report['fourteen_day_missing_trainer_rows']=output['periods']['14']['identity_gaps']['trainer']
+                  report['fourteen_day_missing_jockey_rows']=output['periods']['14']['identity_gaps']['jockey']
                   report['warnings'].append('Coverage guard checks the raw API archive; some of its historical gaps may be covered by approved Kaggle aggregates. Neither source is certified complete.')
           '''+old2
           if new2 not in s:
               assert s.count(old2)==1, 'Existing form integrity guard not found'
               s=s.replace(old2,new2,1)
+          old3="    periods = {}\n    for n in range(1, 15):\n"
+          new3="""    # FORM_PERSON_ID_COLLISION_V2: provider IDs must identify exactly one normalised name.
+              # Compute across the entire rolling window so IDs remain stable across periods.
+              id_names = {'trainer':collections.defaultdict(set),'jockey':collections.defaultdict(set)}
+              for row in rows:
+                  for typ in ('trainer','jockey'):
+                      ident=row.get(typ+'_id') or ''
+                      nm=compact(row.get(typ) or '')
+                      if ident and nm: id_names[typ][ident].add(nm)
+              periods = {}
+              for n in range(1, 15):
+          """
+          old4="                identity=val['ids'].most_common(1)[0][0] if val['ids'] else 'name:'+nm\n"
+          new4="""                candidates=[i for i,_ in val['ids'].most_common() if len(id_names[typ][i])==1 and not i.startswith('name:')]
+                          identity=candidates[0] if candidates else 'name:'+nm
+                          if identity in people[typ]:
+                              raise ValueError('Duplicate form aggregate identity: '+identity)
+          """
+          if new3 not in s:
+              assert s.count(old3)==1 and s.count(old4)==1, 'Unexpected Stage32 aggregation source'
+              s=s.replace(old3,new3,1).replace(old4,new4,1)
           p.write_text(s)
           for path in ('scripts/stage32_form_rebuild.py','scripts/kaggle_form_baseline.py','scripts/audit_kaggle_form.py'):
               py_compile.compile(path,doraise=True)
@@ -299,7 +340,12 @@ jobs:
               assert result['periods']['14']['jockeys']['j1']['rides']==3
               assert result['periods']['1']['runners']==1
               assert result['periods']['14']['kaggle_days']==['2026-11-20']
-          print('Synthetic overlap and rolling-window test passed')
+          # Regression: one provider ID tied to two names must not overwrite a jockey.
+          collision=[dict(rows[1],jockey='Rider One',jockey_id='shared'),dict(rows[1],jockey='Rider Two',jockey_id='shared')]
+          raw=build_form(collision,asof,{'2026-11-24'},Counter())
+          assert set(raw['periods']['1']['jockeys'])=={'name:riderone','name:ridertwo'}
+          assert sum(x['rides'] for x in raw['periods']['1']['jockeys'].values())==2
+          print('Synthetic overlap, rolling-window and shared-provider-ID regression tests passed')
           TEST_PY
           python .kaggle_form_install.py
           python .kaggle_form_test.py
@@ -318,6 +364,13 @@ jobs:
         run: |
           DAY=$(python -c 'from datetime import datetime,timedelta; from zoneinfo import ZoneInfo; print((datetime.now(ZoneInfo("Europe/Dublin")).date()-timedelta(days=1)).isoformat())')
           python calculate-strike-rates.py --as-of "$DAY" --no-wrapper
+      - name: Retain comparison report even if final rebuild fails
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: kaggle-form-comparison-${{ github.run_id }}
+          path: reports/stage32/kaggle-form-comparison.json
+          if-no-files-found: warn
       - name: Publish comparison and approved derived form (no raw Kaggle data)
         env:
           AUDIT_ONLY: ${{ inputs.audit_only }}
