@@ -1,0 +1,120 @@
+name: Stage181 - Full unmatched prior-form recovery and evidence audit
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/stage181-unmatched-prior-form.yml']
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: stage171-daily-recent-history
+  cancel-in-progress: false
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      PYTHONPATH: '.:scripts'
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage177-shared-inputs
+          run-id: 45491296882
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/stage179
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage177-shared-db
+          run-id: 45491296882
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/stage179
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage180-recovery-audit
+          run-id: 45505556679
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/stage180-baseline
+      - name: Prepare expanded audit from existing verified Stage180 implementation
+        run: |
+          python - <<'PY'
+          import os, pathlib, textwrap
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])
+          source=pathlib.Path('.github/workflows/stage180-prior-form-recovery.yml').read_text()
+          code=textwrap.dedent(source.split("          python - <<'PY'\n",1)[1].split('\n          PY\n',1)[0])
+          def replace(a,b):
+              global code
+              assert code.count(a)==1, ('Stage180 source changed; stop rather than patch unknown code',a)
+              code=code.replace(a,b,1)
+          replace("OUT=P.Path('reports/stage180')", "OUT=P.Path('reports/stage181')")
+          replace("if not '2026-10-10'<=d<=M.BASE:continue", "if not d<=M.BASE:continue")
+          replace("old_candidates=[]", "old_candidates=[]; older_screen=[]")
+          replace("  if not O.eligible(r,d):continue\n  relevant=[h for h in r['runners'] if O.status(h)[0]!='NR' and M.horse(h.get('horse')) in tomorrow]\n  if not relevant or not all(any(exact_identity(h,z) for z in tomorrow[M.horse(h['horse'])]) for h in relevant):continue", """  relevant=[h for h in r.get('runners',[]) if O.status(h)[0]!='NR' and M.horse(h.get('horse')) in tomorrow]
+            if not relevant:continue
+            if not O.eligible(r,d):
+             older_screen.append({'date':d,'race_id':r.get('race_id'),'course':r.get('course'),'off':M.off(r),'horses':[h.get('horse') for h in relevant],'status':'ARCHIVE_NOT_VERIFIED_COMPLETE'});continue
+            if not all(any(exact_identity(h,z) for z in tomorrow[M.horse(h['horse'])]) for h in relevant):
+             older_screen.append({'date':d,'race_id':r.get('race_id'),'course':r.get('course'),'off':M.off(r),'horses':[h.get('horse') for h in relevant],'status':'TARGET_HORSE_IDENTITY_UNVERIFIED'});continue""")
+          replace("dump(OUT/'older-recovery-audit.json',older_audit)","dump(OUT/'older-recovery-audit.json',older_audit);dump(OUT/'older-screening-audit.json',older_screen)")
+          replace("wanted={M.horse(x) for x in tomorrow}; histories=C.defaultdict(list); fieldsbyrace=C.defaultdict(set)","wanted={M.horse(x) for x in tomorrow}; histories=C.defaultdict(list); byid=C.defaultdict(list); wanted_ids={str(z['horse_id']) for zz in tomorrow.values() for z in zz if z.get('horse_id')}; fieldsbyrace=C.defaultdict(set)")
+          replace("  if n0 in wanted:histories[n0].append((rid,day,co,hid,sire,dam,pos))", "  if n0 in wanted:histories[n0].append((rid,day,co,hid,sire,dam,pos))\n  if hid and str(hid) in wanted_ids:byid[str(hid)].append((rid,day,co,n,hid,sire,dam,pos))")
+          replace("    missing.append({'horse':h['horse'],'prior_date':d,'prior_course':r.get('course'),'prior_time':M.off(r),'position':p,'reason':'NO_MATCH_BY_NAME_DATE_COURSE_FINISH' if not hits else 'AMBIGUOUS_HISTORY_MATCH','tomorrow':[{f:z.get(f) for f in ('horse','course','race_time','horse_id')} for z in tomorrow[n]]})", """    same_day=[x for x in histories[n] if x[1]==d]; same_course=[x for x in same_day if course(x[2])==course(r.get('course'))]
+              ids={str(z['horse_id']) for z in tomorrow[n] if z.get('horse_id')}; id_day=[x for i in ids for x in byid[i] if x[1]==d]
+              reason=('AMBIGUOUS_HISTORY_MATCH' if hits else 'SAME_COURSE_FINISH_CONFLICT' if same_course else 'SAME_DAY_COURSE_CONFLICT' if same_day else 'STABLE_ID_NAME_OR_COURSE_CONFLICT' if id_day else 'NO_SAME_DAY_NAME_OR_ID_MATCH')
+              missing.append({'horse':h['horse'],'prior_date':d,'prior_course':r.get('course'),'prior_time':M.off(r),'race_id':r.get('race_id'),'position':p,'outcome':st,'reason':reason,'name_candidates':same_day,'id_candidates':id_day,'archive_verified':M.verified_source(r) or O.eligible(r,d),'tomorrow':[{f:z.get(f) for f in ('horse','course','race_time','horse_id','sire','dam')} for z in tomorrow[n]]})""")
+          # Additional reporting stays outside the database transaction. No name-only matches are written back.
+          code += '''
+          summary['unresolved_by_reason']=dict(C.Counter(x['reason'] for x in missing))
+          summary['unresolved_by_date']=dict(sorted(C.Counter(x['prior_date'] for x in missing).items()))
+          summary['distinct_unresolved_horses']=len({M.horse(x['horse']) for x in missing})
+          no_name=[]
+          for n,zz in tomorrow.items():
+           if histories[n]:continue
+           ids={str(z['horse_id']) for z in zz if z.get('horse_id')}
+           id_hits=[x for i in ids for x in byid[i]]
+           archived=[x for x in missing if M.horse(x['horse'])==n]
+           no_name.append({'horse':zz[0]['horse'],'ids':sorted(ids),'status':'ID_MATCH_REVIEW' if id_hits else 'ARCHIVED_PRIOR_RUN_MISSING' if archived else 'NO_PRIOR_EVIDENCE_DEBUT_UNCONFIRMED','id_candidates':id_hits,'archive_prior_runs':len(archived)})
+          summary['no_name_match_by_reason']=dict(C.Counter(x['status'] for x in no_name))
+          baseline=load(P.Path(os.environ['RUNNER_TEMP'])/'stage180-baseline'/'unresolved-prior-runs.json')
+          def record_key(x):return (M.horse(x['horse']),x['prior_date'],course(x['prior_course']),x['prior_time'],x['position'])
+          current_keys={record_key(x) for x in missing}
+          baseline_keys={record_key(x) for x in baseline}
+          summary['stage180_baseline_unmatched']=len(baseline)
+          summary['baseline_keys_still_unmatched']=len(baseline_keys & current_keys)
+          summary['baseline_keys_no_longer_flagged']=len(baseline_keys-current_keys)
+          summary['newly_flagged_keys']=len(current_keys-baseline_keys)
+          summary['limitations']+=['A baseline key no longer flagged is not necessarily recovered; target declarations or source records may have changed.','No name or ID match does not prove debutant status.','G5 and legacy model data sources require separate schema-specific validation.']
+          dump(OUT/'no-name-match-audit.json',no_name)
+          dump(OUT/'baseline-comparison.json',{'still_unmatched':sorted(baseline_keys & current_keys,key=str),'no_longer_flagged':sorted(baseline_keys-current_keys,key=str),'newly_flagged':sorted(current_keys-baseline_keys,key=str)})
+          dump(OUT/'report.json',summary)
+          print('STAGE181_REPORT',json.dumps(summary),flush=True)
+          '''
+          code=code.replace('STAGE180_REPORT','STAGE181_INTERMEDIATE_REPORT')
+          compile(code,'stage181-recovery','exec')
+          (root/'stage181-recovery.py').write_text(code)
+          # Preserve the Stage180 publication guards and shared-history concurrency lock.
+          shell=textwrap.dedent(source.split('      - name: Publish only validated ledger and corroborated result changes\n        run: |\n',1)[1].split('      - uses: actions/upload-artifact@v4',1)[0])
+          shell=shell.replace('Stage180: recover verified prior form and integrate older archive overlay','Stage181: recover verified prior form').replace('STAGE180_PUBLISHED','STAGE181_PUBLISHED').replace('STAGE180_NO_VERIFIED_NEW_RECORDS','STAGE181_NO_VERIFIED_NEW_RECORDS')
+          (root/'stage181-publish.sh').write_text(shell)
+          PY
+      - name: Run expanded recovery and classify all unmatched archived runner results
+        env:
+          PUNTERSEDGE_API_KEY: ${{ secrets.PUNTERSEDGE_API_KEY }}
+        run: python "$RUNNER_TEMP/stage181-recovery.py"
+      - name: Publish verified history only
+        run: bash "$RUNNER_TEMP/stage181-publish.sh"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage181-unmatched-recovery-audit
+          path: reports/stage181/
+          if-no-files-found: warn
+          retention-days: 30
