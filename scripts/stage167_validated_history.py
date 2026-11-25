@@ -45,6 +45,8 @@ def refreshed_inputs(history, reference, date):
             apply_archive_overlay(db,ref,date)
             from stage194_recent_bridge import append_bridge
             append_bridge(db,ref,date)
+            from scripts.stage196_verified_backfill import append as backfill_verified
+            backfill_verified(db,ref,src,date)
         yield db,ref
 
 def build(base,ref,source,tmp):
