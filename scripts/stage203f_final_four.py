@@ -1,0 +1,131 @@
+"""Scoped correction of four independently corroborated races. No model changes."""
+import collections as C, copy, json, pathlib as P, sqlite3, os
+from scripts import stage203e_final_nine as Q, stage203c_consolidated_history as V, stage203_identity_recovery as E, stage201_recent_history as S
+from scripts.rhp_runner_eligibility import eligibility
+import stage4_match_all_recurring_races as R
+ROOT=P.Path('data'); LEDGER=ROOT/'stage203f-history'; n=V.n; digest=V.digest
+# Pinned source IDs from Stage203E diagnostics. Independent profiles verify both parents.
+SPECS={
+ 3:('kaggle-deltaromeo-ukie:2026-11-01:cork_ire:946530',('Cosmic Front',)),
+ 4:('kaggle-deltaromeo-ukie:2024-04-13:chepstow:863224',('Casa No Mento','Gone Away Madam')),
+ 5:('kaggle-deltaromeo-ukie:2025-05-14:newton_abbot:892971',('Ventara',)),
+ 6:('kaggle-deltaromeo-ukie:2025-04-20:market_rasen:890605',('Aquitaine Boy','Takes Time')),
+}
+PROFILES={
+ 'Cosmic Front':['https://www.irishracing.com/raceresults/Sun-1st-Nov-26/Cork/1305','https://www.racingpost.com/profile/horse/58950323/cosmic-front/'],
+ 'Casa No Mento':['https://www.irishracing.com/horse/Casa-No-Mento-GB/641753','https://www.sportinglife.com/racing/profiles/horse/1088996'],
+ 'Gone Away Madam':['https://www.irishracing.com/horse/Gone-Away-Madam-GB/682624','https://www.racingtv.com/profiles/horse/gone-away-madam'],
+ 'Ventara':['https://www.irishracing.com/horse/Ventara-GB/642846','https://www.racingtv.com/profiles/horse/ventara'],
+ 'Aquitaine Boy':['https://www.irishracing.com/horse/Aquitaine-Boy-FR/581527','https://www.france-sire.com/cheval-310569-aquitaine_boy.php'],
+ 'Takes Time':['https://www.irishracing.com/horse/Takes-Time-GB/752739','https://www.sportinglife.com/racing/profiles/horse/1139141'],
+}
+def reconstruct(i,groups,meta,root):
+    rid,names=SPECS[i];s=Q.RACES[i]
+    if rid not in groups or Q.src_field(groups,rid,s) is None:return None,[],'PINNED_FULL_FIELD_OR_OUTCOME_MISMATCH'
+    raw=groups[rid]; fixed=copy.deepcopy(raw); changes=[]
+    nameset={n(h):h for h in names}
+    for key,vs in fixed.items():
+        for x in vs:
+            k=n(x[3]);
+            if k not in nameset:continue
+            name=nameset[k];sire,dam,_=Q.PARENTS[k]
+            # Exact independently identified race/runner/outcome and verified sire. Never globally alias a dam.
+            if n(x[17])!=n(sire):return None,changes,'SOURCE_SIRE_CONFLICT:'+name
+            if n(x[18])!=n(dam):
+                changes.append(dict(horse=name,old_dam=x[18],new_dam=dam,source_row_sha256=digest(x),profiles=PROFILES[name]))
+                x[18]=dam
+    data,why=Q.build(s,rid,{rid:fixed},{rid:meta[rid]},root)
+    return data,changes,why
+
+def state(row):return S.state({'position':row[7],'status':row[8]})
+def race_rows(c,rid):return [list(x) for x in c.execute('select * from historical_runs where race_id=? order by runner_key',(rid,))]
+def reconcile(c,i,data,ids):
+    race,runs,title,raw=data;rid,day,course=race[:3];s=Q.RACES[i];scope={n(h):h for h in SPECS[i][1]}
+    wanted={n(x[3]):x for x in runs};assert len(wanted)==len(runs)
+    # Locate existing race by pinned ID, or unambiguous overlap of verified full field at same venue/day.
+    hits=[]
+    for oldid,co in c.execute('select id,course from historical_races where race_date=?',(day,)):
+        if Q.ck(co)!=Q.ck(course):continue
+        rr=race_rows(c,oldid); active=[x for x in rr if state(x)[0]!='NR']; keys={n(x[3]) for x in active}
+        if oldid==rid or (len(keys)>=2 and keys<=wanted.keys() and keys & wanted.keys()):hits.append((oldid,rr))
+    if not hits:
+        status,ar=V.apply_one(c,data,ids);return status,ar,[]
+    if len(hits)!=1:return 'AMBIGUOUS_EXISTING_RACE',None,[]
+    oldid,rows=hits[0];active=[x for x in rows if state(x)[0]!='NR']; old={n(x[3]):x for x in active}
+    if len(old)!=len(active) or not old.keys()<=wanted.keys() or any(state(x)!=state(wanted[k]) for k,x in old.items()):return 'EXISTING_FIELD_OR_OUTCOME_CONFLICT',None,[]
+    if any(n(x[3]) not in s['nr'] for x in rows if state(x)[0]=='NR'):return 'UNVERIFIED_EXISTING_NONRUNNER',None,[]
+    # Ensure no extra duplicate result elsewhere for any missing runner.
+    missing=wanted.keys()-old.keys(); other=c.execute('select u.horse_name,u.horse_source_id from historical_runs u join historical_races r on r.id=u.race_id where r.race_date=? and r.id<>?',(day,oldid)).fetchall()
+    if {n(h) for h,_ in other}&set(missing) or {x[1] for x in other if x[1]}&{wanted[k][2] for k in missing if wanted[k][2]}:return 'MISSING_RUNNER_OVERLAPS_OTHER_RACE',None,[]
+    changes=[]; updates=[];inserts=[]
+    for k,x in old.items():
+        if k not in scope:continue
+        y=wanted[k];name=scope[k];sire,dam,_=Q.PARENTS[k]
+        if n(y[17])!=n(sire) or n(y[18])!=n(dam):return 'CORRECTED_SOURCE_PEDIGREE_CONFLICT:'+name,None,[]
+        if n(x[17])==n(sire) and n(x[18])==n(dam):continue
+        if n(x[17])!=n(sire) and not (x[2] and x[2]==y[2]):return 'EXISTING_SIRE_OR_ID_CONFLICT:'+name,None,[]
+        updates.append((sire,dam,oldid,x[1]));changes.append(dict(horse=name,old_sire=x[17],old_dam=x[18],new_sire=sire,new_dam=dam,before_sha256=digest(x),profiles=PROFILES[name]))
+    for k in sorted(missing):
+        y=list(wanted[k]);y[0]=oldid
+        if any(x[1]==y[1] for x in rows) or not all(y[j] for j in (9,10,17,18)):return 'MISSING_ROW_ID_OR_METADATA_CONFLICT',None,[]
+        inserts.append(y);changes.append(dict(horse=y[3],kind='MISSING_VERIFIED_STARTER',source_row_sha256=digest(y)))
+    for update in updates:
+        c.execute('update historical_runs set sire=?,dam=? where race_id=? and runner_key=?',update);assert c.execute('select changes()').fetchone()[0]==1
+    if inserts:c.executemany('insert into historical_runs values('+','.join('?' for _ in range(23))+')',inserts)
+    final=[x for x in race_rows(c,oldid) if state(x)[0]!='NR'];assert len(final)==len(wanted) and {n(x[3]):state(x) for x in final}=={k:state(x) for k,x in wanted.items()}
+    ar=None
+    if oldid not in ids:
+        ids.add(oldid);ar=dict(stage2_race_id=oldid,date=day,course=course,race_type=race[3],race_name=title,region_scope=R.region(course),source_race_id=raw)
+    return ('REPAIRED_EXISTING' if changes or ar else 'ALREADY_PRESENT'),ar,changes
+
+def append(db,ref,src,target,root=ROOT):
+    entries={}
+    for p in sorted((root/'stage203f-history').glob('approved-*.json')):
+        doc=json.loads(p.read_text());assert doc['schema']=='stage203f-v1' and doc['source_version']==132
+        for e in doc['races']:
+            if e['date']<target:entries[e['spec']]=e
+    if not entries:return []
+    groups,meta=V.load_source(src,{x['date'] for x in entries.values()});fields,ids=V.refs(ref);adds=[];report=[]
+    with sqlite3.connect(db) as c:
+        c.execute('pragma foreign_keys=on')
+        for i,e in sorted(entries.items()):
+            data,changes,why=reconstruct(i,groups,meta,root);assert data and digest(data)==e['sha256'] and digest(changes)==e['source_corrections_sha256'],(i,why)
+            status,ar,_=reconcile(c,i,data,ids);report.append(status)
+            if ar:adds.append(ar)
+        assert c.execute('pragma quick_check').fetchone()[0]=='ok' and c.execute('select max(race_date) from historical_races').fetchone()[0]<target;c.commit()
+    V.write_refs(ref,fields,adds);print('STAGE203F_SHARED_HISTORY',dict(C.Counter(report)),flush=True);return report
+
+def run():
+    import kagglehub
+    from stage167_validated_history import refreshed_inputs
+    target='2026-11-26';out=P.Path('reports/stage203f/output');out.mkdir(parents=True,exist_ok=True);LEDGER.mkdir(parents=True,exist_ok=True)
+    rows=[r for r in json.loads((ROOT/'racecards.json').read_text())['runners'] if r['date']==target and eligibility(r)=='ACTIVE'];assert rows
+    cards={r['horse_id']:r for r in rows};focus=[h for i in SPECS for h in Q.RACES[i]['targets']];assert all(Q.EXPECTED_IDS[h] in cards for h in focus)
+    src=P.Path(kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025/versions/132'));ref=list(P.Path('reports/stage203f/ref').rglob('all_races_with_reference_event_ids.csv'));assert len(ref)==1
+    base=P.Path('reports/stage152-specialists/source/stage2/historical_ukie_staging.sqlite');decisions=[];entries=[]
+    with refreshed_inputs(base,ref[0],target) as (db,rf):
+        hits,other=E.scan(db,rows,target);before={x['horse_id']:x for x in E.classify(rows,hits,other,target)}
+        groups,meta=V.load_source(src,{Q.RACES[i]['day'] for i in SPECS});fields,ids=V.refs(rf);adds=[]
+        with sqlite3.connect(db) as c:
+            c.execute('pragma foreign_keys=on');nr=c.execute('select count(*) from historical_runs').fetchone()[0]
+            for i in SPECS:
+                s=Q.RACES[i];data,source_fixes,why=reconstruct(i,groups,meta,ROOT);status=why;applied=[]
+                if data:
+                    if any(not any(E.exact(cards[Q.EXPECTED_IDS[h]],V.aid(x)) for x in data[1] if n(x[3])==n(h)) for h in s['targets']):status='TARGET_CARD_PROFILE_CONFLICT'
+                    else:
+                        status,ar,applied=reconcile(c,i,data,ids)
+                        if ar:adds.append(ar)
+                        if status in ('ADDED','REPAIRED_EXISTING','ALREADY_PRESENT'):
+                            entries.append(dict(spec=i,date=s['day'],id=SPECS[i][0],sha256=digest(data),source_corrections_sha256=digest(source_fixes),source_corrections=source_fixes,existing_corrections=applied,sources=s['urls']))
+                            again,_,_=reconcile(c,i,data,ids);assert again=='ALREADY_PRESENT',(i,again)
+                decisions.append(dict(spec=i,targets=s['targets'],status=status,source_corrections=source_fixes,existing_corrections=applied))
+            assert c.execute('select count(*) from historical_runs').fetchone()[0]>=nr and c.execute('pragma quick_check').fetchone()[0]=='ok' and c.execute('select max(race_date) from historical_races').fetchone()[0]<target;c.commit()
+        V.write_refs(rf,fields,adds);h2,o2=E.scan(db,rows,target);after={x['horse_id']:x for x in E.classify(rows,h2,o2,target)}
+        # Refuse regression in any other runner's verified last-run match.
+        assert all(not v['last_run_matched'] or after[k]['last_run_matched'] for k,v in before.items())
+        review=[dict(horse=h,before=before[Q.EXPECTED_IDS[h]],after=after[Q.EXPECTED_IDS[h]],status='RECOVERED' if after[Q.EXPECTED_IDS[h]]['last_run_matched'] else 'UNRESOLVED') for h in focus]
+        p=LEDGER/('approved-'+target+'.json');prior=json.loads(p.read_text()) if p.exists() else {'races':[]};by={e['spec']:e for e in prior['races']};by.update({e['spec']:e for e in entries});V.dump(p,dict(schema='stage203f-v1',source_version=132,races=list(by.values())))
+        summary=dict(target=target,active=len(rows),status_counts=dict(C.Counter(x['status'] for x in review)),race_decisions=dict(C.Counter(x['status'] for x in decisions)),raw_last_run_gaps=sum(x['last_run_matched'] is False or x['known_no_history'] for x in after.values()),idempotence_passed=True,note='Exactly four pinned race IDs; no outcome overwrites, no global alias, no retraining. Existing frozen 2025 model states require independent reconciliation.')
+        V.dump(out/'summary.json',summary);V.dump(out/'horse-review.json',review);V.dump(out/'race-decisions.json',decisions);print(json.dumps(summary,indent=2));print(json.dumps(decisions,indent=2))
+        P.Path(os.environ['GITHUB_STEP_SUMMARY']).write_text('## Stage203F final four\n```json\n'+json.dumps(summary,indent=2)+'\n```\n')
+if __name__=='__main__':run()
