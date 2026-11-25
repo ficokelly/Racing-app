@@ -1,0 +1,176 @@
+name: Stage204A - Shared G-family history and small-field G5 validation
+on:
+  workflow_dispatch:
+    inputs:
+      target_date:
+        description: Prospective Dublin date, defaults to 26 November 2026
+        required: false
+        default: '2026-11-26'
+  push:
+    branches: [main]
+    paths: ['.github/workflows/stage204a-g-family-shared-history.yml']
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage204a-g-family-validation
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PYTHONPATH: .:scripts
+      PYTHONUNBUFFERED: '1'
+      GH_TOKEN: ${{ github.token }}
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install frozen model dependencies
+        run: pip install numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2 requests 'kagglehub>=0.3,<1'
+      - name: Restore immutable history, HPR evidence and trained G bundles
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage152-specialists/source/stage2 reports/stage204/{ref,g,g3,g4,g5,output}
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage2-historical-staging-database --dir reports/stage152-specialists/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage4-reference-named-events-and-winners --dir reports/stage204/ref
+          gh run download 43292937252 --repo "$GITHUB_REPOSITORY" --name stage107-model-g-43292937252 --dir reports/stage204/g
+          gh run download 43407036838 --repo "$GITHUB_REPOSITORY" --name stage109-g3-learning-43407036838 --dir reports/stage204/g3
+          gh run download 43422655754 --repo "$GITHUB_REPOSITORY" --name stage111-g4-specialists-43422655754 --dir reports/stage204/g4
+          gh run download 43539599590 --repo "$GITHUB_REPOSITORY" --name stage127-g5-quarterly-43539599590 --dir reports/stage204/g5
+          python scripts/stage87_hpr_storage.py restore --dir data/hpr/shards --db reports/stage204/hpr.sqlite
+      - name: Compare legacy and common-history paper selections and test G5 small field
+        env:
+          ASKED_DATE: ${{ inputs.target_date }}
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/stage204.py" <<'PY'
+          import collections as C, csv, datetime as D, hashlib, json, os, pathlib as P, shutil, sqlite3, subprocess as S, sys
+          from zoneinfo import ZoneInfo
+          from stage167_validated_history import refreshed_inputs
+          import stage108_model_g2 as G
+          from rhp_runner_eligibility import active_runner
+          ROOT=P.Path.cwd(); W=ROOT/'reports/stage204'; OUT=W/'output';OUT.mkdir(parents=True,exist_ok=True)
+          now=D.datetime.now(D.timezone.utc); target=os.environ.get('ASKED_DATE','').strip() or '2026-11-26'
+          assert D.date.fromisoformat(target)>=now.date(), 'No retrospective paper picks'
+          card=json.loads((ROOT/'data/racecards.json').read_text()); rows=[r for r in card['runners'] if r.get('date')==target]
+          assert rows and all(G.stamp(r['race_time']) for r in rows)
+          assert all(G.stamp(r['race_time'])>now+D.timedelta(minutes=10) for r in rows if active_runner(r)), 'Target fields must all be pre-off'
+          card['runners']=rows; cp=W/'cards.json';cp.write_text(json.dumps(card));empty=W/'odds.json';empty.write_text('{"prices":[]}')
+          def sha(p):
+           with p.open('rb') as f:return hashlib.file_digest(f,'sha256').hexdigest()
+          def exact(dir,name):
+           f=list(dir.rglob(name));assert len(f)==1,(dir,name,f);return f[0]
+          def save(name,obj):(OUT/name).write_text(json.dumps(obj,indent=2,default=str))
+          def run(name,script,args,env=None):
+           dest=OUT/name;dest.mkdir(exist_ok=True); log=OUT/(name+'.log')
+           print('SCORING',name,flush=True)
+           with log.open('w') as f:
+            p=S.run([sys.executable,'-u',str(ROOT/'scripts'/script),*map(str,args),'--out',str(dest)],stdout=f,stderr=S.STDOUT,env=env or os.environ.copy(),timeout=7200)
+           if p.returncode: print(log.read_text()[-2500:],flush=True)
+           return {'name':name,'exit':p.returncode}
+          base=ROOT/'reports/stage152-specialists/source/stage2/historical_ukie_staging.sqlite';ref=exact(W/'ref','all_races_with_reference_event_ids.csv');hp=W/'hpr.sqlite'
+          g1=W/'g';g3=W/'g3';g4=W/'g4';g5=W/'g5'
+          common=['--date',target,'--cutoff',now.isoformat(),'--cards',cp]
+          commands={
+           'G':('stage107_model_g.py',['paper','--model',exact(g1,'stage107-frozen-form-model.joblib'),'--state',exact(g1,'stage107-prior-form-state.joblib'),'--hpr',hp,'--odds',empty,'--bookmaker','williamhill',*common]),
+           'G2_G3':('stage109_model_g3.py',['paper','--model',exact(g3,'stage109-future-form-model.joblib'),'--g2-frozen',exact(g3,'stage109-frozen-g2-original.joblib'),'--state',exact(g3,'stage109-prior-form-state.joblib'),'--hpr',hp,'--odds',empty,'--bookmaker','williamhill',*common]),
+           'G4':('stage111_model_g4.py',['paper','--model',exact(g4,'stage111-paper-specialists.joblib'),'--state',exact(g4,'stage111-prior-form-state.joblib'),'--hpr',hp,*common])}
+          # No model bundles are modified; all changes are temporary source changes on the runner.
+          bundles={str(p.relative_to(W)):sha(p) for folder in (g1,g3,g4,g5) for p in folder.rglob('*.joblib')};assert bundles
+          status=[]; changes={}; scripts=ROOT/'scripts'
+          def patch(filename,old,new):
+           p=scripts/filename;s=p.read_text();assert s.count(old)==1,(filename,old,s.count(old));changes.setdefault(p,s);p.write_text(s.replace(old,new));compile(p.read_text(),str(p),'exec')
+          try:
+           for name,(script,args) in commands.items():status.append(run('legacy-'+name,script,args))
+           with refreshed_inputs(base,ref,target) as (db,rf):
+            db=P.Path(db).resolve();rf=P.Path(rf).resolve()
+            with sqlite3.connect(f'file:{db}?mode=ro',uri=True) as c:
+             latest=c.execute('select max(race_date) from historical_races').fetchone()[0];assert latest and '2025-12-31'<latest<target
+             days=c.execute('select race_date,count(*) from historical_races where race_date>=? and race_date<? group by race_date order by race_date',('2026-01-01',target)).fetchall()
+            save('shared-history.json',{'target':target,'cutoff':now.isoformat(),'latest':latest,'database_sha256':sha(db),'reference_sha256':sha(rf),'daily_races_2026':days,'head':S.check_output(['git','rev-parse','HEAD'],text=True).strip(),'card_asof':card.get('collected_at'),'hpr_policy':'not used as substitute for shared history','stage203_snapshot_only':True})
+            env={**os.environ,'STAGE204_SHARED_DB':str(db)}
+            # Frozen state ends 2025; apply the same verified observed-run adapter used by G5.
+            patch('stage107_model_g.py','    more=load_recent_hpr(state,hpr_db,latest,target)', '''    import os, sys
+              import stage112_form_coverage_reconcile as Cover
+              shared=os.environ['STAGE204_SHARED_DB']
+              assert latest=='2025-12-31' and latest<target
+              more,issues=Cover.add_archive(state,shared,'2026-01-01',(day(target)-dt.timedelta(days=1)).isoformat(),sys.modules[__name__])
+              more={'shared_archive':more,'unresolved_examples':len(issues),'hpr_form_used':False}''')
+            patch('stage109_model_g3.py',"    if args.hpr:recent=G.load_recent_hpr(state,args.hpr,state_obj['asof_after_date'],target)",'''    import os
+              import stage112_form_coverage_reconcile as Cover
+              assert state_obj['asof_after_date']=='2025-12-31'
+              stats,issues=Cover.add_archive(state,os.environ['STAGE204_SHARED_DB'],'2026-01-01',(G.day(target)-dt.timedelta(days=1)).isoformat(),G)
+              recent={'shared_archive':stats,'unresolved_examples':len(issues),'hpr_form_used':False}''')
+            patch('stage111_model_g4.py',"    if args.hpr:recent=G.load_recent_hpr(state,args.hpr,past['asof_after_date'],target)",'''    import os
+              import stage112_form_coverage_reconcile as Cover
+              assert past['asof_after_date']=='2025-12-31'
+              stats,issues=Cover.add_archive(state,os.environ['STAGE204_SHARED_DB'],'2026-01-01',(G.day(target)-dt.timedelta(days=1)).isoformat(),G)
+              recent={'shared_archive':stats,'unresolved_examples':len(issues),'hpr_form_used':False}''')
+            for name,(script,args) in commands.items():status.append(run('shared-'+name,script,args,env))
+            # G5 uses same database path, not its special daily source path. No HPR fallback.
+            # Preserve the original minimum 4 and coverage threshold; validate each scored field.
+            patch('stage128_g5_today_paper.py',"    if len(data)<40:raise RuntimeError('Too few horses scored; refuse misleading partial card output')",'''    if data.empty:raise RuntimeError('No complete race scored')
+              for rid, group in data.groupby('race_id'):
+                  expected=Counter(G.identity(r) for r in groups.get(str(rid),[]))
+                  actual=Counter(str(x) for x in group['identity'])
+                  if len(group)<4 or '' in expected or expected!=actual or any(n!=1 for n in expected.values()):
+                      raise RuntimeError('Incomplete or duplicate scored field: '+str(rid))
+              print('STAGE204_G5_COMPLETE_FIELDS',len(data),data.race_id.nunique(),flush=True)''')
+            g5args=['paper','--date',target,'--cutoff',now.isoformat(),'--state',exact(g3,'stage109-prior-form-state.joblib'),'--g3',exact(g3,'stage109-future-form-model.joblib'),'--models',g5,'--db',db,'--reference',rf,'--cards',cp]
+            status.append(run('shared-G5','stage128_g5_today_paper.py',g5args,env))
+            # Actual small-card test: use a complete previously scored race, preserving the entire field.
+            g5file=OUT/'shared-G5'/'stage128-g5-all-horses.csv'
+            if g5file.exists():
+             with g5file.open(newline='') as f: first=next(csv.DictReader(f),None)
+             if first:
+              rid=first['race_id'];subset=[r for r in rows if '|'.join((target,G.course_key(r['course']),G.stamp(r['race_time']).strftime('%H:%M')))==rid]
+              assert 4<=sum(active_runner(r) for r in subset)<40
+              small=W/'small-card.json';small.write_text(json.dumps({**card,'runners':subset}))
+              args=list(g5args);args[args.index('--cards')+1]=small
+              status.append(run('small-G5','stage128_g5_today_paper.py',args,env))
+              def readrank(path):
+               with path.open(newline='') as f:return {(r['model'],r['race_id'],r['horse']):(int(float(r['rank'])),float(r['win_probability'])) for r in csv.DictReader(f)}
+              full={k:v for k,v in readrank(g5file).items() if k[1]==rid};smallfile=OUT/'small-G5'/'stage128-g5-all-horses.csv'
+              if smallfile.exists():
+               sm=readrank(smallfile);assert full.keys()==sm.keys() and all(full[k][0]==sm[k][0] and abs(full[k][1]-sm[k][1])<1e-10 for k in full),'G5 subset parity failed'
+               save('g5-small-field-test.json',{'race':rid,'active':sum(active_runner(r) for r in subset),'model_runner_rows':len(sm),'parity':'PASS'})
+          finally:
+           for p,s in changes.items():p.write_text(s)
+           assert all(sha(W/k)==v for k,v in bundles.items()),'Model bundle changed'
+           save('status.json',status)
+          # Rank 1 comparisons for the same prospective fields; no settlement yet.
+          files={'G':'stage107-paper-all-rankings.csv','G2_G3':'stage109-paper-all-horses.csv','G4':'stage111-paper-all-horses.csv','G5':'stage128-g5-all-horses.csv'}
+          def ranks(side):
+           out={}
+           for family,file in files.items():
+            path=OUT/(side+'-'+family)/file
+            if not path.exists():continue
+            with path.open(newline='') as f:
+             for row in csv.DictReader(f):
+              if float(row.get('rank') or 0)!=1:continue
+              k=(row.get('model') or family,row['race_id']);out[k]=row
+           return out
+          old=ranks('legacy');new=ranks('shared');comparison=[]
+          for k in sorted(old.keys()|new.keys()):
+           a=old.get(k,{});b=new.get(k,{})
+           comparison.append(dict(model=k[0],race_id=k[1],old_rank1=a.get('horse'),new_rank1=b.get('horse'),old_probability=a.get('win_probability'),new_probability=b.get('win_probability'),old_prior_runs=a.get('prior_runs'),new_prior_runs=b.get('prior_runs'),comparison='CHANGED' if a and b and a.get('horse')!=b.get('horse') else 'UNCHANGED' if a and b else 'SHARED_ONLY' if b else 'LEGACY_ONLY'))
+          if comparison:
+           with (OUT/'rank1-comparison.csv').open('w',newline='') as f:w=csv.DictWriter(f,fieldnames=list(comparison[0]));w.writeheader();w.writerows(comparison)
+          summary={'target':target,'expected_active':sum(active_runner(r) for r in rows),'expected_races':len({r['race_id'] for r in rows if active_runner(r)}),'rank1_comparison':dict(C.Counter(x['comparison'] for x in comparison)),'status':status,'weights_unchanged':True,'mode':'paper only; no historical ROI test or production deployment','g5_legacy_comparison':'not performed in this stage'};save('summary.json',summary);print(json.dumps(summary,indent=2));assert len(status)==8 and all(x['exit']==0 for x in status) and (OUT/'g5-small-field-test.json').exists(),'One or more scoring/validation steps failed; inspect artifacts'
+          PY
+          python -m py_compile "$RUNNER_TEMP/stage204.py"
+          python -u "$RUNNER_TEMP/stage204.py"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage204a-g-shared-history-${{ github.run_id }}
+          path: reports/stage204/output/
+          retention-days: 30
+          if-no-files-found: warn
