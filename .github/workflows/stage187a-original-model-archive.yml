@@ -1,0 +1,141 @@
+name: Stage187a - Original published model and B2 archive comparison
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/stage187a-original-model-archive.yml']
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage187a-archive-research
+  cancel-in-progress: false
+jobs:
+  replay:
+    name: Archive / ${{ matrix.model }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        model: [A, B, B2, C, D, DC, Z, V1_ACTUAL]
+    env:
+      MODEL: ${{ matrix.model }}
+      PYTHONPATH: .:scripts
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage177-shared-inputs
+          run-id: 45491296882
+          github-token: ${{ github.token }}
+          path: shared
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage177-30day-comparison
+          run-id: 45491296882
+          github-token: ${{ github.token }}
+          path: baseline
+      - name: Recover exact recorded selections without inventing missing model history
+        run: |
+          python - <<'PY'
+          import collections as C,csv,datetime as D,json,os,pathlib as P,re,subprocess as S,unicodedata,math
+          import stage148_daily_ab as B2
+          model=os.environ['MODEL'];base=P.Path('shared');out=P.Path('out');out.mkdir(exist_ok=True)
+          paths={'A':'strategy-probabilities.json','B':'strategy-b-probabilities.json','B2':'strategy-probabilities.json','C':'strategy-c-probabilities.json','D':'strategy-d-probabilities.json','DC':'strategy-dc-probabilities.json','Z':'strategy-z-probabilities.json','V1_ACTUAL':'strategy-roi-combined.json'}
+          path='data/'+paths[model]
+          def norm(x):return re.sub('[^a-z0-9]','',unicodedata.normalize('NFKD',str(x or '')).encode('ascii','ignore').decode().lower())
+          def horse(x):return norm(re.sub(r'\s*\((?:IRE|GB|FR|USA|GER|AUS|NZ|ITY|JPN)\)\s*$','',str(x or ''),flags=re.I))
+          def course(x):
+           n=norm(re.sub(r'\s*\((?:AW|GB|IRE)\)\s*$','',str(x or ''),flags=re.I));return {'kemptonpark':'kempton','chelmsfordcity':'chelmsford','bangor':'bangorondee','dundalkaw':'dundalk','dundalkawire':'dundalk','galwayire':'galway','wexfordire':'wexford','dundalkire':'dundalk','fairyhouseire':'fairyhouse','clonmelire':'clonmel','gowranparkire':'gowranpark'}.get(n,n)
+          def ts(x):
+           try:
+            t=D.datetime.fromisoformat(str(x).replace('Z','+00:00'));return t.astimezone(D.timezone.utc) if t.tzinfo else None
+           except (ValueError,TypeError):return None
+          def key(r):
+           t=ts(r.get('race_time'));return (str(r.get('date') or ''),course(r.get('course')),t.strftime('%H:%M') if t else str(r.get('time') or '')[:5])
+          def metric(rs):
+           z=[r for r in rs if r['status']=='SETTLED'];p=[r for r in z if r['pnl'] is not None];w=sum(r['won'] for r in z);profit=sum(r['pnl'] for r in p);return dict(selections=len(rs),settled=len(z),wins=w,priced=len(p),strike_rate_pct=100*w/len(z) if z else None,roi_pct=100*profit/len(p) if p else None,pnl_units=profit)
+          meta={};
+          for p in base.glob('*-batches.json'):
+           for b in json.loads(p.read_text()):
+            for x in b['races']:
+             k=tuple(x['key']);meta[k]=dict(x,cutoff=b['cutoff'])
+          settlement={tuple((r['date'],r['course'],r['time'])):r for r in json.loads((base/'settlement-prices.json').read_text())}
+          classified={}
+          for r in csv.DictReader(P.Path('baseline/underlying-rank1-settlement.csv').open()):
+           k=(r['date'],r['course'],r['time']);v=(r['race_type'],r['discipline']);assert k not in classified or classified[k]==v;classified[k]=v
+          log=S.check_output(['git','log','--all','--since=2026-10-23T00:00:00Z','--until=2026-11-24T23:59:59Z','--format=%H|%cI','--',path],text=True).splitlines()
+          seen={};actual={};issues=C.Counter()
+          for line in log:
+           sha,stamp=line.split('|');commit=ts(stamp)
+           if not commit:continue
+           try:j=json.loads(S.check_output(['git','show',sha+':'+path],stderr=S.DEVNULL))
+           except (S.CalledProcessError,ValueError):issues['unreadable_snapshot']+=1;continue
+           generated=ts(j.get('generated_at')); 
+           for r in j.get('races',[]):
+            k=key(r);m=meta.get(k)
+            if not m:continue
+            off=ts(k[0]+'T'+k[2]+':00+00:00');asof=ts(r.get('published_at')) or generated
+            if not asof or asof>commit+D.timedelta(minutes=2) or commit>=off or asof>=off:issues['not_verified_preoff']+=1;continue
+            field=r.get('runners') or [];by={horse(x.get('horse')):x for x in field if x.get('horse')};decl=set(m['declared_horses'])
+            try:
+             if model=='V1_ACTUAL':
+              selected=r.get('selection') or {};h=selected.get('horse') if isinstance(selected,dict) else None
+              if not h:continue
+              ranked=h
+             else:
+              if len(by)!=len(field) or set(by)!=decl:issues['field_mismatch']+=1;continue
+              if model=='B2':
+               ranked=sorted(field,key=lambda z:(-B2.b2_score(z),-int(z['prior_starts']),B2.normalize(z['horse'])))[0]['horse']
+              elif model=='A':ranked=sorted(field,key=lambda z:(-float(z['probability']),B2.normalize(z['horse'])))[0]['horse']
+              elif model=='B':ranked=next(z['horse'] for z in field if int(z['historical_rank'])==1);assert sum(int(z['historical_rank'])==1 for z in field)==1
+              elif model=='C':
+               order=r.get('ranking') or []
+               if order and isinstance(order[0],dict) and order[0].get('horse'):ranked=order[0]['horse']
+               elif order and isinstance(order[0],str):ranked=order[0]
+               else:raise ValueError('No explicit original C ranking')
+              else:ranked=next(z['horse'] for z in field if int(z['rank'])==1);assert sum(int(z['rank'])==1 for z in field)==1
+             if horse(ranked) not in decl:issues['pick_not_in_frozen_field']+=1;continue
+             item=dict(date=k[0],course=k[1],time=k[2],model=model,horse=ranked,source_commit=sha,commit_asof=commit.isoformat(),source_asof=asof.isoformat(),cutoff=m['cutoff'],basis='ARCHIVED_ORIGINAL_PREOFF' if model!='B2' else 'STAGE148_B2_ON_ARCHIVED_A_FEATURES',source_model=r.get('source_model') or j.get('model_version') or '')
+             if commit<=ts(m['cutoff']) and asof<=ts(m['cutoff']) and (k not in seen or item['commit_asof']>seen[k]['commit_asof']):seen[k]=item
+             if k not in actual or item['commit_asof']>actual[k]['commit_asof']:actual[k]=item
+            except (ValueError,KeyError,TypeError,StopIteration,AssertionError,IndexError,OverflowError):issues['unverified_rank_schema']+=1
+
+          def settle(items,label):
+           rows=[]
+           for k,r in sorted(items.items()):
+            typ,disc=classified.get(k,('UNCLASSIFIED','UNKNOWN'));v=settlement.get(k);status='NO_RESULT';won=None;pnl=None;h=horse(r['horse'])
+            if v:
+             starter={horse(z['horse']) for z in v['starters']};nr={horse(z) for z in v['declared_nonrunners']};wins={horse(z['horse']):z['sp_decimal'] for z in v['winner_prices']}
+             if h in starter:
+              status='SETTLED';won=int(h in wins)
+              if wins and not v['price_conflicts'] and all(x is not None for x in wins.values()):pnl=float(wins[h])/len(wins)-1 if won else -1.
+             else:status='VOID_NR' if h in nr else 'UNMATCHED'
+            rows.append(dict(r,race_type=typ,discipline=disc,status=status,won=won,pnl=pnl,cohort=label))
+           return rows
+          rows=settle(seen,'MATCHED_FROZEN_CUTOFF')+settle(actual,'LATEST_ACTUALLY_ARCHIVED_PREOFF');groups=C.defaultdict(list)
+          for r in rows:
+           for d,v in [('overall','ALL'),('discipline',r['discipline']),('race_type',r['race_type']),('day',r['date'])]:groups[(r['cohort'],d,v)].append(r)
+          metrics=[dict(model=model,cohort=c,dimension=d,value=v,**metric(z)) for (c,d,v),z in sorted(groups.items())]
+          for name,rs in [('rank1-settlement.csv',rows),('model-performance.csv',metrics)]:
+           with (out/name).open('w',newline='') as f:
+            if rs:w=csv.DictWriter(f,fieldnames=list(rs[0]));w.writeheader();w.writerows(rs)
+          report=dict(model=model,commits=len(log),frozen_races=len(meta),matched_cutoff=len(seen),latest_preoff=len(actual),issues=dict(issues),overall=[r for r in metrics if r['dimension']=='overall'],status='ARCHIVE_EVIDENCE_ONLY' if rows else 'NO_VERIFIED_ARCHIVE_RANKS')
+          (out/'report.json').write_text(json.dumps(report,indent=2));print(json.dumps(report,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage187a-${{ matrix.model }}-archive
+          path: out/
+          retention-days: 30
+          if-no-files-found: warn

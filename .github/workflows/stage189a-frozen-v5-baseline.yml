@@ -1,0 +1,63 @@
+name: Stage189a - Frozen V5 baseline and chronological sensitivity
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/stage189a-frozen-v5-baseline.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  baseline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage177-30day-comparison
+          run-id: 45491296882
+          github-token: ${{ github.token }}
+          path: baseline
+      - run: python -m pip install pandas==2.2.3 numpy==2.2.6
+      - name: Reproduce V5 and test route robustness on frozen data
+        run: |
+          python - <<'PY'
+          import pandas as pd,json,pathlib as P,numpy as np
+          p=P.Path('baseline');o=P.Path('out');o.mkdir(exist_ok=True)
+          d=pd.read_csv(p/'underlying-rank1-settlement.csv');assert len(d)==15479 and d.model.nunique()==19
+          key=['date','course','time','model'];assert not d.duplicated(key).any()
+          d['settled']=d.status.eq('SETTLED');d['wins']=d.won.fillna(0).where(d.settled,0);d['priced']=d.settled & d.pnl.notna();d['profit']=d.pnl.where(d.priced,0).fillna(0)
+          exclude=(d.date=='2026-11-19')&(d.course=='lingfield')&(d.time=='12:18');assert exclude.any()
+          clean=d[~exclude].copy()
+          def metric(x):
+           n=int(x.settled.sum());w=int(x.wins.sum());b=int(x.priced.sum());p=float(x.profit.sum());return dict(selections=len(x),settled=n,wins=w,priced=b,pnl=p,strike_rate_pct=100*w/n if n else None,roi_pct=100*p/b if b else None)
+          def route(x,min_n=1,objective='roi'):
+           m=x.groupby(['race_type','model'],as_index=False).agg(n=('settled','sum'),w=('wins','sum'),p=('priced','sum'),profit=('profit','sum'));m=m[(m.p>0)&(m.n>=min_n)].copy();m['sr']=100*m.w/m.n;m['roi']=100*m.profit/m.p;m['balanced']=m.roi*np.sqrt(m.p/(m.p+30));order={'roi':['roi','sr','n'],'sr':['sr','roi','n'],'balanced':['balanced','sr','n']}[objective];return m.sort_values(['race_type',*order,'model'],ascending=[True,False,False,False,True]).drop_duplicates('race_type')
+          def apply(x,r):return x.merge(r[['race_type','model']],on=['race_type','model'],validate='many_to_one')
+          r=route(clean);s=apply(clean,r);m=metric(s);assert len(r)==38 and m['settled']==806 and m['wins']==259 and m['priced']==800 and abs(m['roi_pct']-31.2891625)<.001,(m,len(r))
+          r.to_csv(o/'frozen-v5-routes.csv',index=False);s.to_csv(o/'frozen-v5-rank1.csv',index=False)
+          rows=[];details=[];forwards=[]
+          for data_name,x in [('EXCLUDE_200_1_RACE',clean),('ALL_RACES',d)]:
+           for min_n in (1,5,10,20,30):
+            for objective in ('roi','sr','balanced'):
+             z=route(x,min_n,objective);a=apply(x,z);rows.append(dict(sample=data_name,method=objective,min_n=min_n,routes=len(z),**metric(a)))
+             for (discipline,typ),g in a.groupby(['discipline','race_type']):details.append(dict(sample=data_name,method=objective,min_n=min_n,discipline=discipline,race_type=typ,**metric(g)))
+           # Date-ordered split: route learned only from Oct25-Nov13. Last 10 days unseen by selection of route (not independent of broader model development).
+           train=x[x.date<'2026-11-14'];test=x[x.date>='2026-11-14'];
+           for min_n in (1,5,10,20):
+            for objective in ('roi','sr','balanced'):
+             z=route(train,min_n,objective);a=apply(test,z);forwards.append(dict(sample=data_name,method=objective,min_n=min_n,routes=len(z),**metric(a)))
+          pd.DataFrame(rows).to_csv(o/'in-sample-sensitivity.csv',index=False);pd.DataFrame(details).to_csv(o/'race-type-sensitivity.csv',index=False);pd.DataFrame(forwards).to_csv(o/'chronological-holdout.csv',index=False)
+          report=dict(status='FROZEN_BASELINE_REPRODUCED_NOT_ENGINE_PARITY',period=['2026-10-25','2026-11-23'],v5=m,by_discipline={k:metric(v) for k,v in s.groupby('discipline')},routes=len(r),holdout_note='First 20 days route tuning, last 10 days evaluation; full models were already inspected. Excluding the known 200/1 race is diagnostic, not an ex-ante rule.',balanced_formula='ROI * sqrt(priced/(priced+30)); exploratory, not approved V6',limitations=['Uses frozen rank-level archive, not a new scoring-engine replay.','Unequal model coverage; no absent route substitutions.'])
+          (o/'report.json').write_text(json.dumps(report,indent=2));print(json.dumps(report,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage189a-frozen-v5-baseline
+          path: out/
+          retention-days: 90
+          if-no-files-found: warn
