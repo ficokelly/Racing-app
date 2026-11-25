@@ -70,6 +70,9 @@ def apply_guard(output, report, root=Path('.')):
     for n,p in output['periods'].items():
         lower=(end-dt.timedelta(days=int(n)-1)).isoformat()
         selected=[v for d,v in byday.items() if d>=lower]
+        approved=set(p.get('kaggle_days',[]))
+        effective=[v for d,v in byday.items() if d>=lower and d not in approved]
+        p['effective_form_coverage']={'api_missing_or_ambiguous_races':sum(len(v['missing_or_ambiguous_races']) for v in effective),'api_unresolved_declarations':sum(len(x['declared_horses_without_result_or_withdrawal']) for v in effective for x in v['unresolved_declarations']),'api_unknown_fixture_days':sum(v['fixture_coverage_unknown'] for v in effective),'approved_kaggle_days':sorted(approved),'note':'Approved Kaggle days replace API aggregates; raw archive gaps remain in coverage_guard. External complete fixture census not established.'}
         missing=sum(len(v['missing_or_ambiguous_races']) for v in selected)
         unresolved=sum(len(x['declared_horses_without_result_or_withdrawal']) for v in selected for x in v['unresolved_declarations'])
         unknown=sum(v['fixture_coverage_unknown'] for v in selected)

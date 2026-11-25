@@ -140,8 +140,13 @@ def fetch_rows(source,start,end):
                 days[day][key]=x;races[day].add((co,rid))
     # A dash is NOT a finishing position and is never automatically a non-runner.
     # An exact source race/horse with a separate known finish or explicit NR is redundant.
+    from scripts.form_final_evidence import thurles_duplicate
     for day,records in dash.items():
+        duplicate=thurles_duplicate(day,records,days[day])
         for co,horse,rid in records:
+            if (co,horse,rid) in duplicate:
+                problems[day]['excluded_verified_duplicate_declaration']+=1
+                continue
             match=days[day].get((co,horse))
             if (match and match['race']==rid) or (co,horse,rid) in known_nr[day]:
                 problems[day]['excluded_redundant_dash_row']+=1
@@ -199,7 +204,7 @@ def compare(day,k,kr,kissues,api,ar,ai,expected,api_count):
     if len(kr)<len(ar):reasons.append('fewer_kaggle_races')
     if unmatched:reasons.append('unmatched_saved_races')
     if any(gaps.values()):reasons.append('missing_kaggle_persons')
-    if any(key not in ('excluded_explicit_foreign_course','excluded_redundant_dash_row','excluded_verified_nonrunner') for key in kissues) or ai:reasons.append('source_quality_issues')
+    if any(key not in ('excluded_explicit_foreign_course','excluded_redundant_dash_row','excluded_verified_nonrunner','excluded_verified_duplicate_declaration') for key in kissues) or ai:reasons.append('source_quality_issues')
     if not reasons and len(k)==len(api) and all(sum(x['runs'] for x in ag[g].values())==len(api) for g in ('trainers','jockeys')):reasons.append('no_demonstrated_coverage_improvement')
     return {'date':day,'api_starters':len(api),'kaggle_starters':len(k),'api_races':len(ar),'kaggle_races':len(kr),'shared_starters':len(common),'api_only_starters':len(missing),'kaggle_only_starters':len(k.keys()-api.keys()),'finish_disagreements':different,'person_disagreements':people_diff,'kaggle_identity_gaps':gaps,'unmatched_saved_races':unmatched,'kaggle_issues':dict(kissues),'api_issues':dict(ai),'approved':not reasons,'reasons':reasons},stats
 

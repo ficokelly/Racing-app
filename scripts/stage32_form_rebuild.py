@@ -183,6 +183,15 @@ def stage75_approved_result_alias(race, runner, ref, kind):
                    runner.get('horse'))
     return kind in STAGE75_PERSON_ALIASES.get(k, ())
 
+def verified_dated_final_person(race, runner, kind):
+    # Import lazily to avoid a circular import during startup.
+    import sys
+    try:
+        from scripts.form_final_evidence import verified_final_person
+    except ModuleNotFoundError:
+        from form_final_evidence import verified_final_person
+    return verified_final_person(race,runner,kind,sys.modules[__name__])
+
 def get_best_rows(as_of: dt.date, cache: dict, audit: collections.Counter):
     start = as_of - dt.timedelta(days=13)
     selected = {}  # One horse in one race exactly once, even if legacy+API duplicate.
@@ -238,13 +247,17 @@ def get_best_rows(as_of: dt.date, cache: dict, audit: collections.Counter):
                 jockey_id = str(runner.get('jockey_id') or '') or (ref or {}).get('jockey_id','')
                 if ref and (not original_trainer or not original_jockey):
                     audit['rows_with_identity_enrichment'] += 1
-                if ref and original_trainer and ref.get('trainer') and compact(original_trainer)!=compact(ref['trainer']):
+                if ref and original_trainer and ref.get('trainer') and person_key(original_trainer)!=person_key(ref['trainer']):
                     audit['result_card_trainer_disagreement'] += 1
                     # Stage73: a provider race ID + trainer ID is stronger evidence
                     # of the actual result than an earlier declared racecard.
                     # Otherwise preserve the original conservative withholding.
                     if race.get('race_id') and runner.get('trainer_id'):
                         audit['result_identity_trainer_preferred_over_declared_card'] += 1
+                    elif verified_dated_final_person(race, runner, 'trainer'):
+                        if person_key(original_trainer) != person_key(ref.get('trainer')):
+                            trainer_id=str(runner.get('trainer_id') or '')
+                        audit['verified_dated_final_trainer_preferred'] += 1
                     elif stage75_approved_result_alias(race, runner, ref, 'trainer'):
                         # Result source is independently verified and the exact
                         # pre-race horse/person identity supplies the provider ID.
@@ -253,12 +266,16 @@ def get_best_rows(as_of: dt.date, cache: dict, audit: collections.Counter):
                     else:
                         trainer=''
                         audit['result_identity_trainer_conflict_withheld'] += 1
-                if ref and original_jockey and ref.get('jockey') and compact(original_jockey)!=compact(ref['jockey']):
+                if ref and original_jockey and ref.get('jockey') and person_key(original_jockey)!=person_key(ref['jockey']):
                     audit['result_card_jockey_disagreement'] += 1
                     # Stage73: permit verified result-rider changes when BOTH
                     # race ID and actual result jockey ID are provided.
                     if race.get('race_id') and runner.get('jockey_id'):
                         audit['result_identity_jockey_preferred_over_declared_card'] += 1
+                    elif verified_dated_final_person(race, runner, 'jockey'):
+                        if person_key(original_jockey) != person_key(ref.get('jockey')):
+                            jockey_id=str(runner.get('jockey_id') or '')
+                        audit['verified_dated_final_jockey_preferred'] += 1
                     elif stage75_approved_result_alias(race, runner, ref, 'jockey'):
                         audit['stage75_verified_jockey_alias_kept'] += 1
                     else:
