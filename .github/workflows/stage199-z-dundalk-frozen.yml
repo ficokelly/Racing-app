@@ -1,0 +1,120 @@
+name: Stage199 - Model Z standalone frozen Dundalk replay
+on:
+  workflow_dispatch:
+  push:
+    paths: ['.github/workflows/stage199-z-dundalk-frozen.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PYTHONPATH: .:scripts
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 0a3b9b54093e40e07a7854b9cf53208fa01f2609
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Restore pinned historical inputs
+        run: |
+          pip install numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2 requests 'kagglehub>=0.3,<1'
+          mkdir -p reports/stage152-specialists/source/stage2 stage199-ref stage199-output
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage2-historical-staging-database --dir reports/stage152-specialists/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage4-reference-named-events-and-winners --dir stage199-ref
+      - name: Freeze both fields and prepare prior-day-only database
+        run: |
+          python - <<'PY'
+          import collections, datetime as dt, hashlib, json, pathlib as P, sqlite3, subprocess as S, shutil
+          from stage167_validated_history import refreshed_inputs
+          from rhp_runner_eligibility import active_runner
+          DAY='2026-11-25'; CUT=dt.datetime.fromisoformat(DAY+'T15:00:00+00:00')
+          SNAP='0a3b9b54093e40e07a7854b9cf53208fa01f2609'; PIN='a5987838b0e3f28b53686bac60d52cd164738718'
+          O=P.Path('stage199-output')
+          def stamp(s):
+              x=dt.datetime.fromisoformat(str(s).replace('Z','+00:00')); assert x.tzinfo
+              return x.astimezone(dt.timezone.utc)
+          assert S.check_output(['git','rev-parse','HEAD'],text=True).strip()==SNAP
+          assert stamp(S.check_output(['git','show','-s','--format=%cI',SNAP],text=True).strip())<CUT
+          raw=P.Path('data/racecards.json').read_bytes(); cards=json.loads(raw)
+          asof=stamp(cards['collected_at']); assert asof<CUT
+          fields=collections.defaultdict(list)
+          allow={'date','race_time','course','race_id','race_name','race_type','type','surface','track_surface','distance_f','going','race_class','horse','horse_id','horse_country','country','trainer','jockey','official_rating','ofr','or','age','sire','dam','draw','number','cloth_number','sex','weight'}
+          outcomes={'position','finish_pos','result','outcome','sp','sp_decimal','starting_price','beaten','race_result','result_status','overall_beaten','distance_beaten_total'}
+          for r in cards['runners']:
+              if str(r.get('date'))!=DAY or 'dundalk' not in str(r.get('course','')).lower() or not active_runner(r):continue
+              if 'maiden' not in str(r.get('race_name','')).lower():continue
+              off=stamp(r['race_time']); minute=off.hour*60+off.minute; t=off.strftime('%H:%M')
+              if min(abs(minute-901),abs(minute-1030))>3:continue
+              assert off>asof and not any(r.get(k) not in (None,'',[],{}) for k in outcomes), ('settlement in input',t)
+              fields[t].append({k:v for k,v in r.items() if k in allow})
+          assert len(fields)==2 and all(len(v)>=2 and len({r['horse'] for r in v})==len(v) for v in fields.values()),[(k,len(v)) for k,v in fields.items()]
+          assert all(len({r.get('race_id') for r in v})==1 for v in fields.values())
+          (O/'input-audit.json').write_text(json.dumps({'snapshot_commit':SNAP,'card_collected_utc':asof.isoformat(),'snapshot_sha256':hashlib.sha256(raw).hexdigest(),'cutoff':CUT.isoformat(),'fields':{k:[r['horse'] for r in v] for k,v in fields.items()},'model_source_commit':PIN,'same_day_results_allowed':False},indent=2))
+          base=list(P.Path('reports/stage152-specialists/source/stage2').rglob('historical_ukie_staging.sqlite')); ref=list(P.Path('stage199-ref').rglob('all_races_with_reference_event_ids.csv'))
+          assert len(base)==len(ref)==1
+          canonical=P.Path('reports/stage152-specialists/source/stage2/historical_ukie_staging.sqlite')
+          if base[0]!=canonical:shutil.move(str(base[0]),canonical)
+          db=P.Path('stage199-prior.sqlite')
+          with refreshed_inputs(canonical,ref[0],DAY) as (d,_):shutil.copy2(d,db)
+          with sqlite3.connect(db) as c:
+              c.execute('DELETE FROM historical_runs WHERE race_id IN (SELECT id FROM historical_races WHERE race_date>=?)',(DAY,))
+              c.execute('DELETE FROM historical_races WHERE race_date>=?',(DAY,)); c.commit()
+              latest=c.execute('SELECT MAX(race_date) FROM historical_races').fetchone()[0]; assert latest and latest<DAY
+              assert c.execute('SELECT COUNT(*) FROM historical_races WHERE race_date>=?',(DAY,)).fetchone()[0]==0
+          paths=S.check_output(['git','ls-tree','-r','--name-only',PIN],text=True).splitlines()
+          frozen=[p for p in paths if p.endswith('.py') and (p.startswith('scripts/') or '/' not in p)]
+          S.run(['git','restore','--source',PIN,'--worktree','--',*frozen,'data/model-z-strategies.json','reports/stage34/stage34-frozen-track-profiles.json'],check=True)
+          P.Path('stage199-fields.json').write_text(json.dumps({'fields':fields,'latest':latest,'asof':asof.isoformat()}))
+          PY
+      - name: Run exact Model Z ranking only (no settlement)
+        run: |
+          python - <<'PY'
+          import json, pathlib as P, numpy as np, os
+          from stage38_model_dz_live import LivePast,live_row,prediction_rows,METRICS,OLD
+          from stage116_verified_form_live import resolve_verified,apply_d_row
+          DAY='2026-11-25'; db='stage199-prior.sqlite'; O=P.Path('stage199-output')
+          packet=json.loads(P.Path('stage199-fields.json').read_text()); fields=packet['fields']
+          registry=json.loads(P.Path('data/model-z-strategies.json').read_text())
+          profile=json.loads(P.Path('reports/stage34/stage34-frozen-track-profiles.json').read_text())['profiles']['courses']['aw|dundalk']
+          item=next(s for s in registry['strategies'] if s['frozen_profile_key']=='aw|dundalk')
+          assert all(abs(float(profile['weights_pct'][k])-float(item['weights_pct'][k]))<1e-6 for k in METRICS)
+          gate=float(profile['selection_margin']); assert abs(gate-float(item['selection_margin']))<1e-9
+          weights=[float(profile['weights_pct'][k])/100 for k in METRICS]
+          history=LivePast({}); info=history.scan_until(db,DAY); assert info['last_result_date']<DAY
+          countries={}
+          for n,c in history.last:
+              if n not in countries:countries[n]=c
+              elif countries[n]!=c:countries[n]=None
+          aliases,_=resolve_verified(db,[r for v in fields.values() for r in v],DAY)
+          result=[]
+          for t,rs in sorted(fields.items()):
+              rid='MODEL-D-LIVE|'+DAY+'|'+str(rs[0]['course'])+'|'+t
+              rows=[apply_d_row(live_row(r,DAY,rid,countries),r,aliases) for r in rs]
+              assert all(row[12] is None and row[20] is None for row in rows)
+              race=history.score(rows,live=True)
+              assert race is not None and race['kind']=='aw' and OLD.track(rs[0]['course'])=='dundalk' and len(race['x'])==len(rs)
+              scores,order,gap=prediction_rows(race,weights); assert np.isfinite(scores).all()
+              rankings=[{'rank':rank,'horse':rs[int(i)]['horse'],'research_score':float(scores[int(i)])} for rank,i in enumerate(order,1)]
+              result.append({'time':t,'course':rs[0]['course'],'race_name':rs[0]['race_name'],'model':'Z','rank1':rankings[0]['horse'],'rank2':rankings[1]['horse'],'score_gap':gap,'gate':gate,'gate_qualified':gap>=gate,'rankings':rankings})
+          assert len(result)==2
+          output={'status':'FROZEN_PREOFF_REPLAY_NOT_LIVE','historical_through':info['last_result_date'],'card_asof':packet['asof'],'same_day_results_read':False,'races':result}
+          (O/'model-z-selections.json').write_text(json.dumps(output,indent=2)); print(json.dumps(output,indent=2),flush=True)
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
+              f.write('# Standalone Model Z frozen replay\n\n| Time | Rank 1 | Rank 2 | Gate qualified |\n|---|---|---|---|\n')
+              for r in result:f.write('| '+' | '.join(str(r[k]) for k in ('time','rank1','rank2','gate_qualified'))+' |\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage199-z-frozen-${{ github.run_id }}
+          path: stage199-output/
+          if-no-files-found: warn
