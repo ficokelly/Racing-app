@@ -72,6 +72,116 @@ def extract(workflow,filename):
  m=re.search(pattern,text);assert m,('missing exact adapter',workflow,filename)
  indent=len(m.group(1));body='\n'.join(x[indent:] if x.startswith(' '*indent) else x for x in m.group(2).splitlines())+'\n';compile(body,filename,'exec');p=ROOT/'scripts'/filename;p.write_text(body);return p
 
+E_DRIVER_MODULE = """\
+import warnings
+
+import numpy as np
+
+PILLARS = (
+    'ability pillar', 'trainer pillar', 'jockey pillar', 'course pillar',
+    'draw pillar', 'distance pillar', 'ground pillar', 'jumping pillar',
+)
+
+
+def explain(scores, order, components, labels):
+    matrix = np.asarray(components, dtype=float)
+    centered = matrix - matrix.mean(axis=0)
+    values = np.asarray(scores, dtype=float)
+    if not np.allclose(centered.sum(axis=1), values - values.mean(), atol=1e-7):
+        warnings.warn('E explanation omitted: components did not reproduce the frozen score')
+        return dict.fromkeys(map(int, order))
+
+    def groups(vector):
+        pairs = sorted(zip(labels, map(float, vector)), key=lambda pair: -abs(pair[1]))
+        return {
+            'positive': [[label, amount] for label, amount in pairs if amount > 1e-5],
+            'negative': [[label, amount] for label, amount in pairs if amount < -1e-5],
+        }
+
+    output = {}
+    for place, runner in enumerate(order):
+        rival = order[1] if place == 0 else order[place - 1]
+        output[int(runner)] = {
+            'method': 'exact_weighted_components',
+            **groups(centered[runner]),
+            'rank_comparison': groups(matrix[runner] - matrix[rival]),
+        }
+    return output
+"""
+
+
+def add_e_score_explanations(scripts):
+    """Capture score components in the pinned E adapters without changing predictions."""
+    helper = scripts / '_stage196f_e_drivers.py'
+    helper.write_text(E_DRIVER_MODULE)
+
+    def patch(filename, replacements):
+        path = scripts / filename
+        source = path.read_text()
+        for original, replacement in replacements:
+            if source.count(original) != 1:
+                raise RuntimeError(f'Pinned E commentary hook changed in {filename}: {original}')
+            source = source.replace(original, replacement)
+        compile(source, str(path), 'exec')
+        path.write_text(source)
+
+    patch('stage95_five_model_paired_replay.py', [
+        ('def e75_preoff(cards,original,learned,people,draw_hist,hr,date,cache):',
+         'def e75_preoff(cards,original,learned,people,draw_hist,hr,date,cache,components=None):'),
+        ('results_off=[];results_on=[];available=[];hprn=[]',
+         'results_off=[];results_on=[];available=[];hprn=[]\n off_parts=[];on_parts=[]'),
+        ('  results_off.append(off);results_on.append(on)\n c_z=', '''  results_off.append(off);results_on.append(on)
+  if components is not None:
+   off_parts.append([scores[k]*wc[k] for k in E92.PILLARS])
+   on_parts.append([on_scores[k]*wc[k] for k in E92.PILLARS])
+ c_z='''),
+        (' return eoff,eon,available,hprn', ''' if components is not None:
+  for label,parts,raw in (
+   ('E_75_25_NO_HPR',off_parts,results_off),
+   ('E_75_25_WITH_HPR',on_parts,results_on),
+  ):
+   matrix=np.asarray(parts)
+   weighted=(matrix-matrix.mean(axis=0))*.75/(np.std(raw)+1e-8)
+   components[label]=np.column_stack((weighted,.25*c_z))
+ return eoff,eon,available,hprn'''),
+        ('  eno,eon,hprflags,hprn=e75_preoff(cards,original,cprob,people,draw_hist,hr,day,cache)',
+         '  components={}\n  eno,eon,hprflags,hprn=e75_preoff(cards,original,cprob,people,draw_hist,hr,day,cache,components)'),
+        ("'scores_by_model':scores,'hpr_flags':hprflags,",
+         "'scores_by_model':scores,'score_components':components,'hpr_flags':hprflags,"),
+    ])
+    patch('stage101_all_models_compare.py', [
+        ("out[key][label]={'scores':values,'probabilities':None,'score_share':p,'version':S95.VERSION,",
+         "out[key][label]={'scores':values,'probabilities':None,'score_share':p,'version':S95.VERSION,\n"
+         "        'score_components':row.get('score_components',{}).get(label),"),
+    ])
+    patch('stage185a_local_replay.py', [
+        ('import stage101_all_models_compare as M',
+         'import stage101_all_models_compare as M\nfrom _stage196f_e_drivers import explain,PILLARS'),
+        ("  for rank,i in enumerate(np.argsort(-v,kind='stable'),1):",
+         "  order=np.argsort(-v,kind='stable')\n"
+         "  labels=(*PILLARS,'learned form model')\n"
+         "  if model=='E_75_25_WITH_HPR':labels=('historical performance pillar',*labels[1:])\n"
+         "  drivers=explain(v,order,x['score_components'],labels)\n"
+         "  for rank,i in enumerate(order,1):"),
+        ("model=model,rank=rank,horse=r['horse']))",
+         "model=model,rank=rank,horse=r['horse'],research_score=float(v[i]),driver_json=json.dumps(drivers[int(i)])))"),
+    ])
+    patch('stage185b_local_replay.py', [
+        ('import stage92_model_e_winprob as E',
+         'import stage92_model_e_winprob as E\nfrom _stage196f_e_drivers import explain,PILLARS'),
+        ('   for rank,i in enumerate(order,1):rows.append(', '''   weights=E.weights(preset,disp)
+   if typ=='NH Flat/Bumper':
+    weights['jumping']=0.
+    total=sum(weights.values())
+    weights={key:value/total for key,value in weights.items()}
+   parts=[[runner['pillars'][key]*weights[key] for key in E.PILLARS] for runner in rc['runners']]
+   drivers=explain(scores,order,parts,PILLARS)
+   for rank,i in enumerate(order,1):rows.append('''),
+        ("rank=rank,horse=field[i]['horse']))",
+         "rank=rank,horse=field[i]['horse'],research_score=float(scores[i]),driver_json=json.dumps(drivers[i])))"),
+    ])
+
+
 def run(name,script,args,filename,env=None,label=None):
  dest=W/name;dest.mkdir(exist_ok=True); record={'family':name,'script':str(script),'status':'FAILED','started':NOW().isoformat()}; result=[]
  try:
@@ -217,6 +327,7 @@ for action in (['--check'], []):
 for p in ['data/model-z-strategies.json','reports/stage34/stage34-frozen-track-profiles.json','data/strategy-historical-model.json','data/strategy-model-b-historical.json','data/strategy-model-c-historical.json','data/roi-racetype-route-map.json','reports/stage30/stage30-summary.json']:
  if p in paths:S.run(['git','restore','--source',pin,'--worktree','--',p],check=True)
 for workflow,filename in [('stage185a-e75-hpr-replay.yml','stage185a_local_replay.py'),('stage185b-e92-presets-replay.yml','stage185b_local_replay.py'),('stage186b-remaining-specialists-replay.yml','stage186b_local_replay.py'),('stage188a-enhanced-d2-replay.yml','stage188a_local_replay.py')]:extract(workflow,filename)
+add_e_score_explanations(ROOT/'scripts')
 # Preserve original G scoring; use the validated complete-field G5 small-card guard.
 gp=ROOT/'scripts/stage128_g5_today_paper.py'
 gs=gp.read_text();guard="    if len(data)<40:raise RuntimeError('Too few horses scored; refuse misleading partial card output')"
@@ -478,7 +589,7 @@ for k,entries in sorted(fields.items()):
   for result in ranked:
    card=cards_by_horse[horse(result['horse'])]
    item=dict(horse=card['horse'],rank=int(float(result['rank'])),weight=card.get('lbs'),official_rating=card.get('ofr'))
-   if result['research_score'] is not None:item['research_score']=result['research_score']
+   if result['research_score'] not in (None,''):item['research_score']=float(result['research_score'])
    if result['driver_json']:
     item['model_drivers']=json.loads(result['driver_json'])
    if result['raw_source_probability']:
