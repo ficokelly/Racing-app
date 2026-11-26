@@ -2,7 +2,16 @@
 import csv,datetime as dt,json,os,pathlib as P,re,subprocess as S,sys,unicodedata,collections as C,sqlite3,hashlib,shutil
 from zoneinfo import ZoneInfo
 ROOT=P.Path.cwd(); W=(ROOT/'stage196-work').resolve(); O=(ROOT/'stage196-output').resolve(); O.mkdir(exist_ok=True); W.mkdir(exist_ok=True)
-DAY=os.environ['TARGET_DAY']; NOW=lambda:dt.datetime.now(dt.timezone.utc); UTC=dt.timezone.utc
+DAY=os.environ['TARGET_DAY']; UTC=dt.timezone.utc
+REPLAY=os.environ.get('STAGE196F_REPLAY','')
+REPLAY_MODES={'stage206','stage196f','mullins-before','history-before','identity','stage208'}
+if REPLAY and (REPLAY not in REPLAY_MODES or DAY!='2026-11-26'):
+ raise ValueError('Unexpected controlled replay configuration')
+REPLAY_CLOCK='2026-11-26T09:38:00+00:00'
+NOW=lambda:dt.datetime.fromisoformat(REPLAY_CLOCK) if REPLAY else dt.datetime.now(UTC)
+REPAIR_IDENTITIES=REPLAY in ('','identity','stage208')
+USE_STAGE208=REPLAY in ('','stage208')
+from stage196f_identity import IdentityPlan, MULLINS_ID, MULLINS_NAMES, archive_people, stage208_events
 # Stage189c static simulation route evidence (rank 1, 25 Oct–23 Nov 2026).
 routes={
  'AW_AUCTION_RESTRICTED_SALES': {'model': 'D137_HPR_ABILITY_GRADE', 'roi_pct': 129.2361, 'strike_rate_pct': 55.0, 'priced': 20},
@@ -61,8 +70,16 @@ def writecsv(p,rows,fields=None):
  fields=fields or list(dict.fromkeys(k for r in rows for k in r)) or ['date','course','time','status'];
  with p.open('w',newline='') as f:w=csv.DictWriter(f,fieldnames=fields,extrasaction='ignore');w.writeheader();w.writerows(rows)
 def git(*args):return S.check_output(['git',*args],text=True)
+def digest(path):
+ with P.Path(path).open('rb') as f:return hashlib.file_digest(f,'sha256').hexdigest()
 def download(run,name,dest):
- dest.mkdir(parents=True,exist_ok=True);S.run(['gh','run','download',str(run),'--repo',os.environ['GITHUB_REPOSITORY'],'--name',name,'--dir',str(dest)],check=True,timeout=1200)
+ dest.mkdir(parents=True,exist_ok=True)
+ S.run(['gh','run','download',str(run),'--repo',os.environ['GITHUB_REPOSITORY'],'--name',name,'--dir',str(dest)],check=True,timeout=1200)
+ if REPLAY:
+  manifest=audit.setdefault('artifact_inputs',{}).setdefault(str(run)+'/'+name,{})
+  for p in sorted(dest.rglob('*')):
+   if p.is_file() and (p.suffix in ('.joblib','.sqlite','.pkl') or p.name=='all_races_with_reference_event_ids.csv'):
+    manifest[str(p.relative_to(dest))]=digest(p)
 def exactly(root,name):
  a=list(root.rglob(name));assert len(a)==1,(root,name,len(a));return a[0].resolve()
 def extract(workflow,filename):
@@ -186,12 +203,24 @@ def run(name,script,args,filename,env=None,label=None):
  dest=W/name;dest.mkdir(exist_ok=True); record={'family':name,'script':str(script),'status':'FAILED','started':NOW().isoformat()}; result=[]
  try:
   command=[sys.executable,'-u',str(script),*map(str,args),'--out',str(dest)];record['command']=command
-  with (O/(name+'.log')).open('w') as f:ret=S.run(command,stdout=f,stderr=S.STDOUT,env={**os.environ,**(env or {})},timeout=7200)
+  if REPLAY:
+   wrapper=("import os, runpy, sys; from freezegun import freeze_time\n"
+            "path=sys.argv.pop(1); sys.argv[0]=path\n"
+            "with freeze_time(os.environ['STAGE196F_REPLAY_CLOCK'], real_asyncio=True):\n"
+            "    runpy.run_path(path, run_name='__main__')\n")
+   command=[sys.executable,'-u','-c',wrapper,*command[2:]]
+  child_env={**os.environ,**(env or {}),'STAGE196F_FAMILY':name,'STAGE196F_REPLAY_CLOCK':REPLAY_CLOCK}
+  with (O/(name+'.log')).open('w') as f:
+   ret=S.run(command,stdout=f,stderr=S.STDOUT,env=child_env,timeout=7200)
   if ret.returncode:raise RuntimeError('scorer exit '+str(ret.returncode))
   with (dest/filename).open(newline='',encoding='utf-8-sig') as f:result=list(csv.DictReader(f))
   if label:
    for r in result:r['model']=label
   if not result:raise RuntimeError('no scorer rows')
+  if REPLAY and name=='G2_G3':
+   keys=('date','course','off_utc','model','horse','prior_runs','trainer_n60','trainer_form60',
+         'jockey_n60','jockey_form60','trainer_changed','raw_probability','win_probability','rank')
+   writecsv(O/'g2-g3-feature-evidence.csv',result,keys)
   record.update(status='SUCCESS',rows=len(result),models=sorted({r['model'] for r in result}))
  except Exception as e:record['error']=repr(e)
  finally:
@@ -203,6 +232,8 @@ def run(name,script,args,filename,env=None,label=None):
  return result
 
 audit={'version':'STAGE196F_AUDITED_ROUTE_FIRST_CANDIDATE','day':DAY,'mode':'VALIDATION_CANDIDATE_ONLY','historical_period':['2026-10-25','2026-11-23'],'historical_replay_source':pin,'adapter_workflow_source':workflow_pin,'route_policy':'highest historical ROI among verified Stage196F models; no minimum priced sample; Model Z eligibility limited to Dundalk','excluded_replays':['stage184b incomplete','stage186d deferred','unverified A/B and D(c) proxies'],'families':[],'issues':[]}
+if REPLAY:
+ audit.update(mode='CONTROLLED_REPLAY_ONLY',replay_variant=REPLAY,decision_clock=REPLAY_CLOCK)
 # These files contain no target-day results; use the existing validated source builder once.
 base=W/'base'; refdir=W/'ref'; download(43089770857,'stage2-historical-staging-database',base);download(43089770857,'stage4-reference-named-events-and-winners',refdir)
 # The helper recognises the canonical Stage152 source path. Use exactly that path in this disposable checkout.
@@ -322,8 +353,22 @@ debutant_patch = (
  "         tmp['raw_probability']=model.predict_proba(Xframe(tmp))[:,1]\n"
  '         tmp=softmax_races(tmp,temperature)\n'
 )
-for action in (['--check'], []):
- S.run(['git','apply',*action,'-'],input=debutant_patch,text=True,check=True)
+if REPLAY!='stage206':
+ for action in (['--check'], []):
+  S.run(['git','apply',*action,'-'],input=debutant_patch,text=True,check=True)
+if REPAIR_IDENTITIES:
+ # The original G history loaders run first. Reconcile their in-memory person
+ # keys immediately before feature construction, leaving fitted artifacts alone.
+ for module in ('stage107_model_g','stage108_model_g2'):
+  scorer=ROOT/'scripts'/(module+'.py')
+  code=scorer.read_text()
+  anchor='def score_card_rows(state,model,temperature,cards,cutoff):\n'
+  if code.count(anchor)!=1:raise RuntimeError('Unexpected frozen G scoring entry point: '+module)
+  hook=('    from stage196f_identity import prepare_g_state\n'
+        '    import sys\n'
+        '    prepare_g_state(sys.modules[__name__],state,cards)\n')
+  code=code.replace(anchor,anchor+hook)
+  compile(code,str(scorer),'exec');scorer.write_text(code)
 for p in ['data/model-z-strategies.json','reports/stage34/stage34-frozen-track-profiles.json','data/strategy-historical-model.json','data/strategy-model-b-historical.json','data/strategy-model-c-historical.json','data/roi-racetype-route-map.json','reports/stage30/stage30-summary.json']:
  if p in paths:S.run(['git','restore','--source',pin,'--worktree','--',p],check=True)
 for workflow,filename in [('stage185a-e75-hpr-replay.yml','stage185a_local_replay.py'),('stage185b-e92-presets-replay.yml','stage185b_local_replay.py'),('stage186b-remaining-specialists-replay.yml','stage186b_local_replay.py'),('stage188a-enhanced-d2-replay.yml','stage188a_local_replay.py')]:extract(workflow,filename)
@@ -345,6 +390,39 @@ for r in cards.get('runners',[]):
  if stamp(r['race_time'])<=NOW()+dt.timedelta(minutes=2):continue
  fields[cardkey(r)].append({k:v for k,v in r.items() if k not in outcome|prices})
 fields={k:v for k,v in fields.items() if len(v)>=2 and len({horse(r['horse']) for r in v})==len(v)};assert fields,'No verified remaining fields'
+declared_fields=fields
+if REPLAY:
+ audit['frozen_inputs']={name:digest(path) for name,path in {
+  'declarations':ROOT/'data/racecards.json','shared_history':db,'reference':ref,
+  'original_g5_history':legacy_db,'original_g5_reference':legacy_ref,'hpr':hpr,
+ }.items()}
+if REPLAY=='mullins-before':
+ fields={k:[{**r,'trainer':MULLINS_NAMES[0]} if r.get('trainer_id')==MULLINS_ID else r
+            for r in v] for k,v in fields.items()}
+if REPAIR_IDENTITIES:
+ registry=json.loads((ROOT/'data/form-person-aliases.json').read_text())
+ original=[r for v in fields.values() for r in v]
+ evidence=ROOT/'data/racecards-archive.json'
+ archived=[]
+ if evidence.exists():
+  archive=json.loads(evidence.read_text())
+  if archive.get('source')=='The Racing API':
+   archived=[r for r in archive.get('runners',[]) if r.get('date') and r['date']<DAY]
+ archived.extend(archive_people(ROOT/'data/racing-results',DAY))
+ identity_plan=IdentityPlan.build(original,archived,registry)
+ fields={k:[identity_plan.scoring_row(r) for r in v] for k,v in fields.items()}
+ people_diff=[dict(course=r['course'],time=cardkey(r)[2],horse=r['horse'],
+                   role=role,source_id=r.get(role+'_id'),declared=r.get(role),scoring=s.get(role))
+              for k,entries in declared_fields.items() for r,s in zip(entries,fields[k])
+              for role in ('trainer','jockey') if r.get(role)!=s.get(role)]
+ writecsv(O/'identity-changes.csv',people_diff,
+          ['course','time','horse','role','source_id','declared','scoring'])
+ audit['identity']={'declaration_changes':len(people_diff),
+                    'verified_ids':{role:len(mapping['ids']) for role,mapping in identity_plan.roles.items()},
+                    'ambiguous_names':{role:mapping['conflicts'] for role,mapping in identity_plan.roles.items()},
+                    'shared_history':identity_plan.apply_history(db),
+                    'legacy_history':identity_plan.apply_history(legacy_db),
+                    'hpr_payloads':identity_plan.apply_hpr(hpr,DAY)}
 cardpath=W/'cards.json';dump(cardpath,dict(cards,runners=[r for v in fields.values() for r in v]));audit.update(card_asof=collected.isoformat(),remaining_fields=len(fields));dump(O/'audit.json',audit)
 common=['today','--db',db,'--reference',ref,'--cards',cardpath,'--date',DAY]
 allrows=[]
@@ -380,7 +458,27 @@ race_routes={k:(dundalk_maiden_fallback if t=='AW_MAIDEN' and k[1]!='dundalk' el
 for item in classaudit:
  k=(DAY,course(item['course']),item['time'])
  if k in race_routes:item['model']=race_routes[k]['model']
-needed={r['model'] for r in race_routes.values()};audit['needed_models']=sorted(needed);dump(O/'classification.json',classaudit);dump(O/'audit.json',audit)
+needed={r['model'] for r in race_routes.values()};audit['needed_models']=sorted(needed)
+if REPLAY:
+ if len(race_routes)!=35:
+  raise RuntimeError('Controlled replay requires all 35 original race routes')
+ expected=json.loads((ROOT/'stage196-reference-routes.json').read_text())
+ expected={(entry['course'],entry['time']):(entry['race_type'],entry['model']) for entry in expected}
+ actual={(entry['course'],entry['time']):(entry['race_type'],entry['model']) for entry in classaudit}
+ if actual!=expected:raise RuntimeError('Stage206 and Stage196F routes do not agree on the archived card')
+if REPAIR_IDENTITIES:
+ overlay={}
+ if USE_STAGE208:
+  eligible=[r for k,v in fields.items() if assigned[k]=='HURDLE_MAIDEN'
+            and race_routes[k]['model']=='G2_FROZEN' for r in v]
+  overlay,quarantine=stage208_events(G108,db,ref,DAY,eligible)
+  dump(O/'stage208-quarantine.json',quarantine)
+  audit['stage208_eligible_runners']=len(eligible)
+ scoring_plan=W/'scoring-plan.json'
+ dump(scoring_plan,{'people':identity_plan.roles,'stage208':overlay})
+ os.environ['STAGE196F_SCORING_PLAN']=str(scoring_plan)
+ os.environ['STAGE196F_OVERLAY_AUDIT']=str(O/'stage208-added.json')
+dump(O/'classification.json',classaudit);dump(O/'audit.json',audit)
 print('ROUTED_FIELDS',json.dumps(classaudit),flush=True)
 def family_for(model):
  if model.startswith('E92_'):return 'E92'
@@ -610,10 +708,16 @@ for k,entries in sorted(fields.items()):
                   historical_simulation=dict(start='2026-10-25',end='2026-11-23',rank=1,
                     roi_pct=row['historical_roi_pct'],strike_rate_pct=row['historical_strike_rate_pct'],
                     priced_races=row['historical_priced'])))
-dump(O/'combined-candidate.json',dict(version=1,model='Stage196F combined candidate',day=DAY,generated_at=NOW().isoformat(),races=feed))
+dump(O/('replay-candidate.json' if REPLAY else 'combined-candidate.json'),
+     dict(version=1,model='Controlled replay' if REPLAY else 'Stage196F combined candidate',
+          day=DAY,generated_at=NOW().isoformat(),races=feed))
 with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
  f.write('# Stage196F route-first paper engine\n\nHistorical leaders, no production write. Verification timestamps are internal checkpoints; artifact becomes accessible only after upload.\n\n|Time UTC|Meeting|Race type|Model|Rank 1|Rank 2|Status|\n|---|---|---|---|---|---|---|\n')
  for r in results:f.write('| '+' | '.join(str(r[k]).replace('|','/') for k in ('time','course','race_type','model','rank1','rank2','status'))+' |\n')
 assert audit['selected']>0,'No verified picks; inspect audit'
-if audit['selected']!=len(results):raise SystemExit('PARTIAL COVERAGE: valid selections preserved; inspect missing races')
+if REPLAY:
+ if audit['issues'] or any(row['status']!='SUCCESS' for row in audit['families']):
+  raise SystemExit('Controlled replay scorer error; inspect audit')
+elif audit['selected']!=len(results):
+ raise SystemExit('PARTIAL COVERAGE: valid selections preserved; inspect missing races')
 
