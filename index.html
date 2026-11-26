@@ -3089,7 +3089,7 @@ restoreRefreshFiltersAfterFeed=function(){
 (function(){
  'use strict';
  let view='all'; // all races, or model selections; race-type filters apply to both
- let rhp158Meeting='all',rhp158Time='all';
+ let rhp158Meeting='all',rhp158Time='all',rhpRaceType='all';
  // RHP_STAGE163_ODDS_RANGE_V1
  const rhp163Modes=['all','le2','2to5','5to10','gt10','custom'];
  let rhp163Mode='all',rhp163Min='',rhp163Max='';
@@ -3149,6 +3149,9 @@ restoreRefreshFiltersAfterFeed=function(){
  }
  function raceGroup(r){
   const kind=String(r.race_type||'').toLowerCase(),title=String(r.race_name||'').toLowerCase(),place=String(r.course||'').toLowerCase();
+  if(kind.startsWith('aw_')||r.race_group==='aw')return 'aw';
+  if(kind.startsWith('turf_')||r.race_group==='flat')return 'flat';
+  if(/^(hurdle|chase|nh_flat)_/.test(kind)||r.race_group==='jumps')return 'jumps';
   const info=[kind,title,place].join(' ');
   if(place.includes('(aw)')||/all.?weather|polytrack|tapeta/.test(info))return 'aw';
   if(/hurdle|chase|steeple|national hunt|nh flat|bumper|jumps/.test(info))return 'jumps';
@@ -3686,6 +3689,22 @@ restoreRefreshFiltersAfterFeed=function(){
   return `<article class="panel rhp70-race"><div class="rhp70-head"><div><h3>${safe(race.time)} · ${safe(race.course)}</h3><p class="hint">${safe(raceTitle)} · ${safe(kindText(race))}</p></div><span class="rhp70-pill">${selected?'Model selection':hasRanking?'Ranked only':'Awaiting ranking'}</span></div>`+
    rhpSimulationPerformance(race)+pairHTML(race)+priorRankingNote(race)+`<p class="rhp70-explain">${safe(modelDecision(race))}</p>`+openRaceButton(race)+'</article>';
  }
+ function rhpRaceTypeKey(race){
+  const raw=String(race.race_type||'').trim();
+  if(!raw||raw.toLowerCase()==='unmapped')return '';
+  return rhpSimulationRoutes[raw.toLowerCase()]||raw.toUpperCase().replace(/[\s-]+/g,'_');
+ }
+ function rhpRaceTypeLabel(type){
+  if(!type)return 'Race type not confirmed';
+  const words=type.toLowerCase().replaceAll('_',' ');
+  const format=s=>s==='auction restricted sales'?'auction / restricted':s.replace(/^group /,'Group ').replace(/^grade /,'Grade ');
+  if(type.startsWith('AW_'))return 'All-weather '+format(words.slice(3));
+  if(type.startsWith('TURF_'))return 'Flat turf '+format(words.slice(5));
+  if(type.startsWith('NH_FLAT_'))return 'NH Flat · '+format(words.slice(8));
+  const detail=words.match(/^(hurdle|chase) (.+)$/);
+  const label=detail?format(detail[2])+' '+detail[1]:words;
+  return label.charAt(0).toUpperCase()+label.slice(1);
+ }
  function ensureControls(){
   const panel=$('strategy-day-switch')?.closest('.panel');
   if(panel&&!$('rhp70-view-selector')){
@@ -3695,7 +3714,7 @@ restoreRefreshFiltersAfterFeed=function(){
   }
   if(panel&&!$('rhp158-hot-pots-filters')){
    const filter=document.createElement('div');filter.id='rhp158-hot-pots-filters';filter.className='rhp158-filter-grid';
-   filter.innerHTML='<label>Meeting<select id="rhp158-hp-meeting" aria-label="Filter Hot Pots by meeting"><option value="all">All meetings</option></select></label><label>Race time (Irish)<select id="rhp158-hp-time" aria-label="Filter Hot Pots by race time"><option value="all">All race times</option></select></label><button type="button" class="action small outline" data-rhp158-reset-hot>Reset filters</button>';
+   filter.innerHTML='<label style="grid-column:1 / -1">Race type<select id="rhp-hp-race-type"><option value="all">All race types</option></select></label><label>Meeting<select id="rhp158-hp-meeting" aria-label="Filter Hot Pots by meeting"><option value="all">All meetings</option></select></label><label>Race time (Irish)<select id="rhp158-hp-time" aria-label="Filter Hot Pots by race time"><option value="all">All race times</option></select></label><button type="button" class="action small outline" data-rhp158-reset-hot>Reset filters</button>';
    const reset=filter.querySelector('[data-rhp158-reset-hot]');
    reset.insertAdjacentHTML('beforebegin',`<label style="grid-column:1 / -1">Rank 1 odds range<select id="rhp163-odds-mode" aria-label="Filter Hot Pots by Rank 1 latest odds"><option value="all">All odds</option><option value="le2">2/1 or less</option><option value="2to5">Over 2/1 to 5/1</option><option value="5to10">Over 5/1 to 10/1</option><option value="gt10">Over 10/1</option><option value="custom">Custom odds range</option></select></label><div id="rhp163-custom" style="grid-column:1 / -1" hidden><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px"><label>Minimum odds<input id="rhp163-min" type="text" placeholder="e.g. 5/2" autocomplete="off" style="width:100%;min-width:0;box-sizing:border-box;background:var(--rhp-card);color:var(--rhp-ink);border:1px solid var(--rhp-edge);border-radius:10px;padding:10px"></label><label>Maximum odds<input id="rhp163-max" type="text" placeholder="e.g. 8/1" autocomplete="off" style="width:100%;min-width:0;box-sizing:border-box;background:var(--rhp-card);color:var(--rhp-ink);border:1px solid var(--rhp-edge);border-radius:10px;padding:10px"></label></div><p class="hint">Use fractional odds or evens. A plain number means /1. Leave either limit blank for an open range.</p><p id="rhp163-error" role="status" style="color:#d97706"></p></div>`);
    $('strategy-day-switch').insertAdjacentElement('afterend',filter);
@@ -3725,10 +3744,18 @@ restoreRefreshFiltersAfterFeed=function(){
   for(const c of racecardRunners||[]){
    if((c.date||dateKey(c.race_time))!==day||!c.course||!c.race_time)continue;
    const time=clock(c.race_time),key=commentaryKey(c.course,day,time);
-   if(!known.has(key))known.set(key,{course:c.course,date:day,time,race_time:c.race_time,race_name:c.race_name||'',race_type:c.race_type||c.type||'',runners:[],selection:null,selection_status:'ASSESSMENT_PENDING'});
+   if(!known.has(key))known.set(key,{course:c.course,date:day,time,race_time:c.race_time,race_name:c.race_name||'',race_type:c.race_type||c.type||'',race_group:rcKind(c)==='turf'?'flat':rcKind(c),runners:[],selection:null,selection_status:'ASSESSMENT_PENDING'});
   }
   const all=[...known.values()],type=abViewState.selections.type||'all';
-  const available=all.filter(r=>(type==='all'||raceGroup(r)===type)&&(view==='all'||r.selection_status==='RESEARCH_ONLY'&&!!r.selection));
+  const racesInView=all.filter(r=>(type==='all'||raceGroup(r)===type)&&(view==='all'||r.selection_status==='RESEARCH_ONLY'&&!!r.selection));
+  const types=[...new Set(racesInView.map(rhpRaceTypeKey).filter(Boolean))]
+   .map(key=>[key,rhpRaceTypeLabel(key)]).sort((a,b)=>a[1].localeCompare(b[1]));
+  if(!types.some(([key])=>key===rhpRaceType))rhpRaceType='all';
+  const typeSelect=$('rhp-hp-race-type');
+  typeSelect.innerHTML='<option value="all">All race types</option>'+
+   types.map(([key,label])=>`<option value="${safe(key)}">${safe(label)}</option>`).join('');
+  typeSelect.value=rhpRaceType;
+  const available=rhpRaceType==='all'?racesInView:racesInView.filter(r=>rhpRaceTypeKey(r)===rhpRaceType);
   const meetingSelect=$('rhp158-hp-meeting'),timeSelect=$('rhp158-hp-time');
   const meetings=[...new Set(available.map(r=>r.course).filter(Boolean))].sort();
   if(!meetings.includes(rhp158Meeting))rhp158Meeting='all';
@@ -3746,13 +3773,14 @@ restoreRefreshFiltersAfterFeed=function(){
  };
  renderPower=renderStrategySelections;
  document.addEventListener('change',e=>{
+  if(e.target.id==='rhp-hp-race-type'){rhpRaceType=e.target.value;renderStrategySelections();}
   if(e.target.id==='rhp158-hp-meeting'){rhp158Meeting=e.target.value;rhp158Time='all';renderStrategySelections();}
   if(e.target.id==='rhp158-hp-time'){rhp158Time=e.target.value;renderStrategySelections();}
   if(e.target.id==='rhp163-odds-mode'){rhp163Mode=e.target.value;rhp163Save();renderStrategySelections();}
   if(e.target.id==='rhp163-min'||e.target.id==='rhp163-max'){rhp163Min=$('rhp163-min').value;rhp163Max=$('rhp163-max').value;rhp163Save();renderStrategySelections();}
  });
  document.addEventListener('click',e=>{
-  if(e.target.closest('[data-rhp158-reset-hot]')){rhp158Meeting='all';rhp158Time='all';rhp163Mode='all';rhp163Min='';rhp163Max='';rhp163Save();renderStrategySelections();return;}
+  if(e.target.closest('[data-rhp158-reset-hot]')){abViewState.selections.type='all';rhpRaceType='all';rhp158Meeting='all';rhp158Time='all';rhp163Mode='all';rhp163Min='';rhp163Max='';rhp163Save();renderStrategySelections();return;}
   const toggle=e.target.closest('[data-rhp158-toggle]');
   if(toggle){e.preventDefault();const item=toggle.closest('.rhp158-pair-item'),detail=item?.querySelector('.rhp158-horse-details');if(detail){detail.hidden=!detail.hidden;toggle.setAttribute('aria-expanded',String(!detail.hidden));}return;}
   const open=e.target.closest('[data-rhp158-open-horse]');
