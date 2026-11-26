@@ -1,0 +1,121 @@
+name: Stage206 - Audited route-first selections (original G family)
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/stage206-audited-route-first.yml']
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage206-audited-route-first
+  cancel-in-progress: false
+jobs:
+  score:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    env:
+      PYTHONPATH: .:scripts
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      GH_TOKEN: ${{ github.token }}
+      TARGET_DAY: '2026-11-26'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned original scoring dependencies
+        run: pip install numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2 freezegun==1.5.5 requests 'kagglehub>=0.3,<1'
+      - name: Refresh the target day's declarations
+        env:
+          RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
+          RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
+        run: |
+          set -euo pipefail
+          TODAY="$(TZ=Europe/Dublin date +%F)"
+          test "$TARGET_DAY" = "$TODAY" || test "$TARGET_DAY" = "$(TZ=Europe/Dublin date -d tomorrow +%F)"
+          if [ -n "$RACING_API_USERNAME" ] && [ -n "$RACING_API_PASSWORD" ]; then python collect-racecards.py; fi
+      - name: Materialize original route-first engine and add input gates
+        run: |
+          set -euo pipefail
+          mkdir -p stage196-work stage196-output
+          python - <<'PY'
+          import pathlib as P, re, textwrap, json, hashlib
+          work=P.Path('stage196-work'); out=P.Path('stage196-output')
+          path=P.Path('.github/workflows/stage196f-route-first-combined.yml')
+          source=path.read_text()
+          def extract(name,marker):
+              m=re.search(r'(?m)^([ ]*)cat > '+re.escape(name)+r" <<'"+marker+r"'\n([\s\S]*?)^\1"+marker+r'[ ]*$',source)
+              assert m,('Missing original heredoc',name)
+              return textwrap.dedent(m.group(2))+'\n'
+          routes=extract('stage196-work/routes.json','ROUTES'); assert len(json.loads(routes))==38
+          (work/'routes.json').write_text(routes)
+          s=extract('stage196-work/engine.py','PY')
+          def replace(old,new):
+              global s
+              assert s.count(old)==1,('Changed engine anchor',old[:150],s.count(old))
+              s=s.replace(old,new)
+          replace("from stage167_validated_history import refreshed_inputs\nwith refreshed_inputs(target,reference,DAY) as (db0,ref0):\n db=W/'prior.sqlite';ref=W/'prior-reference.csv';shutil.copy2(db0,db);shutil.copy2(ref0,ref)",'''import stage167_validated_history as History
+          from scripts.stage203_identity_recovery import scan as scan_form, classify as classify_form
+          from scripts.stage203g_final_cork import OUTSIDE
+          from rhp_runner_eligibility import active_runner
+          # Copy the original G5 baseline before overlays; reconstruct Kaggle once only.
+          legacy_db=W/'g5-original.sqlite';legacy_ref=W/'g5-original-reference.csv'
+          original_build=History.build
+          def capture(*args,**kwargs):
+           p,q=original_build(*args,**kwargs);shutil.copy2(p,legacy_db);shutil.copy2(q,legacy_ref);return p,q
+          History.build=capture
+          try:
+           with History.refreshed_inputs(target,reference,DAY) as (db0,ref0):
+            db=W/'prior.sqlite';ref=W/'prior-reference.csv';shutil.copy2(db0,db);shutil.copy2(ref0,ref)
+          finally:History.build=original_build
+          pre=json.loads((ROOT/'data/racecards.json').read_text());active=[r for r in pre['runners'] if r.get('date')==DAY and active_runner(r)]
+          assert active and len({r['horse_id'] for r in active})==len(active)
+          assert all(r.get('horse_id') and r.get('sire') and r.get('dam') and r.get('trainer') and r.get('jockey') for r in active)
+          assert all(stamp(r['race_time'])>NOW()+dt.timedelta(minutes=10) for r in active),'Not entirely pre-off'
+          assert 0<=(NOW()-stamp(pre['collected_at'])).total_seconds()<=4*3600
+          hits,others=scan_form(db,active,DAY);review=classify_form(active,hits,others,DAY)
+          gaps=[x for x in review if x['last_run_matched'] is False or x['known_no_history']]
+          unresolved=[x for x in gaps if OUTSIDE.get(x['horse_id'])!=x['expected']]
+          with sqlite3.connect(db) as con:
+           assert con.execute('pragma quick_check').fetchone()[0]=='ok'
+           assert con.execute('select max(race_date) from historical_races').fetchone()[0]<DAY
+          with sqlite3.connect(legacy_db) as con:
+           assert con.execute('select max(race_date) from historical_races').fetchone()[0]<DAY
+          preaudit={'active':len(active),'races':len({r['race_id'] for r in active}),'raw_gaps':len(gaps),'external_classified':len(gaps)-len(unresolved),'unexplained':unresolved,'missing_or':sum(not r.get('ofr') or str(r['ofr']).strip() in ('-','0') for r in active),'missing_weight':sum(not r.get('lbs') for r in active),'G_policy':'original HPR adapters; G5 original Stage167 baseline plus HPR','scope':'input gate, not full production certification'}
+          dump(O/'preflight.json',preaudit);print('STAGE206_PREFLIGHT',json.dumps(preaudit),flush=True)
+          assert not unresolved,'Unexplained form gaps; stop before scoring'
+          assert not preaudit['missing_weight'],'Missing declared weights' ''')
+          replace('# Freeze model source and root imports to original replay commit, while retaining current validated data and Git history.', '''with sqlite3.connect(hpr) as hc:
+           assert hc.execute('pragma quick_check').fetchone()[0]=='ok'
+           assert not hc.execute('select 1 from hpr_ratings where race_date>=? limit 1',(DAY,)).fetchone(),'Target-date HPR present'
+          # Freeze model source and root imports to original replay commit, while retaining current validated data and Git history.''')
+          replace('# Capture only genuine, fresh declarations for the target day. Remove settlement fields and current price inputs.', '''# Preserve original G scoring; use the validated complete-field G5 small-card guard.
+          gp=ROOT/'scripts/stage128_g5_today_paper.py'
+          gs=gp.read_text();guard="    if len(data)<40:raise RuntimeError('Too few horses scored; refuse misleading partial card output')"
+          assert gs.count(guard)==1
+          replacement="    if data.empty:raise RuntimeError('No complete race scored')\\n    for rid, group in data.groupby('race_id'):\\n        expected=Counter(G.identity(r) for r in groups.get(str(rid),[]))\\n        actual=Counter(str(x) for x in group['identity'])\\n        if len(group)<4 or '' in expected or expected!=actual or any(n!=1 for n in expected.values()):\\n            raise RuntimeError('Incomplete or duplicate scored field: '+str(rid))"
+          gs=gs.replace(guard,replacement);compile(gs,str(gp),'exec');gp.write_text(gs)
+          # Capture only genuine, fresh declarations for the target day. Remove settlement fields and current price inputs.''')
+          replace("'--models',g5,'--db',db,'--reference',ref,'--hpr',hpr", "'--models',g5,'--db',legacy_db,'--reference',legacy_ref,'--hpr',hpr")
+          replace('assert sum(map(len,family_fields.values()))==sum(t in routes for t in assigned.values())', '''assert sum(map(len,family_fields.values()))==sum(t in routes for t in assigned.values())
+          assert sum(map(len,fields.values()))==preaudit['active'] and len(fields)==preaudit['races'],'Preflight/score field mismatch'
+          assert all(t in routes for t in assigned.values()),'Unmapped race type; stop before scoring' ''')
+          compile(s,'stage206-engine.py','exec');(work/'engine.py').write_text(s)
+          (out/'source-provenance.json').write_text(json.dumps({'engine_source':str(path),'source_sha256':hashlib.sha256(source.encode()).hexdigest(),'generated_engine_sha256':hashlib.sha256(s.encode()).hexdigest(),'route_sha256':hashlib.sha256(routes.encode()).hexdigest(),'policy':'unchanged Stage196F route map; original G family adapters; no production writes'},indent=2))
+          PY
+          python -m py_compile stage196-work/engine.py
+      - name: Audit inputs then score allocated model families only
+        run: python -u stage196-work/engine.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage206-audited-route-first-${{ github.run_id }}
+          path: stage196-output/
+          retention-days: 30
+          if-no-files-found: error
