@@ -72,6 +72,23 @@ def writecsv(p,rows,fields=None):
 def git(*args):return S.check_output(['git',*args],text=True)
 def digest(path):
  with P.Path(path).open('rb') as f:return hashlib.file_digest(f,'sha256').hexdigest()
+
+def scoring_history_digest(path):
+ # SQLite page layout and provenance download timestamps can differ between
+ # runners. Hash the complete rows read by scorers in primary-key order.
+ checksum=hashlib.sha256(b'stage196f-scoring-history-v1\n')
+ queries={
+  'historical_races':'SELECT * FROM historical_races ORDER BY id',
+  'historical_runs':'SELECT * FROM historical_runs ORDER BY race_id,runner_key',
+ }
+ with sqlite3.connect(P.Path(path).resolve().as_uri()+'?mode=ro',uri=True) as connection:
+  for table,query in queries.items():
+   rows=connection.execute(query)
+   columns=[column[0] for column in rows.description]
+   checksum.update(json.dumps([table,columns],separators=(',',':')).encode()+b'\n')
+   for record in rows:
+    checksum.update(json.dumps(record,separators=(',',':'),ensure_ascii=False).encode()+b'\n')
+ return checksum.hexdigest()
 def download(run,name,dest):
  dest.mkdir(parents=True,exist_ok=True)
  S.run(['gh','run','download',str(run),'--repo',os.environ['GITHUB_REPOSITORY'],'--name',name,'--dir',str(dest)],check=True,timeout=1200)
@@ -393,9 +410,12 @@ fields={k:v for k,v in fields.items() if len(v)>=2 and len({horse(r['horse']) fo
 declared_fields=fields
 if REPLAY:
  audit['frozen_inputs']={name:digest(path) for name,path in {
-  'declarations':ROOT/'data/racecards.json','shared_history':db,'reference':ref,
+  'declarations':ROOT/'data/racecards.json','reference':ref,
   'original_g5_history':legacy_db,'original_g5_reference':legacy_ref,'hpr':hpr,
  }.items()}
+ audit['frozen_inputs']['shared_history']=scoring_history_digest(db)
+ audit['shared_history_checksum_basis']='historical_races and historical_runs, primary-key order'
+ audit['shared_history_sqlite_file_sha256']=digest(db)
 if REPLAY=='mullins-before':
  fields={k:[{**r,'trainer':MULLINS_NAMES[0]} if r.get('trainer_id')==MULLINS_ID else r
             for r in v] for k,v in fields.items()}
