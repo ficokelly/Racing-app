@@ -1,0 +1,311 @@
+name: Stage209 - Historical combined score-gap research
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/stage209-historical-score-gap.yml']
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage209-score-gap-research
+  cancel-in-progress: false
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      days: ${{ steps.plan.outputs.days }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - id: plan
+        name: Freeze current combined recipe and isolate historical inputs
+        run: |
+          set -euo pipefail
+          mkdir -p stage209-code
+          git show 5ca6bd07df13330d307a4ecfaddb039ac258f543 > stage209-code/original.py
+          git show 9600622688721aad20ecd838ad6b97aab291d9df > stage209-code/published.json
+          python - <<'PY'
+          import datetime as D,json,os,pathlib as P
+          root=P.Path('stage209-code');s=(root/'original.py').read_text()
+          def rep(a,b):
+           global s
+           assert s.count(a)==1,('missing source anchor',a[:100],s.count(a))
+           s=s.replace(a,b,1)
+          def cut(a,b,new):
+           global s
+           i=s.index(a);j=s.index(b,i+len(a));s=s[:i]+new+s[j:]
+          rep("REPLAY=os.environ.get('STAGE196F_REPLAY','')","REPLAY='historical'")
+          rep("if REPLAY and (REPLAY not in REPLAY_MODES or DAY!='2026-11-26'):\n raise ValueError('Unexpected controlled replay configuration')","assert REPLAY=='historical'")
+          rep("REPLAY_CLOCK='2026-11-26T09:38:00+00:00'","REPLAY_CLOCK=os.environ['STAGE209_CLOCK']")
+          rep("REPAIR_IDENTITIES=REPLAY in ('','identity','stage208')","REPAIR_IDENTITIES=True")
+          rep("USE_STAGE208=REPLAY in ('','stage208')","USE_STAGE208=True")
+          # Reuse the validated frozen Stage177b archive; never collect today's cards.
+          block=[
+           "from rhp_runner_eligibility import active_runner",
+           "B=P.Path(os.environ['STAGE209_SHARED']).resolve()",
+           "manifest=json.loads((B/'history-manifest.json').read_text())",
+           "assert digest(B/'candidate.sqlite')==manifest['database_sha256']",
+           "assert digest(B/'candidate-reference.csv')==manifest['reference_sha256']",
+           "db=W/'prior.sqlite';legacy_db=W/'g5-original.sqlite'",
+           "shutil.copy2(B/'candidate.sqlite',db)",
+           "with sqlite3.connect(db) as con:",
+           " con.execute('DELETE FROM historical_runs WHERE race_id IN (SELECT id FROM historical_races WHERE race_date>=?)',(DAY,))",
+           " con.execute('DELETE FROM historical_races WHERE race_date>=?',(DAY,));con.commit()",
+           " latest=con.execute('SELECT MAX(race_date) FROM historical_races').fetchone()[0];assert latest and latest<DAY",
+           "shutil.copy2(db,legacy_db)",
+           "ref=W/'prior-reference.csv';legacy_ref=W/'g5-original-reference.csv'",
+           "with (B/'candidate-reference.csv').open(encoding='utf-8-sig',newline='') as f,ref.open('w',newline='') as g:",
+           " rr=csv.DictReader(f);assert 'date' in rr.fieldnames;ww=csv.DictWriter(g,fieldnames=rr.fieldnames);ww.writeheader();ww.writerows(r for r in rr if r['date']<DAY)",
+           "shutil.copy2(ref,legacy_ref)",
+           "hpr=W/'hpr.sqlite';shutil.copy2(B/'hpr.sqlite',hpr)",
+           "with sqlite3.connect(hpr) as hc:",
+           " hc.execute('DELETE FROM hpr_ratings WHERE race_date>=?',(DAY,));hc.commit()",
+           " assert not hc.execute('SELECT 1 FROM hpr_ratings WHERE race_date>=? LIMIT 1',(DAY,)).fetchone()",
+           "audit.update(mode='HISTORICAL_RESEARCH_ONLY',history_through=latest,archive_run=45491296882,legacy_g5_source='Frozen Stage177b historical database')",
+          ]
+          cut("# These files contain no target-day results; use the existing validated source builder once.","# Freeze model source and root imports to original replay commit",'\n'.join(block)+'\n')
+          rep("cards=json.loads((ROOT/'data/racecards.json').read_text());collected=stamp(cards['collected_at']);assert 0<= (NOW()-collected).total_seconds()<=4*3600,'Stale or future racecard snapshot'","cards=json.loads(P.Path(os.environ['STAGE209_CARD']).read_text());collected=stamp(cards['collected_at']);assert 0<(NOW()-collected).total_seconds()<25*3600,'Invalid archive timestamp'")
+          rep("fields={k:v for k,v in fields.items() if len(v)>=2 and len({horse(r['horse']) for r in v})==len(v)};assert fields,'No verified remaining fields'","fields={k:v for k,v in fields.items() if len(v)>=2 and len({horse(r['horse']) for r in v})==len(v)}\nmeta={tuple(x['key']):x for x in json.loads(P.Path(os.environ['STAGE209_META']).read_text())['races']}\nfor k,v in list(fields.items()):\n if k not in meta or set(meta[k]['declared_horses'])!={horse(r['horse']) for r in v} or not stamp(meta[k]['source_asof'])<NOW()<stamp(v[0]['race_time']):\n  audit['issues'].append({'race':list(k),'error':'ARCHIVE_FIELD_OR_CUTOFF_MISMATCH'});del fields[k]\nassert fields,'No verified archived fields'\npreaudit={'active':sum(map(len,fields.values())),'races':len(fields)}")
+          rep("'declarations':ROOT/'data/racecards.json','reference':ref,","'declarations':P.Path(os.environ['STAGE209_CARD']),'reference':ref,")
+          cut("if REPLAY:\n if len(race_routes)!=35:","if REPAIR_IDENTITIES:\n overlay={}","")
+          rep("assert all(t in routes for t in assigned.values()),'Unmapped race type; stop before scoring'","audit['unmapped_types']=[list(k) for k,t in assigned.items() if t not in routes]")
+          # Preserve numeric scorer outputs. Never substitute ranks or starting prices for scores.
+          rep("model='D_FROZEN_RANK1',horse=v[int(i)]['horse'],rank=rank)","model='D_FROZEN_RANK1',horse=v[int(i)]['horse'],rank=rank,research_score=float(scores[int(i)]))")
+          rep("model='C_HISTORICAL_CORE',horse=entry['cards'][int(i)]['horse'],rank=rank)","model='C_HISTORICAL_CORE',horse=entry['cards'][int(i)]['horse'],rank=rank,research_score=float(scores[int(i)]))")
+          rep("research_score=r.get('research_score'),driver_json=r.get('driver_json')","research_score=next((r.get(f) for f in ('research_score','score','raw_model_score_not_calibrated_win_pct','raw_score_not_calibrated_win_pct','model_win_probability') if r.get(f) not in (None,'')),None),driver_json=r.get('driver_json')")
+          rep("if REPLAY:\n if audit['issues'] or any(row['status']!='SUCCESS' for row in audit['families']):\n  raise SystemExit('Controlled replay scorer error; inspect audit')\nelif audit['selected']!=len(results):\n raise SystemExit('PARTIAL COVERAGE: valid selections preserved; inspect missing races')","if audit['issues'] or audit['selected']!=len(results):\n print('STAGE209_PARTIAL_COVERAGE',json.dumps(audit['coverage']),flush=True)")
+          compile(s,'stage209-engine.py','exec');(root/'engine.py').write_text(s)
+          dates=[(D.date(2026,10,25)+D.timedelta(days=i)).isoformat() for i in range(30)]
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:f.write('days='+json.dumps(dates)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage209-research-code
+          path: stage209-code/
+          retention-days: 30
+  score:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        day: ${{ fromJSON(needs.prepare.outputs.days) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    env:
+      PYTHONPATH: .:scripts
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      GH_TOKEN: ${{ github.token }}
+      TARGET_DAY: ${{ matrix.day }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2 freezegun==1.5.5 requests 'kagglehub>=0.3,<1'
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage209-research-code
+          path: stage209-code
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage177-shared-inputs
+          run-id: 45491296882
+          github-token: ${{ github.token }}
+          path: stage209-shared
+      - name: Replay only the routed specialist on original pre-off cards
+        run: |
+          python - <<'PY'
+          import json,os,pathlib as P,shutil,subprocess as S,sys
+          root=P.Path.cwd();shared=(root/'stage209-shared').resolve();code=(root/'stage209-code/engine.py').resolve()
+          day=os.environ['TARGET_DAY'];out=root/'stage209-output';out.mkdir(exist_ok=True)
+          batches=json.loads((shared/(day+'-batches.json')).read_text());audit=[]
+          for b in batches:
+           bid=b['batch'];dest=out/bid;dest.mkdir(exist_ok=True)
+           for p in (root/'stage196-work',root/'stage196-output',root/'restore50',root/'restore51'):
+            shutil.rmtree(p,ignore_errors=True)
+           meta=dest/'meta.json';meta.write_text(json.dumps(b))
+           env=dict(os.environ,STAGE209_SHARED=str(shared),STAGE209_CARD=str(shared/(bid+'.json')),STAGE209_META=str(meta),STAGE209_CLOCK=b['cutoff'])
+           wrapper='import os,runpy,sys\nfrom freezegun import freeze_time\nwith freeze_time(os.environ["STAGE209_CLOCK"],real_asyncio=True,ignore=["subprocess"]):\n runpy.run_path(sys.argv[1],run_name="__main__")\n'
+           with (dest/'console.log').open('w') as f:
+            rc=S.run([sys.executable,'-u','-c',wrapper,str(code)],stdout=f,stderr=S.STDOUT,env=env).returncode
+           generated=root/'stage196-output'
+           if generated.exists():shutil.copytree(generated,dest,dirs_exist_ok=True)
+           record={'batch':bid,'scheduled':len(b['races']),'exit':rc,'candidate':(dest/'replay-candidate.json').is_file()}
+           audit.append(record);(out/'day-audit.json').write_text(json.dumps(audit,indent=2));print('STAGE209_BATCH',record,flush=True)
+          (out/'day-audit.json').write_text(json.dumps(audit,indent=2))
+          if any(x['exit'] or not x['candidate'] for x in audit):raise SystemExit('Partial batch failures; artifacts retained')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage209-day-${{ matrix.day }}
+          path: stage209-output/
+          retention-days: 90
+          if-no-files-found: warn
+  collate:
+    needs: [prepare,score]
+    if: always() && needs.prepare.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage209-research-code
+          path: stage209-code
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage177-shared-inputs
+          run-id: 45491296882
+          github-token: ${{ github.token }}
+          path: stage209-shared
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: stage209-day-*
+          path: stage209-days
+      - name: Collate genuine scores and independently settle results
+        run: |
+          python - <<'PY'
+          import collections as C,csv,json,math,os,pathlib as P,re,unicodedata
+          from datetime import datetime
+          from fractions import Fraction
+          out=P.Path('stage209-report');out.mkdir(exist_ok=True)
+          def read(p):return json.loads(P.Path(p).read_text())
+          def norm(s):return re.sub('[^a-z0-9]','',unicodedata.normalize('NFKD',str(s or '')).encode('ascii','ignore').decode().lower())
+          def horse(s):return norm(re.sub(r'\s*\([A-Za-z]{2,3}\)\s*$','',str(s or '')))
+          def course(s):
+           n=norm(re.sub(r'\s*\((?:AW|GB|IRE|UK)\)\s*$','',str(s or ''),flags=re.I))
+           return {'galwayire':'galway','wexfordire':'wexford','dundalkawire':'dundalk','dundalkire':'dundalk','dundalkaw':'dundalk','fairyhouseire':'fairyhouse','clonmelire':'clonmel','gowranparkire':'gowranpark','kemptonpark':'kempton','chelmsfordcity':'chelmsford','bangor':'bangorondee'}.get(n,n)
+          def key(r):return (r['date'],course(r['course']),r['time'][:5])
+          def write(name,rows):
+           fields=list(dict.fromkeys(k for r in rows for k in r)) or ['status']
+           with (out/name).open('w',newline='') as f:
+            w=csv.DictWriter(f,fieldnames=fields);w.writeheader();w.writerows(rows)
+          def finite(v):
+           try:return math.isfinite(float(v))
+           except (TypeError,ValueError):return False
+          settled={key(x):x for x in read('stage209-shared/settlement-prices.json')}
+          live={}
+          for p in sorted(P.Path('data/racing-results').glob('2026-11-2?.json')):
+           for r in read(p).get('results',[]):
+            if r.get('status')=='final':live[(p.stem,course(r['course']),r['off_dt'][11:16])]=r
+          def settle(r):
+           k=key(r);h=horse(r['selection']['horse'])
+           if k in settled:
+            v=settled[k];starters={horse(x['horse']) for x in v['starters']};nr={horse(x) for x in v['declared_nonrunners']};wins={horse(x['horse']):x['sp_decimal'] for x in v['winner_prices']}
+            if h not in starters:return ('VOID_NR' if h in nr else 'UNMATCHED',None,None)
+            won=int(h in wins)
+            if wins and not v['price_conflicts'] and all(x is not None for x in wins.values()):return ('SETTLED',won,float(wins[h])/len(wins)-1 if won else -1.)
+            return ('NO_VERIFIED_PRICE',won,None)
+           if k in live:
+            v=live[k];runner=next((x for x in v['runners'] if horse(x['horse'])==h),None)
+            if not runner:return ('UNMATCHED',None,None)
+            if str(runner.get('status')).lower() in ('scratched','non-runner','nonrunner','nr'):return ('VOID_NR',None,None)
+            if not runner.get('sp'):return ('NO_VERIFIED_PRICE',None,None)
+            won=int(runner.get('position')==1)
+            try:
+             sp=str(runner['sp']).upper();decimal=2. if sp in ('EVS','EVENS','EVEN') else 1+float(Fraction(sp)) if '/' in sp else float(sp)
+             return ('SETTLED',won,decimal/max(sum(x.get('position')==1 for x in v['runners']),1)-1 if won else -1.)
+            except (ValueError,ZeroDivisionError):return ('NO_VERIFIED_PRICE',won,None)
+           return ('NO_RESULT',None,None)
+          rows=[];missing=[];seen=set();legacy=[];expected=set();reported=set();batch_audits=[]
+          for p in sorted(P.Path('stage209-shared').glob('*-batches.json')):
+           for b in read(p):expected.update(tuple(x['key']) for x in b['races'])
+          for p in sorted(P.Path('stage209-days').rglob('day-audit.json')):
+           batch_audits.extend(read(p))
+          def reject(k,model,origin,reason):missing.append(dict(date=k[0],course=k[1],time=k[2],model=model,reason=reason,origin=origin))
+          def accept(r,origin):
+           k=key(r);model=r.get('source_model');selection=r.get('selection');reported.add(k)
+           if not selection or not selection.get('pre_off_valid'):
+            reject(k,model,origin,r.get('reason') or 'NO_SELECTION');return
+           try:
+            if datetime.fromisoformat(selection['published_at'].replace('Z','+00:00'))>=datetime.fromisoformat(r['race_time'].replace('Z','+00:00')):raise ValueError('late')
+           except (KeyError,ValueError,TypeError):reject(k,model,origin,'INVALID_PREOFF_TIMESTAMP');return
+           ranked=sorted(r.get('runners',[]),key=lambda x:int(x['rank']))
+           if len(ranked)!=r.get('field_size') or len(ranked)<2 or [int(x['rank']) for x in ranked]!=list(range(1,len(ranked)+1)) or horse(ranked[0]['horse'])!=horse(selection['horse']):
+            reject(k,model,origin,'INCOMPLETE_RANKED_FIELD');return
+           assert k not in seen,('duplicate race',k);seen.add(k)
+           a,b=ranked[:2];sf=next((f for f in ('research_score','win_probability') if finite(a.get(f)) and finite(b.get(f))),None)
+           gap=None;s1=None;s2=None
+           if sf:
+            s1,s2=float(a[sf]),float(b[sf])
+            if s1>=s2-1e-8:gap=max(0.,(s1-s2)/max(abs(s1),abs(s2),.01))
+           if gap is None:reject(k,model,origin,'NO_VERIFIED_NUMERIC_GAP')
+           status,won,pnl=settle(r);sample=r.get('historical_simulation',{}).get('priced_races')
+           rows.append(dict(date=k[0],course=k[1],time=k[2],race_type=r.get('race_type'),model=model,rank1=a['horse'],rank2=b['horse'],score_basis=sf,score1=s1,score2=s2,gap=gap,field_size=len(ranked),historical_priced=sample,status=status,won=won,pnl=pnl,origin=origin))
+          for p in sorted(P.Path('stage209-days').rglob('replay-candidate.json')):
+           for r in read(p)['races']:accept(r,'ARCHIVED_REPLAY')
+          for k in sorted(expected-reported):reject(k,None,'ARCHIVED_REPLAY','NO_REPLAY_OUTPUT')
+          for r in read('stage209-code/published.json')['races']:
+           if r.get('model')=='Stage196F Combined' and r.get('publication_run_id'):
+            if key(r) not in seen:accept(r,'ORIGINAL_LIVE_STAGE196F')
+           else:legacy.append(dict(date=r['date'],course=r['course'],time=r['time'],race_type=r.get('race_type'),model=r.get('source_model'),reason='OLDER_PUBLICATION_NOT_COMPARABLE'))
+          write('all-rank1-scores-and-settlement.csv',rows);write('coverage-exclusions.csv',missing);write('legacy-publication-not-merged.csv',legacy);write('batch-audits.csv',batch_audits)
+          priced=[r for r in rows if r['status']=='SETTLED' and r['pnl'] is not None]
+          scored=[r for r in priced if r['gap'] is not None and r['field_size']>=5]
+          # All race types retained; confidence cohort is reported separately for like-for-like comparison.
+          cohorts={'all_scored_5plus':scored,'non_sparse_5plus':[r for r in scored if finite(r['historical_priced']) and float(r['historical_priced'])>=10]}
+          def metric(rs):
+           n=len(rs);w=sum(r['won'] for r in rs);profit=sum(r['pnl'] for r in rs)
+           return dict(selections=n,winners=w,strike_rate_pct=round(100*w/n,4) if n else None,roi_pct=round(100*profit/n,4) if n else None,profit_units=round(profit,5))
+          def grouping(rs):
+           g=C.defaultdict(list)
+           for r in rs:
+            for level,value in [('overall','ALL'),('race_type',r['race_type']),('model',r['model']),('race_type_model',str(r['race_type'])+'|'+str(r['model']))]:g[(level,value)].append(r)
+           return g
+          write('all-rank1-baseline.csv',[dict(dimension=d,value=v,**metric(rs)) for (d,v),rs in grouping(priced).items()])
+          tests=[];bands=[];comparisons=[];rules_out=[];thresholds=sorted(set([0,.10,.13,.40,.50]+[i/100 for i in range(5,95,5)]))
+          def choose(rs,minimum):
+           base=metric([r for r in rs if r['gap']>=.13]);opts=[]
+           for t in thresholds:
+            m=metric([r for r in rs if r['gap']>=t])
+            if m['selections']>=minimum and (not base['selections'] or m['roi_pct']>=base['roi_pct'] and m['strike_rate_pct']>=base['strike_rate_pct']):opts.append((m['roi_pct'],m['strike_rate_pct'],m['selections'],-abs(t-.13),t))
+           return max(opts)[-1] if opts else .13
+          for cohort,eligible in cohorts.items():
+           for (level,value),rs in grouping(eligible).items():
+            for t in thresholds:tests.append(dict(cohort=cohort,dimension=level,value=value,threshold_pct=100*t,**metric([r for r in rs if r['gap']>=t])))
+            for i in range(10):bands.append(dict(cohort=cohort,dimension=level,value=value,lower_pct=10*i,upper_pct=10*(i+1) if i<9 else None,**metric([r for r in rs if r['gap']>=i/10 and (i==9 or r['gap']<(i+1)/10)])))
+           hist=[r for r in eligible if r['origin']=='ARCHIVED_REPLAY'];train=[r for r in hist if r['date']<'2026-11-09'];test=[r for r in hist if r['date']>='2026-11-09'];actual=[r for r in eligible if r['origin']=='ORIGINAL_LIVE_STAGE196F']
+           types=sorted(set(r['race_type'] for r in eligible))
+           for minimum in (1,3):
+            rules={typ:choose([r for r in train if r['race_type']==typ],minimum) for typ in types}
+            rules_out.extend(dict(cohort=cohort,minimum_fit_selections=minimum,race_type=t,threshold_pct=100*v) for t,v in rules.items())
+            for typ in ['ALL']+types:
+             for period,rs in [('fit_25oct_08nov',train),('holdout_09nov_23nov',test),('live_original_26nov',actual),('all_combined',eligible)]:
+              if typ!='ALL':rs=[r for r in rs if r['race_type']==typ]
+              for label,selected in [('all_rank1_scored',rs),('baseline_13',[r for r in rs if r['gap']>=.13]),('universal_40',[r for r in rs if r['gap']>=.40]),('universal_50',[r for r in rs if r['gap']>=.50]),('race_type_fit',[r for r in rs if r['gap']>=rules.get(r['race_type'],.13)])]:
+               comparisons.append(dict(cohort=cohort,minimum_fit_selections=minimum,race_type=typ,period=period,policy=label,threshold_pct=100*rules[typ] if typ in rules and label=='race_type_fit' else None,**metric(selected)))
+          write('thresholds.csv',tests);write('gap-bands.csv',bands);write('race-type-thresholds.csv',rules_out);write('chronological-threshold-comparison.csv',comparisons)
+          failed=sum(bool(x['exit']) or not x['candidate'] for x in batch_audits)
+          report={'status':'PARTIAL_RESEARCH' if failed or expected-reported else 'RESEARCH_ONLY','historical_period':['2026-10-25','2026-11-23'],'archive_run':45491296882,'scheduled_archived_races':len(expected),'archived_races_with_output':len(expected&reported),'missing_archived_races':len(expected-reported),'failed_batches':failed,'days_with_replay_rows':len(set(r['date'] for r in rows if r['origin']=='ARCHIVED_REPLAY')),'all_rows':len(rows),'all_priced':len(priced),'scored_5plus':len(scored),'non_sparse_5plus':len(cohorts['non_sparse_5plus']),'exclusions':len(missing),'older_publications_not_merged':len(legacy),'archived_replay_rows':sum(r['origin']=='ARCHIVED_REPLAY' for r in rows),'actual_live_rows':sum(r['origin']=='ORIGINAL_LIVE_STAGE196F' for r in rows),'actual_live_numeric_scores':sum(r['origin']=='ORIGINAL_LIVE_STAGE196F' and r['gap'] is not None for r in rows),'overall_comparison':[x for x in comparisons if x['race_type']=='ALL' and x['cohort']=='non_sparse_5plus' and x['minimum_fit_selections']==3],'limitations':['Route map fitted on original 30-day study; chronological holdout is only for score-gap tuning, not independent route validation.','Only verified pre-off fields and original numerical scores; no scores reconstructed from rank or SP.','19–25 November legacy model publications are not interchangeable with Stage196F; 24–25 outside original archive.','Original live publications missing scores remain explicit exclusions.','No daily cap; all scored race types with five or more runners, and a separate ten-priced-route-observation cohort.','Current verified identity aliases and retrospective prior-dated histories may differ from contemporaneous source revisions.','No production changes.']}
+          (out/'report.json').write_text(json.dumps(report,indent=2));print(json.dumps(report,indent=2))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
+           f.write('# Stage209 historical score-gap research\n\nHistorical replay days with rows: '+str(report['days_with_replay_rows'])+'/30. Eligible scored and settled rows: '+str(report['scored_5plus'])+'. Live rows with true numeric scores: '+str(report['actual_live_numeric_scores'])+'.\n\n')
+           f.write('| Period | Policy | Picks | Wins | SR % | ROI % |\n|---|---|---:|---:|---:|---:|\n')
+           for x in report['overall_comparison']:f.write('| '+' | '.join(str(x[k]) for k in ('period','policy','selections','winners','strike_rate_pct','roi_pct'))+' |\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage209-score-gap-comparison
+          path: stage209-report/
+          retention-days: 90
+          if-no-files-found: warn
