@@ -1,0 +1,176 @@
+name: Stage196F trainer and jockey parity audit
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage196f-identity-parity
+  cancel-in-progress: false
+
+jobs:
+  replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [stage206, stage196f, mullins-before, history-before, identity, stage208]
+    env:
+      TARGET_DAY: '2026-11-26'
+      STAGE196F_REPLAY: ${{ matrix.variant }}
+      PYTHONPATH: .:scripts
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      GH_TOKEN: ${{ github.token }}
+      SNAPSHOT: 9a16bff4e395000e0bdff04d73a38f5b9ac724df
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install the frozen scorer dependencies
+        run: pip install numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2 freezegun==1.5.5 requests 'kagglehub>=0.3,<1'
+      - name: Restore the common pre-off declaration and ledger snapshot
+        run: |
+          set -euo pipefail
+          if [[ "$STAGE196F_REPLAY" == history-before ]]; then
+            git restore --source 13defc70cceddf785a242d317902e84e593c1c4c --worktree -- data/
+            git show "$SNAPSHOT:data/racecards.json" > data/racecards.json
+          else
+            git restore --source "$SNAPSHOT" --worktree -- data/
+          fi
+          gh run download 45726513732 --repo "$GITHUB_REPOSITORY" \
+            --name stage206-audited-route-first-45726513732 --dir "$RUNNER_TEMP/stage206"
+          gh run download 45800305204 --repo "$GITHUB_REPOSITORY" \
+            --name stage196f-combined-candidate-45800305204 --dir "$RUNNER_TEMP/stage196f"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          temp = Path(os.environ['RUNNER_TEMP'])
+          stages = [json.loads((temp / name / 'classification.json').read_text())
+                    for name in ('stage206', 'stage196f')]
+          def route_map(rows):
+              return {(r['course'], r['time']): (r['race_type'], r['model']) for r in rows}
+          assert len(route_map(stages[0])) == 35 and route_map(stages[0]) == route_map(stages[1])
+          Path('stage196-reference-routes.json').write_text(json.dumps(stages[0]))
+          cards = json.loads(Path('data/racecards.json').read_text())
+          assert cards['collected_at'] == '2026-11-26T09:37:00.427512+00:00'
+          PY
+      - name: Run the controlled scoring variant
+        run: |
+          python -m py_compile scripts/stage196f_identity.py scripts/stage196f_combined_candidate.py
+          python -u scripts/stage196f_combined_candidate.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: parity-${{ matrix.variant }}
+          path: stage196-output/
+          retention-days: 30
+          if-no-files-found: warn
+
+  compare:
+    if: ${{ always() }}
+    needs: replay
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: parity-*
+          path: variants
+      - name: Compare every race and runner and verify the frozen inputs
+        run: |
+          python - <<'PY'
+          import csv, json, os
+          from pathlib import Path
+
+          names = ['stage206', 'stage196f', 'mullins-before', 'history-before', 'identity', 'stage208']
+          roots = {name: Path('variants') / ('parity-' + name) for name in names}
+          audits = {name: json.loads((root / 'audit.json').read_text()) for name, root in roots.items()}
+          baseline = audits['stage196f']
+          for name, item in audits.items():
+              assert item['mode'] == 'CONTROLLED_REPLAY_ONLY' and item['replay_variant'] == name
+              assert not item['issues'], (name, item['issues'])
+              assert item['remaining_fields'] == 35 and item['needed_models'] == baseline['needed_models']
+              for source, checksum in baseline['frozen_inputs'].items():
+                  if name == 'history-before' and source in {'shared_history', 'reference'}:
+                      continue
+                  assert item['frozen_inputs'][source] == checksum, (name, source, 'different pre-off inputs')
+              assert item['artifact_inputs'] == baseline['artifact_inputs'], (name, 'different model artifacts')
+
+          def read(name, filename):
+              with (roots[name] / filename).open(newline='') as file:
+                  return list(csv.DictReader(file))
+
+          def key(row):
+              return row['date'], row['course'], row['time']
+
+          races = {name: {key(row): row for row in read(name, 'interim-combined.csv')} for name in names}
+          ranks = {name: {(*key(row), row['horse']): row for row in read(name, 'all-runners.csv')} for name in names}
+          assert all(len(items) == 35 and items.keys() == races['stage196f'].keys() for items in races.values())
+          for name, rows in races.items():
+              expected_gaps = {('Lingfield', '13:47'), ('Thurles', '15:06')} if name == 'stage206' else set()
+              actual_gaps = {(course, time) for (_, course, time), r in rows.items() if r['status'] != 'PAPER_SELECTION'}
+              assert actual_gaps == expected_gaps, (name, actual_gaps)
+          comparisons = [
+              ('stage206', 'stage196f', 'Stage207 coverage exception'),
+              ('mullins-before', 'stage196f', 'Mullins title only'),
+              ('history-before', 'stage196f', 'Prior-result archive revision only'),
+              ('stage196f', 'identity', 'Verified trainer and jockey reconciliation'),
+              ('identity', 'stage208', 'Stage208 horse form only'),
+          ]
+          report = Path('comparison')
+          report.mkdir()
+          changes = []
+          tallies = []
+          for left, right, test in comparisons:
+              changed = set()
+              for runner in sorted(ranks[left].keys() | ranks[right].keys(), key=lambda k: (k[2], k[1], k[3])):
+                  first, second = ranks[left].get(runner, {}), ranks[right].get(runner, {})
+                  before = tuple(first.get(k, '') for k in ('rank', 'raw_source_probability', 'research_score'))
+                  after = tuple(second.get(k, '') for k in ('rank', 'raw_source_probability', 'research_score'))
+                  if before == after:
+                      continue
+                  changed.add(runner[:3])
+                  changes.append((test, *runner, first.get('model') or second.get('model'), *before, *after))
+              coverage = sum(races[left][k]['status'] != races[right][k]['status'] for k in races[left])
+              tallies.append((test, len(changed), coverage))
+          with (report / 'controlled-runner-differences.csv').open('w', newline='') as file:
+              out = csv.writer(file)
+              out.writerow(['test', 'date', 'course', 'time', 'horse', 'model',
+                            'rank_before', 'probability_before', 'score_before',
+                            'rank_after', 'probability_after', 'score_after'])
+              out.writerows(changes)
+          for race in races['stage196f']:
+              both_ranked = all(races[name][race]['status'] == 'PAPER_SELECTION' for name in ('stage206', 'stage196f'))
+              if both_ranked:
+                  assert not any(row[0] == comparisons[0][2] and row[1:4] == race for row in changes), race
+          mullins_changes = any(row[0] == 'Mullins title only' and row[1:4] == ('2026-11-26', 'Thurles', '13:56')
+                                for row in changes)
+          (report / 'controlled-inputs.json').write_text(json.dumps(
+              {'clock': baseline['decision_clock'], 'inputs': baseline['frozen_inputs'],
+               'models': baseline['artifact_inputs'], 'comparisons': tallies,
+               'thurles_13_56_responded_to_title': mullins_changes,
+               'prior_archive_variant_inputs': audits['history-before']['frozen_inputs']}, indent=2) + '\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write('## Controlled comparison of the 09:37 declarations\n\n')
+              summary.write('| Change isolated | Races with different runner outputs | Coverage changes |\n')
+              summary.write('| --- | ---: | ---: |\n')
+              for test, changed, coverage in tallies:
+                  summary.write(f'| {test} | {changed} | {coverage} |\n')
+              observed = 'Yes' if mullins_changes else 'No'
+              summary.write(f'\nMullins title alone changed the 13:56 Thurles outputs: {observed}.\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trainer-jockey-parity-results
+          path: comparison/
+          retention-days: 30
