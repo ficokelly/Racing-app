@@ -1,0 +1,61 @@
+name: Stage196F — Validate combined selections
+on:
+  workflow_dispatch:
+    inputs:
+      selection_date:
+        description: Dublin date (today or tomorrow), YYYY-MM-DD
+        type: string
+        required: false
+        default: ''
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage196f-combined-candidate
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    env:
+      PYTHONPATH: .:scripts
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install scoring dependencies
+        run: pip install numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2 freezegun==1.5.5 requests 'kagglehub>=0.3,<1'
+      - name: Validate date and refresh declarations
+        env:
+          REQUESTED_DATE: ${{ inputs.selection_date }}
+          RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
+          RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
+        run: |
+          set -euo pipefail
+          today="$(TZ=Europe/Dublin date +%F)"
+          tomorrow="$(TZ=Europe/Dublin date -d tomorrow +%F)"
+          target="${REQUESTED_DATE:-$today}"
+          [[ "$target" == "$today" || "$target" == "$tomorrow" ]]
+          echo "TARGET_DAY=$target" >> "$GITHUB_ENV"
+          if [[ -n "$RACING_API_USERNAME" && -n "$RACING_API_PASSWORD" ]]; then
+            python collect-racecards.py
+          fi
+      - name: Validate complete pre-race selections
+        run: |
+          python -m py_compile scripts/stage196f_combined_candidate.py
+          python -u scripts/stage196f_combined_candidate.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage196f-combined-candidate-${{ github.run_id }}
+          path: stage196-output/
+          retention-days: 30
+          if-no-files-found: warn
