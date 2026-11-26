@@ -696,7 +696,6 @@ body.rhp154-open{overflow:hidden}
 .rhp-runner-card .actions .action{padding:6px 8px;min-height:44px;font-size:12px}
 .rhp-race-page .rc-race-facts{gap:5px;margin-bottom:8px}
 .rhp-race-page .rc-race-fact{padding:4px 6px;border-radius:5px}
-.rhp-runner-card .rhp-rank-chip small{display:block;font-size:10px;font-weight:500;max-width:70px;white-space:normal}
 .rhp-disclosure{border:1px solid var(--rhp-edge);border-radius:8px;background:var(--rhp-card);color:var(--rhp-ink)}
 .rhp-disclosure>summary{min-height:44px;padding:10px 11px;color:var(--rhp-ink);font-size:14px;font-weight:650;cursor:pointer}
 .rhp-disclosure>div{padding:0 11px 10px}
@@ -1873,10 +1872,18 @@ function rhpRunnerPrice(quote,betHorse=''){
  return betHorse?`<button type="button" class="${style}" data-rc-bet="${safe(quote.id)}" aria-label="Add ${safe(betHorse)} to bet slip at ${safe(fmt(quote.current))}">${contents}</button>`:
   `<span class="${style}">${contents}</span>`;
 }
+const rhpIsWithdrawnRunner=x=>!!x&&(x.non_runner===true||x.is_non_runner===true||x.is_withdrawn===true||String(x.number||'').toUpperCase()==='NR'||['nr','nonrunner','withdrawn','scratched','dns'].includes(String(x.runner_status||x.status||'').toLowerCase().replace(/[^a-z]/g,'')));
+function rhpModelWinProbability(runner){
+ const p=runner?.win_probability;
+ return Number.isFinite(p)&&p>=0&&p<=1?`<p class="hint"><strong>Model win estimate</strong> ${(p*100).toFixed(1)}%</p>`:'';
+}
 function rhpRaceRunnerCard(r,day,finished,{trainerView=false,trainerStat=null}={}){
  const liveQuote=rcRow(r);
  const x=liveQuote||(trainerView?hotPriceRow(r):null),form=rcForm(r),rating=rcField(r,'ofr','or','official_rating','officialRating');
  const weight=rcField(r,'weight','lbs'),age=rcField(r,'age'),draw=Number(rcField(r,'draw'));
+ const model=s38find(stage38D,r.course,day,clock(r.race_time));
+ const rankedRunner=rhpIsWithdrawnRunner(r)?null:model?.runners?.find(runner=>
+  Number(runner.rank)>0&&horseMatchKey(runner.horse)===horseMatchKey(r.horse));
  const i=racecardRunners.indexOf(r),saved=watchlist.some(w=>w.key===watchKey({horse:r.horse,course:r.course,day}));
  const result=finished?raceResultFor(r):null;
  const movement=!finished&&rcDisplay.odds?rhpOddsMovement(x):'';
@@ -1895,7 +1902,7 @@ function rhpRaceRunnerCard(r,day,finished,{trainerView=false,trainerStat=null}={
   <details class="rhp-disclosure rhp-runner-more"><summary>More details</summary><div>
    ${rcDisplay.people?`<div class="rhp-person-stats">${rcPersonPreview(r,x,'jockey',day)}${rcPersonPreview(r,x,'trainer',day,trainerStat)}</div>`:''}
    ${rcDisplay.gear?`<p class="hint"><b>Headgear</b> ${safe(rcGearText(r))}${rcFirstGear(r)?' · First time':''}</p>`:''}
-   ${rcHorseExtra(r)}${odds}</div></details>
+   ${rhpModelWinProbability(rankedRunner)}${rcHorseExtra(r)}${odds}</div></details>
   <div class="actions"><button type="button" class="action small outline" data-hot-watch="${i}" ${saved||i<0?'disabled':''}>${saved?'★ On Watchlist':'☆ Watchlist'}</button>${trainerView?rhp158HotRaceButton(r):x?`<button type="button" class="action small outline" data-view-race="${safe(x.id)}">Race odds</button>`:''}<a class="action small outline" href="${safe(unibetRaceLink({course:r.course,day,starts:r.race_time,time:clock(r.race_time)}))}" target="_blank" rel="noopener noreferrer">Unibet ↗</a></div>
  </article>`;
 }
@@ -3131,7 +3138,6 @@ restoreRefreshFiltersAfterFeed=function(){
  const getRace=(course,day,time)=>s38find(stage38D,course,day,time);
  const ordered=race=>[...(race?.runners||[])].filter(x=>Number.isInteger(Number(x.rank))&&Number(x.rank)>0).sort((a,b)=>Number(a.rank)-Number(b.rank));
  const norm=x=>horseMatchKey(x||'');
- const isNR=x=>!!x&&(x.non_runner===true||x.is_non_runner===true||x.is_withdrawn===true||String(x.number||'').toUpperCase()==='NR'||['nr','nonrunner','withdrawn','scratched','dns'].includes(String(x.runner_status||x.status||'').toLowerCase().replace(/[^a-z]/g,'')));
  function cardState(race,horse){
   if(!race||!horse)return 'unavailable';
   const cards=(racecardRunners||[]).filter(x=>
@@ -3139,7 +3145,7 @@ restoreRefreshFiltersAfterFeed=function(){
    (x.date||dateKey(x.race_time))===race.date&&clock(x.race_time)===race.time);
   const exact=cards.find(x=>norm(x.horse)===norm(horse));
   if(!exact)return 'unknown'; // absent is NOT proof of a withdrawal
-  return isNR(exact)?'nr':'active';
+  return rhpIsWithdrawnRunner(exact)?'nr':'active';
  }
  function raceGroup(r){
   const kind=String(r.race_type||'').toLowerCase(),title=String(r.race_name||'').toLowerCase(),place=String(r.course||'').toLowerCase();
@@ -3289,7 +3295,7 @@ restoreRefreshFiltersAfterFeed=function(){
   return [rhpRunnerFormNote(card),context||handicapContext].filter(Boolean);
  }
  function rhpRunnerComment(race,runner,card){
-  if(isNR(card))return 'Withdrawn from this race.';
+  if(rhpIsWithdrawnRunner(card))return 'Withdrawn from this race.';
   const reason=rhpScoreReason(race,runner);
   const facts=rhpRunnerEvidence(race,runner,card);
   if(reason)return [reason,...facts.slice(0,1)].join('. ')+'.';
@@ -3638,10 +3644,6 @@ restoreRefreshFiltersAfterFeed=function(){
    <p><b>ROI ${roi>0?'+':''}${roi.toFixed(2)}%</b><span>Strike rate ${strike.toFixed(2)}%</span><span>${priced} priced race${priced===1?'':'s'}</span></p>
    <small>${safe(race.source_model.replaceAll('_',' '))}${priced<10?' · Small sample':''}</small></div>`;
  }
- function rhpModelWinProbability(runner){
-  const p=runner?.win_probability;
-  return Number.isFinite(p)&&p>=0&&p<=1?`<small>Model win estimate ${(p*100).toFixed(1)}%</small>`:'';
- }
  function rhpCommentCard(race,horse){
   return (racecardRunners||[]).find(card=>(card.date||dateKey(card.race_time))===race.date&&
    courseMatchKey(card.course)===courseMatchKey(race.course)&&clock(card.race_time)===race.time&&norm(card.horse)===norm(horse));
@@ -3655,6 +3657,7 @@ restoreRefreshFiltersAfterFeed=function(){
    `<p class="hint"><strong>Recent form:</strong> ${safe(form||'Not supplied')} · <strong>Official rating:</strong> ${rating!==null?safe(rating):'Not supplied'} · <strong>Age:</strong> ${card?safe(card.age||'—'):'—'}</p>`+
    `<p class="hint"><strong>Trainer:</strong> ${safe(card?.trainer||'Not supplied')} · <strong>Jockey:</strong> ${safe(card?.jockey||'Not supplied')}</p>`+
    `<p class="hint"><strong>Bookmaker odds:</strong> ${quote?safe(quote.bookmaker)+' · '+safe(fmt(quote.earlier))+' → '+safe(fmt(quote.current)):'No verified quote on this date'}</p>`+
+   (cardState(race,x.horse)==='nr'?'':rhpModelWinProbability(x))+
    (quote?hotSpark(quote):'')+
    `<button type="button" class="action small outline" data-rhp158-open-horse="${payload}">Open full racecard for ${safe(x.horse)}</button></div>`;
  }
@@ -3664,7 +3667,7 @@ restoreRefreshFiltersAfterFeed=function(){
   const rows=top.map(x=>{
    const status=cardState(race,x.horse),nr=status==='nr';
    const selected=race.selection_status==='RESEARCH_ONLY'&&norm(race.selection?.horse)===norm(x.horse);
-   return `<div class="rhp158-pair-item"><div class="rhp70-pair-row${nr?' is-nr':''}"><span class="rhp70-rank">#${safe(x.rank)}</span><div class="rhp70-horse"><button type="button" class="rhp158-horse-button" data-rhp158-toggle aria-expanded="false" title="Expand horse form and commentary">${safe(x.horse)} <span aria-hidden="true">⌄</span></button>${nr?' <span class="rhp70-nr">NR · withdrawn</span>':''}${selected?' <span class="rhp70-pick">Model selection</span>':''}${rhpModelWinProbability(x)}${rhp163Mode!=='all'&&Number(x.rank)===1&&rhp163HorseMatches(race,x.horse)?'<small style="font-weight:700;color:var(--rhp-ink)">✓ Odds match</small>':''}</div>${selectionPrice(race,x.horse,status)}</div>${selected&&!nr?`<p class="rhp-pick-reason">${safe(rhpRunnerComment(race,x,rhpCommentCard(race,x.horse)))}</p>`:''}${rhp158HorseDetails(race,x,!selected)}</div>`;
+   return `<div class="rhp158-pair-item"><div class="rhp70-pair-row${nr?' is-nr':''}"><span class="rhp70-rank">#${safe(x.rank)}</span><div class="rhp70-horse"><button type="button" class="rhp158-horse-button" data-rhp158-toggle aria-expanded="false" title="Expand horse form and commentary">${safe(x.horse)} <span aria-hidden="true">⌄</span></button>${nr?' <span class="rhp70-nr">NR · withdrawn</span>':''}${selected?' <span class="rhp70-pick">Model selection</span>':''}${rhp163Mode!=='all'&&Number(x.rank)===1&&rhp163HorseMatches(race,x.horse)?'<small style="font-weight:700;color:var(--rhp-ink)">✓ Odds match</small>':''}</div>${selectionPrice(race,x.horse,status)}</div>${selected&&!nr?`<p class="rhp-pick-reason">${safe(rhpRunnerComment(race,x,rhpCommentCard(race,x.horse)))}</p>`:''}${rhp158HorseDetails(race,x,!selected)}</div>`;
   });
   const withdrawnInTwo=top.some(x=>cardState(race,x.horse)==='nr');
   if(withdrawnInTwo){
@@ -3821,7 +3824,7 @@ restoreRefreshFiltersAfterFeed=function(){
   if(!race.selection)return `<div class="rhp-verdict"><strong>Hot Pots assessment</strong><p>${safe(race.reason||'A complete, current specialist ranking is not yet available.')}</p>${rhpSimulationPerformance(race)}</div>`;
   const tip=race.nap_nb?`<p><strong>${safe(race.nap_nb)}</strong> · ${safe(race.source_model||'Specialist')} confidence pick</p>`:'';
   const leader=ordered(race).find(runner=>norm(runner.horse)===norm(race.selection.horse));
-  const withdrawn=leader&&isNR(rhpCommentCard(race,leader.horse));
+  const withdrawn=leader&&rhpIsWithdrawnRunner(rhpCommentCard(race,leader.horse));
   const reason=leader?rhpScoreReason(race,leader):'';
   const facts=leader?rhpRunnerEvidence(race,leader,rhpCommentCard(race,leader.horse)):[];
   const prose=withdrawn?`${race.selection.horse} was the specialist’s choice before being withdrawn.`:
@@ -3842,7 +3845,7 @@ restoreRefreshFiltersAfterFeed=function(){
   const h=ordered(race).find(x=>norm(x.horse)===norm(horse));
   const isnr=h&&cardState(race,horse)==='nr';
   const tip=h&&Number(h.rank)===1&&race.nap_nb?' · '+race.nap_nb:'';
-  return `<span class="rhp-rank-chip" title="${safe(race?.source_model||'ROI specialist not yet available')}">${h?'#'+safe(h.rank)+tip+(isnr?' · NR':''):'—'}${h&&!isnr?rhpModelWinProbability(h):''}</span>`;
+  return `<span class="rhp-rank-chip" title="${safe(race?.source_model||'ROI specialist not yet available')}">${h?'#'+safe(h.rank)+tip+(isnr?' · NR':''):'—'}</span>`;
  };
  ensureControls();
 })();
