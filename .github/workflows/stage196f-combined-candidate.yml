@@ -48,6 +48,68 @@ jobs:
           if [[ -n "$RACING_API_USERNAME" && -n "$RACING_API_PASSWORD" ]]; then
             python collect-racecards.py
           fi
+      - name: Install verified Stage204C HPR integration (27 November only)
+        if: ${{ env.TARGET_DAY == '2026-11-27' }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          from pathlib import Path
+          p = Path('scripts/stage196f_combined_candidate.py')
+          raw = p.read_bytes()
+          actual = hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest()
+          assert actual == '5ca6bd07df13330d307a4ecfaddb039ac258f543', ('Scoring source changed; revalidate integration', actual)
+          source = raw.decode('utf-8')
+          anchor = '# Freeze model source and root imports to original replay commit, while retaining current validated data and Git history.'
+          assert source.count(anchor) == 1 and "stage204c_hpr_overlay" not in source, 'Unexpected source structure'
+          insertion = """# Stage204C: use the validated HPR candidate for this selection date only.
+          # The live ledger and the frozen model formulas remain unchanged.
+          if not REPLAY and DAY=='2026-11-27':
+           from stage86_hpr_engine import save_ratings, VERSION
+           from stage87_hpr_storage import FIELDS
+           hpr_run=45906720025
+           hpr_head='8a613b292f84de2b34f46499eb06f59b52419241'
+           runmeta=json.loads(S.check_output(['gh','api','repos/'+os.environ['GITHUB_REPOSITORY']+'/actions/runs/'+str(hpr_run)],text=True,timeout=60))
+           assert runmeta['conclusion']=='success' and runmeta['head_sha']==hpr_head and runmeta['head_branch']=='main' and runmeta['path']=='.github/workflows/stage204c-hpr-shared-history.yml','Unverified HPR run'
+           assert not git('diff','--name-only',hpr_head,'HEAD','--','data/hpr/shards').strip(),'HPR base changed since validation; regenerate candidate'
+           dest=W/'stage204c-validated'
+           download(hpr_run,'stage204c-hpr-shared-history-'+str(hpr_run),dest)
+           summary_path=exactly(dest,'summary.json'); delta_path=exactly(dest,'candidate-hpr-revisions.json')
+           assert digest(summary_path)=='08ab7b59f81fa53ff12496aa97acae8cc987d2728eafa229cb6e0d72e021cb65','Unexpected HPR summary checksum'
+           assert digest(delta_path)=='b731bdb11f8f6384c92e2d89caefa14b95e0a2cebaee8109566fd7154701ea4d','Unexpected HPR delta checksum'
+           hs=json.loads(summary_path.read_text()); revisions=json.loads(delta_path.read_text())
+           assert hs['target']==DAY and hs['status']=='CANDIDATE_VALIDATED_NOT_DEPLOYED' and hs['legacy_hpr_formula_unchanged']==VERSION
+           assert hs['original_revisions_preserved'] and hs['second_save_idempotent'] and hs['embedded_database']['copy_integrity']=='PASS'
+           assert len(revisions)==1434 and len({(x['horse_key'],x['race_key'],x['model_version']) for x in revisions})==len(revisions)
+           assert all(x['date']<DAY and x['model_version']==VERSION and 0<=x['hpr']<=100 and x['source']=='shared_verified_history_stage204c' and x['source_race_id'] for x in revisions)
+           with sqlite3.connect(db) as hc_history:
+            for rid,day in sorted({(x['source_race_id'],x['date']) for x in revisions}):
+             assert hc_history.execute('SELECT 1 FROM historical_races WHERE id=? AND race_date=?',(rid,day)).fetchone(),('HPR source race missing',rid)
+           hpr_before=W/'hpr-pre-stage204c.sqlite'
+           shutil.copy2(hpr,hpr_before)
+           with sqlite3.connect(hpr) as hc:
+            assert hc.execute('SELECT COUNT(*) FROM hpr_ratings').fetchone()[0]==hs['original_hpr_rows']
+            assert dict(hc.execute('SELECT model_version,COUNT(*) FROM hpr_ratings GROUP BY model_version'))==hs['original_versions']
+            counts=save_ratings(hc,revisions)
+            assert counts==hs['rating_changes'],('HPR delta replay differs',counts)
+            assert hc.execute('SELECT COUNT(*) FROM hpr_ratings').fetchone()[0]==hs['candidate_hpr_rows']
+            hc.execute('ATTACH DATABASE ? AS old',(str(hpr_before.resolve()),))
+            assert not hc.execute(f'SELECT {FIELDS} FROM old.hpr_ratings EXCEPT SELECT {FIELDS} FROM main.hpr_ratings LIMIT 1').fetchone(),'Original HPR revisions changed'
+            hc.execute('DETACH DATABASE old')
+            assert save_ratings(hc,revisions)=={'unchanged':len(revisions)},'HPR overlay not idempotent'
+            assert hc.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+            assert not hc.execute('SELECT 1 FROM hpr_ratings WHERE race_date>=? LIMIT 1',(DAY,)).fetchone(),'Future HPR leakage'
+           hpr_before.unlink()
+           audit['stage204c_hpr_overlay']={'run_id':hpr_run,'artifact_id':15158816196,'source_commit':hpr_head,'delta_sha256':digest(delta_path),'changes':counts,'candidate_rows':hs['candidate_hpr_rows'],'production_ledger_changed':False}
+           dump(O/'audit.json',audit)
+           print('STAGE204C_HPR_OVERLAY',json.dumps(audit['stage204c_hpr_overlay']),flush=True)
+          """
+          compile(insertion, 'stage204c_hpr_overlay', 'exec')
+          merged = source.replace(anchor, insertion + anchor, 1)
+          compile(merged, str(p), 'exec')
+          p.write_bytes(merged.encode('utf-8'))
+          print('Stage204C HPR overlay installed in temporary scoring workspace; production files unchanged.')
+          PY
       - name: Validate complete pre-race selections
         run: |
           python -m py_compile scripts/stage196f_combined_candidate.py
