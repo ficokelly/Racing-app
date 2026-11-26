@@ -775,7 +775,8 @@ function fmt(x){const d=num(x);if(d===null||d<=1)return '—';if(Math.abs(d-2)<.
 function parseOdds(s){const str=String(s??'').trim().toUpperCase();if(str==='EVS'||str==='EVENS')return 2;const m=str.match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/);if(m){let a=Number(m[1]),b=Number(m[2]);return b>0?1+a/b:null}const d=Number(str);return str&&Number.isFinite(d)&&d>1?d:null}
 const dateFmt=new Intl.DateTimeFormat('en-IE',{year:'numeric',month:'2-digit',day:'2-digit',timeZone:'Europe/Dublin'});
 const dateKey=s=>{const d=new Date(s);if(!s||Number.isNaN(d.getTime()))return '';const p=dateFmt.formatToParts(d);return `${p.find(x=>x.type==='year').value}-${p.find(x=>x.type==='month').value}-${p.find(x=>x.type==='day').value}`};
-const clock=s=>{const d=new Date(s);return !s||isNaN(d)?'Unknown':new Intl.DateTimeFormat('en-GB',{hour:'2-digit',minute:'2-digit',hourCycle:'h23',timeZone:'Europe/Dublin'}).format(d)};
+const raceClockFmt=new Intl.DateTimeFormat('en-GB',{hour:'2-digit',minute:'2-digit',hourCycle:'h23',timeZone:'Europe/Dublin'});
+const clock=s=>{const d=new Date(s);return !s||isNaN(d)?'Unknown':raceClockFmt.format(d)};
 const when=s=>{const d=new Date(s);return !s||isNaN(d)?'Unknown':new Intl.DateTimeFormat('en-IE',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Dublin'}).format(d)};
 const bookName=b=>{
  const label=String(b||'').trim(),key=label.toLowerCase().replace(/[^a-z0-9]/g,'');
@@ -787,7 +788,7 @@ let rows=[],allRows=[],activeTab='racecards',moveFilter='all',selectedDate='all'
 let slip=[],bets=[],watchlist=[];
 const WATCH_STORAGE='rhp-watchlist-v1';
 function watchKey(x){return [personKey(x.horse),courseMatchKey(x.course),x.day||dateKey(x.starts)].join('|')}
-function courseMatchKey(c){const key=personKey(String(c||'').replace(/\s*\((?:AW|all[ -]?weather)\)\s*$/i,'').trim());return ({kemptonpark:'kempton',chelmsfordcity:'chelmsford'})[key]||key}
+function courseMatchKey(c){const key=personKey(String(c||'').replace(/\s*\((?:AW|all[ -]?weather)\)\s*$/i,'').trim());return ({kemptonpark:'kempton',chelmsfordcity:'chelmsford',lingfieldpark:'lingfield',bangor:'bangorondee'})[key]||key}
 function saveWatch(){try{localStorage.setItem(WATCH_STORAGE,JSON.stringify(watchlist));return true}catch(e){alert('Watchlist could not be saved to this device.');return false}}
 function loadWatch(){try{const a=JSON.parse(localStorage.getItem(WATCH_STORAGE)||'[]');watchlist=Array.isArray(a)?a:[]}catch(e){watchlist=[]}}
 function watchMatch(x){return watchlist.find(w=>w.key===watchKey(x))}
@@ -1124,7 +1125,7 @@ $('race-runner-list').addEventListener('click',e=>{
  const watch=e.target.closest('[data-hot-watch]');
  if(watch){e.preventDefault();e.stopPropagation();const original=document.querySelector('#rc-list [data-hot-watch="'+watch.dataset.hotWatch+'"]');if(original)original.click();else {const r=racecardRunners[Number(watch.dataset.hotWatch)];if(r){const x={horse:r.horse,course:r.course,day:r.date||dateKey(r.race_time)};if(!watchlist.some(w=>w.key===watchKey(x))){watchlist.push({...x,key:watchKey(x)});saveWatch();watch.disabled=true;watch.textContent='★ On Watchlist';}}}}
 });
-function closeRace(){$('race-overlay').classList.add('hidden');document.body.style.overflow=''}
+function closeRace(){rhpOpenRace=null;$('race-overlay').classList.add('hidden');document.body.style.overflow=''}
 // A bet belongs to a horse in a particular race, not to a temporary Power Fav quote.
 // Old saved selections have no race_id, so retain compatibility with those records.
 function betHorseKey(name){
@@ -1166,16 +1167,8 @@ function refreshStrategyCards(){
  if(activeTab==='strategya')renderStrategyA();
  if(activeTab==='strategyb')renderStrategyB();
 }
-// Only use confirmed race-specific links. Unknown races open Unibet racing,
-// never a guessed event or an unrelated race.
-function unibetRaceLink(x){
- const course=personKey(x.course),day=x.day||dateKey(x.starts);
- if(day==='2026-10-18'&&course==='leopardstown'&&x.time==='15:42')return 'https://www.unibet.ie/racing#/event/202610181400.T.IRL.leopardstown.4';
- if(day==='2026-10-18'&&course==='sedgefield'&&x.time==='14:20')return 'https://www.unibet.ie/racing#/event/202610181300.T.GBR.sedgefield.2';
- return 'https://www.unibet.ie/racing';
-}
 function card(x){const betStatus=savedHorseStatus(x);const strategyLabel=x.qualifies?(qualifiesA(x)?'<span class="tag strategy-category">Strategy A · Flat turf</span>':qualifiesB(x)?'<span class="tag strategy-category">Strategy B · AW/Jumps</span>':'<span class="tag strategy-category">Unverified</span>'):'';let movement=x.move===null?'No comparison':x.move>0.001?`↘ ${x.move.toFixed(1)}% shorter`:x.move<-.001?`↗ ${Math.abs(x.move).toFixed(1)}% drift`:'Unchanged';let cls=x.move===null?'flat':x.move>.001?'down':x.move<-.001?'up':'flat';const ref=x.isFav&&x.secondName?`Second favourite: ${safe(x.secondName)} · ${fmt(x.secondOdds)}`:x.tie?`Joint favourite: ${safe(x.favName)} · ${fmt(x.favOdds)}`:`Market favourite: ${safe(x.favName)} · ${fmt(x.favOdds)}`;
- return `<article class="horse">${betStatus?`<div class="saved-selection-banner">${safe(betStatus)}</div>`:''}<div class="horse-top"><div><div class="name">${safe(x.horse)}</div><div class="meta">${safe(when(x.starts))} · ${safe(x.course)} · ${safe(x.country)}</div></div></div><div class="odds"><div><small>${safe(x.baselineLabel)}</small><b>${fmt(x.earlier)}</b></div><div><small>Latest odds</small><b>${fmt(x.current)}</b></div><div><small>Movement</small><b class="move ${x.move===null||Math.abs(x.move)<=.001?'flat':x.move>0?'short':'drift'}">${x.move===null?'—':x.move.toFixed(1)+'%'}</b></div></div>${commentaryHorseDetails(x.horse,x.course,x.day||dateKey(x.starts),clock(x.starts))}<div class="foot"><span>${ref}</span><span>${safe(x.bookmaker)}</span></div><div class="horse-action-grid"><button class="action small outline race-full" data-view-race="${safe(x.id)}">View Race</button><button class="action small ${betStatus?'outline':''}" ${betStatus?'data-show-bets="1"':`data-add="${safe(x.id)}"`}>${betStatus?'✓ View saved bet':'+ Add to My Bets'}</button><a class="action small outline" href="${safe(unibetRaceLink(x))}" target="_self" rel="noopener noreferrer" style="text-decoration:none">↗ Unibet${unibetRaceLink(x).includes('#/event/')?' · Race':' · Racing'}</a><span class="tag down power-status">${x.qualifies?'🔥 Power Fav':'Not a Power Fav'}</span>${strategyLabel||'<span class="tag strategy-category">Not classified</span>'}</div><div style="margin-top:9px"><button class="action small outline" style="width:100%" data-watch-add="${safe(x.id)}">${watchMatch(x)?'⭐ On Watchlist':'☆ Add to Watchlist'}</button></div><details><summary>Price history graph</summary>${miniGraph(x.points)}</details><div class="hint" style="margin-top:8px">Trainer: ${safe(x.trainer||'Not available')} · Jockey: ${safe(x.jockey||'Not available')} · C / D / CD: ${x.cdWin===true?'CD winner':x.courseWin===true?'C winner':x.distanceWin===true?'D winner':'Not verified'}</div><div class="hint" style="margin-top:7px">Trainer strike rate: ${safe(formText(x,'trainer'))} · Jockey strike rate: ${safe(formText(x,'jockey'))}</div>${x.baselineAt===null&&x.earlier!==null?'<div class="hint">Movement uses unverified API-reported opening price.</div>':''}</article>`;}
+ return `<article class="horse">${betStatus?`<div class="saved-selection-banner">${safe(betStatus)}</div>`:''}<div class="horse-top"><div><div class="name">${safe(x.horse)}</div><div class="meta">${safe(when(x.starts))} · ${safe(x.course)} · ${safe(x.country)}</div></div></div><div class="odds"><div><small>${safe(x.baselineLabel)}</small><b>${fmt(x.earlier)}</b></div><div><small>Latest odds</small><b>${fmt(x.current)}</b></div><div><small>Movement</small><b class="move ${x.move===null||Math.abs(x.move)<=.001?'flat':x.move>0?'short':'drift'}">${x.move===null?'—':x.move.toFixed(1)+'%'}</b></div></div>${commentaryHorseDetails(x.horse,x.course,x.day||dateKey(x.starts),clock(x.starts))}<div class="foot"><span>${ref}</span><span>${safe(x.bookmaker)}</span></div><div class="horse-action-grid"><button class="action small outline race-full" data-view-race="${safe(x.id)}">View Race</button><button class="action small ${betStatus?'outline':''}" ${betStatus?'data-show-bets="1"':`data-add="${safe(x.id)}"`}>${betStatus?'✓ View saved bet':'+ Add to My Bets'}</button><span class="tag down power-status">${x.qualifies?'🔥 Power Fav':'Not a Power Fav'}</span>${strategyLabel||'<span class="tag strategy-category">Not classified</span>'}</div><div style="margin-top:9px"><button class="action small outline" style="width:100%" data-watch-add="${safe(x.id)}">${watchMatch(x)?'⭐ On Watchlist':'☆ Add to Watchlist'}</button></div><details><summary>Price history graph</summary>${miniGraph(x.points)}</details><div class="hint" style="margin-top:8px">Trainer: ${safe(x.trainer||'Not available')} · Jockey: ${safe(x.jockey||'Not available')} · C / D / CD: ${x.cdWin===true?'CD winner':x.courseWin===true?'C winner':x.distanceWin===true?'D winner':'Not verified'}</div><div class="hint" style="margin-top:7px">Trainer strike rate: ${safe(formText(x,'trainer'))} · Jockey strike rate: ${safe(formText(x,'jockey'))}</div>${x.baselineAt===null&&x.earlier!==null?'<div class="hint">Movement uses unverified API-reported opening price.</div>':''}</article>`;}
 const selectedPeople={markets:{trainer:new Set(),jockey:new Set()},power:{trainer:new Set(),jockey:new Set()},strategya:{trainer:new Set(),jockey:new Set()},strategyb:{trainer:new Set(),jockey:new Set()}};
 const personSearch={markets:{trainer:'',jockey:''},power:{trainer:'',jockey:''},strategya:{trainer:'',jockey:''},strategyb:{trainer:'',jockey:''}};
 function personLabel(x,type){return String(x[type]||'').replace(/\s*\(\d+\)\s*$/,'').trim()}
@@ -1567,28 +1560,37 @@ function setRcDay(day){
  rcSetupFilters();
  renderRacecards();
 }
-// Yesterday must remain browsable even if the rolling racecards API no longer
-// includes prior-day entries. Use verified archived results as a fallback.
-function rcViewingRunners(dayChoice=rcSelectedDay){
- const day=rcDateKey(dayChoice);
+// Use finalized starters in the result feed, with declaration details where available.
+function rcRunnersForDate(day, resultsOnly=false){
  const available=racecardRunners.filter(r=>(r.date||dateKey(r.race_time))===day);
- if(dayChoice!=='yesterday'&&!rcResultsOnly)return available;
- const seen=new Set(available.map(r=>finishedRaceKey(r.course,r.race_time,day)+'|'+horseMatchKey(r.horse)));
- const combined=[...available];
+ const declarations=new Map();
+ const runners=[];
+ for(const row of available){
+  const key=finishedRaceKey(row.course,row.race_time,day);
+  if(!finishedRaceIndex.has(key)){
+   if(!resultsOnly)runners.push(row);
+   continue;
+  }
+  if(!declarations.has(key))declarations.set(key,new Map());
+  declarations.get(key).set(horseMatchKey(row.horse),row);
+ }
  for(const [raceId,participants] of finishedRaceIndex){
-  const parts=raceId.split('|');
-  if(parts[1]!==day)continue;
   const info=finishedRaceDetails.get(raceId);
-  if(!info)continue;
-  for(const [horseId,result] of participants){
-   const fullKey=raceId+'|'+horseMatchKey(result.horse||horseId);
-   if(seen.has(fullKey))continue;
-   seen.add(fullKey);
-   combined.push({horse:result.horse||horseId,course:info.course,date:day,
-    race_time:info.off,type:'',historicalResultOnly:true});
+  if(info.day!==day)continue;
+  const cards=declarations.get(raceId);
+  const sample=cards?.values().next().value;
+  for(const [horseKey,result] of participants){
+   runners.push(cards?.get(horseKey)||{
+    horse:result.horse,course:sample?.course||info.course,date:day,
+    race_time:sample?.race_time||info.off,type:sample?.type||'',
+    race_name:sample?.race_name||info.raceName,historicalResultOnly:true
+   });
   }
  }
- return rcResultsOnly?combined.filter(r=>finishedRaceIndex.has(finishedRaceKey(r.course,r.race_time,day))):combined;
+ return runners;
+}
+function rcViewingRunners(dayChoice=rcSelectedDay){
+ return rcRunnersForDate(rcDateKey(dayChoice),rcResultsOnly);
 }
 function rcRefreshBookmakers(){
  const control=$('rc-odds');if(!control)return;
@@ -1628,7 +1630,7 @@ function rcAllScheduledRaces(){
    const type=rcKind(r);
    if(!rhpRaceDetailActive&&!rhpMatches(filterType,type))continue;
    const id=finishedRaceKey(r.course,r.race_time,date);
-   if(!groups.has(id))groups.set(id,{course:r.course,off:r.race_time,day,type,runners:0,distance:rcField(r,'distance'),raceName:rcField(r,'race_name','raceName','name'),marketOnly:!!r.marketListingOnly});
+   if(!groups.has(id))groups.set(id,{course:r.course,off:r.race_time,day,type,resulted:finishedRaceIndex.has(id),runners:0,distance:rcField(r,'distance'),raceName:rcField(r,'race_name','raceName','name'),marketOnly:!!r.marketListingOnly});
    groups.get(id).runners++;
   }
  }
@@ -1647,23 +1649,23 @@ function renderRaceNavigation(){
  rcNavRaces=rcAllScheduledRaces();const now=Date.now();
  // Only the swipe carousel expires races; rcNavRaces and meeting dropdowns retain every race.
  // A race remains visible through its scheduled off time and for ten minutes afterwards.
- const upcoming=rcResultsOnly?[]:rcNavRaces.map((r,i)=>({...r,i})).filter(r=>rhpRaceDetailActive||r.day==='yesterday'&&rcOverviewDays.length===1||(Number.isFinite(Date.parse(r.off))&&Date.parse(r.off)+10*60*1000>now));
+ const upcoming=rcResultsOnly?[]:rcNavRaces.map((r,i)=>({...r,i})).filter(r=>rhpRaceDetailActive||r.day==='yesterday'&&rcOverviewDays.length===1||(!r.resulted&&Number.isFinite(Date.parse(r.off))&&Date.parse(r.off)+10*60*1000>now));
  if(!rhpRaceDetailActive)upcoming.splice(6);
- strip.innerHTML=upcoming.length?upcoming.map(r=>{const minutes=Math.round((Date.parse(r.off)-now)/60000);const label=r.day==='yesterday'?'Result':r.day==='tomorrow'?'Tomorrow':minutes<=0?'Off now':minutes<=2?'Next off':`In ${minutes} min`;
+ strip.innerHTML=upcoming.length?upcoming.map(r=>{const minutes=Math.round((Date.parse(r.off)-now)/60000);const label=r.resulted?'Result':r.day==='tomorrow'?'Tomorrow':minutes<=0?'Off now':minutes<=2?'Next off':`In ${minutes} min`;
   return `<button type="button" class="rc-next-tile ${r.day==='today'&&minutes<=2?'rc-next-now':''}" data-rc-jump="${r.i}"><span class="rc-next-state">${label}</span><b>${safe(clock(r.off))} · ${safe(r.course)}</b><small>${r.type==='aw'?'All-Weather':r.type==='turf'?'Flat Turf':r.type==='jumps'?'Jumps':'Race'} · ${r.runners} listed runners${r.distance?' · '+safe(rcDisplayDistance(r.distance)):''}</small></button>`}).join(''):(rcSelectedDay==='yesterday'?'<div class="rc-next-empty">No archived race results available for yesterday yet.</div>':rcSelectedDay==='tomorrow'?'<div class="rc-next-empty">Tomorrow’s racecards are not published yet. They will appear automatically when available.</div>':'<div class="rc-next-empty">No upcoming races left in today’s published feed.</div>');
  rhpNextRacesLastVisibleKeys=upcoming.map(r=>r.i).join(',');
  strip.scrollLeft=oldScroll;
  
  const byMeeting=new Map();for(let i=0;i<rcNavRaces.length;i++){const r=rcNavRaces[i];if(!byMeeting.has(r.course))byMeeting.set(r.course,[]);byMeeting.get(r.course).push({...r,i})}
  const openMeetings=new Set([...schedule.querySelectorAll('details[open]')].map(el=>el.dataset.rcCourse));
- schedule.innerHTML=[...byMeeting.entries()].sort((a,b)=>Date.parse(a[1][0].off)-Date.parse(b[1][0].off)).map(([course,races])=>`<details class="rc-schedule-meeting" data-rc-course="${safe(course)}" ${openMeetings.has(course)?'open':''}><summary><strong>${safe(course)}</strong><small>${safe(rcMeetingCode(races))} · ${races.length} races · ${safe(clock(races[0].off))}–${safe(clock(races[races.length-1].off))}</small></summary>${races.map(r=>`<button type="button" class="rc-schedule-race" data-rc-jump="${r.i}"><b>${rcOverviewDays.length>1?safe(when(r.off)):safe(clock(r.off))}</b><span>${r.type==='aw'?'AW':r.type==='turf'?'Flat Turf':r.type==='jumps'?'Jumps':'Race'}${r.marketOnly?' · Market listing':''} · ${r.runners} runners${r.distance?' · '+safe(rcDisplayDistance(r.distance)):''}${r.raceName?' · '+safe(r.raceName):''}</span><em>View ›</em></button>`).join('')}</details>`).join('')||(rcSelectedDay==='yesterday'?'<p class="rc-next-empty">No archived results available for yesterday yet.</p>':rcSelectedDay==='tomorrow'?'<p class="rc-next-empty">No tomorrow racecards available yet.</p>':`<p class="rc-next-empty">${rcResultsOnly?'No verified results published yet.':'No meetings in today’s racecards feed.'}</p>`);
+ schedule.innerHTML=[...byMeeting.entries()].sort((a,b)=>Date.parse(a[1][0].off)-Date.parse(b[1][0].off)).map(([course,races])=>`<details class="rc-schedule-meeting" data-rc-course="${safe(course)}" ${openMeetings.has(course)?'open':''}><summary><strong>${safe(course)}</strong><small>${safe(rcMeetingCode(races))} · ${races.length} races · ${safe(clock(races[0].off))}–${safe(clock(races[races.length-1].off))}</small></summary>${races.map(r=>`<button type="button" class="rc-schedule-race" data-rc-jump="${r.i}"><b>${rcOverviewDays.length>1?safe(when(r.off)):safe(clock(r.off))}</b><span>${r.type==='aw'?'AW':r.type==='turf'?'Flat Turf':r.type==='jumps'?'Jumps':'Race'}${r.marketOnly?' · Market listing':''} · ${r.runners} ${r.resulted?'listed · Result in':'runners'}${r.distance?' · '+safe(rcDisplayDistance(r.distance)):''}${r.raceName?' · '+safe(r.raceName):''}</span><em>View ›</em></button>`).join('')}</details>`).join('')||(rcSelectedDay==='yesterday'?'<p class="rc-next-empty">No archived results available for yesterday yet.</p>':rcSelectedDay==='tomorrow'?'<p class="rc-next-empty">No tomorrow racecards available yet.</p>':`<p class="rc-next-empty">${rcResultsOnly?'No verified results published yet.':'No meetings in today’s racecards feed.'}</p>`);
 }
 // Keep the Next Races strip current even if the odds feed is not refreshed.
 // Re-render only when a race crosses its ten-minute expiry, preserving meeting lists.
 function rhpRefreshNextRacesClock(){
  if(rcResultsOnly||(!rcOverviewDays.includes('today')&&rcSelectedDay!=='today')||activeTab!=='racecards'||!$('rc-next-track'))return;
  const now=Date.now();
- const visible=rcNavRaces.map((r,i)=>({r,i})).filter(x=>Number.isFinite(Date.parse(x.r.off))&&Date.parse(x.r.off)+600000>now);
+ const visible=rcNavRaces.map((r,i)=>({r,i})).filter(x=>!x.r.resulted&&Number.isFinite(Date.parse(x.r.off))&&Date.parse(x.r.off)+600000>now);
  const keys=(rhpRaceDetailActive?rcNavRaces.map((_,i)=>({i})):visible.slice(0,6)).map(x=>x.i).join(',');
  if(keys!==rhpNextRacesLastVisibleKeys){
   const strip=$('rc-next-track');
@@ -1682,50 +1684,72 @@ function rcJumpToRace(index){
  $('rc-meeting').value=r.course;rcSetupFilters();$('rc-time').value=clock(r.off);
  renderRacecards();const destination=$('rc-list');if(destination)destination.scrollIntoView({behavior:'smooth',block:'start'});
 }
-// Verified race results are optional. Never infer finishing positions from prices or bet results.
-let finishedRaceIndex=new Map(),finishedRaceDetails=new Map();
-function finishedRaceKey(course,off,day){return courseMatchKey(course)+'|'+(day||dateKey(off))+'|'+clock(off)}
+// Use provider-confirmed results for both racecards and Hot Pots status.
+let finishedRaceIndex=new Map(),finishedRaceDetails=new Map(),finishedRaceUpdatedAt=0,rhpOpenRace=null;
+function finishedRaceKey(course,off,day){
+ const text=String(off||'');
+ const time=/^\d{2}:\d{2}(?::\d{2})?$/.test(text)?text.slice(0,5):clock(off);
+ return courseMatchKey(course)+'|'+(day||dateKey(off))+'|'+time;
+}
+function resultForRace(race){
+ return finishedRaceIndex.get(finishedRaceKey(race.course,race.off_dt||race.race_time||race.time,race.date||race.day));
+}
 function loadFinishedRaces(payload){
- finishedRaceIndex=new Map();finishedRaceDetails=new Map();
- const races=Array.isArray(payload?.races)?payload.races:Array.isArray(payload?.results)?payload.results:[];
+ const races=Array.isArray(payload?.races)?payload.races:Array.isArray(payload?.results)?payload.results:null;
+ if(!races)return false;
+ const stamp=Date.parse(payload.updated_at||payload.collected_at)||0;
+ if(finishedRaceUpdatedAt&&stamp<=finishedRaceUpdatedAt)return false;
+ const byRace=new Map(),details=new Map();
  for(const race of races){
   const participants=Array.isArray(race.runners)?race.runners:Array.isArray(race.results)?race.results:[];
-  if(!participants.length||!race.course)continue;
-  const off=race.off_dt||race.race_time||race.off;
-  const day=race.date||dateKey(off);
-  if(!day||!off)continue;
+  if(!participants.length||!race.course||String(race.status||'').toLowerCase()!=='final')continue;
+  const off=race.off_dt||race.race_time||race.off,day=race.date||dateKey(off);
+  if(!day||clock(off)==='Unknown')continue;
   const byHorse=new Map();
   for(const r of participants){
-   const horse=r.horse||r.horse_name||r.name;
-   if(!horse)continue;
+   const horse=r.horse||r.horse_name||r.name,key=horseMatchKey(horse);
+   if(!key||byHorse.has(key))continue;
    const raw=r.position??r.pos??r.finish_position??r.finishing_position??r.placing;
-   const pos=(typeof raw==='number'||typeof raw==='string')?Number(String(raw).trim()):NaN;
-   const ordinal=Number.isInteger(pos)&&pos>0?pos:null;
+   const pos=String(raw??'').trim().match(/^([1-9]\d*)(?:\.0|st|nd|rd|th|=)?$/i);
    const status=String(r.status||r.result||'').trim();
-   const sp=r.sp??r.sp_frac??r.sp_fractional??r.starting_price??null;
-   if(ordinal!==null||status||sp!==null)byHorse.set(horseMatchKey(horse),{horse,position:ordinal,status,sp:sp===null?null:String(sp)});
+   const nonRunner=/^(nr|nonrunner|withdrawn|scratched|dns|reserve)$/i.test(status.replace(/[^a-z]/gi,''));
+   const sp=r.sp??r.sp_frac??r.sp_fractional??r.starting_price??(Number(r.sp_decimal)>1?fmt(r.sp_decimal):null);
+   byHorse.set(key,{horse,position:!nonRunner&&pos?Number(pos[1]):null,status,sp:sp==null||nonRunner?null:String(sp)});
   }
-  // Only promote a race to "resulted" if the result contains at least one finishing position.
-  if([...byHorse.values()].some(x=>x.position!==null)){const id=finishedRaceKey(race.course,off,day);finishedRaceIndex.set(id,byHorse);finishedRaceDetails.set(id,{course:race.course,off,day});}
+  if(![...byHorse.values()].some(x=>x.position===1))continue;
+  const id=finishedRaceKey(race.course,off,day);
+  if((byRace.get(id)?.size||0)>byHorse.size)continue;
+  byRace.set(id,byHorse);
+  details.set(id,{course:race.course,off,day,raceName:race.race_name||race.name||''});
  }
+ // Retain a successful snapshot if a stale archive or empty response arrives.
+ if(!byRace.size&&finishedRaceIndex.size)return false;
+ finishedRaceIndex=byRace;
+ finishedRaceDetails=details;
+ finishedRaceUpdatedAt=stamp;
+ return true;
 }
 function raceResultFor(r){
- const race=finishedRaceIndex.get(finishedRaceKey(r.course,r.race_time,r.date||dateKey(r.race_time)));
- return race?.get(horseMatchKey(r.horse))||null;
+ return resultForRace(r)?.get(horseMatchKey(r.horse))||null;
 }
-function resultLabel(info){if(!info)return '';
+function resultLabel(info){
+ if(!info)return '';
  if(info.position!==null){const n=info.position;return `${n}${n%100>=11&&n%100<=13?'th':n%10===1?'st':n%10===2?'nd':n%10===3?'rd':'th'}`;}
- return info.status||'Unplaced';
+ const status=info.status.toLowerCase().replace(/[^a-z]/g,'');
+ const labels={nr:'Non-runner',nonrunner:'Non-runner',withdrawn:'Non-runner',scratched:'Non-runner',dns:'Non-runner',reserve:'Reserve',
+  pu:'Pulled up',pulledup:'Pulled up',f:'Fell',fell:'Fell',ur:'Unseated rider',unseatedrider:'Unseated rider',
+  bd:'Brought down',broughtdown:'Brought down',ro:'Ran out',ranout:'Ran out',r:'Refused',refused:'Refused',dq:'Disqualified',dsq:'Disqualified'};
+ return labels[status]||(!status||['ran','finished','unplaced'].includes(status)?'Unplaced':info.status);
 }
-function resultSP(info){if(!info||!info.sp||['null','none','-'].includes(info.sp.toLowerCase()))return 'SP —';
- return 'SP '+safe(info.sp);
+function resultSP(info){
+ if(!info?.sp||['null','none','-','—'].includes(info.sp.toLowerCase()))return 'SP —';
+ return 'SP '+safe(info.sp==='1/1'?'EVS':info.sp);
 }
 async function loadFinishedRaceFeed(){
- try{const response=await fetch('./data/race-results.json?v='+Date.now(),{cache:'no-store'});
-  if(!response.ok)throw Error('No result feed published');loadFinishedRaces(await response.json());
- }catch(e){/* Keep any previously loaded verified results on transient fetch failures. */}
- if(activeTab==='racecards')renderRacecards();
- if(activeTab==='powerresults')renderPowerResults();
+ const item=await rhpFetchChanged('race-results.json',true);
+ if(!item||!loadFinishedRaces(item.data))return;
+ if(item.signature)rhpLiveSignatures.set(item.url,item.signature);
+ rhpLiveRedraw();
 }
 function rcBestRaceMetadata(r,day){
  // Older result-only rows have no metadata. Use a matching full racecard runner
@@ -1991,23 +2015,27 @@ function rhpRaceRunnerCard(r,day,finished,{trainerView=false,trainerStat=null}={
  const fact=(label,value)=>`<div><dt>${label}</dt><dd>${safe(value??'—')}</dd></div>`;
  const facts=(rcDisplay.form?fact('Form',form||'—'):'')+(rcDisplay.rating?
   fact('OR',rating)+fact('Weight',weight?(/^[0-9]+$/.test(weight)?weight+' lb':weight):null)+fact('Age',age)+(draw>0?fact('Draw',draw):''):'');
- const odds=rcDisplay.odds&&x?`<p class="hint"><b>${safe(x.bookmaker)}</b> · ${fmt(x.earlier)} → ${fmt(x.current)}</p>${hotSpark(x)}`:'';
+ const odds=!finished&&rcDisplay.odds&&x?`<p class="hint"><b>${safe(x.bookmaker)}</b> · ${fmt(x.earlier)} → ${fmt(x.current)}</p>${hotSpark(x)}`:'';
  return `<article class="summarycard rhp-runner-card" data-runner-horse="${safe(r.horse)}">
   <div class="rhp-runner-top"><div class="rhp-runner-main">
    <div class="rhp-runner-name">${rhpSilk(r)}<h3>${r.number?`<span>${safe(r.number)}</span> `:''}${safe(r.horse)}</h3>${finished?`<span class="rc-finish">${safe(resultLabel(result)||'—')}</span>`:''}</div>
-   ${trainerView?`<p class="rhp-runner-race">${safe(clock(r.race_time))} · ${safe(r.course)}</p>`:''}${people}</div><div class="rhp-odds-rank-stack">${finished||rcDisplay.odds?price:''}${movement}${rhpSelectedModelBadge(r.horse,r.course,day,clock(r.race_time))}</div></div>
+   ${trainerView?`<p class="rhp-runner-race">${safe(clock(r.race_time))} · ${safe(r.course)}</p>`:''}${people}</div><div class="rhp-odds-rank-stack">${finished||rcDisplay.odds?price:''}${movement}${finished?'':rhpSelectedModelBadge(r.horse,r.course,day,clock(r.race_time))}</div></div>
   ${facts?`<dl class="rhp-runner-facts">${facts}</dl>`:''}
-  <p class="rhp-horse-comment">${rhpSelectedHorseComment(r,x,day)}</p>
+  ${finished?'':`<p class="rhp-horse-comment">${rhpSelectedHorseComment(r,x,day)}</p>`}
   <details class="rhp-disclosure rhp-runner-more"><summary>More details</summary><div>
    ${rcDisplay.people?`<div class="rhp-person-stats">${rcPersonPreview(r,x,'jockey',day)}${rcPersonPreview(r,x,'trainer',day,trainerStat)}</div>`:''}
    ${rcDisplay.gear?`<p class="hint"><b>Headgear</b> ${safe(rcGearText(r))}${rcFirstGear(r)?' · First time':''}</p>`:''}
    ${rhpModelWinProbability(rankedRunner)}${rcHorseExtra(r)}${odds}</div></details>
-  <div class="actions"><button type="button" class="action small outline" data-hot-watch="${i}" ${saved||i<0?'disabled':''}>${saved?'★ On Watchlist':'☆ Watchlist'}</button>${trainerView?rhp158HotRaceButton(r):x?`<button type="button" class="action small outline" data-view-race="${safe(x.id)}">Race odds</button>`:''}<a class="action small outline" href="${safe(unibetRaceLink({course:r.course,day,starts:r.race_time,time:clock(r.race_time)}))}" target="_blank" rel="noopener noreferrer">Unibet ↗</a></div>
+  <div class="actions"><button type="button" class="action small outline" data-hot-watch="${i}" ${saved||i<0?'disabled':''}>${saved?'★ On Watchlist':'☆ Watchlist'}</button>${trainerView?rhp158HotRaceButton(r):!finished&&x?`<button type="button" class="action small outline" data-view-race="${safe(x.id)}">Race odds</button>`:''}</div>
  </article>`;
 }
 function renderRacecards(popupRace=null){const host=popupRace?$('race-runner-list'):$('rc-list');if(!host)return;if(!popupRace)document.querySelectorAll('[data-rc-day]').forEach(b=>{const chosen=rcOverviewDays.includes(b.dataset.rcDay);b.classList.toggle('active',chosen);b.setAttribute('aria-pressed',String(chosen))});if(!popupRace)$('rc-meetings-heading').textContent=rcSelectedDay==='yesterday'?'Yesterday’s Meetings & Results':rcSelectedDay==='tomorrow'?'Tomorrow’s Meetings & Races':'Today’s Meetings & Races';const navTitle=document.querySelector('.rc-next-head h2');if(navTitle&&!popupRace)navTitle.textContent=rcSelectedDay==='yesterday'?'🏇 Yesterday’s Races':'🏇 Next Races';if(!popupRace){renderRaceNavigation();rhpSelectDefaultRace();rhpMarkRaceNav();}const today=popupRace?popupRace.day:rcDateKey();const m=$('rc-meeting').value,t=$('rc-time').value,kind=rhpSelected('rc-type'),last=rhpSelected('rc-result'),gear=rhpSelected('rc-gear'),market=rhpSelected('rc-market'),sort=$('rc-sort').value;
- let data=(popupRace?racecardRunners:rcViewingRunners()).filter(r=>!(r.non_runner===true||r.is_non_runner===true||String(r.number||'').toUpperCase()==='NR'||['nr','nonrunner','withdrawn','scratched'].includes(String(r.runner_status||r.status||'').toLowerCase().replace(/[^a-z]/g,'')))).filter(r=>popupRace?((r.date||dateKey(r.race_time))===today&&courseMatchKey(r.course)===courseMatchKey(popupRace.course)&&clock(r.race_time)===popupRace.time):(r.date||dateKey(r.race_time))===today&&(m==='all'||r.course===m)&&(t==='all'||clock(r.race_time)===t)&&rhpMatches(kind,rcKind(r)));
+ let data=rcRunnersForDate(today,!popupRace&&rcResultsOnly)
+  .filter(r=>resultForRace(r)||!rhpIsWithdrawnRunner(r))
+  .filter(r=>popupRace?courseMatchKey(r.course)===courseMatchKey(popupRace.course)&&clock(r.race_time)===popupRace.time:
+   (m==='all'||r.course===m)&&(t==='all'||clock(r.race_time)===t)&&(rhpRaceDetailActive||rhpMatches(kind,rcKind(r))));
  if(!popupRace)data=data.filter(r=>{
+  if(resultForRace(r))return true;
   const lastChar=rcForm(r).replace(/[^0-9]/g,'').slice(-1),x=rcRow(r);
   const matchesLast=rhpMatches(last,'all')||last.includes('won')&&lastChar==='1'||last.includes('placed')&&['1','2','3'].includes(lastChar);
   const matchesGear=rhpMatches(gear,'all')||gear.includes('wearing')&&!!rcGear(r)||gear.includes('first')&&rcFirstGear(r);
@@ -2017,7 +2045,7 @@ function renderRacecards(popupRace=null){const host=popupRace?$('race-runner-lis
  const buckets=new Map();for(const r of data){const k=finishedRaceKey(r.course,r.race_time,today);if(!buckets.has(k))buckets.set(k,[]);buckets.get(k).push(r)}
  if(!popupRace)$('rc-summary').textContent=`${data.length} runners · ${buckets.size} races · ${today}. ${rcSelectedDay==='tomorrow'&&!racecardRunners.some(r=>(r.date||dateKey(r.race_time))===today)?'Tomorrow’s cards are not published yet. ':''}Form and equipment filters exclude records where that information is missing.`;
  host.innerHTML=[...buckets.entries()].sort((a,b)=>Date.parse(a[1][0].race_time)-Date.parse(b[1][0].race_time)).map(([k,rr])=>{const sample=rr[0],type=rcKind(sample),fullField=racecardRunners.filter(r=>(r.date||dateKey(r.race_time))===today&&finishedRaceKey(r.course,r.race_time,today)===finishedRaceKey(sample.course,sample.race_time,today));const list=[...rr];const raceFinished=finishedRaceIndex.has(finishedRaceKey(sample.course,sample.race_time,today));
- if(raceFinished)list.sort((a,b)=>(raceResultFor(a)?.position??Infinity)-(raceResultFor(b)?.position??Infinity)||a.horse.localeCompare(b.horse));
+ if(raceFinished)list.sort((a,b)=>(raceResultFor(a)?.position??Infinity)-(raceResultFor(b)?.position??Infinity));
  else if(sort==='odds')list.sort((a,b)=>(rcRow(a)?.current??Infinity)-(rcRow(b)?.current??Infinity));
  else if(sort==='ranking'){
   const race=s38find(stage38D,sample.course,today,clock(sample.race_time));
@@ -2030,7 +2058,7 @@ function renderRacecards(popupRace=null){const host=popupRace?$('race-runner-lis
   const rankOf=runner=>rankMap.get(horseMatchKey(runner.horse))??Infinity;
   list.sort((a,b)=>rankOf(a)-rankOf(b)||(rcRow(a)?.current??Infinity)-(rcRow(b)?.current??Infinity)||a.horse.localeCompare(b.horse));
  }
- else if(sort==='name')list.sort((a,b)=>a.horse.localeCompare(b.horse));return `<div class="panel rhp-race-page"><h2 class="rhp-race-heading"><time>${safe(clock(sample.race_time))}</time> ${safe(sample.course)}</h2>${rcRaceMetadata(rcBestRaceMetadata(sample,today),fullField.length||list.length,raceFinished)}${rhpSelectedModelVerdict(sample,today,fullField)}${list.map(r=>rhpRaceRunnerCard(r,today,raceFinished)).join('')}</div>`}).join('')||'<div class="empty">No runners meet these settings. Check the meeting, time and filters, or wait for the next racecards update.</div>';
+ else if(sort==='name')list.sort((a,b)=>a.horse.localeCompare(b.horse));return `<div class="panel rhp-race-page"><h2 class="rhp-race-heading"><time>${safe(clock(sample.race_time))}</time> ${safe(sample.course)}</h2>${rcRaceMetadata(rcBestRaceMetadata(sample,today),raceFinished?list.length:fullField.length||list.length,raceFinished)}${raceFinished?'':rhpSelectedModelVerdict(sample,today,fullField)}${list.map(r=>rhpRaceRunnerCard(r,today,raceFinished)).join('')}</div>`}).join('')||'<div class="empty">No runners meet these settings. Check the meeting, time and filters, or wait for the next racecards update.</div>';
 }
 
 function showTab(tab,keepScroll=false){if($('rhp-nav-overlay'))rhpShowMenu(false);if(tab==='strategya'||tab==='strategyb')tab='power';closeBetPopup();activeTab=tab;try{sessionStorage.setItem('rhp-selected-section',tab)}catch(e){}for(const [name,id] of [['markets','marketview'],['racecards','racecardsview'],['watchlist','watchlistview'],['power','powerview'],['strategya','strategyaview'],['strategyb','strategybview'],['hot','hotview'],['powerresults','powerresultsview'],['bets','betsview'],['pnl','pnlview']])$(id).classList.toggle('hidden',tab!==name);document.querySelectorAll('#section-buttons [data-section]').forEach(b=>{const selected=b.dataset.section===tab;b.classList.toggle('selected',selected);b.setAttribute('aria-current',selected?'page':'false')});$('pageTitle').textContent=({markets:'📈 Market Movers',racecards:'🏇 Racecards',watchlist:'⭐ Watchlist',power:'🎯 Strategy Selections',strategya:'Strategy A 📊',strategyb:'Strategy B 🏇',hot:'🔥 Hot Trainers',powerresults:'📊 Strategy Results',bets:'📁 My Bets',pnl:'📊 P&L'})[tab];if(tab==='markets')renderMarkets();if(tab==='racecards')renderRacecards();if(tab==='watchlist')renderWatch();if(tab==='power')renderPower();if(tab==='strategya')renderStrategyA();if(tab==='strategyb')renderStrategyB();if(tab==='hot')renderHot();if(tab==='powerresults')renderPowerResults();if(tab==='bets')renderSlip();if(tab==='pnl')renderPnL();rhpUpdateDock();if(!keepScroll)window.scrollTo(0,0)}
@@ -2368,7 +2396,7 @@ async function rhpFetchTimed(url,method='GET'){
  try{const r=await fetch(url,{method,cache:'no-cache',signal:controller.signal});if(!r.ok)throw Error('Unavailable '+url);if(method==='HEAD')return r.headers.get('etag')||r.headers.get('last-modified')||null;return await r.json();}finally{clearTimeout(timer)}
 }
 async function rhpFetchChanged(file,force){
- const sources=file==='latest-odds.json'?[RHP_FAST_ODDS_BASE+file,'./data/'+file]:['./data/'+file];
+ const sources=['latest-odds.json','race-results.json'].includes(file)?[RHP_FAST_ODDS_BASE+file,'./data/'+file]:['./data/'+file];
  for(const url of sources){try{
   let signature=null;try{signature=await rhpFetchTimed(url,'HEAD')}catch(e){}
   if(!force&&signature&&rhpLiveSignatures.get(url)===signature)return null;
@@ -2386,6 +2414,11 @@ function rhpLiveViewSnapshot(){
 }
 function rhpLiveRedraw(){
  const state=rhpLiveViewSnapshot();
+ if(rhpOpenRace&&!$('race-overlay').classList.contains('hidden')){
+  const result=resultForRace(rhpOpenRace);
+  const signature=result?JSON.stringify([...result.values()]):'';
+  if(signature&&signature!==rhpOpenRace.resultSignature)renderRacecards(rhpOpenRace);
+ }
  if(activeTab==='power')renderStrategySelections();
  else if(activeTab==='racecards'){rcSetupFilters();setFromSaved($('rc-meeting'),state.controls['rc-meeting']);rcSetupFilters();setFromSaved($('rc-time'),state.controls['rc-time']);renderRacecards();}
  else if(activeTab==='markets'){refreshSelects();renderPersonFilters('markets');renderMarkets();}
@@ -2399,11 +2432,13 @@ function rhpLiveRedraw(){
 async function checkPublishedData(force=false){
  if(autoRefreshBusy||rhpInitialFeedBusy||document.visibilityState==='hidden'||!navigator.onLine)return;
  if(!force&&Date.now()-autoRefreshLastCheck<75000)return;
- // Do not rebuild an open race/bet popup or a control the user is editing.
- if(!force&&(['race-overlay','bet-overlay'].some(id=>$(id)&&!$(id).classList.contains('hidden'))||document.activeElement?.matches('input,select,textarea')))return;
+ // While a race is open, only look for a final result for that race.
+ const raceOpen=rhpOpenRace&&!$('race-overlay').classList.contains('hidden');
+ if(!force&&(!$('bet-overlay').classList.contains('hidden')||document.activeElement?.matches('input,select,textarea')))return;
  autoRefreshBusy=true;const btn=$('rhp-refresh-odds');if(force&&btn){btn.disabled=true;btn.textContent='↻ Refreshing…'}
  try{
-  const received=(await Promise.all(rhpLiveFiles.map(f=>rhpFetchChanged(f,force)))).filter(Boolean);
+  const files=raceOpen&&!force?['race-results.json']:rhpLiveFiles;
+  const received=(await Promise.all(files.map(f=>rhpFetchChanged(f,force)))).filter(Boolean);
   let changed=false,marketChanged=false;
   for(const {file,url,signature,data} of received){
    if(file==='latest-odds.json'){
@@ -2415,7 +2450,7 @@ async function checkPublishedData(force=false){
     if(!stage38D||Date.parse(data.generated_at)>Date.parse(stage38D.generated_at)||data.generated_at===stage38D.generated_at&&data.race_status_corrected_at!==stage38D.race_status_corrected_at){stage38D=data;changed=true;}
    }else if(file==='strategy-roi-combined-results.json'){
     if(!stage38DResults||data.updated_at!==stage38DResults.updated_at){stage38DResults=data;changed=true;}
-   }else if(file==='race-results.json'){loadFinishedRaces(data);changed=true;}
+   }else if(file==='race-results.json'){changed=loadFinishedRaces(data)||changed;}
    if(signature)rhpLiveSignatures.set(url,signature);
   }
   if(marketChanged&&rhpLiveOdds){rows=build(rhpLiveOdds,rhpLiveHistory);rhp158HistoricHotRows=rhp158BuildHistoricHotRows(rhpLiveHistory);rhpSyncBookControl();rhpApplyBookPreference(rhpGlobalBook,{redraw:false});supplementRacecardsFromMarket();}
@@ -2991,7 +3026,11 @@ rhpShowAllRaces=function(){
 const rhpOldRenderRacecards=renderRacecards;
 renderRacecards=function(popupRace=null){
  rcSelectedModel='D';
- if(popupRace)return rhpOldRenderRacecards(popupRace);
+ if(popupRace){
+  const result=resultForRace(popupRace);
+  rhpOpenRace={...popupRace,resultSignature:result?JSON.stringify([...result.values()]):''};
+  return rhpOldRenderRacecards(popupRace);
+ }
  const panel=document.querySelector('#racecardsview .rhp-meeting-panel'),list=$('rc-list');
  if(panel)panel.classList.toggle('hidden',rhpRaceDetailActive);
  $('rhp-race-back')?.classList.toggle('hidden',!rhpRaceDetailActive);
@@ -3230,7 +3269,7 @@ restoreRefreshFiltersAfterFeed=function(){
 // rankings. Non-runners remain identified as NR until a later complete assessment.
 (function(){
  'use strict';
- let view='all',hotPotsDays=['today'];
+ let view='all',hotPotsDays=['today'],showFinishedHotPots=false;
  let rhp158Meeting='all',rhp158Time='all',rhpRaceType='all';
  // RHP_STAGE163_ODDS_RANGE_V1
  const rhp163Modes=['all','le2','2to5','5to10','gt10','custom'];
@@ -3827,9 +3866,10 @@ restoreRefreshFiltersAfterFeed=function(){
  }
  function display(race){
   const selected=race?.selection_status==='RESEARCH_ONLY'&&!!race.selection;
+  const finished=!!resultForRace(race);
   const hasRanking=ordered(race).length>0;
   const raceTitle=String(race.race_name||'').trim()||kindText(race)+' race';
-  return `<article class="panel rhp70-race"><div class="rhp70-head"><div><h3>${safe(race.time)} · ${safe(race.course)}</h3><p class="hint">${safe(raceTitle)} · ${safe(kindText(race))}</p></div><span class="rhp70-pill">${selected?'Model selection':hasRanking?'Ranked only':'Awaiting ranking'}</span></div>`+
+  return `<article class="panel rhp70-race"><div class="rhp70-head"><div><h3>${safe(race.time)} · ${safe(race.course)}</h3><p class="hint">${safe(raceTitle)} · ${safe(kindText(race))}</p></div><span class="rhp70-pill">${finished?'Result in':selected?'Model selection':hasRanking?'Ranked only':'Awaiting ranking'}</span></div>`+
    rhpSimulationPerformance(race)+pairHTML(race)+priorRankingNote(race)+`<p class="rhp70-explain">${safe(modelDecision(race))}</p>`+openRaceButton(race)+'</article>';
  }
  function rhpRaceTypeKey(race){
@@ -3860,9 +3900,11 @@ restoreRefreshFiltersAfterFeed=function(){
    filter.innerHTML='<div class="rhp-multi-field" style="grid-column:1 / -1"><label for="rhp-hp-race-type">Race type</label><select id="rhp-hp-race-type"><option value="all">All race types</option></select></div><div class="rhp-multi-field"><label for="rhp158-hp-meeting">Meeting</label><select id="rhp158-hp-meeting" aria-label="Filter Hot Pots by meeting"><option value="all">All meetings</option></select></div><div class="rhp-multi-field"><label for="rhp158-hp-time">Race time (Irish)</label><select id="rhp158-hp-time" aria-label="Filter Hot Pots by race time"><option value="all">All race times</option></select></div><button type="button" class="action small outline" data-rhp158-reset-hot>Reset filters</button>';
    const reset=filter.querySelector('[data-rhp158-reset-hot]');
    reset.insertAdjacentHTML('beforebegin',`<div class="rhp-multi-field" style="grid-column:1 / -1"><label for="rhp163-odds-mode">Rank 1 odds range</label><select id="rhp163-odds-mode" aria-label="Filter Hot Pots by Rank 1 latest odds"><option value="all">All odds</option><option value="le2">2/1 or less</option><option value="2to5">Over 2/1 to 5/1</option><option value="5to10">Over 5/1 to 10/1</option><option value="gt10">Over 10/1</option><option value="custom">Custom odds range</option></select></div><div id="rhp163-custom" style="grid-column:1 / -1" hidden><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px"><label>Minimum odds<input id="rhp163-min" type="text" placeholder="e.g. 5/2" autocomplete="off" style="width:100%;min-width:0;box-sizing:border-box;background:var(--rhp-card);color:var(--rhp-ink);border:1px solid var(--rhp-edge);border-radius:10px;padding:10px"></label><label>Maximum odds<input id="rhp163-max" type="text" placeholder="e.g. 8/1" autocomplete="off" style="width:100%;min-width:0;box-sizing:border-box;background:var(--rhp-card);color:var(--rhp-ink);border:1px solid var(--rhp-edge);border-radius:10px;padding:10px"></label></div><p class="hint">Use fractional odds or evens. A plain number means /1. Leave either limit blank for an open range.</p><p id="rhp163-error" role="status" style="color:#d97706"></p></div>`);
+   filter.insertAdjacentHTML('afterbegin','<div class="rhp-multi-field" style="grid-column:1 / -1"><label for="rhp-hp-race-status">Race status</label><select id="rhp-hp-race-status"><option value="pending">Awaiting result</option><option value="all">All races</option></select></div>');
    $('strategy-day-switch').insertAdjacentElement('afterend',filter);
    for(const id of ['rhp-hp-race-type','rhp158-hp-meeting','rhp158-hp-time','rhp163-odds-mode'])rhpEnableMulti(id);
   }
+  $('rhp-hp-race-status').value=showFinishedHotPots?'all':'pending';
   rhp163Sync();
   const old=$('power-type-toggle')?.closest('.panel');if(old)old.hidden=true;
   document.querySelectorAll('.form-price-nav,.stage41-link').forEach(x=>x.remove());
@@ -3896,7 +3938,8 @@ restoreRefreshFiltersAfterFeed=function(){
    const time=clock(c.race_time),key=commentaryKey(c.course,day,time);
    if(!known.has(key))known.set(key,{course:c.course,date:day,time,race_time:c.race_time,race_name:c.race_name||'',race_type:c.race_type||c.type||'',race_group:rcKind(c)==='turf'?'flat':rcKind(c),runners:[],selection:null,selection_status:'ASSESSMENT_PENDING'});
   }
-  const all=[...known.values()],type=abViewState.selections.type||'all';
+  const scheduled=[...known.values()],type=abViewState.selections.type||'all';
+  const all=scheduled.filter(race=>showFinishedHotPots||!resultForRace(race));
   const racesInView=all.filter(r=>rhpMatches(type,raceGroup(r))&&(view==='all'||r.selection_status==='RESEARCH_ONLY'&&!!r.selection));
   const types=[...new Set(racesInView.map(rhpRaceTypeKey).filter(Boolean))]
    .map(key=>[key,rhpRaceTypeLabel(key)]).sort((a,b)=>a[1].localeCompare(b[1]));
@@ -3915,10 +3958,11 @@ restoreRefreshFiltersAfterFeed=function(){
   const publishedRankingCount=all.filter(r=>ordered(r).length>0).length;
   const msg=$('strategy-model-message');
   if(msg)msg.textContent=`${dates.length>1?'Today and tomorrow':dates[0]} · ${publishedRankingCount} races ranked · ${picks} research selections · ${missing?missing+' race(s) awaiting ranking · ':''}${shown.length} shown.`;
-  host.innerHTML=shown.length?shown.map(display).join(''):`<div class="panel">${all.length?'No races match this view.':'No racing data for this date yet.'} Choose another filter or date.</div>`;
+  host.innerHTML=shown.length?shown.map(display).join(''):`<div class="panel">${all.length?'No races match this view.':scheduled.length?'All races in this view have verified results. Choose All races to see them.':'No racing data for this date yet.'}</div>`;
  };
  renderPower=renderStrategySelections;
  document.addEventListener('change',e=>{
+  if(e.target.id==='rhp-hp-race-status'){showFinishedHotPots=e.target.value==='all';renderStrategySelections();}
   if(e.target.id==='rhp-hp-race-type'){rhpRaceType=rhpSelected('rhp-hp-race-type');renderStrategySelections();}
   if(e.target.id==='rhp158-hp-meeting'){rhp158Meeting=rhpSelected('rhp158-hp-meeting');renderStrategySelections();}
   if(e.target.id==='rhp158-hp-time'){rhp158Time=rhpSelected('rhp158-hp-time');renderStrategySelections();}
@@ -3928,7 +3972,7 @@ restoreRefreshFiltersAfterFeed=function(){
  document.addEventListener('click',e=>{
   const dayButton=e.target.closest('[data-strategy-day]');
   if(dayButton){hotPotsDays=rhpToggleFilter(hotPotsDays,dayButton.dataset.strategyDay,'today');renderStrategySelections();return;}
-  if(e.target.closest('[data-rhp158-reset-hot]')){abViewState.selections.type='all';rhpRaceType='all';rhp158Meeting='all';rhp158Time='all';rhp163Mode=['all'];rhp163Min='';rhp163Max='';rhp163Save();renderStrategySelections();return;}
+  if(e.target.closest('[data-rhp158-reset-hot]')){showFinishedHotPots=false;abViewState.selections.type='all';rhpRaceType='all';rhp158Meeting='all';rhp158Time='all';rhp163Mode=['all'];rhp163Min='';rhp163Max='';rhp163Save();renderStrategySelections();return;}
   const toggle=e.target.closest('[data-rhp158-toggle]');
   if(toggle){e.preventDefault();const item=toggle.closest('.rhp158-pair-item'),detail=item?.querySelector('.rhp158-horse-details');if(detail){detail.hidden=!detail.hidden;toggle.setAttribute('aria-expanded',String(!detail.hidden));}return;}
   const open=e.target.closest('[data-rhp158-open-horse]');
