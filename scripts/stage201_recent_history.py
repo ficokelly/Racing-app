@@ -58,8 +58,6 @@ def build(root,target):
         if not BASE<day<target:continue
         for e in read(p).get('races',[]):
             rr=e.get('declared_field') or []; k=e.get('key') or []
-            # Stage178 stores venue on its race key, not every runner.
-            if len(k)==3: rr=[{**h,'course':h.get('course') or k[1],'date':h.get('date') or k[0]} for h in rr]
             if len(k)!=3 or not rr or not e.get('source_commit') or not e.get('source_asof'):continue
             try:
                 observed=D.datetime.fromisoformat(e['source_asof'].replace('Z','+00:00'))
