@@ -3,6 +3,11 @@ name: 'Stage153 — ROI Specialists single Hot Pots model'
 on:
   workflow_dispatch:
     inputs:
+      validated_run_id:
+        description: 'Optional successful Stage196F validation run ID to publish. Leave blank for Stage153.'
+        required: false
+        type: string
+        default: ''
       selection_date:
         description: 'Dublin date, today or tomorrow (blank = tomorrow for evening runs; today otherwise)'
         required: false
@@ -26,6 +31,7 @@ concurrency:
 
 jobs:
   combine:
+    if: ${{ !inputs.validated_run_id }}
     runs-on: ubuntu-24.04
     timeout-minutes: 230
     env:
@@ -94,7 +100,19 @@ jobs:
             sleep "$((attempt*5))"
             test "$attempt" -lt 5 || exit 1
           done
+      - name: Check whether Stage196F owns this date
+        id: active-feed
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          feed = json.loads(Path('data/strategy-roi-combined.json').read_text())
+          retained = os.environ['TARGET_DAY'] in feed.get('stage196f_publications', {})
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'retain_stage196f={str(retained).lower()}\n')
+          PY
       - name: Dispatch all required independent specialist scorers and capture new run IDs
+        if: ${{ steps.active-feed.outputs.retain_stage196f == 'false' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -122,6 +140,7 @@ jobs:
             'began':began.isoformat(),'workflows':workflows},indent=2))
           PY
       - name: Wait for today-specific source runs, never use stale or earlier-day artifacts
+        if: ${{ steps.active-feed.outputs.retain_stage196f == 'false' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -179,15 +198,30 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python scripts/stage153_roi_combined.py build \
-            --date "$TARGET_DAY" --cards data/racecards.json \
-            --sources reports/stage153/source \
-            --output data/strategy-roi-combined.json
+          cp data/strategy-roi-combined.json "$RUNNER_TEMP/stage153-prior.json"
+          if [[ "${{ steps.active-feed.outputs.retain_stage196f }}" == "false" ]]; then
+            python scripts/stage153_roi_combined.py build \
+              --date "$TARGET_DAY" --cards data/racecards.json \
+              --sources reports/stage153/source \
+              --output data/strategy-roi-combined.json
+            python - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path('data/strategy-roi-combined.json')
+          previous = json.loads((Path(os.environ['RUNNER_TEMP']) / 'stage153-prior.json').read_text())
+          if 'stage196f_publications' in previous:
+              payload = json.loads(path.read_text())
+              payload['stage196f_publications'] = previous['stage196f_publications']
+              path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + '\n')
+          PY
+          fi
           python scripts/stage153_roi_combined.py settle \
             --output data/strategy-roi-combined.json \
             --results data/race-results.json \
             --settled data/strategy-roi-combined-results.json
-          cat reports/stage153/source/status.json >> "$GITHUB_STEP_SUMMARY"
+          if [[ -f reports/stage153/source/status.json ]]; then
+            cat reports/stage153/source/status.json >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Publish source-model-attributed combined ranking without changing frozen models
         shell: bash
         run: |
@@ -220,3 +254,192 @@ jobs:
             data/strategy-roi-combined-results.json
           retention-days: 90
           if-no-files-found: warn
+
+  publish-stage196f:
+    if: ${{ inputs.validated_run_id }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VALIDATED_RUN_ID: ${{ inputs.validated_run_id }}
+      REQUESTED_DATE: ${{ inputs.selection_date }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify and download the completed Stage196F run
+        run: |
+          set -euo pipefail
+          [[ "$VALIDATED_RUN_ID" =~ ^[0-9]+$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$VALIDATED_RUN_ID" > "$RUNNER_TEMP/stage196f-run.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          run = json.loads((Path(os.environ['RUNNER_TEMP']) / 'stage196f-run.json').read_text())
+          if (run['status'], run['conclusion'], run['head_branch'], run['path'].split('@')[0]) != (
+              'completed', 'success', 'main', '.github/workflows/stage196f-combined-candidate.yml'
+          ):
+              raise SystemExit('Expected a completed successful Stage196F validation run on main')
+          PY
+          gh run download "$VALIDATED_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "stage196f-combined-candidate-$VALIDATED_RUN_ID" \
+            --dir "$RUNNER_TEMP/stage196f-candidate"
+      - name: Refresh declarations for the field comparison
+        env:
+          RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
+          RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$RACING_API_USERNAME" && test -n "$RACING_API_PASSWORD"
+          python scripts/stage26_feed_capture.py racecards
+          cp data/racecards.json "$RUNNER_TEMP/stage196f-fresh-cards.json"
+      - name: Publish verified upcoming races and preserve the existing archive
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/stage196f-publish.py" <<'PY'
+          import datetime as dt
+          import json
+          import os
+          import re
+          from collections import defaultdict
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+          from rhp_runner_eligibility import active_runner
+
+          temp = Path(os.environ['RUNNER_TEMP'])
+          root = temp / 'stage196f-candidate'
+          feed_path = Path('data/strategy-roi-combined.json')
+
+          def read(path):
+              return json.loads(path.read_text())
+
+          def stamp(value):
+              time = dt.datetime.fromisoformat(value.replace('Z', '+00:00'))
+              if time.tzinfo is None:
+                  raise ValueError('Expected a time zone in publication evidence')
+              return time.astimezone(dt.timezone.utc)
+
+          def key(value):
+              return ''.join(c for c in str(value or '').casefold() if c.isalnum())
+
+          def race_key(row):
+              course = key(re.sub(r'\s*\((?:AW|GB|IRE|UK)\)\s*$', '', row['course'], flags=re.I))
+              course = {
+                  'bangor': 'bangorondee', 'chelmsfordcity': 'chelmsford',
+                  'kemptonpark': 'kempton', 'dundalkaw': 'dundalk',
+              }.get(course, course)
+              return row['date'], course, stamp(row['race_time']).strftime('%H:%M')
+
+          now = dt.datetime.now(dt.timezone.utc)
+          local_day = now.astimezone(ZoneInfo('Europe/Dublin')).date()
+          candidate = read(root / 'combined-candidate.json')
+          audit = read(root / 'audit.json')
+          run = read(temp / 'stage196f-run.json')
+          day = candidate['day']
+          requested = os.environ.get('REQUESTED_DATE')
+          if requested and requested != day:
+              raise SystemExit(f'Validation is for {day}, but {requested} was requested')
+          if day not in {local_day.isoformat(), (local_day + dt.timedelta(days=1)).isoformat()}:
+              raise SystemExit(f'The validation date {day} is no longer eligible for publication')
+          rows = candidate['races']
+          if (candidate.get('model') != 'Stage196F combined candidate'
+              or day != audit.get('day') or audit.get('issues')
+              or len(rows) < 1 or audit.get('remaining_fields') != len(rows)
+              or audit.get('coverage') != {'PAPER_SELECTION': len(rows)}
+              or len({race_key(r) for r in rows}) != len(rows)):
+              raise SystemExit('The validation artifact does not show complete successful race coverage')
+          completed = stamp(run['updated_at'])
+          card_path = Path('data/racecards.json')
+          cards = max((read(card_path), read(temp / 'stage196f-fresh-cards.json')),
+                      key=lambda snapshot: stamp(snapshot['collected_at']))
+          if not dt.timedelta(0) <= now - stamp(cards['collected_at']) <= dt.timedelta(minutes=20):
+              raise SystemExit('The latest racecard snapshot is too old for publication')
+          declared = defaultdict(list)
+          for card in cards['runners']:
+              if card.get('date') == day and card.get('race_time') and active_runner(card):
+                  declared[race_key(card)].append(card)
+
+          feed = read(feed_path)
+          publications = feed.setdefault('stage196f_publications', {})
+          prior = publications.get(day)
+          if prior and str(prior['run_id']) == os.environ['VALIDATED_RUN_ID']:
+              print('This validation run has already been published')
+              raise SystemExit(0)
+          existing = feed['races']
+          published = []
+          skipped = []
+          closed = {'abandoned', 'cancelled', 'canceled', 'void', 'resulted', 'finished', 'completed', 'final'}
+          for row in rows:
+              race_id = race_key(row)
+              runners = row['runners']
+              off = stamp(row['race_time'])
+              ranks = [r['rank'] for r in runners]
+              field_names = {key(r['horse']) for r in runners}
+              if (row['date'] != day or len(runners) < 2 or len(field_names) != len(runners)
+                  or row['field_size'] != len(runners)
+                  or ranks != list(range(1, len(runners) + 1)) or not row['source_model']):
+                  raise SystemExit(f'Invalid model field for {row["course"]} {row["time"]}')
+              if now + dt.timedelta(minutes=2) >= off or completed >= off:
+                  skipped.append((row, 'off or too close to the off'))
+                  continue
+              latest = declared.get(race_id, [])
+              if (len(latest) != len(runners) or {key(r['horse']) for r in latest} != field_names
+                  or any(key(r.get('race_status')) in closed for r in latest)):
+                  skipped.append((row, 'latest declarations differ'))
+                  continue
+              selection = row.get('selection')
+              if selection:
+                  scored = stamp(selection['published_at'])
+                  if (selection['kind'] != 'VALIDATION_ONLY' or selection['pre_off_valid'] is not True
+                      or scored > completed or scored >= off or selection['horse'] != runners[0]['horse']):
+                      raise SystemExit(f'Invalid selection evidence for {row["course"]} {row["time"]}')
+                  row['evidence_asof'] = scored.isoformat()
+                  row['selection'] = {**selection, 'kind': 'RECORDED_PRE_OFF', 'published_at': now.isoformat()}
+              row.update(published_at=now.isoformat(), model='Stage196F Combined',
+                         publication_run_id=int(os.environ['VALIDATED_RUN_ID']))
+              published.append(row)
+
+          if not published:
+              raise SystemExit('No upcoming Stage196F field still matches the latest declarations')
+          publications[day] = {
+              'run_id': int(os.environ['VALIDATED_RUN_ID']),
+              'published_at': now.isoformat(), 'races': len(published),
+          }
+          replaced = {race_key(row) for row in published}
+          retained = [row for row in existing if row['date'] != day or race_key(row) not in replaced]
+          feed.update(day=day, generated_at=now.isoformat(),
+                      races=sorted(retained + published, key=lambda row: (row['date'], row['race_time'])))
+          feed_path.write_text(json.dumps(feed, ensure_ascii=False, indent=2) + '\n')
+          card_path.write_text(json.dumps(cards, ensure_ascii=False, indent=2) + '\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write(f'### Stage196F on {day}\n\n')
+              summary.write(f'{len(published)} rechecked race rankings prepared from validation run {run["id"]}.\n\n')
+              for row, reason in skipped:
+                  summary.write(f'- {row["time"]} {row["course"]}: retained existing record ({reason}).\n')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            PYTHONPATH=scripts python "$RUNNER_TEMP/stage196f-publish.py"
+            if git diff --quiet -- data/strategy-roi-combined.json; then exit 0; fi
+            python scripts/stage153_roi_combined.py settle \
+              --output data/strategy-roi-combined.json \
+              --results data/race-results.json \
+              --settled data/strategy-roi-combined-results.json
+            git add data/racecards.json data/strategy-roi-combined.json data/strategy-roi-combined-results.json
+            git commit -m "Publish Stage196F selections from validation $VALIDATED_RUN_ID"
+            if timeout 25s git push origin HEAD:main; then
+              echo 'Stage196F rankings published to the live feed.' >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep "$((attempt*4))"
+          done
+          exit 1
