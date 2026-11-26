@@ -3067,57 +3067,64 @@ restoreRefreshFiltersAfterFeed=function(){
   'ability pillar':'historical ability ratings','distance pillar':'record at the trip',
   'jumping pillar':'jumping record','course pillar':'course record','jockey pillar':'jockey record',
   'ground pillar':'record on the going','trainer pillar':'trainer record','draw pillar':'draw',
-  'ability and HPR':'historical ability ratings','eight-pillar historical rating':'historical performance ratings'
+  'ability and HPR':'historical ability ratings','eight-pillar historical rating':'combined historical ratings',
+  'ground record':'record on the going','distance record':'record at the trip',
+  'jockey history':'jockey record','trainer history':'trainer record',
+  'past race class and opposition':'the class of past races and strength of opposition',
+  'recent form and consistency':'recent form and consistency'
  };
- function rhpCommentFactor(runner,direction){
-  const drivers=runner?.model_drivers;
-  if(!['exact_eight_pillar_additive','tree_median_sensitivity'].includes(drivers?.method))return '';
-  const label=drivers[direction]?.[0]?.[0];
-  return typeof label==='string'?rhpCommentFactorLabels[label]||label:'';
+ function rhpCommentFactors(data,direction,limit){
+  const factors=data?.[direction];
+  if(!Array.isArray(factors))return '';
+  return factors.filter(pair=>Array.isArray(pair)&&typeof pair[0]==='string'&&
+   Number.isFinite(pair[1])&&(direction==='positive'?pair[1]>0:pair[1]<0))
+   .slice(0,limit).map(([label])=>rhpCommentFactorLabels[label]||label).join(', along with ');
  }
- function rhpArchivedFormNote(runner){
-  const prose=String(runner?.commentary||'');
-  const evidence=prose.match(/(?:The positive evidence includes |The reservations include |The individual information available is )(.+?)(?:, but this alone|\.|$)/)?.[1];
-  if(!evidence)return '';
-  const note=evidence.charAt(0).toUpperCase()+evidence.slice(1);
-  return note.replace(/^A win(?= on the latest recorded outing)/,'Won')
-   .replace(/ on the latest recorded outing and a win in the last \d+ recorded finishes/,' last time')
-   .replace(/ on the latest recorded outing/,' last time');
+ function rhpScoreReason(race,runner){
+  const drivers=runner.model_drivers;
+  const method=drivers?.method;
+  if(!['tree_median_sensitivity','exact_eight_pillar_additive','exact_logistic_logodds'].includes(method))return '';
+  const rank=Number(runner.rank);
+  const rival=ordered(race).find(row=>Number(row.rank)===(rank===1?2:rank-1));
+  const comparison=method==='tree_median_sensitivity'&&rival?drivers.rank_comparison:null;
+  const positive=rhpCommentFactors(comparison,'positive',2);
+  const negative=rhpCommentFactors(comparison,'negative',2);
+  if(rank===1&&positive){
+   return 'The specialist’s checks point to '+positive+' as the main edge over '+rival.horse+
+    (negative?', who fares better on '+negative:'');
+  }
+  if(rank>1&&negative){
+   return 'The specialist’s checks point to '+negative+' as the main reason '+rival.horse+' scores higher'+
+    (positive?', although this runner fares better on '+positive:'');
+  }
+  const support=rhpCommentFactors(drivers,'positive',2);
+  const drawback=rhpCommentFactors(drivers,'negative',1);
+  if(support&&drawback)return 'The strongest support in the specialist’s score comes from '+support+', with less help from '+drawback;
+  if(support)return 'The strongest support in the specialist’s score comes from '+support;
+  if(drawback)return 'The biggest drawback in the specialist’s score is '+drawback;
+  return '';
  }
  function rhpRunnerComment(race,runner,card){
   if(isNR(card))return 'Withdrawn from this race.';
-  const form=rhpRunnerFormNote(card)||rhpArchivedFormNote(runner);
-  const positive=rhpCommentFactor(runner,'positive'),negative=rhpCommentFactor(runner,'negative');
-  const method=runner?.model_drivers?.method;
-  const scores=positive&&negative
-   ?method==='tree_median_sensitivity'
-    ?'The specialist’s sensitivity check favours '+positive+', with less support from '+negative
-    :'The specialist gives credit for '+positive+', with '+negative+' weighing against the score'
-   :positive
-    ?(method==='tree_median_sensitivity'?'The specialist’s sensitivity check favours ':'The specialist gives most credit for ')+positive
-    :negative
-     ?(method==='tree_median_sensitivity'?'The specialist’s sensitivity check finds less support from ':'The main drawback in the specialist’s score is ')+negative
-     :'';
-  const weight=Number(rcField(card,'lbs','weight')??runner?.weight);
-  const topWeight=weight>0&&/\bhandicap\b/i.test(race.race_type||race.race_name||'')&&
-   (race.runners||[]).some(other=>Number(other.weight)>0&&Number(other.weight)<weight)&&
-   !(race.runners||[]).some(other=>Number(other.weight)>weight);
+  const reason=rhpScoreReason(race,runner);
+  const weight=Number(rcField(card,'lbs','weight')??runner.weight);
+  const rating=Number(rcField(card,'ofr','or','official_rating','officialRating')??runner.official_rating);
+  const peers=race.runners||[];
+  const knownWeights=peers.map(other=>Number(other.weight)).filter(value=>value>0);
+  const handicap=/\bhandicap\b/i.test((race.race_type||'')+' '+(race.race_name||''));
+  const topWeight=handicap&&weight>0&&knownWeights.some(value=>value<weight)&&!knownWeights.some(value=>value>weight);
   const days=Number(rcField(card,'last_run','days_since_last_run'));
-  const sharesTopWeight=(race.runners||[]).filter(other=>Number(other.weight)===weight).length>1;
   const proven=(flags,counts)=>flags.some(key=>[true,1,'1','true','yes'].includes(card?.[key]))||
    counts.some(key=>Number(card?.[key])>0);
   const courseDistance=proven(['course_distance_winner','cd_winner'],['course_distance_wins','course_and_distance_wins','cd_wins']);
   const distance=proven(['distance_winner'],['distance_wins']);
-  const context=topWeight?(sharesTopWeight?'Shares':'Carries')+' top weight in the handicap'
-   :days>=90?'Returns after '+days+' days away':courseDistance?'Has won over this course and distance':distance?'Has won at this distance':'';
-  return [form,scores||context].filter(Boolean).map(sentence=>sentence+'.').join(' ')||
-   'There is too little published form or scoring detail to assess this runner’s chance.';
- }
- function rhpVerdictForm(runner,card){
-  const form=rhpRunnerFormNote(card)||rhpArchivedFormNote(runner);
-  const factor=rhpCommentFactor(runner,'positive');
-  const modelNote=factor?'The specialist’s '+(runner.model_drivers.method==='tree_median_sensitivity'?'sensitivity check':'score')+' favours '+factor+'.':'';
-  return [form?runner.horse+': '+form.charAt(0).toLowerCase()+form.slice(1)+'.':'',modelNote?(form?'':runner.horse+': ')+modelNote:''].filter(Boolean).join(' ');
+  const context=courseDistance?'Has won over this course and distance':distance?'Has won at this distance':
+   topWeight?(knownWeights.filter(value=>value===weight).length>1?'Shares':'Carries')+' top weight in the handicap':
+   days>=90?'Returns after '+days+' days away':'';
+  const form=rhpRunnerFormNote(card);
+  if(reason)return [reason,context||form].filter(Boolean).join('. ')+'.';
+  const handicapContext=handicap&&weight>0&&rating>0?'The racecard shows a mark of '+rating+' and '+weight+'lb to carry':'';
+  return ['This assessment has no published breakdown of what drove the score',context||handicapContext||form].filter(Boolean).join('. ')+'.';
  }
  function rhpCommentCard(race,horse){
   return (racecardRunners||[]).find(card=>(card.date||dateKey(card.race_time))===race.date&&
@@ -3298,10 +3305,11 @@ restoreRefreshFiltersAfterFeed=function(){
   if(!race)return '<div class="rhp-verdict"><strong>ROI Specialists</strong><p>This race is awaiting its specialist assessment. No other model is substituted.</p></div>';
   if(!race.selection)return `<div class="rhp-verdict"><strong>ROI Specialists · pending</strong><p>${safe(race.reason||'A complete, current specialist ranking is not yet available.')}</p></div>`;
   const tip=race.nap_nb?`<p><strong>${safe(race.nap_nb)}</strong> · ${safe(race.source_model||'Specialist')} confidence pick</p>`:'';
-  const contenders=ordered(race).map(runner=>({runner,card:rhpCommentCard(race,runner.horse)}))
-   .filter(({card})=>!isNR(card)).slice(0,2);
-  const prose=contenders.map(({runner,card})=>rhpVerdictForm(runner,card)).filter(Boolean).join(' ')||
-   'There is too little published form or scoring detail to explain the specialist’s view of this field.';
+  const leader=ordered(race).find(runner=>norm(runner.horse)===norm(race.selection.horse));
+  const withdrawn=leader&&isNR(rhpCommentCard(race,leader.horse));
+  const reason=leader?rhpScoreReason(race,leader):'';
+  const prose=withdrawn?`${race.selection.horse} was the specialist’s choice before being withdrawn.`:
+   `${race.selection.horse} is the specialist’s choice. ${reason?reason+'.':'This assessment has no published breakdown of what put it ahead.'}`;
   return `<div class="rhp-verdict"><strong>How Hot Pots sees this race</strong>${tip}<p>${safe(prose)}</p><p class="hint">Race-type specialist: ${safe((race.source_model||'').replaceAll('_',' '))} · Scores are rankings, not guaranteed probabilities.</p></div>`;
  };
  rhpSelectedHorseComment=function(r,x,day){
