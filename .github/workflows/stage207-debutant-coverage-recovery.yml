@@ -1,0 +1,155 @@
+name: Stage207 - Debutant-aware G coverage and two-race recovery
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/stage207-debutant-coverage-recovery.yml']
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage207-debutant-coverage
+  cancel-in-progress: false
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      PYTHONPATH: .:scripts
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install original model dependencies
+        run: pip install numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2 requests
+      - name: Restore existing selections, frozen G2 and HPR (no historical rebuild)
+        env:
+          RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
+          RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test "$(TZ=Europe/Dublin date +%F)" = 2026-11-26
+          mkdir -p reports/stage207/{previous,g3,output}
+          gh run download 45726513732 --repo "$GITHUB_REPOSITORY" --name stage206-audited-route-first-45726513732 --dir reports/stage207/previous
+          gh run download 43407036838 --repo "$GITHUB_REPOSITORY" --name stage109-g3-learning-43407036838 --dir reports/stage207/g3
+          python scripts/stage87_hpr_storage.py restore --dir data/hpr/shards --db reports/stage207/hpr.sqlite
+          if [ -n "$RACING_API_USERNAME" ] && [ -n "$RACING_API_PASSWORD" ]; then python collect-racecards.py; fi
+          git restore --source a5987838b0e3f28b53686bac60d52cd164738718 --worktree -- scripts/stage107_model_g.py scripts/stage108_model_g2.py scripts/stage109_model_g3.py
+      - name: Test the coverage exception and score only the rejected G2 fields
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/stage207.py" <<'PY'
+          import ast, collections as C, csv, datetime as D, hashlib, json, math, pathlib as P, re, sqlite3, subprocess as S, sys
+          W=P.Path('reports/stage207'); O=W/'output'; prior=W/'previous'; target='2026-11-26'
+          now=D.datetime.now(D.timezone.utc); assert now.date().isoformat()==target
+          def save(name,value): (O/name).write_text(json.dumps(value,indent=2,default=str)+'\n')
+          def readcsv(path):
+              with path.open(newline='',encoding='utf-8-sig') as f:return list(csv.DictReader(f))
+          def writecsv(path,rows):
+              fields=list(dict.fromkeys(k for r in rows for k in r));assert fields
+              with path.open('w',newline='',encoding='utf-8') as f:
+                  w=csv.DictWriter(f,fieldnames=fields);w.writeheader();w.writerows(rows)
+          def exact(folder,name):
+              paths=list(folder.rglob(name));assert len(paths)==1,(name,paths);return paths[0]
+          # Explicit debutant-eligible types, plus non-handicap/open fields with possible debutants on the card.
+          # A blank card form is POSSIBLE debut evidence, not proof. Report any known-form runner lacking G history.
+          helper='''def debutant_eligible(entries):
+              title=' '.join(str(entries[0].get(k) or '') for k in ('race_name','race_type','type')).lower()
+              if re.search(r'\\b(?:handicap|nursery)\\b',title):return False
+              if re.search(r'\\b(?:maiden|novices?|beginners?|juvenile|junior|bumper|academy|introductory|restricted|auction|sales|conditions)\\b|national hunt flat|nh flat',title):return True
+              return any(not str(r.get('form') or '').strip('-/ ') and not num(r.get('last_run')) for r in entries)
+          '''
+          old="        if coverage<.55:rejected.append({'race':k,'reason':f'PRIOR_FORM_COVERAGE_{coverage:.2f}'});continue"
+          new='''        if coverage<.55:
+                      if not debutant_eligible(entries):
+                          rejected.append({'race':k,'reason':f'PRIOR_FORM_COVERAGE_{coverage:.2f}'});continue
+                      if len(hh)!=len(entries) or not all(z['identity'] for z in hh) or len({z['identity'] for z in hh})!=len(hh) or not all(r.get('horse_id') and r.get('sire') and r.get('dam') for r in entries):
+                          rejected.append({'race':k,'reason':'DEBUTANT_EXCEPTION_IDENTITY_INCOMPLETE'});continue
+                      print('DEBUTANT_COVERAGE_EXCEPTION',k,coverage,flush=True)'''
+          # Dedent the extra YAML/Python heredoc nesting to scorer indentation.
+          import textwrap
+          helper=textwrap.dedent(helper)
+          # helper first line has no indent after YAML extraction; its body is normalized explicitly.
+          hlines=helper.splitlines(); helper=hlines[0]+'\n'+ '\n'.join('    '+x.lstrip() for x in hlines[1:] if x.strip())+'\n\n'
+          newlines=new.splitlines(); new='\n'.join([newlines[0]]+['            '+x.lstrip() if x.lstrip().startswith(('if not debutant','if len(hh)','print(')) else '                '+x.lstrip() for x in newlines[1:]])
+          changes=[]
+          for f in ('stage107_model_g.py','stage108_model_g2.py'):
+              p=P.Path('scripts')/f;s=p.read_text();assert s.count(old)==1 and s.count('def score_card_rows(')==1
+              patched=s.replace('def score_card_rows(',helper+'def score_card_rows(').replace(old,new)
+              compile(patched,str(p),'exec');p.write_text(patched);changes.append(str(p))
+          # Confirm policy with the actual scorer helpers before reading the target cards.
+          import stage108_model_g2 as G
+          import stage107_model_g as G1
+          for mod in (G,G1):
+              for title in ('Flat Maiden','AW Maiden','Novice Steeplechase','Beginners Chase','Maiden Hurdle','Novice Hurdle','National Hunt Flat Race','Juvenile Hurdle','Restricted Novice Stakes'):
+                  assert mod.debutant_eligible([{'race_name':title,'form':'23','last_run':20}]),title
+              for title in ('Novice Handicap Chase','Nursery Handicap','Handicap Hurdle'):
+                  assert not mod.debutant_eligible([{'race_name':title,'form':'','last_run':None}]),title
+              assert mod.debutant_eligible([{'race_name':'Open Stakes','form':'','last_run':None}])
+              assert not mod.debutant_eligible([{'race_name':'Open Stakes','form':'23','last_run':30}])
+          (O/'candidate-source.patch').write_text(S.check_output(['git','diff','--',*changes],text=True))
+          old_rows=readcsv(prior/'interim-combined.csv'); good=[r for r in old_rows if r['status']=='PAPER_SELECTION']; missing=[r for r in old_rows if r['status']!='PAPER_SELECTION']
+          assert len(good)==33 and len(missing)==2 and all(r['model']=='G2_FROZEN' and r['race_type']=='HURDLE_MAIDEN' for r in missing)
+          wanted={(G.course_key(r['course']),r['time']):r for r in missing};assert set(wanted)=={('LINGFIELD','13:47'),('THURLES','15:06')}
+          from rhp_runner_eligibility import active_runner
+          card=json.loads(P.Path('data/racecards.json').read_text()); stamp=G.stamp(card['collected_at']);assert 0<=(now-stamp).total_seconds()<=4*3600,'Stale cards'
+          groups=C.defaultdict(list)
+          outcome={'position','finish_pos','result','outcome','sp','sp_decimal','starting_price','beaten','race_result','result_status','overall_beaten','distance_beaten_total'}
+          for r in card['runners']:
+              if r.get('date')!=target or not active_runner(r):continue
+              off=G.stamp(r.get('race_time'));assert off is not None
+              k=(G.course_key(r['course']),off.strftime('%H:%M'))
+              if k not in wanted:continue
+              assert off>now+D.timedelta(minutes=10),'Too close to off'
+              assert not any(r.get(x) not in (None,'',[],{}) for x in outcome),'Result data present'
+              assert all(r.get(x) for x in ('horse_id','horse','sire','dam','trainer','jockey','lbs'))
+              groups[k].append({key:val for key,val in r.items() if key not in outcome})
+          assert set(groups)==set(wanted)
+          for k,rows in groups.items():
+              assert len(rows)>=4 and len({r['race_id'] for r in rows})==1 and len({G.identity(r) for r in rows})==len(rows)
+              assert G.debutant_eligible(rows)
+          cards=W/'target-cards.json';cards.write_text(json.dumps({**card,'runners':[r for rows in groups.values() for r in rows]})); odds=W/'empty-odds.json';odds.write_text('{}')
+          hpr=W/'hpr.sqlite'
+          with sqlite3.connect(hpr) as c:assert c.execute('pragma quick_check').fetchone()[0]=='ok'
+          paths={n:exact(W/'g3',n) for n in ('stage109-future-form-model.joblib','stage109-frozen-g2-original.joblib','stage109-prior-form-state.joblib')}
+          hashes={k:hashlib.sha256(v.read_bytes()).hexdigest() for k,v in paths.items()}
+          dest=O/'g2-g3';dest.mkdir(exist_ok=True)
+          S.run([sys.executable,'-u','scripts/stage109_model_g3.py','paper','--date',target,'--cutoff',now.isoformat(),'--model',str(paths['stage109-future-form-model.joblib']),'--g2-frozen',str(paths['stage109-frozen-g2-original.joblib']),'--state',str(paths['stage109-prior-form-state.joblib']),'--hpr',str(hpr),'--cards',str(cards),'--odds',str(odds),'--bookmaker','williamhill','--out',str(dest)],check=True)
+          assert hashes=={k:hashlib.sha256(v.read_bytes()).hexdigest() for k,v in paths.items()}
+          ranks=readcsv(dest/'stage109-paper-all-horses.csv'); rowsby=C.defaultdict(list)
+          for r in ranks:
+              if r['model']=='G2_FROZEN':rowsby[(G.course_key(r['course']),r['off_utc'][:5])].append(r)
+          assert set(rowsby)==set(wanted)
+          additions=[];review=[];allrank=readcsv(prior/'all-runners.csv')
+          for k,rr in sorted(rowsby.items()):
+              field=groups[k];ordered=sorted(rr,key=lambda r:int(float(r['rank'])))
+              assert len(ordered)==len(field) and [int(float(r['rank'])) for r in ordered]==list(range(1,len(field)+1))
+              lookup={G.norm(r['horse']):r for r in field};assert set(lookup)=={G.norm(r['horse']) for r in ordered}
+              probs=[float(r['win_probability']) for r in ordered];assert all(math.isfinite(p) and 0<=p<=1 for p in probs) and abs(sum(probs)-1)<1e-6
+              for r in ordered:
+                  cardrow=lookup[G.norm(r['horse'])];n=int(float(r['prior_runs']));declared=bool(str(cardrow.get('form') or '').strip('-/ ') or G.num(cardrow.get('last_run')))
+                  review.append(dict(course=r['course'],time=k[1],horse=r['horse'],prior_runs=n,declared_form=cardrow.get('form'),last_run=cardrow.get('last_run'),classification='G_HISTORY_PRESENT' if n else 'KNOWN_FORM_NOT_LINKED_IN_G' if declared else 'POSSIBLE_DEBUT_NOT_CONFIRMED'))
+                  allrank.append(dict(date=target,course=wanted[k]['course'],time=k[1],race_type=wanted[k]['race_type'],model='G2_FROZEN',rank=r['rank'],horse=r['horse'],raw_source_probability=r['win_probability']))
+              additions.append({**wanted[k],'rank1':ordered[0]['horse'],'rank2':ordered[1]['horse'],'source_win_probability':ordered[0]['win_probability'],'rank2_source_win_probability':ordered[1]['win_probability'],'status':'PAPER_SELECTION','verified_at':D.datetime.now(D.timezone.utc).isoformat(),'model_basis':'ORIGINAL_G2_DEBUTANT_EXCEPTION'})
+          merged=sorted(good+additions,key=lambda r:(r['time'],r['course']));assert len(merged)==35
+          writecsv(O/'recovered-two-races.csv',additions);writecsv(O/'combined-35-races.csv',merged);writecsv(O/'all-runners.csv',allrank);writecsv(O/'runner-form-review.csv',review)
+          save('summary.json',dict(status='CANDIDATE_PAPER_ONLY',original_selections_unchanged=len(good),recovered=len(additions),total=len(merged),known_form_not_linked=sum(x['classification']=='KNOWN_FORM_NOT_LINKED_IN_G' for x in review),possible_debut=sum(x['classification']=='POSSIBLE_DEBUT_NOT_CONFIRMED' for x in review),model_hashes=hashes,policy='Original G weights; candidate debutant exception only; handicap safeguards retained; no production changes; earlier 33 selections not refreshed or re-audited'))
+          print(json.dumps(additions,indent=2),flush=True)
+          PY
+          python -m py_compile "$RUNNER_TEMP/stage207.py"
+          python -u "$RUNNER_TEMP/stage207.py"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage207-debutant-recovery-${{ github.run_id }}
+          path: reports/stage207/output/
+          retention-days: 30
+          if-no-files-found: warn
