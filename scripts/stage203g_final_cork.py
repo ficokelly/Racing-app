@@ -6,6 +6,10 @@ import stage4_match_all_recurring_races as R
 ROOT=P.Path('data'); LEDGER=ROOT/'stage203g-history'; TARGET='2026-11-26'; DAY='2026-11-01'; HID=Q.EXPECTED_IDS['Cosmic Front']; RID=F.SPECS[3][0]; n=V.n; digest=V.digest
 # Scope comes from the completed 203D and 203E classification reports, not an inference from a blank form row.
 OUTSIDE={'hrs_17396040242':'2026-02-22','hrs_17396043371':'2026-03-08','hrs_17396044414':'2026-01-25','hrs_17395399840':'2026-02-01','hrs_17394063757':'2026-03-08','hrs_56559538':'2026-04-19','hrs_51491811':'2026-10-29','hrs_17394539365':'2026-04-26','hrs_17396009995':'2026-02-21','hrs_17396014167':'2026-11-08','hrs_17395958888':'2025-11-01','hrs_64554315':'2026-11-01'}
+
+# STAGE203H: externally verified last-run explanations, scoped by horse ID and exact date.
+from scripts.stage203h_targeted_history import load_exceptions as _stage203h_exceptions
+OUTSIDE.update(_stage203h_exceptions())
 SOURCES=['https://www.racingpost.com/results/596/cork/2026-11-01/932263/','https://www.racingtv.com/results/2026-11-01/cork/1305','https://www.sportinglife.com/racing/results/2026-11-01/cork/946530/paddy-power-did-you-watch-the-breeders-cup-at-all-mares-maiden-hurdle']
 def verified(src,root):
     s=Q.RACES[3]; groups,meta=V.load_source(src,{DAY}); data,changes,why=F.reconstruct(3,groups,meta,root)

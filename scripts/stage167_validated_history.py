@@ -64,6 +64,8 @@ def refreshed_inputs(history, reference, date):
             append_stage203f(db,ref,src,date)
             from scripts.stage203g_final_cork import append as append_stage203g
             append_stage203g(db,ref,src,date)
+            from scripts.stage203h_targeted_history import append as append_stage203h
+            append_stage203h(db,ref,src,date)
         yield db,ref
 
 def build(base,ref,source,tmp):
