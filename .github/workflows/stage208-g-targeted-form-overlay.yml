@@ -1,0 +1,193 @@
+name: Stage208 - Targeted G form recovery and route audit
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/stage208-g-targeted-form-overlay.yml']
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage208-g-targeted-overlay
+  cancel-in-progress: false
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      PYTHONPATH: .:scripts
+      PYTHONUNBUFFERED: '1'
+      GH_TOKEN: ${{ github.token }}
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install original model dependencies
+        run: pip install numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2 requests 'kagglehub>=0.3,<1'
+      - name: Restore exact prior state, shared source and successful Stage207 policy
+        env:
+          RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
+          RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test "$(TZ=Europe/Dublin date +%F)" = 2026-11-26
+          mkdir -p reports/stage152-specialists/source/stage2 reports/stage208/{ref,g3,previous,output}
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage2-historical-staging-database --dir reports/stage152-specialists/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage4-reference-named-events-and-winners --dir reports/stage208/ref
+          gh run download 43407036838 --repo "$GITHUB_REPOSITORY" --name stage109-g3-learning-43407036838 --dir reports/stage208/g3
+          gh run download 45789048541 --repo "$GITHUB_REPOSITORY" --name stage207-debutant-recovery-45789048541 --dir reports/stage208/previous
+          python scripts/stage87_hpr_storage.py restore --dir data/hpr/shards --db reports/stage208/hpr.sqlite
+          if [ -n "$RACING_API_USERNAME" ] && [ -n "$RACING_API_PASSWORD" ]; then python collect-racecards.py; fi
+          git restore --source a5987838b0e3f28b53686bac60d52cd164738718 --worktree -- scripts/stage107_model_g.py scripts/stage108_model_g2.py scripts/stage109_model_g3.py scripts/stage128_g5_today_paper.py
+          git apply --check reports/stage208/previous/candidate-source.patch
+          git apply reports/stage208/previous/candidate-source.patch
+      - name: Compare two maiden hurdles and audit remaining G routes
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/stage208.py" <<'PYCODE'
+          import collections as C, csv, datetime as D, hashlib, json, pathlib as P, sqlite3, sys, shutil
+          import joblib, pandas as pd
+          from zoneinfo import ZoneInfo
+          import stage108_model_g2 as G
+          import stage109_model_g3 as G3
+          import stage128_g5_today_paper as G5
+          from stage112_form_coverage_reconcile import valid_run
+          from stage167_validated_history import refreshed_inputs
+          import stage167_validated_history as H
+          from rhp_runner_eligibility import active_runner
+          from scripts.stage203_identity_recovery import expected, exact as identity_exact
+          from scripts.stage203g_final_cork import OUTSIDE
+          W=P.Path('reports/stage208');O=W/'output';DAY='2026-11-26';NOW=lambda:D.datetime.now(D.timezone.utc)
+          assert NOW().astimezone(ZoneInfo('Europe/Dublin')).date().isoformat()==DAY
+          
+          def exact(folder,name):
+           a=list(folder.rglob(name));assert len(a)==1,(name,a);return a[0]
+          def readcsv(p):
+           with p.open(newline='',encoding='utf-8-sig') as f:return list(csv.DictReader(f))
+          def write(name,rows):
+           if rows:
+            with (O/name).open('w',newline='',encoding='utf-8') as f:
+             w=csv.DictWriter(f,fieldnames=list(dict.fromkeys(k for r in rows for k in r)));w.writeheader();w.writerows(rows)
+          def save(name,x):
+           (O/name).write_text(json.dumps(x,indent=2,default=str)+'\n');print(name,json.dumps(x,default=str),flush=True)
+          def sha(p):
+           with p.open('rb') as f:return hashlib.file_digest(f,'sha256').hexdigest()
+          prior=readcsv(W/'previous'/'combined-35-races.csv');assert len(prior)==35
+          wanted={(G.course_key(r['course']),r['time']):r for r in prior if r['model'].startswith('G')}
+          assert all(r['model'] in ('G2_FROZEN','G5_COMBINED_QUARTERLY') for r in wanted.values()),'Unexpected G route; extend audit explicitly'
+          focus={('LINGFIELD','13:47'),('THURLES','15:06')};assert focus<=wanted.keys()
+          card=json.loads(P.Path('data/racecards.json').read_text());now=NOW();assert 0<=(now-G.stamp(card['collected_at'])).total_seconds()<=4*3600
+          fields=C.defaultdict(list)
+          for r in card['runners']:
+           if r.get('date')!=DAY or not active_runner(r):continue
+           off=G.stamp(r.get('race_time'));assert off
+           k=(G.course_key(r['course']),off.strftime('%H:%M'))
+           if k not in wanted:continue
+           if off<=now+D.timedelta(minutes=10):continue
+           assert not any(r.get(x) not in (None,'',[],{}) for x in ('position','finish_pos','result','outcome','sp','sp_decimal','starting_price','beaten','race_result','result_status','overall_beaten','distance_beaten_total'))
+           assert all(r.get(x) for x in ('horse_id','horse','sire','dam','trainer','jockey','lbs'))
+           fields[k].append(r)
+          assert focus<=fields.keys(),'A target race is no longer safely pre-off'
+          for k,rs in fields.items():assert len({G.identity(r) for r in rs})==len(rs) and len({r['race_id'] for r in rs})==1
+          rows=[r for rs in fields.values() for r in rs];assert len({r['horse_id'] for r in rows})==len(rows)
+          statefile=exact(W/'g3','stage109-prior-form-state.joblib');modelpath=exact(W/'g3','stage109-frozen-g2-original.joblib');hashes={str(p):sha(p) for p in (statefile,modelpath)}
+          hpr=W/'hpr.sqlite';bundle=joblib.load(modelpath);assert bundle['version']==G.VERSION and bundle['features']==G.FEATURES
+          
+          def state():
+           b=joblib.load(statefile);assert b['version']==G3.VERSION and b['asof_after_date']=='2025-12-31';return b['state']
+          legacy=state();print('Original G2 HPR load',G.load_recent_hpr(legacy,hpr,'2025-12-31',DAY),flush=True)
+          # Snapshot before/after with same cards and model. Stage207 exception is applied in the checkout.
+          def score(st,keys):
+           rs=[r for k in keys for r in fields[k]]
+           frame,reject=G.score_card_rows(st,bundle['estimator'],1.,{'runners':rs},NOW())
+           assert not reject and not frame.empty,(reject,'No G2 predictions')
+           frame=G.ranks(frame);assert set(frame.identity)=={G.identity(r) for r in rs}
+           for _,v in frame.groupby('race_id'):assert abs(v.win_probability.sum()-1)<1e-6 and sorted(v['rank'])==list(range(1,len(v)+1))
+           return frame
+          before=score(legacy,focus);before.to_csv(O/'focus-original.csv',index=False)
+          # Reconstruct validated shared history once; capture the untouched G5 legacy base before specialist overlays.
+          base=P.Path('reports/stage152-specialists/source/stage2/historical_ukie_staging.sqlite');ref=exact(W/'ref','all_races_with_reference_event_ids.csv')
+          legacy_db=W/'g5-original.sqlite';legacy_ref=W/'g5-original-reference.csv';oldbuild=H.build
+          
+          def capture(*a,**kw):
+           db,rf=oldbuild(*a,**kw);shutil.copy2(db,legacy_db);shutil.copy2(rf,legacy_ref);return db,rf
+          H.build=capture
+          try:
+           with refreshed_inputs(base,ref,DAY) as (db,rf):
+            # G5 state audit uses exact original baseline+HPR, not shared replacement. Network is NOT rescored.
+            g5=state();end=G5.archive_end_date(legacy_db,DAY);print('Original G5 state load',G5.add_base_2026(g5,legacy_db,hpr,end,DAY),flush=True)
+            refmap,refaudit=G.load_reference(rf,first='2022-01-01',last=(D.date.fromisoformat(DAY)-D.timedelta(days=1)).isoformat())
+            byid={G.identity(r):r for r in rows};byname={G.norm(r['horse']) for r in rows};events=C.defaultdict(list);quarantine=[]
+            con=sqlite3.connect(f'file:{P.Path(db).resolve()}?mode=ro',uri=True);con.row_factory=sqlite3.Row
+            assert con.execute('pragma quick_check').fetchone()[0]=='ok';assert con.execute('select max(race_date) from historical_races').fetchone()[0]<DAY
+            con.create_function('wanted',1,lambda s:int(G.norm(s) in byname),deterministic=True)
+            query='''SELECT r.id as race_id,r.race_date as date,r.course,r.race_type,r.surface,r.distance_f,r.going,r.race_class,u.runner_key,u.horse_name as horse,u.horse_source_id,u.sire,u.dam,u.trainer,u.jockey,u.age,u.sex,u.official_rating,u.weight_lbs,u.draw,u.finish_pos,u.outcome,u.beaten,u.race_comment,u.rpr,u.topspeed,u.sp_decimal FROM historical_runs u JOIN historical_races r ON r.id=u.race_id WHERE r.race_date>=? AND r.race_date<? AND wanted(u.horse_name)=1 ORDER BY r.race_date,r.id,u.runner_key'''
+            candidates=[dict(r) for r in con.execute(query,('2022-01-01',DAY))];raceinfo={};seen=set()
+            for r in candidates:
+             key=G.identity(r);rid=r['race_id'];d=r['date']
+             if key not in byid or not identity_exact(byid[key],{**r,'horse_id':r['horse_source_id']}):continue
+             if not valid_run(r):continue
+             unique=(key,d,rid);assert unique not in seen,('duplicate historical identity',unique);seen.add(unique)
+             meta=refmap.get(rid)
+             if not meta or meta[0]!=d or G.course_key(meta[1])!=G.course_key(r['course']) or meta[4] not in ('GB','IRELAND'):
+              quarantine.append(dict(horse=r['horse'],date=d,race_id=rid,reason='UNVERIFIED_REFERENCE'));continue
+             if rid not in raceinfo:
+              starters=[dict(x) for x in con.execute('select finish_pos,outcome,horse_name,horse_source_id,sire,dam from historical_runs where race_id=?',(rid,)) if valid_run(dict(x))]
+              pos=[int(x['finish_pos']) for x in starters if G.num(x['finish_pos']) is not None and G.num(x['finish_pos'])>=1]
+              keys=[G.identity(dict(x)) for x in starters]
+              # Conservative full-field sanity: no duplicate identities, single winner, contiguous observed finishing positions.
+              raceinfo[rid]=len(starters) if len(starters)>=2 and len(set(keys))==len(keys) and all(keys) and pos and sorted(pos)==list(range(1,len(pos)+1)) else 0
+             n=raceinfo[rid]
+             if not n:
+              quarantine.append(dict(horse=r['horse'],date=d,race_id=rid,reason='FIELD_SANITY_FAILED'));continue
+             rr={**r,'race_name':meta[3],'race_type':meta[2] or r['race_type'],'course':meta[1],'region_scope':meta[4]}
+             events[key].append((rr,n))
+            con.close();write('quarantined-source-records.csv',quarantine)
+            # Make a targeted per-horse overlay only. Construct an event using G's own adapter, never modify population aggregates.
+            review=[];inserted=[]
+            for k,rs in sorted(fields.items()):
+             family=wanted[k]['model'];st=legacy if family=='G2_FROZEN' else g5
+             for r in rs:
+              key=G.identity(r);old=list(st.horses.get(key,[]));dates={x['date'].isoformat() for x in old};decl=expected(r,DAY);known=bool(str(r.get('form') or '').strip('-/ ') or decl)
+              source=events[key];srcdates={x['date'] for x,n in source};missing=sorted(srcdates-dates);eligible=not old or (decl and decl not in dates)
+              # Only score the two G2 focus fields; others are audit-only.
+              add=[]
+              if k in focus and eligible:
+               byday=C.defaultdict(list)
+               for row,n in source:
+                if row['date'] not in dates:byday[row['date']].append((row,n))
+               room=max(0,24-len(old))
+               for d in sorted(byday,reverse=True):
+                if not room:break
+                if len(byday[d])!=1:continue # no safe same-date event disambiguation
+                row,n=byday[d][0];tmp=G.FormState();tmp.add(row,G.day(d),n);ee=list(tmp.horses.get(key,[]));assert len(ee)==1
+                add.append(ee[0]);room-=1;inserted.append(dict(course=r['course'],time=k[1],horse=r['horse'],date=d,race_id=row['race_id'],field_size=n,source='VERIFIED_SHARED_HORSE_ONLY'))
+               if add:
+                bucket=st.horses[key];bucket.clear();bucket.extend(sorted(old+add,key=lambda x:x['date']));assert len(bucket)==len(old)+len(add) and all(x in bucket for x in old)
+              new=list(st.horses.get(key,[]));newdates={x['date'].isoformat() for x in new}
+              classification=('EXTERNAL_HISTORY_NOT_IMPORTED' if decl and OUTSIDE.get(r['horse_id'])==decl and decl not in newdates else 'KNOWN_FORM_UNLINKED' if known and not new else 'DECLARED_LAST_RUN_UNLINKED' if decl and decl not in newdates else 'POSSIBLE_DEBUT_UNCONFIRMED' if not known and not new else 'LINKED')
+              review.append(dict(course=r['course'],time=k[1],model=family,horse=r['horse'],horse_id=r['horse_id'],declared_form=r.get('form'),expected_last_run=decl,original_runs=len(old),original_latest=max(dates,default=''),verified_shared_runs=len(source),verified_missing_dates=len(missing),targeted_added=len(add),candidate_runs=len(new),candidate_latest=max(newdates,default=''),classification=classification,audit_only=k not in focus))
+            write('all-g-route-form-audit.csv',review);write('added-observed-runs.csv',inserted)
+            # Preserve original model weights and original population feature buckets; candidate state is in memory only.
+            assert all(sha(P.Path(p))==v for p,v in hashes.items())
+            after=score(legacy,focus);after.to_csv(O/'focus-targeted-overlay.csv',index=False)
+            diff=before[['race_id','horse','rank','win_probability','prior_runs']].merge(after[['race_id','horse','rank','win_probability','prior_runs']],on=['race_id','horse'],suffixes=('_original','_candidate'),validate='one_to_one');assert len(diff)==len(before)==len(after)
+            diff.to_csv(O/'focus-rank-comparison.csv',index=False)
+            top=diff[(diff.rank_original<=2)|(diff.rank_candidate<=2)].to_dict('records');save('summary.json',dict(status='PAPER_CANDIDATE_ONLY',focus_races=2,g_routes_audited=len(fields),g_routes_preoff_excluded=[str(k) for k in wanted.keys()-fields.keys()],runners_audited=len(review),added_records=len(inserted),focus_unlinked=[x for x in review if not x['audit_only'] and x['classification'] in ('KNOWN_FORM_UNLINKED','DECLARED_LAST_RUN_UNLINKED','EXTERNAL_HISTORY_NOT_IMPORTED')],all_g_classification=dict(C.Counter(x['classification'] for x in review)),top_comparison=top,model_hashes=hashes,other_33_selections_not_modified=True,g5_network_not_rescored=True,production_changed=False))
+          finally:H.build=oldbuild
+          PYCODE
+          python -m py_compile "$RUNNER_TEMP/stage208.py"
+          python -u "$RUNNER_TEMP/stage208.py"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage208-g-targeted-overlay-${{ github.run_id }}
+          path: reports/stage208/output/
+          retention-days: 30
+          if-no-files-found: warn
