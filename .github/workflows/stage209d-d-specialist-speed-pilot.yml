@@ -1,0 +1,154 @@
+name: Stage209D - D specialist speed and exact-score parity pilot
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/stage209d-d-specialist-speed-pilot.yml']
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage209d-d-specialist-speed-pilot
+  cancel-in-progress: false
+jobs:
+  benchmark:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    env:
+      PYTHONPATH: .:scripts
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      GH_TOKEN: ${{ github.token }}
+      TARGET_DAY: '2026-10-26'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 4c6c12994481028fc59cfe194d8df1dfc4c72a9c
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2 freezegun==1.5.5 requests 'kagglehub>=0.3,<1'
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage209-research-code
+          run-id: 45902013748
+          github-token: ${{ github.token }}
+          path: stage209-code
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage209-day-2026-10-26
+          run-id: 45902013748
+          github-token: ${{ github.token }}
+          path: stage209-reference
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage177-shared-inputs
+          run-id: 45491296882
+          github-token: ${{ github.token }}
+          path: stage209-shared
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage177-shared-db
+          run-id: 45491296882
+          github-token: ${{ github.token }}
+          path: stage209-shared
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage177-g5-inputs
+          run-id: 45491296882
+          github-token: ${{ github.token }}
+          path: stage209-shared
+      - name: Verify all archived scoring inputs before starting
+        run: |
+          python - <<'PY'
+          import hashlib,json,pathlib as P,sqlite3
+          b=P.Path('stage209-shared');m=json.loads((b/'history-manifest.json').read_text())
+          for name,expected in [('candidate.sqlite',m['database_sha256']),('candidate-reference.csv',m['reference_sha256'])]:
+           p=b/name
+           assert p.is_file(),f'Missing required archive: {p}'
+           with p.open('rb') as f:actual=hashlib.file_digest(f,'sha256').hexdigest()
+           assert actual==expected,(name,actual,expected)
+           print('VERIFIED',name,p.stat().st_size,actual,flush=True)
+          h=b/'hpr.sqlite';assert h.is_file(),f'Missing HPR ledger {h}'
+          with sqlite3.connect(h.resolve().as_uri()+'?mode=ro',uri=True) as c:
+           assert c.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+           n=c.execute('SELECT COUNT(*) FROM hpr_ratings').fetchone()[0]
+           assert n==json.loads((b/'hpr-restore-audit.json').read_text())['total_rows'],n
+           print('VERIFIED HPR ledger rows:',n,flush=True)
+          PY
+      - name: Prune unused D recipes in disposable research scorer
+        run: |
+          python - <<'PY'
+          import pathlib as P
+          p=P.Path('stage209-code/engine.py');s=p.read_text()
+          def replace(old,new):
+           global s
+           assert s.count(old)==1,(old[:100],s.count(old))
+           s=s.replace(old,new,1)
+          opt='def stage209d_prune_adapter():\n p=ROOT/\'scripts/stage186b_local_replay.py\'\n src=p.read_text()\n def edit(a,b):\n  nonlocal src\n  assert src.count(a)==1,(a,src.count(a))\n  src=src.replace(a,b,1)\n edit("namespace={\'__name__\':\'stage186b_replay\'}", "required_models=set(json.loads(__import__(\'os\').environ[\'STAGE209_REQUIRED_MODELS\']))\\nnamespace={\'__name__\':\'stage186b_replay\',\'required_models\':required_models}\\nassert required_models <= {\'D137_HPR_ABILITY_GRADE\',\'D137_HPR_ABILITY_OR\',\'D_FORM_DEBUT_EIGHT_PILLARS__SR\',\'D_FORM_WEIGHT_OR_GRADE__ROI\'}, required_models")\n edit("prefix=source.split(anchor)[0]", "prefix=source.split(anchor)[0]\\na=prefix.index(\'    # Original 1988+ Stage142 warmup:\')\\nb=prefix.index(\'    # The original HPR as-of feature cache\',a)\\nprefix=prefix[:a]+prefix[b:]")\n edit(\'    for name in (J.BASE,J.GRADE,J.OR_ONLY,J.WEIGHT,T.CORE):\\n\', \'    for name in (J.BASE,J.GRADE,J.OR_ONLY,J.WEIGHT,T.CORE):\\n        if name not in required_models:continue\\n\')\n edit(\'    for arm in P.ARMS:\\n        banks=P.optimise_by_race_type(train,arm,grid,frozen)\', \'    for arm in P.ARMS:\\n        if not any(arm+"__"+mode in required_models for mode in P.OBJECTIVES):continue\\n        banks=P.optimise_by_race_type(train,arm,grid,frozen)\')\n edit("            name=arm+\'__\'+mode\\n","            name=arm+\'__\'+mode\\n            if name not in required_models:continue\\n")\n compile(src,str(p),\'exec\');p.write_text(src)\n'
+          replace("add_e_score_explanations(ROOT/'scripts')", "add_e_score_explanations(ROOT/'scripts')\n"+opt+"\nstage209d_prune_adapter()")
+          replace('rows=original_run(name,script,args,filename,env,label)', "if name=='D_specialists':\n  requested={race_routes[k]['model'] for k in family_fields[name]}\n  env={**(env or {}),'STAGE209_REQUIRED_MODELS':json.dumps(sorted(requested))}\n rows=original_run(name,script,args,filename,env,label)")
+          replace('for family in sorted(family_fields,key=lambda f:min(k[2] for k in family_fields[f])):', "for family in ['D_specialists']:\n assert family in family_fields")
+          compile(s,'stage209d-engine.py','exec');p.write_text(s)
+          PY
+      - name: Time the optimized D specialists on the same seven races
+        run: |
+          python - <<'PY'
+          import os,json,pathlib as P,subprocess as S,sys,time
+          root=P.Path.cwd();shared=(root/'stage209-shared').resolve();code=(root/'stage209-code/engine.py').resolve()
+          b=json.loads((shared/'2026-10-26-batches.json').read_text())
+          assert len(b)==1 and b[0]['batch']=='2026-10-26-01' and len(b[0]['races'])==46
+          b=b[0];out=root/'stage209d-output';out.mkdir(exist_ok=True)
+          meta=out/'meta.json';meta.write_text(json.dumps(b))
+          env=dict(os.environ,STAGE209_SHARED=str(shared),STAGE209_CARD=str(shared/(b['batch']+'.json')),STAGE209_META=str(meta),STAGE209_CLOCK=b['cutoff'])
+          wrapper='import os,runpy,sys\nfrom freezegun import freeze_time\nwith freeze_time(os.environ["STAGE209_CLOCK"],real_asyncio=True,ignore=["subprocess"]):\n runpy.run_path(sys.argv[1],run_name="__main__")\n'
+          t=time.monotonic()
+          with (out/'console.log').open('w') as f:rc=S.run([sys.executable,'-u','-c',wrapper,str(code)],stdout=f,stderr=S.STDOUT,env=env).returncode
+          duration=time.monotonic()-t
+          (out/'timing.json').write_text(json.dumps({'wall_clock_seconds':duration,'exit':rc},indent=2))
+          print('STAGE209D_TIMING',duration,'seconds; exit',rc,flush=True)
+          if rc:print((out/'console.log').read_text()[-16000:]);raise SystemExit(rc)
+          PY
+      - name: Exact rank and score parity gate against completed Stage209B
+        run: |
+          python - <<'PY'
+          import csv,json,math,os,pathlib as P
+          out=P.Path('stage209d-output')
+          expected_models={'D137_HPR_ABILITY_OR','D_FORM_DEBUT_EIGHT_PILLARS__SR'}
+          def rows(p):
+           found={}
+           with p.open(newline='') as f:
+            for r in csv.DictReader(f):
+             if r['model'] not in expected_models:continue
+             k=tuple(r[x] for x in ('date','course','time','race_type','model','horse'))
+             assert k not in found
+             found[k]=(int(float(r['rank'])),float(r['research_score']))
+           return found
+          before=rows(P.Path('stage209-reference/2026-10-26-01/all-runners.csv'))
+          after=rows(P.Path('stage196-output/all-runners.csv'))
+          assert len(before)==63 and len({k[:3] for k in before})==7
+          missing=sorted(set(before)-set(after));extra=sorted(set(after)-set(before))
+          changes=[]
+          for k in sorted(set(before)&set(after)):
+           a,b=before[k],after[k]
+           if a[0]!=b[0] or not math.isclose(a[1],b[1],abs_tol=1e-12,rel_tol=1e-10):changes.append({'key':k,'before':a,'after':b})
+          audit=json.loads(P.Path('stage196-output/audit.json').read_text())
+          family=[f for f in audit['families'] if f['family']=='D_specialists']
+          ok=not(missing or extra or changes) and len(family)==1 and family[0]['status']=='SUCCESS' and set(family[0]['models'])==expected_models
+          report={'parity_passed':ok,'expected_races':7,'expected_runner_scores':63,'actual_runner_scores':len(after),'missing':missing,'extra':extra,'changes':changes,'timing':json.loads((out/'timing.json').read_text()),'fitted_models':family[0].get('models') if family else [],'scope':'Research parity pilot only; no production writes'}
+          (out/'parity.json').write_text(json.dumps(report,indent=2));print(json.dumps(report,indent=2))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:f.write('# Stage209D exact-score parity\n\n'+str(ok)+'; '+str(len(after))+'/63 runner scores; wall clock '+str(round(report['timing']['wall_clock_seconds']/60,2))+' minutes.\n')
+          assert ok,'Parity failure: do not use optimized adapter'
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage209d-speed-parity
+          path: |
+            stage209d-output/
+            stage196-output/
+          retention-days: 30
+          if-no-files-found: warn
