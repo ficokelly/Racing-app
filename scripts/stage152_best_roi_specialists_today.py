@@ -170,7 +170,12 @@ def main(args):
         for name,inputs,bank in variants:
             stage159_inputs=H.hpr_ability_137(inputs)
             scores,branch=S.predict_bank(bank,stage159_inputs)
-            stage159_drivers=E.safe_forest(stage159_inputs['xf'],scores,bank[branch],S.FEATURES)
+            feature_names = list(S.FEATURES)
+            if name in (J.GRADE_WEIGHT, J.ALL):
+                feature_names.extend(J.W_FEATURES)
+            if name == J.ALL:
+                feature_names.extend(J.OR_FEATURES)
+            stage159_drivers=E.safe_forest(stage159_inputs['xf'],scores,bank[branch],feature_names)
             if len(scores)!=len(r['horse']) or not np.all(np.isfinite(scores)):
                 raise RuntimeError('Failed complete field for '+rid+' '+name)
             top=int(np.argmax(scores))

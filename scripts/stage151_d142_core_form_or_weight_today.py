@@ -131,7 +131,8 @@ def score_today(args):
         model_race = T.variant(r, by_extended[rid], core=True, form=True, weights=True)
         stage159_inputs=H.hpr_ability_137(model_race)
         scores, bank = S.predict_bank(banks, stage159_inputs)
-        stage159_drivers=E.safe_forest(stage159_inputs['xf'],scores,banks[bank],S.FEATURES)
+        feature_names = [*S.FEATURES, *J.W_FEATURES, *J.OR_FEATURES]
+        stage159_drivers=E.safe_forest(stage159_inputs['xf'],scores,banks[bank],feature_names)
         if len(scores) != len(r['horse']) or not np.all(np.isfinite(scores)):
             raise RuntimeError('Invalid or incomplete full-field scores for '+rid)
         order = np.argsort(-scores, kind='stable')

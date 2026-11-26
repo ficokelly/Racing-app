@@ -144,7 +144,8 @@ def run(args):
             skips['already_off_or_imminent']+=1;continue
         stage159_inputs=H.hpr_ability_137(M.copy_race(r,weights=True,official=True))
         prob,bank=S.predict_bank(banks,stage159_inputs)
-        stage159_drivers=E.safe_forest(stage159_inputs['xf'],prob,banks[bank],S.FEATURES)
+        feature_names = [*S.FEATURES, *M.W_FEATURES, *M.OR_FEATURES]
+        stage159_drivers=E.safe_forest(stage159_inputs['xf'],prob,banks[bank],feature_names)
         if not np.all(np.isfinite(prob)) or len(prob)!=len(r['horse']):raise RuntimeError('Invalid score '+rid)
         order=np.argsort(-prob,kind='stable')
         for rank,ix in enumerate(order,1):

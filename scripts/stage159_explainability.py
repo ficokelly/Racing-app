@@ -32,6 +32,12 @@ def group_for_name(name: str):
     for label,features in GROUPS.items():
         if n in features: return label
     if lower in {p.casefold() for p in PILLARS}:return lower+' history'
+    # The handicap variants append Stage141's weight and official-mark columns.
+    if lower.startswith('weight_') or lower in {
+        'or_weight_equiv_vs_field', 'or_weight_equiv_vs_best', 'or_weight_equiv_vs_worst',
+        'or_weight_equiv_mean_known', 'or_relative_weight_minus_rating_diff',
+    }:return 'official rating and carried weight'
+    if lower.startswith('or_'):return 'handicap mark and ratings history'
     # G5 and historical-trend fusion input names differ from the frozen 50-feature model.
     if any(x in lower for x in ('rival','nextout','network','graph','opposition')):return 'quality of previous rivals'
     if any(x in lower for x in ('trainer','stable')):return 'trainer history'
@@ -80,6 +86,14 @@ def forest_sensitivity(x,raw_scores,estimator,names):
         warnings.simplefilter('ignore',RuntimeWarning)
         med=np.nanmedian(x,axis=0)
     deltas=[{} for _ in range(len(x))]
+    # Compare leaders to the runner-up and other runners to the horse just ahead.
+    order=np.argsort(-scores,kind='stable')
+    comparison=np.empty(len(x),dtype=int)
+    if len(order)>1:
+        comparison[order[0]]=order[1]
+        comparison[order[1:]]=order[:-1]
+    else:
+        comparison[:]=order
     for label,ids in _feature_groups(names).items():
         valid=[i for i in ids if math.isfinite(float(med[i]))]
         if not valid:continue
@@ -89,7 +103,15 @@ def forest_sensitivity(x,raw_scores,estimator,names):
             raise RuntimeError('Model sensitivity returned invalid outputs')
         for i in range(len(x)):
             deltas[i][label]=scores[i]-alternate[i]
-    return [_pack(d,'tree_median_sensitivity','raw model score') for d in deltas]
+    output=[]
+    for i,d in enumerate(deltas):
+        item=_pack(d,'tree_median_sensitivity','raw model score')
+        if len(order)>1:
+            rival=comparison[i]
+            margin={label:delta-deltas[rival][label] for label,delta in d.items()}
+            item['rank_comparison']=_pack(margin,'tree_median_sensitivity','raw model score gap')
+        output.append(item)
+    return output
 
 
 def logistic_contributions(x,scaler,estimator,names):
@@ -148,6 +170,11 @@ def self_test():
     p=Stub().predict_proba(x)[:,1]
     out=forest_sensitivity(x,p,Stub(),['Ability','Trainer'])
     assert out[0]['positive'][0][0]=='ability and HPR' and out[0]['method']=='tree_median_sensitivity'
+    assert out[0]['rank_comparison']['positive'][0][0]=='ability and HPR'
+    assert out[2]['rank_comparison']['negative'][0][0]=='ability and HPR'
+    handicap=safe_forest(x,p,Stub(),['weight_today_rel_field','or_last_handicap_win_mark'])
+    assert handicap[0]['positive'][0][0]=='official rating and carried weight'
+    assert group_for_name('or_last_handicap_win_mark')=='handicap mark and ratings history'
     class L:coef_=np.array([[2.,-1.]])
     class Scaler:scale_=np.array([1.,2.])
     lin=logistic_contributions(x,Scaler(),L(),['Ability','Trainer'])
