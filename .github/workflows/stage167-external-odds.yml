@@ -106,3 +106,10 @@ jobs:
           done
           echo '::error::Odds publication failed after five attempts'
           exit 1
+
+  results:
+    uses: ./.github/workflows/publish-puntersedge-results.yml
+    with:
+      externally_triggered: true
+    secrets:
+      PUNTERSEDGE_API_KEY: ${{ secrets.PUNTERSEDGE_API_KEY }}
