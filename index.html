@@ -3036,12 +3036,99 @@ restoreRefreshFiltersAfterFeed=function(){
   const earlierType=chosen.baselineLabel==='First recorded'?'First':chosen.baselineLabel==='API open (unverified)'?'API open':'Earlier';
   return '<span class="rhp70-price" title="'+safe('Published bookmaker odds from '+chosen.bookmaker+(alternative?' (alternative)':'')+'; '+(hasEarlier?earlierType+' '+fmt(earlier):'earlier price unavailable'))+'"><small class="rhp157-first">'+safe(hasEarlier?earlierType+' '+fmt(earlier):'Earlier —')+'</small><b>'+safe(fmt(chosen.current))+'</b><small>'+safe((alternative?'Alt · ':'Latest · ')+chosen.bookmaker)+'</small></span>';
  }
+ function rhpRunnerFormNote(card){
+  const raw=rcForm(card).toUpperCase();
+  if(!/^[0-9PFUBRS/\s-]+$/.test(raw))return '';
+  const runs=[...raw].filter(result=>/^[0-9PFUBRS]$/.test(result)).slice(-5);
+  const latest=runs.at(-1), previous=runs.slice(0,-1);
+  const places=runs.filter(result=>/[123]/.test(result)).length;
+  const wins=runs.filter(result=>result==='1').length;
+  const setbacks={P:'Pulled up',F:'Fell',U:'Unseated the rider',B:'Brought down',R:'Refused',S:'Slipped up'};
+  if(!latest)return '';
+  const ordinals=['10th or worse','first','second','third','fourth','fifth','sixth','seventh','eighth','ninth'];
+  const last=setbacks[latest]||({1:'Won',2:'Finished second',3:'Finished third'}[latest]||'Finished '+ordinals[Number(latest)]);
+  if(latest==='1'&&previous.at(-1)==='2')return 'Went one better last time after finishing second on the previous start';
+  if(latest==='1'&&wins>1)return 'Won last time, making it '+wins+' wins in '+runs.length+' starts';
+  if(latest==='1'&&/[4-9]/.test(previous.at(-1)||''))return 'Won last time after finishing '+ordinals[Number(previous.at(-1))]+' on the previous start';
+  if(latest==='1'&&runs.length>=3&&places===1)return 'Won last time after '+previous.length+' starts without a top-three finish';
+  if(places>=2&&/[23]/.test(latest))return last+' last time and has made the top three in '+places+' of the last '+runs.length+' starts';
+  if(setbacks[latest]&&previous.at(-1)===latest){
+   if(latest==='P')return 'Pulled up on both of the last two starts';
+   if(latest==='F')return 'Fell on both of the last two starts';
+  }
+  if(/[23]/.test(latest)&&previous.length>=2&&places===1)return last+' last time, the first top-three finish in '+runs.length+' starts';
+  if(!setbacks[latest]&&places===0&&runs.length>=3)return last+' last time and has gone '+runs.length+' starts without a top-three finish';
+  if(!setbacks[latest]&&Number(latest)!==1&&wins>0&&!/[23]/.test(latest))return last+' last time despite '+(wins===1?'a win':wins+' wins')+' in the last '+runs.length+' starts';
+  const nonCompletions=previous.filter(result=>setbacks[result]).length;
+  if(!setbacks[latest]&&nonCompletions>=2)return last+' last time after failing to complete in '+nonCompletions+' of the previous '+previous.length+' starts';
+  return last+' last time';
+ }
+ const rhpCommentFactorLabels={
+  'ability pillar':'historical ability ratings','distance pillar':'record at the trip',
+  'jumping pillar':'jumping record','course pillar':'course record','jockey pillar':'jockey record',
+  'ground pillar':'record on the going','trainer pillar':'trainer record','draw pillar':'draw',
+  'ability and HPR':'historical ability ratings','eight-pillar historical rating':'historical performance ratings'
+ };
+ function rhpCommentFactor(runner,direction){
+  const drivers=runner?.model_drivers;
+  if(!['exact_eight_pillar_additive','tree_median_sensitivity'].includes(drivers?.method))return '';
+  const label=drivers[direction]?.[0]?.[0];
+  return typeof label==='string'?rhpCommentFactorLabels[label]||label:'';
+ }
+ function rhpArchivedFormNote(runner){
+  const prose=String(runner?.commentary||'');
+  const evidence=prose.match(/(?:The positive evidence includes |The reservations include |The individual information available is )(.+?)(?:, but this alone|\.|$)/)?.[1];
+  if(!evidence)return '';
+  const note=evidence.charAt(0).toUpperCase()+evidence.slice(1);
+  return note.replace(/^A win(?= on the latest recorded outing)/,'Won')
+   .replace(/ on the latest recorded outing and a win in the last \d+ recorded finishes/,' last time')
+   .replace(/ on the latest recorded outing/,' last time');
+ }
+ function rhpRunnerComment(race,runner,card){
+  if(isNR(card))return 'Withdrawn from this race.';
+  const form=rhpRunnerFormNote(card)||rhpArchivedFormNote(runner);
+  const positive=rhpCommentFactor(runner,'positive'),negative=rhpCommentFactor(runner,'negative');
+  const method=runner?.model_drivers?.method;
+  const scores=positive&&negative
+   ?method==='tree_median_sensitivity'
+    ?'The specialist’s sensitivity check favours '+positive+', with less support from '+negative
+    :'The specialist gives credit for '+positive+', with '+negative+' weighing against the score'
+   :positive
+    ?(method==='tree_median_sensitivity'?'The specialist’s sensitivity check favours ':'The specialist gives most credit for ')+positive
+    :negative
+     ?(method==='tree_median_sensitivity'?'The specialist’s sensitivity check finds less support from ':'The main drawback in the specialist’s score is ')+negative
+     :'';
+  const weight=Number(rcField(card,'lbs','weight')??runner?.weight);
+  const topWeight=weight>0&&/\bhandicap\b/i.test(race.race_type||race.race_name||'')&&
+   (race.runners||[]).some(other=>Number(other.weight)>0&&Number(other.weight)<weight)&&
+   !(race.runners||[]).some(other=>Number(other.weight)>weight);
+  const days=Number(rcField(card,'last_run','days_since_last_run'));
+  const sharesTopWeight=(race.runners||[]).filter(other=>Number(other.weight)===weight).length>1;
+  const proven=(flags,counts)=>flags.some(key=>[true,1,'1','true','yes'].includes(card?.[key]))||
+   counts.some(key=>Number(card?.[key])>0);
+  const courseDistance=proven(['course_distance_winner','cd_winner'],['course_distance_wins','course_and_distance_wins','cd_wins']);
+  const distance=proven(['distance_winner'],['distance_wins']);
+  const context=topWeight?(sharesTopWeight?'Shares':'Carries')+' top weight in the handicap'
+   :days>=90?'Returns after '+days+' days away':courseDistance?'Has won over this course and distance':distance?'Has won at this distance':'';
+  return [form,scores||context].filter(Boolean).map(sentence=>sentence+'.').join(' ')||
+   'There is too little published form or scoring detail to assess this runner’s chance.';
+ }
+ function rhpVerdictForm(runner,card){
+  const form=rhpRunnerFormNote(card)||rhpArchivedFormNote(runner);
+  const factor=rhpCommentFactor(runner,'positive');
+  const modelNote=factor?'The specialist’s '+(runner.model_drivers.method==='tree_median_sensitivity'?'sensitivity check':'score')+' favours '+factor+'.':'';
+  return [form?runner.horse+': '+form.charAt(0).toLowerCase()+form.slice(1)+'.':'',modelNote?(form?'':runner.horse+': ')+modelNote:''].filter(Boolean).join(' ');
+ }
+ function rhpCommentCard(race,horse){
+  return (racecardRunners||[]).find(card=>(card.date||dateKey(card.race_time))===race.date&&
+   courseMatchKey(card.course)===courseMatchKey(race.course)&&clock(card.race_time)===race.time&&norm(card.horse)===norm(horse));
+ }
  function rhp158HorseDetails(race,x){
-  const card=(racecardRunners||[]).find(c=>(c.date||dateKey(c.race_time))===race.date&&courseMatchKey(c.course)===courseMatchKey(race.course)&&clock(c.race_time)===race.time&&norm(c.horse)===norm(x.horse));
+  const card=rhpCommentCard(race,x.horse);
   const form=card?rcForm(card):'',rating=card?rcField(card,'ofr','or','official_rating'):null;
   const quote=card?hotPriceRow(card):null;
   const payload=encodeURIComponent(JSON.stringify({course:race.course,day:race.date,time:race.time,horse:x.horse}));
-  return `<div class="rhp158-horse-details" hidden><p class="rhp-horse-comment"><strong>Horse summary:</strong> ${safe(x.commentary||'Individual race analysis is not yet published.')}</p>`+
+  return `<div class="rhp158-horse-details" hidden><p class="rhp-horse-comment"><strong>Horse summary:</strong> ${safe(rhpRunnerComment(race,x,card))}</p>`+
    `<p class="hint"><strong>Recent form:</strong> ${safe(form||'Not supplied')} · <strong>Official rating:</strong> ${rating!==null?safe(rating):'Not supplied'} · <strong>Age:</strong> ${card?safe(card.age||'—'):'—'}</p>`+
    `<p class="hint"><strong>Trainer:</strong> ${safe(card?.trainer||'Not supplied')} · <strong>Jockey:</strong> ${safe(card?.jockey||'Not supplied')}</p>`+
    `<p class="hint"><strong>Bookmaker odds:</strong> ${quote?safe(quote.bookmaker)+' · '+safe(fmt(quote.earlier))+' → '+safe(fmt(quote.current)):'No verified quote on this date'}</p>`+
@@ -3211,7 +3298,10 @@ restoreRefreshFiltersAfterFeed=function(){
   if(!race)return '<div class="rhp-verdict"><strong>ROI Specialists</strong><p>This race is awaiting its specialist assessment. No other model is substituted.</p></div>';
   if(!race.selection)return `<div class="rhp-verdict"><strong>ROI Specialists · pending</strong><p>${safe(race.reason||'A complete, current specialist ranking is not yet available.')}</p></div>`;
   const tip=race.nap_nb?`<p><strong>${safe(race.nap_nb)}</strong> · ${safe(race.source_model||'Specialist')} confidence pick</p>`:'';
-  const prose=race.commentary||`${race.selection.horse} is the specialist's first choice.`;
+  const contenders=ordered(race).map(runner=>({runner,card:rhpCommentCard(race,runner.horse)}))
+   .filter(({card})=>!isNR(card)).slice(0,2);
+  const prose=contenders.map(({runner,card})=>rhpVerdictForm(runner,card)).filter(Boolean).join(' ')||
+   'There is too little published form or scoring detail to explain the specialist’s view of this field.';
   return `<div class="rhp-verdict"><strong>How Hot Pots sees this race</strong>${tip}<p>${safe(prose)}</p><p class="hint">Race-type specialist: ${safe((race.source_model||'').replaceAll('_',' '))} · Scores are rankings, not guaranteed probabilities.</p></div>`;
  };
  rhpSelectedHorseComment=function(r,x,day){
@@ -3220,8 +3310,7 @@ restoreRefreshFiltersAfterFeed=function(){
   const h=ordered(race).find(v=>norm(v.horse)===norm(r.horse));
   if(!h)return `${safe(r.horse)} is not part of the currently verified model field. A runner change requires reassessment.`;
   const tip=race.nap_nb&&Number(h.rank)===1?`<strong>${safe(race.nap_nb)}.</strong> `:'';
-  return tip+safe(h.commentary||'No individual form reasons have been verified for this runner.')+
-    ` <small>Rank ${safe(h.rank)} of ${safe(race.field_size)} · ${safe((race.source_model||'').replaceAll('_',' '))}</small>`;
+  return tip+safe(rhpRunnerComment(race,h,r));
  };
  rhpSelectedModelBadge=function(horse,course,day,time){
   const race=getRace(course,day,time);
