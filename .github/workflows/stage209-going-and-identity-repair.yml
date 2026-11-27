@@ -1,0 +1,177 @@
+name: Stage209 - Dated going repair and exact identity gap export
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: stage209-dated-going-repair
+  cancel-in-progress: false
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dated fallback and repair existing racecards
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage209
+          cat > scripts/stage209_dated_going.py <<'PY'
+          """Date-specific published going fallback; never replace nonblank provider going."""
+          import re
+          from datetime import datetime, timezone
+          DAY = '2026-11-28'
+          SOURCES = {
+              'bangorondee': 'https://www.racingpost.com/racecards/4/bangor-on-dee/2026-11-28/',
+              'newbury': 'https://www.racingpost.com/racecards/36/newbury/2026-11-28/',
+          }
+          SCHEDULE = {
+              'bangorondee': {'11:50':'hurdle','12:25':'hurdle','13:00':'chase','13:33':'hurdle','14:10':'hurdle','14:45':'chase','15:25':'chase'},
+              'newbury': {'12:00':'hurdle','12:35':'hurdle','13:10':'chase','13:40':'hurdle','14:20':'hurdle','15:00':'chase','15:38':'chase'},
+          }
+          VALUES = {
+              ('bangorondee','hurdle'): ('Good','Good, Good to Soft in places'),
+              ('bangorondee','chase'): ('Good to Soft','Good to Soft'),
+              ('newbury','hurdle'): ('Good to Soft','Good to Soft, Good in places'),
+              ('newbury','chase'): ('Good','Good, Good to Soft in places'),
+          }
+          def blank(x):
+              return x is None or not str(x).strip()
+          def target(row):
+              if str(row.get('date') or '')[:10] != DAY:
+                  return None
+              course = re.sub(r'[^a-z]', '', str(row.get('course') or '').lower())
+              course = {'bangor':'bangorondee'}.get(course,course)
+              if course not in SCHEDULE:
+                  return None
+              try:
+                  off = datetime.fromisoformat(str(row.get('race_time') or '').replace('Z','+00:00'))
+                  if off.tzinfo is None:
+                      return None
+                  clock = off.astimezone(timezone.utc).strftime('%H:%M')
+              except ValueError:
+                  return None
+              code = SCHEDULE[course].get(clock)
+              if not code:
+                  return None
+              kind = str(row.get('type') or '').lower()
+              if code not in kind and not (code=='chase' and 'steeple' in kind):
+                  return None
+              return course, clock, code
+          def apply(row):
+              key = target(row)
+              if not key or not blank(row.get('going')) or not blank(row.get('going_detailed')):
+                  return False
+              course, clock, code = key
+              row['going'], row['going_detailed'] = VALUES[(course,code)]
+              row['going_source'] = SOURCES[course]
+              row['going_source_date'] = '2026-11-27'
+              row['going_provisional'] = True
+              return True
+          PY
+          python - <<'PY'
+          import json, pathlib
+          from scripts.stage209_dated_going import apply, target, blank, SCHEDULE
+          # Unit checks: exact date/race, provider data takes priority, no other race changed.
+          x={'date':'2026-11-28','course':'Bangor-on-Dee','race_time':'2026-11-28T13:00:00Z','type':'Chase','going':None}
+          assert apply(x) and x['going']=='Good to Soft' and not apply(x)
+          assert not apply({**x,'date':'2026-11-29','going':None,'going_detailed':None})
+          assert not apply({**x,'type':'Hurdle','going':None,'going_detailed':None})
+          assert not apply({**x,'going':'Soft','going_detailed':None})
+          updates={}; docs={}
+          for name in ('racecards.json','racecards-archive.json'):
+              p=pathlib.Path('data')/name
+              doc=json.loads(p.read_text()); rows=doc['runners']; seen=set(); changed=0
+              for row in rows:
+                  key=target(row)
+                  if key: seen.add(key[:2])
+                  changed+=int(apply(row))
+              missing=[{'course':r.get('course'),'time':r.get('race_time'),'horse':r.get('horse'),'type':r.get('type')} for r in rows if target(r) and blank(r.get('going')) and blank(r.get('going_detailed'))]
+              updates[name]={'matched_races':len(seen),'updated_runner_rows':changed,'remaining_blank_rows':len(missing),'remaining':missing}
+              docs[name]=(p,doc,changed)
+          expected=sum(map(len,SCHEDULE.values()))
+          assert updates['racecards.json']['matched_races']==expected, updates['racecards.json']
+          assert updates['racecards.json']['remaining_blank_rows']==0, updates['racecards.json']
+          # Preserve fallback after the API refresh, without altering real upstream going.
+          p=pathlib.Path('collect-racecards.py'); s=p.read_text()
+          needle='                all_runners.append(item)'
+          import_line='from scripts.stage209_dated_going import apply as apply_stage209_going'
+          if import_line not in s:
+              assert s.count(needle)==1
+              anchor='for day in ("today", "tomorrow"):'
+              assert s.count(anchor)==1
+              s=s.replace(anchor,'import sys\nsys.path.insert(0, str(Path(__file__).resolve().parent))\n'+import_line+'\n\n'+anchor)
+              s=s.replace(needle,'                apply_stage209_going(item)\n'+needle)
+              compile(s,str(p),'exec')
+              p.write_text(s)
+          for p,doc,changed in docs.values():
+              if changed:
+                  tmp=p.with_suffix('.stage209.tmp'); tmp.write_text(json.dumps(doc,ensure_ascii=False,indent=2)+'\n'); tmp.replace(p)
+          pathlib.Path('reports/stage209/going.json').write_text(json.dumps(updates,indent=2)+'\n')
+          print(json.dumps(updates,indent=2))
+          PY
+      - name: Export only unresolved trainer and jockey records from approved form calculation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import collections, datetime as dt, json, pathlib
+          from scripts import stage32_form_rebuild as f
+          as_of=dt.date(2026,11,27); audit=collections.Counter()
+          cache=f.cache_index(f.load_json(f.CACHE_FILE))
+          for path in (pathlib.Path('data/racecards-archive.json'),pathlib.Path('data/racecards.json')):
+              f.combine_person_cache(cache,f.load_json(path),path.name,audit)
+          rows, dates=f.get_best_rows(as_of,cache,audit)
+          report=f.load_json(f.AUDIT_FILE)
+          # Approved Kaggle dates are already represented by the baseline; only audit the API bridge.
+          approved=set(report.get('kaggle_days',[])); api_days=set(report.get('api_days',[]))
+          if report.get('as_of')!='2026-11-27' or not api_days or api_days & approved:
+              raise SystemExit('Form audit date or approved source coverage changed; review before export')
+          index=collections.defaultdict(list)
+          for day in sorted(api_days):
+              for race in f.load_json(f.RESULTS_DIR/(day+'.json')).get('results',[]):
+                  if race.get('status')=='superseded': continue
+                  off=race.get('off_dt') or race.get('race_time') or race.get('off')
+                  for runner in race.get('runners',[]):
+                      if not f.is_starter(runner): continue
+                      k=(day,f.course_key(race.get('course')),f.horse_key(runner.get('horse')))
+                      key=f.runner_key(day,race.get('course'),off,runner.get('horse'))
+                      index[k].append({'horse':runner.get('horse'),'course':race.get('course'),'time':f.off_key(off),'position':runner.get('position'),'trainer':runner.get('trainer'),'jockey':runner.get('jockey'),'source':race.get('source'),'cache':cache.get(key)})
+          missing=[]
+          for row in rows:
+              if row['date'] not in api_days: continue
+              fields=[k for k in ('trainer','jockey') if not f.person_key(row.get(k))]
+              if not fields: continue
+              key=(row['date'],row['form_course'],row['form_horse'])
+              missing.append({'date':row['date'],'course_key':row['form_course'],'horse_key':row['form_horse'],'position':row['position'],'missing_fields':fields,'candidates':index[key],'results_review_url':'https://www.racingpost.com/results/'+row['date']+'/'})
+          counts={k:sum(k in r['missing_fields'] for r in missing) for k in ('trainer','jockey')}
+          out={'as_of':str(as_of),'api_days':sorted(api_days),'missing_rows':len(missing),'missing_fields':counts,'winner_rows':sum(f.is_win(x) for x in missing),'published_counts':{'trainer':report.get('fourteen_day_missing_trainer_rows'),'jockey':report.get('fourteen_day_missing_jockey_rows')},'records':missing}
+          pathlib.Path('reports/stage209/identity-gaps.json').write_text(json.dumps(out,ensure_ascii=False,indent=2)+'\n')
+          print(json.dumps({k:v for k,v in out.items() if k!='records'},indent=2))
+          PY
+      - name: Publish dated going changes only
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- scripts/stage209_dated_going.py collect-racecards.py data/racecards.json data/racecards-archive.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Stage209 repair missing 28 November going with dated source fallback'
+          # Do not silently overwrite a concurrent racecard refresh.
+          git pull --rebase origin main && git push origin HEAD:main
+      - name: Save targeted audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage209-going-and-identity-audit
+          path: reports/stage209/
+          if-no-files-found: warn
+          retention-days: 30
