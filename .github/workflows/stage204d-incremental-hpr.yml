@@ -1,0 +1,121 @@
+name: Stage204D - Incremental HPR replay after final form repairs
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage204c-hpr-integration
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      PYTHONPATH: .:scripts
+      PYTHONUNBUFFERED: '1'
+      GH_TOKEN: ${{ github.token }}
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      ASKED_DATE: '2026-11-28'
+      PRIOR_HEAD: '8f67fc4dd377b58e4eb7ab39bef78365a1b37db3'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2 requests 'kagglehub>=0.3,<1' pyyaml
+      - name: Restore exact prior baseline and previous validated candidate
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage152-specialists/source/stage2 reports/stage204c/{ref,output,prior,baseline}
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage2-historical-staging-database --dir reports/stage152-specialists/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage4-reference-named-events-and-winners --dir reports/stage204c/ref
+          gh run download 46058249747 --repo "$GITHUB_REPOSITORY" --name stage204c-hpr-shared-history-46058249747 --dir reports/stage204c/prior
+          git archive "$PRIOR_HEAD" data/hpr/shards | tar -x -C reports/stage204c/baseline
+          python scripts/stage87_hpr_storage.py restore --dir reports/stage204c/baseline/data/hpr/shards --db reports/stage204c/hpr-original.sqlite
+          python scripts/stage86_hpr_engine.py --mode self-test
+          git diff --exit-code "$PRIOR_HEAD" HEAD -- scripts/stage86_hpr_engine.py scripts/stage87_hpr_storage.py
+      - name: Reuse validated ratings and replay only newly affected careers
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/stage204d.py" <<'PY'
+          import os, pathlib as P, subprocess, hashlib, json, sqlite3, collections as C, textwrap, re, yaml
+          import stage86_hpr_engine as H
+          from scripts import stage203c_consolidated_history as V
+          TARGET='2026-11-28'
+          ROOT=P.Path('data')
+          WORK=P.Path('reports/stage204c')
+          PRIOR=WORK/'prior'/'candidate-hpr-revisions.json'
+          BASE=WORK/'hpr-original.sqlite'
+          # Reconstruct the exact Stage204C candidate from the already scored payloads.
+          assert hashlib.sha256(PRIOR.read_bytes()).hexdigest()=='f17428f02dd984b66c86828c8be5ed43e3618e33583ca65ded762de89df35b48'
+          summary_path=WORK/'prior'/'summary.json'
+          assert hashlib.sha256(summary_path.read_bytes()).hexdigest()=='9220121b7f00de57eb27cfca84d39b433acc9cf32def5b2bda44a7db663ae535'
+          prior_summary=json.loads(summary_path.read_text());prior=json.loads(PRIOR.read_text())
+          assert prior_summary['target']==TARGET and prior_summary['status']=='CANDIDATE_VALIDATED_NOT_DEPLOYED'
+          assert len(prior)==1736 and all(x['date']<TARGET and x['model_version']==H.VERSION for x in prior)
+          def key(x):return (x['horse_key'],x['race_key'],x['model_version'])
+          assert len({key(x) for x in prior})==len(prior)
+          with sqlite3.connect(BASE) as c:
+              assert c.execute('SELECT COUNT(*) FROM hpr_ratings').fetchone()[0]==132588
+              counts=H.save_ratings(c,prior);assert counts=={'inserted':1346,'revised':390},counts
+              assert c.execute('SELECT COUNT(*) FROM hpr_ratings').fetchone()[0]==134324
+          # The validated Stage204C algorithm is reused exactly, with a restricted replay scope.
+          workflow=subprocess.check_output(['git','show',os.environ['PRIOR_HEAD']+':.github/workflows/stage204c-hpr-shared-history.yml'],text=True)
+          steps=yaml.safe_load(workflow)['jobs']['validate']['steps']
+          block=next(s['run'] for s in steps if s.get('name')=='Validate HPR linked database and targeted rating replay')
+          source=block.split('<<\'PY\'\n',1)[1].split('\nPY\n',1)[0]
+          def change(old,new):
+              global source
+              assert source.count(old)==1, ('Unexpected validated source structure',old)
+              source=source.replace(old,new)
+          # A previously rated but repaired event must also trigger replay, even if its slot already exists.
+          change("new_slots={s for s,e,r in source if s not in prior_map}","new_slots={s for s,e,r in source if s not in prior_map}\n        repaired_slots={s for s,e,r in source if e['source_race_id'] in REPAIR_IDS}\n        triggers=new_slots | repaired_slots")
+          change("if not new_slots:reason='NO_MISSING_VERIFIED_EVENT'","if not repaired_slots:reason='QUARANTINE_REPAIRED_EVENT_NOT_REPLAYABLE'\n        elif not triggers:reason='NO_MISSING_VERIFIED_EVENT'")
+          change("earliest=min(s[1] for s in new_slots)","earliest=min(s[1] for s in triggers)")
+          change("or scored.get('prior_hpr_count')!=oldrow.get('prior_hpr_count')","or scored.get('prior_hpr_count')!=oldrow.get('prior_hpr_count') or (s in repaired_slots and scored.get('source_digest')!=oldrow.get('source_digest'))")
+          # Preserve the complete append-only sequence for a later deployment, not just the incremental delta.
+          change("dump('candidate-hpr-revisions.json',proposals)","dump('incremental-hpr-revisions.json',proposals)\n        dump('candidate-hpr-revisions.json',PRIOR_PAYLOADS+proposals)")
+          # Confirm that every previously validated key remains uniquely linked after repairs.
+          change("dump('summary.json',summary);print(json.dumps(summary,indent=2),flush=True)","summary.update(previous_candidate_rows=len(PRIOR_PAYLOADS), previous_candidate_payloads_reused=True, incremental_rating_changes=counts, incremental_repair_race_ids=sorted(REPAIR_IDS), previous_candidate_unlinked=sum(event_key(x) not in verified_keys for x in PRIOR_PAYLOADS), merged_delta_rows=len(PRIOR_PAYLOADS)+len(proposals), previous_candidate_run=46058249747)\n        if summary['previous_candidate_unlinked']:summary['status']='HOLD_PREVIOUS_CANDIDATE_LINK_CONFLICT'\n        dump('summary.json',summary);print(json.dumps(summary,indent=2),flush=True)")
+          change("if __name__=='__main__':main()", "")
+          # Identify all six newly repaired historical fields from the actual approved ledgers.
+          i=json.loads((ROOT/'stage203i-history/approved-2026-11-28.json').read_text())
+          repair_ids={e['data'][0][0] for e in i['races']}
+          assert len(repair_ids)==3
+          for stage in ('j','k'):
+              z=json.loads((ROOT/f'stage203{stage}-history/approved-2026-11-28.json').read_text())
+              for e in z['entries']:
+                  assert V.digest(e['payload'])==e['sha256'] and e['kind']=='repair'
+                  repair_ids.add(e['payload'][1][0])
+          m=json.loads((ROOT/'stage203m-history/approved-2026-11-28.json').read_text())
+          assert V.digest(m['payload'])==m['sha256'];repair_ids.add(m['payload']['new'][0])
+          assert len(repair_ids)==6,repair_ids
+          namespace={'__name__':'stage204d_reused','REPAIR_IDS':repair_ids,'PRIOR_PAYLOADS':prior}
+          exec(compile(source,'stage204c_incremental.py','exec'),namespace)
+          def restricted_profiles(c,target,card):
+              affected=set();details={};identity=namespace['identity'];result=namespace['result']
+              for rid in sorted(repair_ids):
+                  rows=c.execute('SELECT u.horse_name,u.sire,u.dam,u.finish_pos,u.outcome FROM historical_runs u JOIN historical_races r ON r.id=u.race_id WHERE r.id=? AND r.race_date<?',(rid,target)).fetchall()
+                  assert rows,('Approved race not loaded',rid)
+                  keys={identity({'horse':h,'sire':s,'dam':d}) for h,s,d,p,st in rows if result({'position':p,'status':st})[0] not in ('NR','UNKNOWN')};keys.discard('')
+                  affected.update(keys);details[rid]=len(keys)
+              assert affected
+              print('INCREMENTAL_SCOPE',json.dumps(details,sort_keys=True),flush=True)
+              return affected,{'repair_races_considered':len(repair_ids),'total_affected_identities':len(affected),'profiles_by_race':details,'previous_candidate_reused':1736}
+          namespace['prior_profiles']=restricted_profiles
+          namespace['main']()
+          PY
+          python -m py_compile "$RUNNER_TEMP/stage204d.py"
+          python -u "$RUNNER_TEMP/stage204d.py"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage204d-incremental-hpr-${{ github.run_id }}
+          path: reports/stage204c/output/
+          if-no-files-found: warn
+          retention-days: 30
