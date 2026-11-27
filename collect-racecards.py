@@ -37,6 +37,10 @@ RUNNER_FIELDS = (
     "is_reserve", "reserve_pending", "reserve_status", "reserve_number",
 )
 
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from scripts.stage209_dated_going import apply as apply_stage209_going
+
 for day in ("today", "tomorrow"):
     skip = 0
     while True:
@@ -68,6 +72,7 @@ for day in ("today", "tomorrow"):
                 }
                 item.update(metadata)
                 item.update({field: runner.get(field) for field in RUNNER_FIELDS})
+                apply_stage209_going(item)
                 all_runners.append(item)
                 if isinstance(item.get("comment"), str) and item["comment"].strip():
                     comment_count += 1
