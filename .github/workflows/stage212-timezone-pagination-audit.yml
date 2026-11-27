@@ -1,0 +1,228 @@
+name: Stage212 - Sydney date boundaries and results pagination audit
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: Irish calendar days to audit (1-14)
+        required: false
+        type: number
+        default: 14
+  schedule:
+    - cron: '10 7 * * *'
+permissions:
+  contents: read
+concurrency:
+  group: stage212-read-only-results-audit
+  cancel-in-progress: false
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Audit Sydney dates, pagination and late UK IE results
+        env:
+          PUNTERSEDGE_API_KEY: ${{ secrets.PUNTERSEDGE_API_KEY }}
+          EVENT: ${{ github.event_name }}
+          DAYS: ${{ github.event_name == 'schedule' && '2' || inputs.days || '14' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY_AUDIT'
+          """Read-only provider calendar, pagination and archived-results audit."""
+          import collections, datetime as dt, json, os, re, time, urllib.parse, urllib.request, urllib.error
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+          from scripts import stage32_form_rebuild as F
+          
+          DUBLIN=ZoneInfo('Europe/Dublin'); SYDNEY=ZoneInfo('Australia/Sydney'); UTC=dt.timezone.utc
+          OUT=Path('reports/stage212'); OUT.mkdir(parents=True,exist_ok=True)
+          API='https://api.puntersedge.online/v1/racing/results'
+          
+          def read(p):
+              p=Path(p); return json.loads(p.read_text()) if p.exists() else {}
+          
+          def stamp(s):
+              try:
+                  d=dt.datetime.fromisoformat(str(s).replace('Z','+00:00'))
+                  return d if d.tzinfo else None
+              except (ValueError,TypeError):return None
+          
+          def aussie_dates(day):
+              start=dt.datetime.combine(day,dt.time.min,DUBLIN)
+              end=dt.datetime.combine(day+dt.timedelta(days=1),dt.time.min,DUBLIN)-dt.timedelta(microseconds=1)
+              a,b=start.astimezone(SYDNEY).date(),end.astimezone(SYDNEY).date()
+              return [a+dt.timedelta(days=n) for n in range((b-a).days+1)]
+          
+          def course(x):
+              v=F.course_key(x)
+              return {'bangor':'bangorondee','kemptonpark':'kempton','lingfieldpark':'lingfield'}.get(v,v)
+          
+          def ident(r):
+              s=stamp(r.get('start_time'))
+              return (str(r.get('race_id') or ''),course(r.get('venue') or r.get('venue_canonical')),s.astimezone(UTC).isoformat() if s else '')
+          
+          def rows(payload):
+              if isinstance(payload,list):return payload
+              if isinstance(payload,dict):
+                  for k in ('results','races','data'):
+                      if isinstance(payload.get(k),list):return payload[k]
+              raise ValueError('unexpected provider shape')
+          
+          def full(r):
+              return bool(r.get('runners')) and (r.get('field_status')=='complete' or (r.get('availability') or {}).get('full_field')=='available')
+          
+          def runner_names(r,external=False):
+              rr=r.get('runners') or (r.get('placings') if external else []) or []
+              return {F.horse_key(x.get('name') or x.get('horse')):x for x in rr if isinstance(x,dict) and (x.get('name') or x.get('horse'))}
+          
+          def win(r):
+              return str(r.get('position') or '').strip().upper() in ('1','1.0','1=','1ST')
+          
+          def starter(r):
+              return F.is_starter(r) or str(r.get('position') or '').upper() in ('1=','1ST')
+          
+          # Validate date handling across both daylight saving seasons and boundary times.
+          assert aussie_dates(dt.date(2026,11,27))==[dt.date(2026,11,27),dt.date(2026,11,28)]
+          assert aussie_dates(dt.date(2026,7,1))==[dt.date(2026,7,1),dt.date(2026,7,2)]
+          assert dt.datetime(2026,11,27,13,tzinfo=DUBLIN).astimezone(SYDNEY).date()==dt.date(2026,11,28)
+          assert dt.datetime(2026,7,1,14,tzinfo=DUBLIN).astimezone(SYDNEY).date()==dt.date(2026,7,1)
+          assert dt.datetime(2026,7,1,15,tzinfo=DUBLIN).astimezone(SYDNEY).date()==dt.date(2026,7,2)
+          
+          key=os.environ.get('PUNTERSEDGE_API_KEY','').strip()
+          now=dt.datetime.now(UTC); today=now.astimezone(DUBLIN).date()
+          form=read('data/strike-rates.json'); published_end=dt.date.fromisoformat(form['as_of'])
+          mode=os.environ.get('EVENT','workflow_dispatch'); n=max(1,min(14,int(os.environ.get('DAYS','14') or 14)))
+          end=min(published_end,today-dt.timedelta(days=1)) if mode=='schedule' else min(published_end,today)
+          start=end-dt.timedelta(days=n-1); days=[start+dt.timedelta(days=i) for i in range(n)]
+          queries=sorted({d for day in days for d in aussie_dates(day)},reverse=True)
+          requests=0; exhausted=False
+          
+          def fetch(label,params):
+              global requests,exhausted
+              report={'query':label,'pages':[],'complete':False,'error':None}; collected={}; first=set(); offset=0
+              if not key or exhausted:
+                  report['error']='NO_KEY_OR_QUOTA_STOP';return report,[] ,first
+              for i in range(10):
+                  if requests>=60:
+                      report['error']='REQUEST_BUDGET';exhausted=True;break
+                  query=urllib.parse.urlencode({**params,'categories':'horse','country':'GB,IE','limit':200,'offset':offset})
+                  req=urllib.request.Request(API+'?'+query,headers={'X-API-Key':key,'Accept':'application/json','User-Agent':'RHP-Stage212-Audit/1.0'})
+                  requests+=1
+                  try:
+                      with urllib.request.urlopen(req,timeout=40) as resp:
+                          payload=json.load(resp); page=rows(payload)
+                          applied=resp.headers.get('X-Limit-Applied'); remain=resp.headers.get('X-Credits-Remaining')
+                      if any(not isinstance(x,dict) for x in page):raise ValueError('nonobject result')
+                      ids={ident(x) for x in page}
+                      if i==0:first=ids.copy()
+                      report['pages'].append({'offset':offset,'returned':len(page),'new_race_keys':len(ids-set(collected)),'limit_applied':applied,'credits_remaining':remain})
+                      if not page:report['complete']=True;break
+                      if not (ids-set(collected)):
+                          report['error']='REPEATED_PAGE_OR_OFFSET_IGNORED';break
+                      for x in page:collected[ident(x)]=x
+                      # Only trust an explicitly advertised applied limit; otherwise probe until empty.
+                      if applied and applied.isdigit() and int(applied)>0 and len(page)<int(applied):
+                          report['complete']=True;break
+                      if remain and remain.isdigit() and int(remain)<=1:
+                          report['error']='LOW_CREDITS';exhausted=True;break
+                      offset+=len(page);time.sleep(1.3)
+                  except urllib.error.HTTPError as e:
+                      report['error']='HTTP_'+str(e.code)
+                      if e.code in (401,402,403,429):exhausted=True
+                      break
+                  except (OSError,ValueError,TimeoutError) as e:
+                      report['error']=type(e).__name__;break
+              if not report['complete'] and not report['error']:report['error']='PAGE_CAP'
+              report['unique_rows']=len(collected);return report,list(collected.values()),first
+          
+          # Compare the existing 36h single-page approach to fully paginated results.
+          rolling,rr,first=fetch('rolling_36h',{'hours_back':36})
+          rolling['additional_final_gbie_after_first_page']=[{'course':x.get('venue'),'start_time':x.get('start_time')} for x in rr if ident(x) not in first and x.get('status')=='final' and x.get('country') in ('GB','IE','IRE')]
+          external={}; reports={}; provider_dates=collections.defaultdict(set); invalid=0
+          for d in queries:
+              report,rs,_=fetch(str(d),{'date':str(d)}); reports[str(d)]=report
+              for x in rs:
+                  s=stamp(x.get('start_time'))
+                  if x.get('country') not in ('GB','IE','IRE') or x.get('status')!='final':continue
+                  if not s or not ident(x)[0] or not ident(x)[1]:invalid+=1;continue
+                  k=ident(x);provider_dates[k].add(str(d))
+                  old=external.get(k)
+                  if old is None or (full(x),len(runner_names(x,True)))>(full(old),len(runner_names(old,True))):external[k]=x
+          
+          byday={}; external_counts=collections.defaultdict(list)
+          for day in days:
+              ds=str(day); expected_dates=[str(x) for x in aussie_dates(day)]
+              archived=[x for x in read(F.RESULTS_DIR/(ds+'.json')).get('results',[]) if x.get('status')=='final' and str(x.get('region') or '').upper() in ('','GB','IE','IRE')]
+              ext=[x for x in external.values() if stamp(x['start_time']).astimezone(DUBLIN).date()==day]
+              matched=set(); missing=[]; extra=[]; differences=[]; late=[]; cross=0; complete_fields=0; person_fields=0
+              for x in ext:
+                  st=stamp(x['start_time']); off=st.astimezone(DUBLIN); names=runner_names(x,True); slot=off.strftime('%H:%M'); co=ident(x)[1]
+                  if off.date()!=st.astimezone(SYDNEY).date():cross+=1
+                  candidates=[]
+                  for j,a in enumerate(archived):
+                      if course(a.get('course'))!=co:continue
+                      at=stamp(a.get('off_dt') or a.get('race_time') or a.get('off'))
+                      if not at:continue
+                      delta=abs((st-at).total_seconds())/60; overlap=len(set(names)&set(runner_names(a)))
+                      if delta<=12 and overlap>=2:candidates.append((delta,-overlap,j))
+                  candidates.sort(); best=candidates[0] if candidates else None
+                  exact=best is not None and (len(candidates)==1 or best[:2]!=candidates[1][:2]) and best[2] not in matched
+                  item={'course':co,'irish_time':slot,'sydney_date':str(st.astimezone(SYDNEY).date()),'query_dates':sorted(provider_dates[ident(x)]),'provider_full_field':full(x),'provider_named_rows':len(names)}
+                  if not exact:extra.append({**item,'reason':'AMBIGUOUS' if candidates else 'NO_ARCHIVE_MATCH'})
+                  else:
+                      j=best[2];matched.add(j); local=runner_names(archived[j]); aw={h for h,r in local.items() if win(r)}; ew={h for h,r in names.items() if win(r)}
+                      if aw!=ew or (full(x) and set(h for h,r in names.items() if starter(r))!=set(h for h,r in local.items() if starter(r))):
+                          differences.append({**item,'archive_winners':sorted(aw),'external_winners':sorted(ew),'archive_only_starters':sorted(set(h for h,r in local.items() if starter(r))-set(h for h,r in names.items() if starter(r))),'external_only_starters':sorted(set(h for h,r in names.items() if starter(r))-set(h for h,r in local.items() if starter(r)))})
+                  if slot>='20:00':late.append({**item,'matched_archive':bool(exact)})
+                  if full(x):
+                      complete_fields+=1
+                      active=[r for r in names.values() if starter(r)]
+                      if active and all(r.get('trainer') and r.get('jockey') for r in active):
+                          person_fields+=1
+                          for r in active:external_counts[ds].append(r)
+              for j,a in enumerate(archived):
+                  if j not in matched:missing.append({'course':a.get('course'),'off_dt':a.get('off_dt'),'runners':len(a.get('runners',[]))})
+              byday[ds]={'sydney_query_dates':expected_dates,'all_date_queries_complete':all(reports[d]['complete'] for d in expected_dates),'archive_final_races':len(archived),'external_final_races':len(ext),'matched_races':len(matched),'external_only_or_ambiguous':extra,'archive_not_matched':missing,'result_differences':differences,'races_crossing_sydney_date':cross,'full_field_races':complete_fields,'full_field_with_person_identities':person_fields,'late_races':late}
+          
+          # Compare identical inclusive Irish date windows. Partial provider figures are diagnostic only.
+          comparisons={}
+          for period in (1,7,14):
+              if period>n:continue
+              dates=[str(end-dt.timedelta(days=i)) for i in range(period)]
+              section=[byday[d] for d in dates]
+              eligible=all(v['all_date_queries_complete'] and v['external_final_races']>0 and v['external_final_races']==v['matched_races']==v['archive_final_races']==v['full_field_with_person_identities'] and not v['result_differences'] for v in section)
+              counts={k:collections.defaultdict(lambda:[0,0]) for k in ('trainer','jockey')}
+              for d in dates:
+                  for r in external_counts[d]:
+                      for k in counts:
+                          nk=F.person_key(r[k]);counts[k][nk][0]+=int(win(r));counts[k][nk][1]+=1
+              p=form.get('periods',{}).get(str(period),{}); discrepancies=[]; compared=0
+              if end==published_end and eligible:
+                  for k in counts:
+                      app={F.person_key(r['name']):(r.get('wins',0),r.get('runs' if k=='trainer' else 'rides',0)) for r in p.get(k+'s',{}).values()}
+                      for name in sorted(set(app)|set(counts[k])):
+                          av=app.get(name,(0,0));ev=tuple(counts[k].get(name,(0,0)));compared+=1
+                          if av!=ev:discrepancies.append({'kind':k,'name_key':name,'app_wins_runs':av,'external_wins_runs':ev})
+              comparisons[str(period)]={'start':dates[-1],'end':dates[0],'provider_fields_sufficient_for_comparison':eligible,'app_end_matches':end==published_end,'compared_people':compared,'discrepancies':discrepancies,'note':'No aggregate sign-off unless all matched races have explicit full fields and identities; provider is not an independent fixture census.'}
+          report={'generated_at':now.isoformat(),'scope':{'start_irish':str(start),'end_irish':str(end),'published_form_end':str(published_end),'days':n,'sydney_dates':[str(d) for d in queries]},'requests':requests,'rolling_36h':rolling,'dated_queries':reports,'by_irish_day':byday,'form_comparisons':comparisons,'invalid_provider_final_rows':invalid,'read_only':True,'note':'Audit only. No raw API responses, archive, form, HPR or selection writes. Missing source coverage or rate limit is reported, not treated as verified absence.'}
+          (OUT/'audit.json').write_text(json.dumps(report,indent=2,ensure_ascii=False)+'\n')
+          summary={'scope':report['scope'],'requests':requests,'date_queries_complete':sum(r['complete'] for r in reports.values()),'date_queries_total':len(reports),'rolling_pages':len(rolling['pages']),'rolling_extra_final_races':len(rolling['additional_final_gbie_after_first_page']),'archive_unmatched':sum(len(v['archive_not_matched']) for v in byday.values()),'external_unmatched':sum(len(v['external_only_or_ambiguous']) for v in byday.values()),'result_differences':sum(len(v['result_differences']) for v in byday.values()),'cross_sydney_date':sum(v['races_crossing_sydney_date'] for v in byday.values()),'comparisons':{k:{j:v[j] for j in ('provider_fields_sufficient_for_comparison','compared_people')} for k,v in comparisons.items()}}
+          print(json.dumps(summary,indent=2));(OUT/'summary.json').write_text(json.dumps(summary,indent=2)+'\n')
+          if os.environ.get('GITHUB_STEP_SUMMARY'):
+              with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:f.write('## Stage 212 read-only timezone and collection audit\n\n```json\n'+json.dumps(summary,indent=2)+'\n```\n')
+          PY_AUDIT
+          git diff --exit-code -- data scripts collect-puntersedge-results.py collect-form-results.py
+      - name: Upload audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage212-timezone-pagination-audit
+          path: reports/stage212/
+          if-no-files-found: warn
+          retention-days: 30
