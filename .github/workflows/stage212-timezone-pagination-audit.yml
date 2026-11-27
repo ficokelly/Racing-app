@@ -1,4 +1,4 @@
-name: Stage212 - Sydney date boundaries and results pagination audit
+name: Stage212B - Sydney date boundaries and results pagination audit
 on:
   workflow_dispatch:
     inputs:
@@ -97,7 +97,18 @@ jobs:
           key=os.environ.get('PUNTERSEDGE_API_KEY','').strip()
           now=dt.datetime.now(UTC); today=now.astimezone(DUBLIN).date()
           form=read('data/strike-rates.json'); published_end=dt.date.fromisoformat(form['as_of'])
-          mode=os.environ.get('EVENT','workflow_dispatch'); n=max(1,min(14,int(os.environ.get('DAYS','14') or 14)))
+          def parse_days(raw):
+              from decimal import Decimal, InvalidOperation
+              try:
+                  value=Decimal(str(raw or '14').strip())
+              except InvalidOperation:
+                  raise ValueError('Audit days must be a whole number from 1 to 14') from None
+              if not value.is_finite() or value != value.to_integral_value() or not 1 <= value <= 14:
+                  raise ValueError('Audit days must be a whole number from 1 to 14')
+              return int(value)
+          assert all(parse_days(v)==14 for v in ('14','14.0','14.00',14,14.0))
+          assert parse_days('2.0')==2
+          mode=os.environ.get('EVENT','workflow_dispatch'); n=parse_days(os.environ.get('DAYS','14'))
           end=min(published_end,today-dt.timedelta(days=1)) if mode=='schedule' else min(published_end,today)
           start=end-dt.timedelta(days=n-1); days=[start+dt.timedelta(days=i) for i in range(n)]
           queries=sorted({d for day in days for d in aussie_dates(day)},reverse=True)
