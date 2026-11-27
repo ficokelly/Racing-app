@@ -20,23 +20,13 @@ DUBLIN = ZoneInfo('Europe/Dublin')
 
 
 def fetch_results():
+    # STAGE213_PAGINATION
+    from scripts.stage213_collection import fetch_pages
     api_key = os.getenv('PUNTERSEDGE_API_KEY', '').strip()
-    if not api_key:
-        raise SystemExit('Missing PUNTERSEDGE_API_KEY GitHub secret')
-    params = urllib.parse.urlencode({
-        'hours_back': 36, 'categories': 'horse', 'country': 'GB,IE', 'limit': 200,
-    })
-    request = urllib.request.Request(
-        'https://api.puntersedge.online/v1/racing/results?' + params,
-        headers={'X-API-Key': api_key, 'Accept': 'application/json'},
-    )
-    with urllib.request.urlopen(request, timeout=35) as response:
-        payload = json.load(response)
-        remaining = response.headers.get('X-Credits-Remaining', 'unknown')
-    races = payload if isinstance(payload, list) else payload.get('results', payload.get('races', []))
-    if not isinstance(races, list):
-        raise ValueError('Unexpected results API payload: expected races array')
-    return races, remaining
+    if not api_key:raise SystemExit('Missing PUNTERSEDGE_API_KEY GitHub secret')
+    rows, remaining, pages = fetch_pages(api_key, hours_back=36)
+    print('PuntersEdge pages:', len(pages))
+    return rows, remaining
 
 
 def dtparse(s):

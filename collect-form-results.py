@@ -93,25 +93,12 @@ def diagnose_payload(payload, races):
 
 
 def fetch_results():
-    query = urlencode({'country': 'GB,IE', 'category': 'horse', 'hours_back': 48})
-    req = Request('https://api.puntersedge.online/v1/racing/results?' + query,
-                  headers={'X-API-Key': key, 'Accept': 'application/json', 'User-Agent': 'RacingHotPots/1.0'})
-    try:
-        with urlopen(req, timeout=50) as resp:
-            payload = json.load(resp)
-    except HTTPError as e:
-        detail = e.read(1500).decode('utf-8', errors='replace')
-        raise SystemExit(f'PuntersEdge HTTP {e.code}: {detail}; existing archive unchanged.') from e
-    if isinstance(payload, list):
-        diagnose_payload(payload, payload)
-        return payload
-    if isinstance(payload, dict):
-        for field in ('results', 'races', 'data'):
-            if isinstance(payload.get(field), list):
-                diagnose_payload(payload, payload[field])
-                return payload[field]
-    print('DIAGNOSTIC: unexpected payload top-level keys:', field_names(payload))
-    raise RuntimeError('Unexpected results API schema; existing archive unchanged.')
+    # STAGE213_PAGINATION
+    from scripts.stage213_collection import fetch_pages
+    rows, _, pages = fetch_pages(key, hours_back=48)
+    diagnose_payload(rows, rows)
+    print('PuntersEdge pages:', len(pages))
+    return rows
 
 
 existing = {}

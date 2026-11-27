@@ -111,6 +111,11 @@ for date, races in by_date.items():
     for race in races:
         key = stable_key(race)
         prior = existing.get(key)
+        # STAGE213_PROTECT_VERIFIED: do not replace independently reviewed finals
+        # or exact race-day identities with a less authoritative refresh.
+        if prior and (prior.get('external_verification') or any(r.get('stage210_person_evidence') for r in prior.get('runners', []))):
+            existing[key] = prior
+            continue
         # Preserve the fuller set of runners if the new API response is partial.
         if prior and len(prior.get("runners") or []) > len(race.get("runners") or []):
             merged = dict(prior)

@@ -44,7 +44,9 @@ def apply():
         p=Path('data/racing-results')/(day+'.json');doc=read(p); current=doc.get('results',[])
         rows=r['runners']; starters={F.horse_key(x['horse']) for x in rows if F.is_starter(x)}; allhorses={F.horse_key(x['horse']) for x in rows}
         assert len(starters)==r['external_verification']['starters'] and len(allhorses)==len(rows)
-        assert sum(F.is_win(x) for x in rows)==1 and all(x.get('trainer') and x.get('jockey') for x in rows if F.is_starter(x))
+        # STAGE213_DEAD_HEAT_GUARD: exact independently verified Bangor dead heat only.
+        expected_winners=2 if (day,co,off)==('2026-11-23','bangorondee','13:05') and r.get('external_verification',{}).get('dead_heat') is True and {F.horse_key(x['horse']) for x in rows if F.is_win(x)}=={'digdeep','theywantme'} else 1
+        assert sum(F.is_win(x) for x in rows)==expected_winners and all(x.get('trainer') and x.get('jockey') for x in rows if F.is_starter(x))
         same=[x for x in current if racekey(x)==(day,co,off) and x.get('status')!='superseded']
         overlaps=[x for x in current if x.get('status')!='superseded' and F.course_key(x.get('course'))==co and starters & {F.horse_key(z.get('horse')) for z in x.get('runners',[]) if F.is_starter(z)}]
         if same or overlaps:
