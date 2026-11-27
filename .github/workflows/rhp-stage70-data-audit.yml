@@ -3,7 +3,6 @@ name: Stage70 - Racing Data Coverage and Late Results Recovery
 on:
   workflow_dispatch:
   schedule:
-    # Multiple checks each day; GitHub schedules in UTC and can start late.
     - cron: '20 8,12,20 * * *'
     - cron: '40 23 * * *'
 
@@ -66,9 +65,19 @@ jobs:
           if test -f data/strategy-dc-results.json; then git add data/strategy-dc-results.json; fi
           if git diff --cached --quiet; then exit 0; fi
           git commit -m 'Audit UK IE race and result coverage and reconcile verified late results'
+          # Use a clean, isolated worktree; never stage unrelated local outputs.
+          git status --short
+          publish_dir="$(mktemp -d)"
+          git worktree add --detach "$publish_dir" HEAD
+          trap 'git worktree remove --force "$publish_dir" || true' EXIT
           for attempt in 1 2 3 4; do
-            if git pull --rebase origin main && git push origin HEAD:main; then exit 0; fi
-            git rebase --abort || true
+            git fetch origin main
+            if ! git -C "$publish_dir" rebase origin/main; then
+              git -C "$publish_dir" rebase --abort || true
+              echo 'Concurrent changes conflict with audited results; rerun rather than overwrite.' >&2
+              exit 1
+            fi
+            if git -C "$publish_dir" push origin HEAD:main; then exit 0; fi
             sleep $((attempt*3))
           done
           echo 'Coverage report publication failed' >&2
@@ -78,6 +87,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: rhp-stage70-data-coverage
-          path: data/rhp-stage70-coverage.json
+          path: |
+            data/rhp-stage70-coverage.json
+            data/strike-rates.json
+            reports/stage32/form-rebuild-audit.json
           retention-days: 30
           if-no-files-found: warn
