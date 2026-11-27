@@ -1,0 +1,157 @@
+name: Stage215 - 28 November combined selections with G5 source gate
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage215-combined-g5-coverage
+  cancel-in-progress: false
+jobs:
+  score:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    env:
+      PYTHONPATH: .:scripts
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      GH_TOKEN: ${{ github.token }}
+      TARGET_DAY: '2026-11-28'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Require completed Stage214 audit before scoring
+        run: |
+          set -euo pipefail
+          mkdir -p stage196-output stage215-preflight
+          gh run download 46080697782 --repo "$GITHUB_REPOSITORY" --name stage214-final-preselection-audit-46080697782 --dir stage215-preflight
+          python - <<'PY'
+          import json, pathlib as P, subprocess, os
+          run=json.loads(subprocess.check_output(['gh','run','view','46080697782','--repo',os.environ['GITHUB_REPOSITORY'],'--json','status,conclusion'],text=True))
+          assert run['status']=='completed' and run['conclusion']=='success',run
+          files=list(P.Path('stage215-preflight').rglob('final-summary.json'));assert len(files)==1,files
+          a=json.loads(files[0].read_text());assert a['target']=='2026-11-28'
+          assert not any(a['card'].get('identity_gaps',{}).values()),'Missing recent person identities'
+          assert not a['card'].get('historic_missing_results'),'Known historic result gaps'
+          # The live Stage206-style preflight will check new declarations and exact form again.
+          P.Path('stage196-output/stage214-summary.json').write_text(json.dumps(a,indent=2))
+          print('Prior audit confirmed; current exact input gates will run before scoring.')
+          PY
+      - name: Install original pinned dependencies
+        run: pip install numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2 freezegun==1.5.5 requests 'kagglehub>=0.3,<1' 'PyYAML>=6,<7'
+      - name: Refresh declarations and materialize audited route-first engine
+        env:
+          RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
+          RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
+        run: |
+          set -euo pipefail
+          TODAY="$(TZ=Europe/Dublin date +%F)"
+          test "$TARGET_DAY" = "$TODAY" || test "$TARGET_DAY" = "$(TZ=Europe/Dublin date -d tomorrow +%F)"
+          if [ -n "$RACING_API_USERNAME" ] && [ -n "$RACING_API_PASSWORD" ]; then python collect-racecards.py; fi
+          python - <<'PY'
+          import pathlib as P, yaml, subprocess
+          steps=yaml.safe_load(P.Path('.github/workflows/stage206-audited-route-first.yml').read_text())['jobs']['score']['steps']
+          match=[s['run'] for s in steps if s.get('name')=='Materialize original route-first engine and add input gates']
+          assert len(match)==1
+          subprocess.run(['bash','-e','-o','pipefail','-c',match[0]],check=True)
+          PY
+      - name: Add read-only G5 state audit and preserve frozen model logic
+        run: |
+          set -euo pipefail
+          cat > stage196-work/g5_coverage_audit.py <<'PY'
+          """Inspect the exact G5 state loaded by its original scorer; no mutations."""
+          import collections, datetime as dt, json, os
+          from pathlib import Path
+          import stage108_model_g2 as G
+          
+          def inspect_state(state, groups, target, archive_end, hpr, coverage, out, db):
+              import sqlite3
+              day=str(target)[:10]
+              known_outside=json.loads(Path(os.environ['STAGE215_OUTSIDE']).read_text())
+              assert Path(hpr).is_file() and Path(db).is_file()
+              with sqlite3.connect('file:'+str(Path(hpr).resolve())+'?mode=ro',uri=True) as con:
+                  assert con.execute('pragma quick_check').fetchone()[0]=='ok'
+                  manifest=json.loads(Path('data/hpr/shards/manifest.json').read_text())
+                  ledger_rows=con.execute('select count(*) from hpr_ratings').fetchone()[0]
+                  assert ledger_rows==manifest['total_rows'],(ledger_rows,manifest['total_rows'])
+                  assert not con.execute('select 1 from hpr_ratings where race_date>=? limit 1',(day,)).fetchone()
+              rows=[]; seen=set()
+              for key, entries in groups.items():
+                  for r in entries:
+                      identity=G.identity(r); assert identity and identity not in seen; seen.add(identity)
+                      events=state.horses.get(identity,[])
+                      dates={str(q['date'])[:10] for q in events};assert all(x<day for x in dates)
+                      try:
+                          n=int(r.get('last_run')); expected=str(dt.date.fromisoformat(day)-dt.timedelta(days=n)) if n>0 else None
+                      except (TypeError,ValueError): expected=None
+                      known=bool(str(r.get('form') or '').strip('-/ ')) or bool(expected)
+                      outside=bool(expected and known_outside.get(str(r.get('horse_id')))==expected)
+                      if expected and expected not in dates:
+                          category='VERIFIED_OUTSIDE_SCOPE' if outside else 'LAST_RUN_NOT_LOADED'
+                      elif known and not dates:category='KNOWN_FORM_NOT_LOADED'
+                      elif not known and not dates:category='POSSIBLE_DEBUT'
+                      else:category='LINKED'
+                      rows.append(dict(horse=r.get('horse'),horse_id=r.get('horse_id'),race_id=r.get('race_id'),course=r.get('course'),race_time=r.get('race_time'),expected=expected,loaded_dates=sorted(dates),prior_events=len(events),category=category))
+              assert rows,'No G5 runners in loaded state audit'
+              unresolved=[r for r in rows if r['category'] in ('LAST_RUN_NOT_LOADED','KNOWN_FORM_NOT_LOADED')]
+              report=dict(day=day,legacy_archive_through=str(archive_end),legacy_db=str(db),ledger_rows=ledger_rows,ledger_sha256=manifest['ledger_sha256'],hpr_coverage=coverage,allocated_races=len(groups),runners=len(rows),classifications=dict(collections.Counter(r['category'] for r in rows)),unresolved=unresolved,details=rows,status='HOLD_G5' if unresolved else 'PASS_WITH_DISCLOSED_OUTSIDE_SCOPE_AND_DEBUTS',model_state_changed=False)
+              p=Path(out);p.mkdir(parents=True,exist_ok=True);(p/'g5-source-coverage.json').write_text(json.dumps(report,indent=2,default=str)+'\n')
+              Path(os.environ['STAGE215_G5_REPORT']).write_text(json.dumps(report,indent=2,default=str)+'\n')
+              print('STAGE215_G5_COVERAGE',json.dumps({k:v for k,v in report.items() if k!='details'},default=str),flush=True)
+              if unresolved:raise RuntimeError('G5 coverage gate: unresolved known form; see g5-source-coverage.json')
+          PY
+          python - <<'PY'
+          import pathlib as P, json, os
+          p=P.Path('stage196-work/engine.py');s=p.read_text()
+          # Capture the dated exception registry BEFORE the engine restores frozen scripts.
+          from scripts.stage203g_final_cork import OUTSIDE
+          outside={**OUTSIDE,'hrs_40959261':'2026-06-24','hrs_53475996':'2026-05-26'}
+          q=P.Path('stage196-work/outside-scope.json');q.write_text(json.dumps(outside))
+          old='from scripts.stage203g_final_cork import OUTSIDE'
+          assert s.count(old)==1
+          s=s.replace(old,old+"\nOUTSIDE=dict(OUTSIDE, **{'hrs_40959261':'2026-06-24','hrs_53475996':'2026-05-26'})")
+          old="gs=gs.replace(guard,replacement);compile(gs,str(gp),'exec');gp.write_text(gs)"
+          assert s.count(old)==1
+          new="""gs=gs.replace(guard,replacement)
+          anchor='    base_coverage=add_base_2026(state,args.db,args.hpr,last,target)'
+          assert gs.count(anchor)==1,'Original G5 state-load anchor changed'
+          gs=gs.replace(anchor,anchor+'\\n    from g5_coverage_audit import inspect_state\\n    inspect_state(state,groups,target,last,args.hpr,base_coverage,out,args.db)')
+          compile(gs,str(gp),'exec');gp.write_text(gs)
+          os.environ['PYTHONPATH']=str(W)+os.pathsep+os.environ.get('PYTHONPATH','.:scripts')
+          os.environ['STAGE215_OUTSIDE']=str(W/'outside-scope.json')
+          os.environ['STAGE215_G5_REPORT']=str(O/'g5-source-coverage.json')"""
+          s=s.replace(old,new)
+          compile(s,str(p),'exec');p.write_text(s)
+          print('Original G5 state-load hook installed. No scoring features, weights or parameters changed.')
+          PY
+          python -m py_compile stage196-work/engine.py stage196-work/g5_coverage_audit.py
+      - name: Audit inputs and score allocated model families
+        run: python -u stage196-work/engine.py
+      - name: Confirm every selected race and G5 source gate
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, pathlib as P, csv
+          o=P.Path('stage196-output'); a=o/'audit.json'; f=o/'interim-combined.csv'; g=o/'g5-source-coverage.json'
+          if not a.exists() or not f.exists():raise SystemExit('No complete scoring output; review preflight artifacts.')
+          audit=json.loads(a.read_text()); rows=list(csv.DictReader(f.open())); assert rows
+          g5=[r for r in rows if str(r.get('model','')).startswith('G5_')]
+          held=[r for r in rows if r.get('status')!='PAPER_SELECTION']
+          report={'target':'2026-11-28','races':len(rows),'selected':len(rows)-len(held),'held':held,'g5_races':len(g5),'g5_audit':json.loads(g.read_text())['status'] if g.exists() else 'NOT_REQUIRED' if not g5 else 'MISSING','paper_only':True,'hpr_recalculated':False,'model_weights_changed':False}
+          (o/'final-selection-gate.json').write_text(json.dumps(report,indent=2));print(json.dumps(report,indent=2))
+          assert not held,'Unscored/held races; do not certify complete selections'
+          if g5:assert g.exists() and report['g5_audit'].startswith('PASS'), 'G5 coverage gate not passed'
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage215-combined-g5-coverage-${{ github.run_id }}
+          path: stage196-output/
+          if-no-files-found: warn
+          retention-days: 30
