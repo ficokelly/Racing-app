@@ -132,30 +132,90 @@ jobs:
            assert _live_cards.read_bytes()==_live_card_bytes,'Fresh declarations not restored'
           """
           merged=merged.replace(end_build,restore_build,1)
-          # Scope the strict preflight to the upcoming declarations. Do not alter scorer inputs or formulas.
-          preflight = "assert active and len({r['horse_id'] for r in active})==len(active)"
+          # Construct one whole-race eligibility manifest from the fresh declarations before form audit.
+          preflight = "pre=json.loads((ROOT/'data/racecards.json').read_text());active=[r for r in pre['runners'] if r.get('date')==DAY and active_runner(r)]"
           assert merged.count(preflight)==1
-          scope = """# Stage196F same-day candidate: exclude entire off/imminent fields before form audit.
+          scope = """pre=json.loads((ROOT/'data/racecards.json').read_text());active=[r for r in pre['runners'] if r.get('date')==DAY and active_runner(r)]
           if not REPLAY and DAY=='2026-11-27':
-           cutoff=NOW()+dt.timedelta(minutes=10)
-           late=[r for r in active if stamp(r['race_time'])<=cutoff]
-           dump(O/'preflight-excluded-races.json',sorted({(r['course'],r['race_time']) for r in late}))
-           active=[r for r in active if stamp(r['race_time'])>cutoff]
+           _cutoff=NOW()+dt.timedelta(minutes=10)
+           _settlement={'position','finish_pos','result','outcome','sp','sp_decimal','starting_price','beaten','race_result','result_status','overall_beaten','distance_beaten_total'}
+           _closed={'finished','resulted','final','completed','abandoned','cancelled','canceled','void'}
+           _groups=C.defaultdict(list)
+           for r in active:
+            assert r.get('race_time') and r.get('course') and r.get('race_id') and r.get('horse'),'Incomplete declaration identity'
+            _groups[cardkey(r)].append(r)
+           _validated_fields={};_excluded=[]
+           for k,v in sorted(_groups.items()):
+            assert len({r['race_id'] for r in v})==1 and len({stamp(r['race_time']) for r in v})==1,('Conflicting race identity',k)
+            reason=None
+            if stamp(v[0]['race_time'])<=_cutoff:reason='OFF_OR_IMMINENT_AT_PREFLIGHT'
+            elif any(norm(r.get('race_status')) in _closed for r in v):reason='CLOSED_RACE'
+            elif any(r.get(f) not in (None,'',[],{}) for r in v for f in _settlement):reason='SETTLEMENT_PRESENT_IN_FIELD'
+            elif len(v)<2:reason='FEWER_THAN_TWO_ACTIVE_RUNNERS'
+            else:
+             assert len({horse(r['horse']) for r in v})==len(v),('Duplicate declared horse',k)
+             _validated_fields[k]=v
+            if reason:_excluded.append(dict(race=list(k),race_id=v[0]['race_id'],runners=len(v),reason=reason))
+           active=[r for v in _validated_fields.values() for r in v]
+           _preflight_card_sha=digest(ROOT/'data/racecards.json')
+           _validated_ids={k:sorted((r['race_id'],r['horse_id']) for r in v) for k,v in _validated_fields.items()}
+           dump(O/'preflight-excluded-races.json',_excluded)
+           dump(O/'preflight-field-manifest.json',dict(cutoff=_cutoff.isoformat(),cards_sha256=_preflight_card_sha,fields=[dict(race=list(k),runner_ids=v) for k,v in _validated_ids.items()]))
+           assert _validated_fields,'No eligible upcoming fields at preflight'
           """
-          merged=merged.replace(preflight,scope+preflight,1)
+          merged=merged.replace(preflight,scope,1)
+          # The later scoring stage must consume exactly that validated manifest, not independently select a different universe.
+          old_fields="""for r in cards.get('runners',[]):
+           if str(r.get('date'))!=DAY or not r.get('race_time') or not r.get('horse') or not active_runner(r):continue
+           if norm(r.get('race_status')) in {'finished','resulted','final','completed','abandoned','cancelled','canceled','void'}:continue
+           if any(r.get(k) not in (None,'',[],{}) for k in outcome):continue
+           if stamp(r['race_time'])<=NOW()+dt.timedelta(minutes=2):continue
+           fields[cardkey(r)].append({k:v for k,v in r.items() if k not in outcome|prices})
+          fields={k:v for k,v in fields.items() if len(v)>=2 and len({horse(r['horse']) for r in v})==len(v)};assert fields,'No verified remaining fields'"""
+          assert merged.count(old_fields)==1
+          new_fields="""if not REPLAY and DAY=='2026-11-27':
+           assert digest(ROOT/'data/racecards.json')==_preflight_card_sha,'Declarations changed between preflight and scoring'
+           assert sum(map(len,_validated_fields.values()))==preaudit['active'] and len(_validated_fields)==preaudit['races'],'Preflight manifest totals inconsistent'
+           _score_cutoff=NOW()+dt.timedelta(minutes=2)
+           _expired_before_scoring={k for k,v in _validated_fields.items() if stamp(v[0]['race_time'])<=_score_cutoff}
+           fields={k:[{a:b for a,b in r.items() if a not in outcome|prices} for r in v] for k,v in _validated_fields.items() if k not in _expired_before_scoring}
+           _expected_scoring_ids={k:v for k,v in _validated_ids.items() if k not in _expired_before_scoring}
+           assert {k:sorted((r['race_id'],r['horse_id']) for r in v) for k,v in fields.items()}==_expected_scoring_ids,'Preflight/score identity mismatch'
+           assert fields,'No verified remaining fields'
+           audit['field_reconciliation']=dict(preflight_fields=len(_validated_fields),preflight_runners=preaudit['active'],scoring_fields=len(fields),scoring_runners=sum(map(len,fields.values())),expired_before_scoring=[list(k) for k in sorted(_expired_before_scoring)],same_declaration_snapshot=True)
+           dump(O/'audit.json',audit)
+           print('STAGE196F_FIELD_RECONCILIATION',json.dumps(audit['field_reconciliation']),flush=True)
+          else:
+           for r in cards.get('runners',[]):
+            if str(r.get('date'))!=DAY or not r.get('race_time') or not r.get('horse') or not active_runner(r):continue
+            if norm(r.get('race_status')) in {'finished','resulted','final','completed','abandoned','cancelled','canceled','void'}:continue
+            if any(r.get(k) not in (None,'',[],{}) for k in outcome):continue
+            if stamp(r['race_time'])<=NOW()+dt.timedelta(minutes=2):continue
+            fields[cardkey(r)].append({k:v for k,v in r.items() if k not in outcome|prices})
+           fields={k:v for k,v in fields.items() if len(v)>=2 and len({horse(r['horse']) for r in v})==len(v)};assert fields,'No verified remaining fields'"""
+          merged=merged.replace(old_fields,new_fields,1)
+          old_check="assert sum(map(len,fields.values()))==preaudit['active'] and len(fields)==preaudit['races'],'Preflight/score field mismatch'"
+          assert merged.count(old_check)==1
+          new_check="""if not REPLAY and DAY=='2026-11-27':
+           assert {k:sorted((r['race_id'],r['horse_id']) for r in v) for k,v in fields.items()}==_expected_scoring_ids,'Preflight/score field mismatch after identity processing'
+           assert (set(fields)|_expired_before_scoring)==set(_validated_fields) and not (set(fields)&_expired_before_scoring),'Unexplained field loss or addition'
+          else:
+           assert sum(map(len,fields.values()))==preaudit['active'] and len(fields)==preaudit['races'],'Preflight/score field mismatch'"""
+          merged=merged.replace(old_check,new_check,1)
           # Keep the existing field/rank validation and fail on genuine scoring gaps.
           # Races that expire without scoring are reported separately, never presented as selections.
           final_anchor="results=checkpoint()\nby_race={(course(r['course']),r['time']):r for r in results}"
           assert merged.count(final_anchor)==1
           final_scope="""results=checkpoint()
           if not REPLAY and DAY=='2026-11-27':
-           expired=[r for r in results if r['status']=='RACE_OFF_OR_IMMINENT_AT_PUBLICATION']
-           dump(O/'expired-unscored-races.json',expired)
+           _publication_cutoff=NOW()+dt.timedelta(minutes=2)
+           expired=[r for r in results if stamp(fields[(DAY,course(r['course']),r['time'])][0]['race_time'])<=_publication_cutoff]
+           dump(O/'expired-before-artifact-races.json',expired)
            expired_keys={(DAY,course(r['course']),r['time']) for r in expired}
            if expired_keys:
             fields={k:v for k,v in fields.items() if k not in expired_keys}
             assert fields,'No remaining scored or eligible fields'
-            audit['expired_unscored_fields']=len(expired_keys)
+            audit['expired_before_artifact_fields']=len(expired_keys)
             audit['remaining_fields']=len(fields)
             results=checkpoint()
           by_race={(course(r['course']),r['time']):r for r in results}"""
