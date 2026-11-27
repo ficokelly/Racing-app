@@ -1,0 +1,163 @@
+name: Stage211B - Verified result reconciliation and external form audit export
+'on':
+  workflow_dispatch: null
+permissions:
+  contents: write
+concurrency:
+  group: stage211-result-reconciliation
+  cancel-in-progress: false
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: main
+        fetch-depth: 0
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    - name: Repair five verified race records and coverage detection
+      shell: bash
+      run: |-
+        set -euo pipefail
+        python - <<'PY'
+        TARGETS = [{'date': '2026-11-20', 'course': 'Wolverhampton (AW)', 'off_dt': '2026-11-20T20:30:00Z', 'status': 'final', 'region': 'GB', 'source': 'Stage V5 independently published result', 'external_verification': {'source_url': 'https://www.racingpost.com/results/513/wolverhampton-aw/2026-11-20/931791/', 'source_race_id': '931791', 'starters': 12}, 'runners': [{'horse': 'Exotic Baby', 'position': 1, 'status': 'ran', 'sp': '3/1', 'trainer': 'Ian Williams', 'jockey': 'Billy Loughnane'}, {'horse': 'Chesneys Charm', 'position': 2, 'status': 'ran', 'sp': '14/1', 'trainer': 'Ivan Furtado', 'jockey': 'Elle-May Croot'}, {'horse': 'The Dark Baron', 'position': 3, 'status': 'ran', 'sp': '15/2', 'trainer': 'Kathy Turner', 'jockey': 'Charlie Tucker'}, {'horse': 'King Chaos', 'position': 4, 'status': 'ran', 'sp': '28/1', 'trainer': 'Rebecca Menzies', 'jockey': 'Kaiya Fraser'}, {'horse': 'Rua Mor', 'position': 5, 'status': 'ran', 'sp': '22/1', 'trainer': 'Sam England', 'jockey': 'Jonny Peate'}, {'horse': 'Sant Alessio', 'position': 6, 'status': 'ran', 'sp': '8/1', 'trainer': 'Joe Tickle', 'jockey': 'Taylor Fisher'}, {'horse': 'Urban Road', 'position': 7, 'status': 'ran', 'sp': '14/1', 'trainer': 'Alan Brown', 'jockey': 'Tom Eaves'}, {'horse': 'Pulsar Star', 'position': 8, 'status': 'ran', 'sp': '4/1', 'trainer': 'Thomas Faulkner', 'jockey': 'Robert Havlin'}, {'horse': 'Born A Rebel', 'position': 9, 'status': 'ran', 'sp': '14/1', 'trainer': 'Patrick Owens', 'jockey': 'Clifford Lee'}, {'horse': 'San Juanito', 'position': 10, 'status': 'ran', 'sp': '100/30', 'trainer': 'Mike Murphy', 'jockey': 'Rob Hornby'}, {'horse': 'Made All', 'position': 11, 'status': 'ran', 'sp': '22/1', 'trainer': 'Sam England', 'jockey': 'George Wood'}, {'horse': "Mc'ted", 'position': 12, 'status': 'ran', 'sp': '50/1', 'trainer': 'Martin Dunne', 'jockey': 'Alice Bond'}, {'horse': 'Super Hit', 'position': None, 'status': 'scratched', 'sp': None}]}, {'date': '2026-11-25', 'course': 'Kempton (AW)', 'off_dt': '2026-11-25T20:30:00Z', 'status': 'final', 'region': 'GB', 'source': 'Stage V5 independently published result', 'external_verification': {'source_url': 'https://www.racingpost.com/results/1079/kempton-aw/2026-11-25/931855/', 'source_race_id': '931855', 'starters': 13}, 'runners': [{'horse': 'Split Elevens', 'position': 1, 'status': 'ran', 'sp': '7/4', 'trainer': 'John Butler', 'jockey': 'Billy Loughnane'}, {'horse': 'Arctician', 'position': 2, 'status': 'ran', 'sp': '13/2', 'trainer': 'Simon Dow', 'jockey': 'Paddy Bradley'}, {'horse': 'Guilty Verdict', 'position': 3, 'status': 'ran', 'sp': '11/2', 'trainer': 'Jim Boyle', 'jockey': 'Hector Crouch'}, {'horse': 'King Cherry', 'position': 4, 'status': 'ran', 'sp': '28/1', 'trainer': 'Stuart Williams', 'jockey': 'Sean Levey'}, {'horse': 'Phoenix Of Dreams', 'position': 5, 'status': 'ran', 'sp': '4/1', 'trainer': 'John & Sean Quinn', 'jockey': 'James Sullivan'}, {'horse': 'Rhythm N Rock', 'position': 6, 'status': 'ran', 'sp': '13/2', 'trainer': 'John Butler', 'jockey': 'Luke Morris'}, {'horse': 'Billy Mill', 'position': 7, 'status': 'ran', 'sp': '10/1', 'trainer': 'Rod Millman', 'jockey': 'Lewis Edmunds'}, {'horse': 'Mollstar', 'position': 8, 'status': 'ran', 'sp': '18/1', 'trainer': 'Ed Walker', 'jockey': 'Ashley Lewis'}, {'horse': 'Token Gesture', 'position': 9, 'status': 'ran', 'sp': '18/1', 'trainer': 'Mark Usher', 'jockey': 'Rose Dawes'}, {'horse': 'Pints In Peace', 'position': 10, 'status': 'ran', 'sp': '66/1', 'trainer': 'Jim & Suzi Best', 'jockey': 'Tom Queally'}, {'horse': 'Enough Already', 'position': 11, 'status': 'ran', 'sp': '125/1', 'trainer': 'Jim & Suzi Best', 'jockey': 'William Cox'}, {'horse': 'Assessment', 'position': 12, 'status': 'ran', 'sp': '125/1', 'trainer': 'D Donovan', 'jockey': 'Darragh Keenan'}, {'horse': 'Hello Humphrey', 'position': 13, 'status': 'ran', 'sp': '50/1', 'trainer': 'Mark Usher', 'jockey': 'Joey Haynes'}, {'horse': 'Hexagonal', 'position': None, 'status': 'scratched', 'sp': None}]}, {'date': '2026-11-26', 'course': 'Chelmsford (AW)', 'off_dt': '2026-11-26T20:30:00Z', 'status': 'final', 'region': 'GB', 'source': 'Stage V5 independently published result', 'external_verification': {'source_url': 'https://www.racingpost.com/results/1083/chelmsford-aw/2026-11-26/931867/', 'source_race_id': '931867', 'starters': 10}, 'runners': [{'horse': 'Colonnade', 'position': 1, 'status': 'ran', 'sp': '7/2', 'trainer': 'Simon Crisford', 'jockey': 'Billy Loughnane'}, {'horse': 'Metallo', 'position': 2, 'status': 'ran', 'sp': '11/2', 'trainer': 'John Butler', 'jockey': 'David Egan'}, {'horse': 'Super Hit', 'position': 3, 'status': 'ran', 'sp': '18/1', 'trainer': 'James Owen', 'jockey': "Kieran O'Neill"}, {'horse': 'Nizam', 'position': 4, 'status': 'ran', 'sp': '100/30', 'trainer': 'Ian Williams', 'jockey': 'Edward Greatrex'}, {'horse': 'Kokoluna', 'position': 5, 'status': 'ran', 'sp': '14/1', 'trainer': 'Eve Johnson Houghton', 'jockey': 'Charles Bishop'}, {'horse': 'Caledonian', 'position': 6, 'status': 'ran', 'sp': '3/1', 'trainer': 'David Simcock', 'jockey': 'Callum Shepherd'}, {'horse': "Charlie's Choice", 'position': 7, 'status': 'ran', 'sp': '8/1', 'trainer': 'David Simcock', 'jockey': 'Taryn Langley'}, {'horse': 'Mr Baloo', 'position': 8, 'status': 'ran', 'sp': '25/1', 'trainer': 'Ross Burdon', 'jockey': 'Paddy Bradley'}, {'horse': 'Marsh Benham', 'position': 9, 'status': 'ran', 'sp': '66/1', 'trainer': 'George Baker', 'jockey': 'Jack Callan'}, {'horse': 'Thinthread', 'position': 10, 'status': 'ran', 'sp': '18/1', 'trainer': 'George Baker', 'jockey': 'Neil Callan'}]}, {'date': '2026-11-27', 'course': 'Dundalk (AW) (IRE)', 'off_dt': '2026-11-27T20:30:00Z', 'status': 'final', 'region': 'IRE', 'source': 'Stage V5 independently published result', 'external_verification': {'source_url': 'https://www.racingpost.com/results/1138/dundalk-aw/2026-11-27/934215/', 'source_race_id': '934215', 'starters': 14}, 'runners': [{'horse': 'Love Orchid', 'position': 1, 'status': 'ran', 'sp': '8/1', 'trainer': 'Noel Meade', 'jockey': 'Nicola Burns'}, {'horse': 'Movin And Groovin', 'position': 2, 'status': 'ran', 'sp': '2/1', 'trainer': 'David Marnane', 'jockey': 'Nathan Crosse'}, {'horse': 'Flying Fortress', 'position': 3, 'status': 'ran', 'sp': '11/2', 'trainer': 'Gavin Cromwell', 'jockey': 'Camillus Byrne'}, {'horse': 'A Pretty Penny', 'position': 4, 'status': 'ran', 'sp': '20/1', 'trainer': 'Mrs Deborah Cody', 'jockey': 'Julian Pietropaolo'}, {'horse': 'Riyazanka', 'position': 5, 'status': 'ran', 'sp': '10/1', 'trainer': 'J P Murtagh', 'jockey': 'Ben Coen'}, {'horse': 'Usuario Amigo', 'position': 6, 'status': 'ran', 'sp': '6/1', 'trainer': "Richard John O'Brien", 'jockey': 'Adam Grant'}, {'horse': 'Satono Chevalier', 'position': 7, 'status': 'ran', 'sp': '50/1', 'trainer': 'M K Flannery', 'jockey': 'Mel Sheridan'}, {'horse': 'Flame Of Forest', 'position': 8, 'status': 'ran', 'sp': '16/1', 'trainer': 'Miss Natalia Lupini', 'jockey': 'Wayne Lordan'}, {'horse': 'Wild Berries', 'position': 9, 'status': 'ran', 'sp': '25/1', 'trainer': "Ross O'Sullivan", 'jockey': 'Patrick McGettigan'}, {'horse': 'Emily Estherfaye', 'position': 10, 'status': 'ran', 'sp': '40/1', 'trainer': 'Andrew Slattery', 'jockey': 'Adam Browne-Souza'}, {'horse': 'Afloat', 'position': 11, 'status': 'ran', 'sp': '66/1', 'trainer': 'Gavin Cromwell', 'jockey': 'Robert Whearty'}, {'horse': 'Isthatrightkatie', 'position': 12, 'status': 'ran', 'sp': '66/1', 'trainer': 'Miss Katy Brown', 'jockey': 'Killian Leonard'}, {'horse': 'Tribal Moon', 'position': 13, 'status': 'ran', 'sp': '7/2', 'trainer': 'Noel C Kelly', 'jockey': 'Rory Mulligan'}, {'horse': 'Anightaway', 'position': 14, 'status': 'ran', 'sp': '50/1', 'trainer': 'Sean Davis', 'jockey': 'Sean Davis'}, {'horse': 'Rosanella', 'position': None, 'status': 'scratched', 'sp': None}]}, {'date': '2026-11-23', 'course': 'Bangor-on-Dee', 'off_dt': '2026-11-23T13:05:00Z', 'status': 'final', 'region': 'GB', 'source': 'Stage V5 independently published result', 'external_verification': {'source_url': 'https://www.racingpost.com/results/4/bangor-on-dee/2026-11-23/933647/', 'source_race_id': '933647', 'starters': 11, 'dead_heat': True}, 'runners': [{'horse': 'Dig Deep', 'position': 1, 'status': 'ran', 'sp': '3/1', 'trainer': 'Ben Pauling', 'jockey': 'Ben Jones'}, {'horse': 'They Want Me', 'position': 1, 'status': 'ran', 'sp': '9/2', 'trainer': 'Donald McCain', 'jockey': 'Kielan Woods'}, {'horse': 'Roi Du Risk', 'position': 3, 'status': 'ran', 'sp': '13/2', 'trainer': 'Henrietta C Knight', 'jockey': 'Richie McLernon'}, {'horse': 'Berkenshtaaap', 'position': 4, 'status': 'ran', 'sp': '18/1', 'trainer': 'Olly Murphy', 'jockey': 'Kevin Brogan'}, {'horse': 'Chasing Glance', 'position': 5, 'status': 'ran', 'sp': '22/1', 'trainer': 'Tom Ellis', 'jockey': 'Finn Lambert'}, {'horse': 'The Burren Man', 'position': 6, 'status': 'ran', 'sp': '16/1', 'trainer': 'Harry Derham', 'jockey': "Paul O'Brien"}, {'horse': 'Lord Roco', 'position': None, 'status': 'brought down', 'sp': '125/1', 'trainer': 'Barry John Murphy', 'jockey': 'James Best'}, {'horse': 'Cedar Row', 'position': None, 'status': 'fell', 'sp': '40/1', 'trainer': 'Joel Parkinson & Sue Smith', 'jockey': 'Danny McMenamin'}, {'horse': 'Kingbel Du Lion', 'position': None, 'status': 'fell', 'sp': '11/1', 'trainer': 'Venetia Williams', 'jockey': 'Charlie Deutsch'}, {'horse': 'Hard Dealt', 'position': None, 'status': 'fell', 'sp': '2/1', 'trainer': 'Henry Daly', 'jockey': 'Stan Sheppard'}, {'horse': 'French Emperor', 'position': None, 'status': 'pulled up', 'sp': '14/1', 'trainer': 'Nicky Martin', 'jockey': 'Sean Houlihan'}]}]
+        import collections, json, pathlib
+        from scripts import stage32_form_rebuild as F
+        P=pathlib.Path
+        REPORT=P('reports/stage211'); REPORT.mkdir(parents=True,exist_ok=True)
+        def read(p): return json.loads(p.read_text())
+        def save(p,v):
+            tmp=p.with_suffix('.stage211.tmp');tmp.write_text(json.dumps(v,indent=2,ensure_ascii=False)+'\n');tmp.replace(p)
+        def key(r):return (str(r.get('date') or '')[:10],F.course_key(r.get('course')),F.off_key(r.get('off_dt') or r.get('race_time') or r.get('off')))
+        def rows(r):
+            return {F.horse_key(x['horse']):x for x in r['runners']}
+        def signature(r):
+            return {k:(str(x.get('position') or ''),str(x.get('status') or '')) for k,x in rows(r).items()}
+        ledger=read(F.AUDIT_FILE)['coverage_guard']['expected_races']
+        registry=P('data/form-dated-evidence.json'); ev=read(registry)
+        assert ev['schema']=='form-dated-evidence-v1'
+        updates=[]; plans=[]
+        for target in TARGETS:
+            k=key(target); label='|'.join(k); expected=ledger.get(label)
+            assert expected, ('No saved declaration ledger',label)
+            actual=rows(target)
+            assert len(actual)==len(target['runners']) and set(actual)==set(expected),(label,'declarations mismatch',set(expected)-set(actual),set(actual)-set(expected))
+            assert len([r for r in actual.values() if F.is_starter(r)])==target['external_verification']['starters']
+            assert sum(F.is_win(r) for r in actual.values())==(2 if target['external_verification'].get('dead_heat') else 1)
+            path=F.RESULTS_DIR/(k[0]+'.json'); doc=read(path)
+            matches=[r for r in doc['results'] if key(r)==k and r.get('status')!='superseded']
+            assert len(matches)<=1,(label,'ambiguous existing results')
+            # No overlapping race with different off time on the same day/course.
+            starters={h for h,r in actual.items() if F.is_starter(r)}
+            for other in doc['results']:
+                if other.get('status')=='superseded' or key(other)==k or key(other)[:2]!=k[:2]:continue
+                assert not starters & {h for h,r in rows(other).items() if F.is_starter(r)},(label,'overlapping result',key(other))
+            if matches:
+                old=matches[0]; oldrows=rows(old)
+                assert set(oldrows)==set(actual),(label,'existing field mismatch')
+                for h,new in actual.items():
+                    prev=oldrows[h]
+                    # Permit precise terminal status repair only for formerly blank positions.
+                    assert str(prev.get('position') or '')==str(new.get('position') or ''),(label,h,'position disagreement')
+                    if prev.get('sp') and new.get('sp'):assert prev['sp']==new['sp'],(label,h,'SP disagreement')
+                    for field in ('trainer','jockey'):
+                        if prev.get(field) and F.person_key(prev[field])!=F.person_key(new.get(field)):
+                            raise RuntimeError((label,h,field,'existing explicit result identity differs'))
+                    # Preserve richer historical data and valid provider IDs; only confirmed result facts change.
+                    merged=dict(prev);merged.update(new);actual[h]=merged
+                replacement={**old,**target,'runners':list(actual.values())}
+                doc['results'][doc['results'].index(old)]=replacement
+                target=replacement
+                action='reconciled_existing'
+            else:
+                doc['results'].append(target); action='added_missing_final'
+            ev['final_results']=[r for r in ev.get('final_results',[]) if key(r)!=k]+[target]
+            plans.append((path,doc));updates.append(dict(race=label,action=action,starters=target['external_verification']['starters'],winners=[x['horse'] for x in target['runners'] if F.is_win(x)]))
+        # Validate all five before touching repository data.
+        for p,d in plans:save(p,d)
+        save(registry,ev)
+        # Stage70 currently rejects every multi-winner race. Recognise only the exact independently verified dead heat.
+        p=P('scripts/rhp_stage70_data_coverage.py');s=p.read_text()
+        old="            if len(winners)!=1:continue"
+        new="""            if len(winners)!=1:
+                        meta=r.get('external_verification') or {}
+                        confirmed=(day=='2026-11-23' and course_name=='bangorondee' and actual=='13:05'
+                            and set(winners)=={'digdeep','theywantme'} and meta.get('dead_heat') is True
+                            and str(meta.get('source_race_id'))=='933647')
+                        if not confirmed:continue
+                        winners=['|'.join(sorted(winners))]"""
+        if new not in s:
+            assert s.count(old)==1;s=s.replace(old,new);compile(s,str(p),'exec');p.write_text(s)
+        save(REPORT/'result-repairs.json',updates)
+        print(json.dumps(updates,indent=2))
+
+        PY
+    - name: Recalculate form only and export exact external comparison scope
+      shell: bash
+      run: |-
+        set -euo pipefail
+        python calculate-strike-rates.py --as-of 2026-11-27
+        python scripts/rhp_stage70_data_coverage.py --out data/rhp-stage70-coverage.json
+        python - <<'PY'
+        import json, pathlib, csv, datetime as dt
+        from scripts import stage32_form_rebuild as F
+        P=pathlib.Path; report=P('reports/stage211')
+        form=json.loads(F.OUTPUT_FILE.read_text()); coverage=json.loads(F.AUDIT_FILE.read_text())
+        assert form['as_of']=='2026-11-27'
+        people={kind:{} for kind in ('trainer','jockey')}
+        card=json.loads(P('data/racecards.json').read_text())
+        for row in card['runners']:
+            if row.get('date')!='2026-11-28':continue
+            for kind in people:
+                name=row.get(kind);k=F.person_key(name)
+                if k:people[kind][k]=name
+        assert all(people.values()),'Tomorrow declarations unavailable'
+        rows=[]
+        for kind, names in people.items():
+            for period in (1,7,14):
+                block=form['periods'][str(period)]
+                byname={}
+                for x in block[kind+'s'].values():byname.setdefault(F.person_key(x['name']),[]).append(x)
+                for k,name in sorted(names.items()):
+                    matches=byname.get(k,[]); denom='runs' if kind=='trainer' else 'rides'
+                    if len(matches)==1:
+                        x=matches[0];n=x[denom];w=x['wins'];sr=x['strike_rate'];state='EXTERNAL_CHECK_PENDING'
+                    elif len(matches)==0:n=w=sr=None;state='NO_MATCHED_INTERNAL_RECORD'
+                    else:n=w=sr=None;state='AMBIGUOUS_INTERNAL_IDENTITY'
+                    rows.append(dict(kind=kind,name=name,window_days=period,start=(dt.date(2026,11,27)-dt.timedelta(days=period-1)).isoformat(),end='2026-11-27',runs_or_rides=n,wins=w,strike_rate=sr,external_runs_or_rides='',external_wins='',external_source='',status=state))
+        with (report/'tomorrow-person-form-validation.csv').open('w',newline='') as f:
+            wr=csv.DictWriter(f,fieldnames=list(rows[0]));wr.writeheader();wr.writerows(rows)
+        # Public rolling totals are preliminary because their start/end cutoff is not explicit.
+        checks=[]
+        for name,rides,wins,url in [('Billy Loughnane',63,21,'https://racingcards.co.uk/jockey/billy-loughnane/'),('Harry Skelton',51,21,'https://thegallop.uk/jockeys/harry-skelton')]:
+            x=[x for x in form['periods']['14']['jockeys'].values() if F.person_key(x['name'])==F.person_key(name)]
+            checks.append(dict(name=name,internal=x,external_rides=rides,external_wins=wins,url=url,status='PROVISIONAL_WINDOW_NOT_CONFIRMED'))
+        (report/'external-spot-checks.json').write_text(json.dumps(checks,indent=2)+'\n')
+        print(json.dumps(dict(as_of=form['as_of'],runners=coverage['fourteen_day_form_runners'],missing_trainer=coverage['fourteen_day_missing_trainer_rows'],missing_jockey=coverage['fourteen_day_missing_jockey_rows'],tomorrow_trainers=len(people['trainer']),tomorrow_jockeys=len(people['jockey']),comparisons_pending=len(rows),spot_checks=checks),indent=2))
+
+        PY
+    - name: Publish result, evidence and form changes only
+      shell: bash
+      run: |-
+        set -euo pipefail
+        git config user.name 'github-actions[bot]'
+        git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+        git add -- data/racing-results/2026-11-20.json data/racing-results/2026-11-23.json data/racing-results/2026-11-25.json data/racing-results/2026-11-26.json data/racing-results/2026-11-27.json data/form-dated-evidence.json scripts/rhp_stage70_data_coverage.py data/strike-rates.json data/form-identity-cache.json reports/stage32/form-rebuild-audit.json data/rhp-stage70-coverage.json
+        if git diff --cached --quiet; then exit 0; fi
+        git commit -m 'Stage211 reconcile externally verified final results and form coverage'
+        git pull --rebase origin main && git push origin HEAD:main
+    - name: Save validation evidence
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: stage211-results-and-form-validation
+        path: 'reports/stage211/
+
+          reports/stage32/form-rebuild-audit.json
+
+          data/rhp-stage70-coverage.json'
+        retention-days: 30
+        if-no-files-found: warn
