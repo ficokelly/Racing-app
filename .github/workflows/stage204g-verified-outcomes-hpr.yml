@@ -1,0 +1,244 @@
+name: Stage204G - Verified refusal and cancelled race repairs plus targeted HPR
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: stage86-hpr-daily-ledger
+  cancel-in-progress: false
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      PYTHONPATH: .:scripts
+      PYTHONUNBUFFERED: '1'
+      GH_TOKEN: ${{ github.token }}
+      ASKED_DATE: '2026-11-28'
+      OPENBLAS_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2 requests 'kagglehub>=0.3,<1' pyyaml
+      - name: Restore published history and HPRs
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          mkdir -p reports/stage152-specialists/source/stage2 reports/stage204g/{ref,output}
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage2-historical-staging-database --dir reports/stage152-specialists/source/stage2
+          gh run download 43089770857 --repo "$GITHUB_REPOSITORY" --name stage4-reference-named-events-and-winners --dir reports/stage204g/ref
+          python scripts/stage87_hpr_storage.py restore --dir data/hpr/shards --db reports/stage204g/published.sqlite
+          python scripts/stage86_hpr_engine.py --mode self-test
+      - name: Install evidence-scoped history corrections in shared loader
+        run: |
+          set -euo pipefail
+          cat > scripts/stage204g_history_corrections.py <<'PYCODE'
+          """Evidence-scoped corrections to disposable shared history; original archive retained."""
+          import csv, json, pathlib, sqlite3, re
+          from scripts.stage201_recent_history import state
+          from scripts.stage86_hpr_engine import norm
+
+          REFUSALS = [
+           ('kaggle-deltaromeo-ukie:2024-04-27:sandown:864322','2024-04-27','Sandown','Maasai Mara',20,17,12,'https://www.irishracing.com/raceresults/Sat-27th-Apr-2024/Sandown/1350'),
+           ('kaggle-deltaromeo-ukie:2025-11-08:kelso:905430','2025-11-08','Kelso','Benson',14,11,10,'https://www.irishracing.com/raceresults/Sat-8th-Nov-25/Kelso/1242'),
+          ]
+          CANCELLED='kaggle-deltaromeo-ukie:2026-09-30:warwick:940920'
+          CANCELLED_SOURCE='https://prod.thejockeyclub.co.uk/warwick/media/press-releases/2026/09/racing-cancelled/'
+          CANCELLED_NAMES={norm(x) for x in ['Delpotro','Four Decades','Gaelic Rambler','Move With The Beat','My Friend Sean','Palamon',"Shabalko D'herm",'Start Again','Ukantango']}
+
+          def apply(db,ref,src,target):
+              report=[]; remove_reference=False
+              with sqlite3.connect(db) as c:
+                  c.execute('pragma foreign_keys=on')
+                  assert c.execute('select max(race_date) from historical_races').fetchone()[0]<target
+                  for rid,day,venue,name,size,finishers,cannock_pos,url in REFUSALS:
+                      if day>=target: continue
+                      race=c.execute('select race_date,course from historical_races where id=?',(rid,)).fetchone()
+                      assert race and race[0]==day and norm(race[1])==norm(venue),('Unexpected race',rid,race)
+                      rows=c.execute('select runner_key,horse_name,finish_pos,outcome from historical_runs where race_id=? order by runner_key',(rid,)).fetchall()
+                      assert len(rows)==size and len({norm(x[1]) for x in rows})==size,('Field changed',rid)
+                      hits=[x for x in rows if norm(x[1])==norm(name)];assert len(hits)==1
+                      key,horse,pos,outcome=hits[0];assert pos is None and (str(outcome or '').upper() in ('','UNKNOWN','RR','REF','R','REFUSED') or state({'position':pos,'status':outcome})[0]=='REF'),('Unexpected refusal outcome',rid,outcome)
+                      assert [x[2] for x in rows if norm(x[1])==norm('Cannock Park')]==[cannock_pos]
+                      other=[state({'position':x[2],'status':x[3]}) for x in rows if x[0]!=key]
+                      assert all(st not in ('UNKNOWN','NR') for st,_ in other),('Other unresolved field',rid,other)
+                      assert sorted(p for st,p in other if p is not None)==list(range(1,finishers+1)),('Finishing order mismatch',rid)
+                      c.execute('update historical_runs set outcome=? where race_id=? and runner_key=?',('REF',rid,key))
+                      report.append({'race_id':rid,'horse':horse,'previous_outcome':outcome,'corrected_outcome':'REF','source':url})
+                  if '2026-09-30'<target:
+                      race=c.execute('select race_date,course from historical_races where id=?',(CANCELLED,)).fetchone()
+                      rows=c.execute('select horse_name,finish_pos,outcome from historical_runs where race_id=?',(CANCELLED,)).fetchall()
+                      if race:
+                          assert race[0]=='2026-09-30' and norm(race[1])==norm('Warwick')
+                          assert len(rows)==9 and {norm(x[0]) for x in rows}==CANCELLED_NAMES,('Cancelled field changed',rows)
+                          assert all(p is None and state({'position':p,'status':st})[0]=='UNKNOWN' for h,p,st in rows),('Recorded result exists: refuse deletion',rows)
+                          # Exclude cancelled declarations in the derived database only. Do not edit the immutable source archive.
+                          c.execute('delete from historical_runs where race_id=?',(CANCELLED,))
+                          c.execute('delete from historical_races where id=?',(CANCELLED,))
+                      else: assert not rows
+                      remove_reference=True
+                      report.append({'race_id':CANCELLED,'status':'CANCELLED_EXCLUDED_FROM_DERIVED_HISTORY','source':CANCELLED_SOURCE,'declared_runners':9})
+                  assert c.execute('pragma quick_check').fetchone()[0]=='ok'
+                  c.commit()
+              if remove_reference:
+                  p=pathlib.Path(ref);tmp=p.with_suffix(p.suffix+'.204g.tmp')
+                  with p.open(encoding='utf-8-sig',newline='') as fi,tmp.open('w',encoding='utf-8',newline='') as fo:
+                      reader=csv.DictReader(fi);assert 'stage2_race_id' in reader.fieldnames
+                      writer=csv.DictWriter(fo,fieldnames=reader.fieldnames);writer.writeheader()
+                      for row in reader:
+                          if row['stage2_race_id']!=CANCELLED:writer.writerow(row)
+                  tmp.replace(p)
+              print('STAGE204G_VERIFIED_HISTORY_CORRECTIONS',json.dumps(report,sort_keys=True),flush=True)
+              return report
+          PYCODE
+          python - <<'PYCODE'
+          import pathlib
+          p=pathlib.Path('scripts/stage167_validated_history.py');s=p.read_text()
+          marker='            append_stage203m(db,ref,src,date)'
+          hook='            from scripts.stage204g_history_corrections import apply as apply_stage204g\n            apply_stage204g(db,ref,src,date)'
+          if hook not in s:
+              assert s.count(marker)==1
+              p.write_text(s.replace(marker,marker+'\n'+hook))
+          PYCODE
+          python -m py_compile scripts/stage204g_history_corrections.py scripts/stage167_validated_history.py
+      - name: Check two careers and actual HPR loaders
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/stage204g.py" <<'PYCODE'
+          import collections as C, csv, json, os, pathlib as P, shutil, sqlite3, subprocess, yaml
+          import stage86_hpr_engine as H
+          import stage87_hpr_storage as Store
+          import stage108_model_g2 as G
+          import stage4_match_all_recurring_races as R
+          from scripts import stage201_recent_history as S
+          from stage167_validated_history import refreshed_inputs
+          DAY='2026-11-28'; W=P.Path('reports/stage204g'); OUT=W/'output'; ROOT=P.Path('data'); OUT.mkdir(exist_ok=True,parents=True)
+          KEYS={'P|PALAMON|DECORATEDKNIGHT|SESCHAT':'Palamon','P|CANNOCKPARK|CANNOCKCHASE|VANMILDERT':'Cannock Park'}
+          BASE=P.Path('reports/stage152-specialists/source/stage2/historical_ukie_staging.sqlite'); refs=list((W/'ref').rglob('all_races_with_reference_event_ids.csv')); assert len(refs)==1
+          original=W/'published.sqlite'; candidate=W/'candidate.sqlite'; shutil.copy2(original,candidate)
+          # Load the exact validated Stage204C helpers, not a modified HPR formula.
+          source=subprocess.check_output(['git','show','8f67fc4dd377b58e4eb7ab39bef78365a1b37db3:.github/workflows/stage204c-hpr-shared-history.yml'],text=True)
+          block=next(s['run'] for s in yaml.safe_load(source)['jobs']['validate']['steps'] if s.get('name')=='Validate HPR linked database and targeted rating replay')
+          ns={'__name__':'validated_helpers'};exec(compile(block.split("<<'PY'\n",1)[1].split('\nPY\n',1)[0],'validated_helpers','exec'),ns);ns['TARGET']=DAY
+          identity=ns['identity'];result=ns['result'];slot=ns['slot'];exact_field=ns['exact_field'];event=ns['event'];link_result=ns['link_result']
+          # A missing reference may only be recovered if a trusted archived final field has the same date, course, and every starter/outcome.
+          def corroborate(field):
+           d=field[0]['date'];co=field[0]['course']; p=ROOT/'racing-results'/(d+'.json'); region=R.region(co)
+           if not p.exists() or region not in ('GB','IRELAND'):return None
+           want=sorted((H.norm(x['horse']),*result(x)) for x in field if result(x)[0]!='NR')
+           if any(z[1]=='UNKNOWN' for z in want):return None
+           matches=[]
+           for r in json.loads(p.read_text()).get('results',[]):
+            if H.course(r.get('course'))!=H.course(co):continue
+            rr=S.final_field(r,d)
+            if rr is None:continue
+            got=sorted((H.norm(x['horse']),*result(x)) for x in rr)
+            if got==want:matches.append(r)
+           if len(matches)==1:return (d,co,region)
+           return None
+          with sqlite3.connect(original) as c:
+           old=C.defaultdict(list); slots_count=C.Counter(); old_slots=set(); before=Store.ledger(c)
+           for x,rev,sha in ns['latest'](c,DAY):
+            if x['horse_key'] in KEYS:
+             s=slot(x['horse_key'],x['date'],x.get('course'));old_slots.add(s);slots_count[x['model_version'],s]+=1
+             if x['model_version']==H.VERSION:old[x['horse_key']].append(x)
+          print('TARGET_PRIOR_COUNTS', {KEYS[k]:len(old[k]) for k in KEYS},flush=True)
+          with refreshed_inputs(BASE,refs[0],DAY) as (db,ref):
+           with P.Path(ref).open(encoding='utf-8-sig',newline='') as f: refmap={r['stage2_race_id']:(r['date'],r['course'],r['region_scope'].upper()) for r in csv.DictReader(f)}
+           careers=C.defaultdict(list);bad=C.defaultdict(list);links=C.defaultdict(list);details=[]; repaired_refs=[]
+           with sqlite3.connect(db) as c:
+            # Select days using exact HPR pedigree identities; only scan full fields on those dates.
+            c.create_function('target_key',3,lambda h,s,d:int(identity({'horse':h,'sire':s,'dam':d}) in KEYS),deterministic=True)
+            wanted={r[0] for r in c.execute('SELECT DISTINCT r.race_date FROM historical_runs u JOIN historical_races r ON r.id=u.race_id WHERE r.race_date<? AND target_key(u.horse_name,u.sire,u.dam)=1',(DAY,))}
+            wanted.update(s[1] for s in old_slots);print('TARGET_HISTORY_DATES',len(wanted),flush=True)
+            for d in sorted(wanted):
+             for field in G.from_db(c,d,d):
+              rid=field[0]['race_id']; hits=[x for x in field if identity(x) in KEYS and result(x)[0]!='NR']
+              if not hits:continue
+              proof=refmap.get(rid); verified=exact_field(field,proof)
+              if not verified and not proof:
+               proof=corroborate(field);verified=exact_field(field,proof)
+               if verified:repaired_refs.append(rid)
+              for x in hits:
+               k=identity(x);s=slot(k,d,x['course']);st,pos=result(x);links[s].append((rid,x['runner_key'],st,pos))
+               why=None
+               if not verified:why='MISSING_OR_CONFLICTING_REFERENCE' if not proof else 'UNVERIFIED_FULL_FIELD_OR_OUTCOME'
+               elif st=='UNKNOWN':why='UNKNOWN_OUTCOME'
+               else:
+                e=event(x,field,proof);q,why0=H.run_quality(e)
+                if q is None:why=why0
+                else:careers[k].append((s,e,x['runner_key']))
+               if why:
+                bad[k].append((d,rid,why));details.append({'horse':KEYS[k],'date':d,'race_id':rid,'course':x['course'],'reason':why,'reference':proof,'position':pos,'outcome':st,'field_size':len(field),'unknown_outcomes':[z['horse'] for z in field if result(z)[0]=='UNKNOWN'],'positions':[result(z)[1] for z in field if result(z)[1] is not None]})
+           # Keep all of the earlier strict validation conditions. No rating is invented for incomplete careers.
+           proposals,report,why=ns['reconcile'](set(KEYS),old,links,careers,bad,slots_count)
+           for row in report:
+            row['horse']=next(KEYS[k] for k in KEYS if ns['digest'](k)==row['horse_key_hash'])
+           assert all(x['horse_key'] in KEYS and x['date']<DAY and x['model_version']==H.VERSION for x in proposals)
+           # Require unique source and matching actual outcome for every new payload, including revised old keys.
+           allslots=C.Counter(slots_count)
+           for x in proposals:
+            s=slot(x['horse_key'],x['date'],x.get('course'))
+            if not allslots[x['model_version'],s]:allslots[x['model_version'],s]=1
+            match,reason=link_result(x,links,allslots);assert match, (x['horse_key'],x['date'],reason)
+           with sqlite3.connect(candidate) as c:
+            changes=H.save_ratings(c,proposals);assert H.save_ratings(c,proposals).get('unchanged',0)==len(proposals)
+            assert c.execute('pragma quick_check').fetchone()[0]=='ok'
+            c.execute('attach database ? as original',(str(original.resolve()),));assert not c.execute(f'SELECT {Store.FIELDS} FROM original.hpr_ratings EXCEPT SELECT {Store.FIELDS} FROM main.hpr_ratings LIMIT 1').fetchone();c.execute('detach database original')
+            expected=Store.ledger(c);assert expected[0]==before[0]+changes.get('inserted',0)+changes.get('revised',0)
+            # E HPR reader: check prior-only ratings and the exact six recovered identities.
+            cards=json.loads((ROOT/'racecards.json').read_text())['runners']; names={'Ryan\'s Rocket','Konfusion','Palamon','Cannock Park','Liege Ardent','I Am Legend'}
+            consumption={x['horse']:{'prior_hpr_count':len(H.previous_ratings(c,H.identity(x),DAY)),'preoff_hpr':H.preoff_hpr(H.previous_ratings(c,H.identity(x),DAY),x)} for x in cards if x.get('date')==DAY and x.get('horse') in names}
+           # Exercise actual G2 adapter without producing selections or changing weights. G2 uses observed results, not numeric HPR itself.
+           class Capture:
+            def __init__(self):self.hits=C.Counter()
+            def add(self,r,d,n):
+             if r.get('horse') in names:self.hits[r['horse']]+=1
+           cap=Capture(); g2=G.load_recent_hpr(cap,candidate,'2025-12-31',DAY)
+           summary={'target':DAY,'status':'READY_TO_PUBLISH' if proposals else 'HELD_NO_VALIDATED_NEW_RATINGS','original_rows':before[0],'new_rows':expected[0],'changes':changes,'profiles':report,'unverified_events':details,'corroborated_missing_references':repaired_refs,'E_prior_reader':consumption,'G2_adapter':g2,'G2_observed_rows_for_targets':dict(cap.hits),'model_formula':H.VERSION,'selection_logic_changed':False,'full_live_selection_run_performed':False,'base_sha':before[1]}
+           if proposals:
+            new=W/'new-shards';Store.archive(candidate,new);restored=Store.restore(new,W/'check.sqlite');assert (restored['total_rows'],restored['ledger_sha256'])==expected
+            shards=ROOT/'hpr/shards';shutil.rmtree(shards);shutil.copytree(new,shards)
+           (OUT/'summary.json').write_text(json.dumps(summary,indent=2));(OUT/'candidate-hpr-revisions.json').write_text(json.dumps(proposals,indent=2));print(json.dumps(summary,indent=2),flush=True)
+          PYCODE
+          python -m py_compile "$RUNNER_TEMP/stage204g.py"
+          python -u "$RUNNER_TEMP/stage204g.py"
+      - name: Publish only independently verified new ratings
+        run: |
+          set -euo pipefail
+          if test -z "$(git status --porcelain -- data/hpr/shards scripts/stage204g_history_corrections.py scripts/stage167_validated_history.py)"; then echo 'No new validated changes'; exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A data/hpr/shards scripts/stage204g_history_corrections.py scripts/stage167_validated_history.py
+          test -z "$(git diff --cached --name-only | grep -Ev '^(data/hpr/shards/|scripts/stage204g_history_corrections.py$|scripts/stage167_validated_history.py$)' || true)"
+          git commit -m 'Stage204G: verified historical outcomes and targeted HPR replay'
+          for attempt in 1 2 3; do
+            git fetch origin main
+            python - <<'PYCODE'
+          import json,subprocess,pathlib
+          p=pathlib.Path('reports/stage204g/output/summary.json');z=json.loads(p.read_text());m=json.loads(subprocess.check_output(['git','show','origin/main:data/hpr/shards/manifest.json']))
+          assert m['ledger_sha256']==z['base_sha'],'Remote HPR ledger changed; refusing stale write'
+          PYCODE
+            git rebase origin/main || { git rebase --abort || true; exit 1; }
+            if git push origin HEAD:main; then
+              python - <<'PYCODE'
+          import json,pathlib
+          p=pathlib.Path('reports/stage204g/output/summary.json');z=json.loads(p.read_text());z['status']='PUBLISHED' if z['changes'] else 'HISTORY_PUBLISHED_HPR_HELD';p.write_text(json.dumps(z,indent=2));print(json.dumps(z,indent=2))
+          PYCODE
+              exit 0
+            fi
+            sleep "$((attempt*3))"
+          done
+          exit 1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage204g-two-horse-hpr-${{ github.run_id }}
+          path: reports/stage204g/output/
+          if-no-files-found: warn
+          retention-days: 30
