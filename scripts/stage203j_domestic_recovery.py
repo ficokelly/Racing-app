@@ -1,0 +1,137 @@
+import collections as C, datetime as D, json, os, pathlib as P, sqlite3
+from scripts import stage203c_consolidated_history as V, stage203d_archive_recovery as A, stage203_identity_recovery as E, stage203h_targeted_history as H
+from scripts.rhp_runner_eligibility import eligibility
+import import_historical_ukie as I
+TARGET='2026-11-28'; ROOT=P.Path('data')
+LEDGER=ROOT/'stage203j-history'/'approved-2026-11-28.json'
+n=V.n
+SPECS=[
+  dict(horse='I Am Legend',hid='hrs_35938518',date='2023-06-22',course='Chelmsford',pos=6,sire='Barocci',dam='Rock The Legend',title='CCR Ladies Day 2023 Restricted Maiden Fillies Stakes',typ='Flat',surface='AW',distance=10,going='Standard',url='https://www.sportinglife.com/racing/results/2023-06-22/chelmsford-city/744029/ccr-ladies-day-2023-restricted-maiden-fillies-stakes-gbb-race',order="Paradise Row|Eloped|Third Batch|Oh So Grand|Pourquoi|I Am Legend|Style Of Life|Huda Star|Hill Filly|Portraitist|Arlecchino's Star",terminal={}),
+  dict(horse='Cannock Park',hid='hrs_34456870',date='2026-06-13',course='Hexham',pos=None,sire='Cannock Chase',dam=None,title='Lisa Bond Celebration Handicap Hurdle',typ='Hurdle',surface='Turf',distance=20+28/220,going='Good',url='https://www.racingpost.com/results/25/hexham/2026-06-13/919943/',order="Perseus Way|Well Educated|Passing Diamond|Miss Maverick|Johnson's Blue|Sunset Hill",terminal={'Imperial Data':'F','Cannock Park':'REF'}),
+  dict(horse='Liege Ardent',hid='hrs_57686468',date='2026-10-27',course='Bangor-on-Dee',pos=5,sire='Pour Moi',dam='Laurana I',title='Overton Handicap Chase',typ='Chase',surface='Turf',distance=24+30/220,going='Good To Soft',url='https://www.racingpost.com/results/4/bangor-on-dee/2026-10-27/929333/',order="My Bobby's Lass|Gasmani|Pappariche|Babatunde|Liege Ardent|Twistthenightaway|Cahier's Den|Finn Lough|Soldier For Glory|Daly Boy|Bataillon|The Big Breac",terminal={'On The Platform':'PU'},oldid='hrs_7000007322',olddam='Laurana',identity_evidence='https://www.irishracing.com/horse/Liege-Ardent-FR/800922')]
+def public(s):
+    return {**{n(h):('FINISHED',i) for i,h in enumerate(s['order'].split('|'),1)},**{n(h):(st,None) for h,st in s['terminal'].items()}}
+def norm_state(x):
+    if x[7] is None and str(x[8]).upper()=='RR':return ('REF',None)
+    return V.st(x)
+def safe_alias(s,card,old):
+    return (s['horse']=='Liege Ardent' and n(old[3])==n(s['horse']) and old[2]==s['oldid'] and n(old[17])==n(s['sire']) and n(old[18])==n(s['olddam']) and n(card['dam'])==n(s['dam']))
+def field(rows):
+    by={}
+    for x in rows:
+        if norm_state(x)[0]=='NR':continue
+        k=n(x[3]);assert k and k not in by
+        by[k]=x
+    return by
+def compatible(s,by):
+    exp=public(s)
+    if set(by)!=set(exp):return False
+    for k,x in by.items():
+        got=norm_state(x)
+        if got!=exp[k] and not (k==n(s['horse']) and s['horse']=='Cannock Park' and got==('UNKNOWN',None) and x[7] is None and str(x[8]).upper() in ('','UNKNOWN','RR')):return False
+    return True
+def query_field(c,rid):
+    return [list(x) for x in c.execute('select * from historical_runs where race_id=? order by runner_key',(rid,))]
+def existing(c,s):
+    cand=[]
+    for rid,co in c.execute('select id,course from historical_races where race_date=?',(s['date'],)):
+        if A.keycourse(co)!=A.keycourse(s['course']):continue
+        rows=query_field(c,rid)
+        try:by=field(rows)
+        except AssertionError:continue
+        if compatible(s,by):cand.append((rid,by))
+    return cand
+def load(root=ROOT):
+    p=root/'stage203j-history'/'approved-2026-11-28.json'
+    if not p.exists():return []
+    z=json.loads(p.read_text());assert z['schema']=='stage203j-v1'
+    for e in z['entries']:assert V.digest(e['payload'])==e['sha256']
+    return z['entries']
+def entry(s,kind,payload):return {'horse':s['horse'],'date':s['date'],'kind':kind,'payload':payload,'sha256':V.digest(payload),'source':s['url']}
+def apply(db,ref,entries,target):
+    cols,ids=V.refs(ref);adds=[];report=[]
+    with sqlite3.connect(db) as c:
+        c.execute('pragma foreign_keys=on');assert c.execute('select max(race_date) from historical_races').fetchone()[0]<target
+        for e in entries:
+            if e['date']>=target:continue
+            p=e['payload'];assert V.digest(p)==e['sha256'];status='HELD'
+            if e['kind']=='append':
+                status,ar=V.apply_one(c,p,ids)
+                if ar:adds.append(ar)
+            else:
+                old,new=p;rid,key=old[:2];rows=query_field(c,rid);cur=[x for x in rows if x[1]==key]
+                if len(cur)==1 and V.digest(cur[0])==V.digest(new):status='ALREADY_PRESENT'
+                elif len(cur)==1 and V.digest(cur[0])==V.digest(old):
+                    assert old[:2]==new[:2] and all(old[i]==new[i] for i in range(23) if i not in (2,7,8,17,18))
+                    if new[2] and any(x[1]!=key and x[2]==new[2] for x in rows):status='DUPLICATE_ID_HELD'
+                    else:
+                        c.execute('update historical_runs set horse_source_id=?, finish_pos=?, outcome=?, sire=?, dam=? where race_id=? and runner_key=?',(new[2],new[7],new[8],new[17],new[18],rid,key));status='REPAIRED_EXISTING'
+                else:status='EXISTING_RECORD_CHANGED_HELD'
+            report.append({'horse':e['horse'],'status':status})
+        assert c.execute('pragma quick_check').fetchone()[0]=='ok';c.commit()
+    V.write_refs(ref,cols,adds);return report
+def append(db,ref,src,target,root=ROOT):
+    r=apply(db,ref,load(root),target);print('STAGE203J_SHARED_HISTORY',r,flush=True);return r
+def audit(db,rows):
+    a,b=E.scan(db,rows,TARGET);return {x['horse_id']:x for x in E.classify(rows,a,b,TARGET)}
+def main():
+    import kagglehub
+    from stage167_validated_history import refreshed_inputs
+    out=P.Path('reports/stage203j/output');out.mkdir(parents=True,exist_ok=True)
+    cards0=json.loads((ROOT/'racecards.json').read_text())['runners'];rows=[r for r in cards0 if r['date']==TARGET and eligibility(r)=='ACTIVE'];cards={r['horse_id']:r for r in rows};assert rows and len(cards)==len(rows)
+    src=P.Path(kagglehub.dataset_download('deltaromeo/horse-racing-results-ukireland-2015-2025/versions/132'))
+    base=P.Path('reports/stage152-specialists/source/stage2/historical_ukie_staging.sqlite');refs=list(P.Path('reports/stage203j/ref').rglob('all_races_with_reference_event_ids.csv'));assert len(refs)==1
+    groups,meta=V.load_source(src,{s['date'] for s in SPECS});old={e['horse']:e for e in load()};decisions=[];approved=[]
+    with refreshed_inputs(base,refs[0],TARGET) as (db,ref):
+        before=audit(db,rows)
+        for s in SPECS:
+            card=cards.get(s['hid']);h=s['horse'];k=n(h);decision={'horse':h,'status':'HELD'}
+            if not card or n(card['horse'])!=k or E.expected(card,TARGET)!=s['date'] or n(card['sire'])!=n(s['sire']) or (s['dam'] and n(card['dam'])!=n(s['dam'])):
+                decisions.append({**decision,'reason':'CARD_CHANGED'});continue
+            if before[s['hid']]['last_run_matched'] is True:decisions.append({**decision,'status':'ALREADY_MATCHED'});continue
+            candidates=[];reasons=[]
+            with sqlite3.connect(db) as c:
+                found=existing(c,s)
+            if len(found)==1:
+                rid,by=found[0];x=by[k]
+                if E.exact(card,V.aid(x)) or safe_alias(s,card,x):
+                    y=list(x);y[2]=card['horse_id'];y[17]=card['sire'];y[18]=card['dam'];st,pos=public(s)[k];y[7]=pos;y[8]=st
+                    if y!=x:candidates.append(entry(s,'repair',[x,y]))
+                else:reasons.append('EXISTING_IDENTITY_CONFLICT')
+            elif len(found)>1:reasons.append('AMBIGUOUS_EXISTING_FIELD')
+            else:
+                for rid in groups:
+                    if meta[rid][0][1]!=s['date'] or A.keycourse(meta[rid][0][2])!=A.keycourse(s['course']):continue
+                    by=A.source_field(groups,rid)
+                    if set(by)!=set(public(s)):continue
+                    # Only the precise RR spelling is mapped to the established REF outcome.
+                    if h=='Cannock Park':
+                        for x in by[k]:
+                            if x[7] is None and str(x[8]).upper()=='RR':x[8]='REF'
+                    if not A.known_agrees(by,public(s)):reasons.append('PUBLIC_OUTCOME_CONFLICT');continue
+                    if not any(E.exact(card,V.aid(x)) or safe_alias(s,card,x) for x in by[k]):reasons.append('SOURCE_IDENTITY_CONFLICT');continue
+                    A.PUBLIC[rid]=(s['url'],s['order'],s['terminal'],s['title'],s['typ'],s['surface'],s['distance'],s['going'])
+                    data,why=A.build(rid,groups,meta,ROOT,'public',s['url']);reasons.append(why)
+                    if not data:continue
+                    data=list(data);data[1]=[list(x) for x in data[1]]
+                    targetrow=[x for x in data[1] if n(x[3])==k];assert len(targetrow)==1
+                    x=targetrow[0]
+                    if not (E.exact(card,V.aid(x)) or safe_alias(s,card,x)):continue
+                    x[2]=card['horse_id'];x[17]=card['sire'];x[18]=card['dam']
+                    if len({x[2] for x in data[1]})!=len(data[1]):continue
+                    candidates.append(entry(s,'append',data))
+            if len(candidates)!=1:
+                decisions.append({**decision,'reason':'NO_UNIQUE_CORROBORATED_CANDIDATE','candidates':len(candidates),'details':reasons});continue
+            e=candidates[0];r=apply(db,ref,[e],TARGET)[0];decisions.append({**r,'kind':e['kind']})
+            if r['status'] in ('ADDED','REPAIRED_EXISTING'):
+                check=audit(db,rows);assert check[s['hid']]['last_run_matched'] is True,('Recovery not visible to model history',h)
+                assert apply(db,ref,[e],TARGET)[0]['status']=='ALREADY_PRESENT'
+                approved.append(e);old[h]=e
+        after=audit(db,rows)
+        assert all(after[k]['starts']>=before[k]['starts'] and (before[k]['last_run_matched'] is not True or after[k]['last_run_matched'] is True) for k in before)
+        if approved:
+            LEDGER.parent.mkdir(parents=True,exist_ok=True);V.dump(LEDGER,{'schema':'stage203j-v1','entries':list(old.values())})
+        summary={'target':TARGET,'active':len(rows),'published_candidates':len(approved),'decisions':decisions,'raw_gaps':sum(x['last_run_matched'] is False or x['known_no_history'] for x in after.values()),'remaining':[x for x in after.values() if x['last_run_matched'] is False or x['known_no_history']],'idempotence_passed':True,'hpr_replay_required':True}
+        V.dump(out/'summary.json',summary);print(json.dumps(summary,indent=2),flush=True)
+        with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:f.write('## Stage203J results\n```json\n'+json.dumps(summary,indent=2)+'\n```\n')
+if __name__=='__main__':main()
