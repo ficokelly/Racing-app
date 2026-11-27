@@ -1,0 +1,136 @@
+name: Stage214 - Final 28 November pre-selection audit
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage214-final-preselection-audit
+  cancel-in-progress: false
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    env:
+      PYTHONPATH: .:scripts
+      PYTHONUNBUFFERED: '1'
+      GH_TOKEN: ${{ github.token }}
+      OPENBLAS_NUM_THREADS: '1'
+      ASKED_DATE: '2026-11-28'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate latest declarations and published person form
+        run: |
+          set -euo pipefail
+          mkdir -p reports/stage214
+          python - <<'PY'
+          import json, pathlib as P, collections as C, datetime as D
+          from zoneinfo import ZoneInfo
+          from scripts.stage32_form_rebuild import person_key
+          from scripts.rhp_runner_eligibility import eligibility
+          out=P.Path('reports/stage214'); day='2026-11-28'
+          def read(p): return json.loads(P.Path(p).read_text())
+          def save(p,x): (out/p).write_text(json.dumps(x,indent=2,default=str)+'\n')
+          def blank(x): return x is None or str(x).strip() in ('','-','0','None')
+          card=read('data/racecards.json'); form=read('data/strike-rates.json'); coverage=read('data/rhp-stage70-coverage.json')
+          allrows=[r for r in card['runners'] if r.get('date')==day]; rows=[r for r in allrows if eligibility(r)=='ACTIVE']; assert rows,'No active 28 November declarations'
+          now=D.datetime.now(D.timezone.utc); today=now.astimezone(ZoneInfo('Europe/Dublin')).date(); assert D.date.fromisoformat(day) in (today,today+D.timedelta(days=1))
+          collected=D.datetime.fromisoformat(card['collected_at'].replace('Z','+00:00'))
+          assert collected.tzinfo,'Racecard timestamp missing timezone'
+          indexes={}; dup_names=[]
+          for n in ('1','7','14'):
+            for k in ('trainer','jockey'):
+              pp=form['periods'][n][k+'s']; names=C.defaultdict(list)
+              for pid,v in pp.items(): names[person_key(v.get('name'))].append((pid,v))
+              indexes[n,k]=(pp,names)
+              dup_names.extend({'period':n,'kind':k,'name':name,'ids':[pid for pid,v in a]} for name,a in names.items() if name and len(a)>1)
+          by=C.defaultdict(list); details=[]; people={}; counts=C.Counter()
+          for r in rows:
+            by[str(r['race_id'])].append(r); flags=[]
+            for k in ('horse','horse_id','sire','dam','trainer','jockey','lbs','race_id','course','race_time','type'):
+              if blank(r.get(k)):flags.append('MISSING_'+k.upper())
+            if blank(r.get('going')) and blank(r.get('going_detailed')):flags.append('MISSING_GOING')
+            if blank(r.get('ofr')):flags.append('NO_OFFICIAL_RATING_REVIEW_NOT_AUTOMATIC_ERROR')
+            if r.get('going_provisional'):flags.append('PROVISIONAL_GOING_RECHECK_ON_RACE_DAY')
+            for kind in ('trainer','jockey'):
+              name=r.get(kind); pid=str(r.get(kind+'_id') or ''); nk=person_key(name)
+              for n in ('1','7','14'):
+                pp,names=indexes[n,kind]; matched=pp.get(pid) if pid else None
+                if matched and person_key(matched.get('name'))!=nk: state='ID_NAME_CONFLICT'; matched=None
+                elif matched:state='ID_MATCH'
+                elif len(names.get(nk,[]))==1 and nk:matched=names[nk][0][1]; state='NAME_MATCH_REVIEW_ID'
+                elif len(names.get(nk,[]))>1:state='AMBIGUOUS_NAME'
+                else:state='NO_RECORDED_RUNS_OR_UNMATCHED'
+                people[kind,pid,nk,n]={'kind':kind,'id':pid,'name':name,'days':n,'status':state,'form':matched}
+                if state in ('ID_NAME_CONFLICT','AMBIGUOUS_NAME'):flags.append(kind.upper()+'_'+state+'_'+n+'D')
+            for f in set(flags):counts[f]+=1
+            if flags:details.append({'race_id':r['race_id'],'course':r['course'],'time':r['race_time'],'horse':r['horse'],'horse_id':r.get('horse_id'),'flags':flags})
+          races=[]
+          for rid,rr in by.items():
+            first=rr[0]; ids=[r.get('horse_id') for r in rr]; slots={(r.get('course'),r.get('race_time'),r.get('type')) for r in rr}; gs={str(r.get('going') or r.get('going_detailed') or '') for r in rr}
+            flags=[]
+            if len(set(ids))!=len(ids):flags.append('DUPLICATE_HORSE_ID')
+            if len(slots)!=1:flags.append('CONFLICTING_RACE_METADATA')
+            if len(gs)>1:flags.append('GOING_CONFLICT')
+            if len(rr)<4:flags.append('SMALL_FIELD_ROUTE_REVIEW')
+            races.append({'race_id':rid,'course':first.get('course'),'time':first.get('race_time'),'race_type':first.get('type'),'active':len(rr),'going':sorted(gs),'flags':flags})
+          summary={'target':day,'card_asof':card['collected_at'],'card_age_minutes':round((now-collected).total_seconds()/60,1),'races':len(by),'declared':len(allrows),'active':len(rows),'runner_flags':dict(counts),'race_flags':dict(C.Counter(f for r in races for f in r['flags'])),'person_form_status_counts':dict(C.Counter(x['kind']+'_'+x['days']+'d_'+x['status'] for x in people.values())),'form_asof':form.get('as_of'),'identity_gaps':form['periods']['14'].get('identity_gaps'),'effective_coverage':form['periods']['14'].get('effective_form_coverage'),'historic_missing_results':coverage.get('missing_verified_results_for_historic_declared_races'),'independent_person_validation':'OUTSTANDING','notes':['A zero/no matched record is not proof of missing form. Review identity before interpreting zero.','Missing official ratings are not automatically errors, especially for debutants/maidens.','Going fallback may be provisional.','All files are read-only.']}
+          save('card-summary.json',summary);save('runner-flags.json',details);save('race-checks.json',races);save('person-form.json',list(people.values()));save('person-name-collisions.json',dup_names);print(json.dumps(summary,indent=2))
+          PY
+      - name: Install audit dependencies
+        run: pip install numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2 requests 'kagglehub>=0.3,<1' 'PyYAML>=6,<7'
+      - name: Reuse validated Stage200 history and HPR audit only
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pathlib as P, yaml, subprocess, os
+          p=P.Path('.github/workflows/stage200-tomorrow-data-audit.yml')
+          steps=yaml.safe_load(p.read_text())['jobs']['audit']['steps']
+          for label in ('Restore immutable baseline and HPR ledger','Audit every runner against the refreshed model database and HPR'):
+              matches=[s for s in steps if s.get('name')==label]
+              assert len(matches)==1,('Existing audit step changed',label)
+              command=matches[0]['run']; assert isinstance(command,str)
+              # Use the repository's existing read-only audit, never the scoring workflows.
+              print('Running existing audit step:',label,flush=True)
+              subprocess.run(['bash','-e','-o','pipefail','-c',command],check=True,env={**os.environ,'ASKED_DATE':'2026-11-28'})
+          PY
+      - name: Consolidate final review and verify no HPR or model writes
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pathlib as P, json, csv, collections as C, os
+          out=P.Path('reports/stage214'); old=P.Path('reports/stage200/output')
+          summary=json.loads((out/'card-summary.json').read_text()); history=json.loads((old/'summary.json').read_text())
+          assert history['target']==summary['target'] and history['active']==summary['active'] and history['races']==summary['races'],'Card changed or scope mismatch'
+          with (old/'runner-audit.csv').open() as f: rows=list(csv.DictReader(f))
+          known_external={'hrs_40959261':'2026-06-24','hrs_53475996':'2026-05-26'}
+          review=[]; classification=C.Counter()
+          for r in rows:
+            flags=[x for x in r.get('flags','').split(';') if x]; substantive=[x for x in flags if x not in ('NAME_COLLISION_OR_INCOMPLETE_PEDIGREE_REVIEW',)]
+            if r.get('horse_id') in known_external and r.get('expected_last_run')==known_external[r['horse_id']]:
+              category='KNOWN_FRENCH_FORM_EXTERNAL_REVIEW_NOT_ASSUMED_IMPORTED'
+            elif 'POSSIBLE_DEBUT_NOT_CONFIRMED' in flags: category='POSSIBLE_DEBUT_REQUIRES_CONFIRMATION'
+            elif substantive: category='TARGETED_FORM_OR_HPR_REVIEW'
+            elif flags: category='NAME_COLLISION_DIAGNOSTIC'
+            else: category='NO_HISTORY_FLAG'
+            classification[category]+=1
+            if category!='NO_HISTORY_FLAG':review.append({**r,'classification':category})
+          result={'target':summary['target'],'card':summary,'history':history,'history_classifications':dict(classification),'review_count':len(review),'status':'AUDIT_COMPLETE_REVIEW_BEFORE_SELECTIONS','models_changed':False,'hpr_recalculated':False,'independent_person_validation':'OUTSTANDING'}
+          (out/'final-summary.json').write_text(json.dumps(result,indent=2)+'\n');(out/'history-review.json').write_text(json.dumps(review,indent=2)+'\n');print(json.dumps(result,indent=2))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:f.write('## Final pre-selection audit\n\n```json\n'+json.dumps(result,indent=2)+'\n```\n')
+          PY
+          git diff --exit-code -- data scripts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage214-final-preselection-audit-${{ github.run_id }}
+          path: |
+            reports/stage214/
+            reports/stage200/output/
+          if-no-files-found: warn
+          retention-days: 30
