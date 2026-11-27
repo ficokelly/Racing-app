@@ -106,6 +106,32 @@ jobs:
           """
           compile(insertion, 'stage204c_hpr_overlay', 'exec')
           merged = source.replace(anchor, insertion + anchor, 1)
+          # Rebuild history from the exact data snapshot used to create the HPR artifact.
+          # A later archive refresh can contain the same race under a different identifier.
+          # Restore the live checkout immediately after building the historical DB, keeping fresh cards.
+          old_build = "History.build=capture\ntry:"
+          assert merged.count(old_build)==1
+          pinned_build = """# Stage196F: pin historical inputs to Stage204C source commit, not a later archive.
+          _history_pin='c043d3f50b30d794fa40250a2ad08e773941dbc0'
+          _live_cards=ROOT/'data/racecards.json'
+          _live_card_bytes=_live_cards.read_bytes()
+          # This is a read-only Actions workspace. Refuse changes to history-builder code.
+          assert not git('diff','--name-only',_history_pin,'HEAD','--','scripts').strip(),'Historical builder source changed; revalidate snapshot'
+          S.run(['git','restore','--source',_history_pin,'--worktree','--','data'],check=True,timeout=600)
+          audit['history_data_snapshot_commit']=_history_pin
+          print('STAGE196F_HISTORY_SNAPSHOT',_history_pin,flush=True)
+          History.build=capture
+          try:"""
+          merged=merged.replace(old_build,pinned_build,1)
+          end_build="finally:History.build=original_build"
+          assert merged.count(end_build)==1
+          restore_build="""finally:
+           History.build=original_build
+           S.run(['git','restore','--source','HEAD','--worktree','--','data'],check=True,timeout=600)
+           _live_cards.write_bytes(_live_card_bytes)
+           assert _live_cards.read_bytes()==_live_card_bytes,'Fresh declarations not restored'
+          """
+          merged=merged.replace(end_build,restore_build,1)
           # Scope the strict preflight to the upcoming declarations. Do not alter scorer inputs or formulas.
           preflight = "assert active and len({r['horse_id'] for r in active})==len(active)"
           assert merged.count(preflight)==1
