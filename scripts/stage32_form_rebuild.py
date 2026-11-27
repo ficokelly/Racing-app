@@ -235,6 +235,10 @@ def get_best_rows(as_of: dt.date, cache: dict, audit: collections.Counter):
                 audit['source_starters'] += 1
                 key = runner_key(race_date, course, off, runner.get('horse'))
                 ref = cache.get(key)
+                # Stage210: authoritative dated final identities, not declarations.
+                from scripts.stage210_verified_persons import apply as apply_stage210_persons
+                runner, ref, verified = apply_stage210_persons(key, race, runner, ref, person_key)
+                if verified: audit['stage210_verified_person_rows'] += 1
                 if ref and ref.get('identity_conflict'):
                     # Provider has its own identity? Keep it. A conflict only makes
                     # the fallback identity unusable.
