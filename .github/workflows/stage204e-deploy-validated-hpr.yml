@@ -1,0 +1,130 @@
+name: Stage204E - Publish validated HPR revisions without replay
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: stage86-hpr-daily-ledger
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      PYTHONPATH: .:scripts
+      PYTHONUNBUFFERED: '1'
+      GH_TOKEN: ${{ github.token }}
+      EXPECTED_LEDGER: b0a847215daac02cd5426d4ae7938c0bfa2d94f39cfb328bdb98c2239977f5da
+      DELTA_SHA: dd732551b6eeff9fa7ec9ec593c614dd42a7ef48728af01b324fc7cc68d85fb4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Restore approved derived HPR delta
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          mkdir -p reports/stage204e/{candidate,output}
+          gh run download 46068078518 --repo "$GITHUB_REPOSITORY" --name stage204d-incremental-hpr-46068078518 --dir reports/stage204e/candidate
+          echo "$DELTA_SHA  reports/stage204e/candidate/candidate-hpr-revisions.json" | sha256sum -c -
+          python scripts/stage87_hpr_storage.py self-test
+          python scripts/stage86_hpr_engine.py --mode self-test
+      - name: Append validated ratings and independently restore shards
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import collections, hashlib, json, os, pathlib, shutil, sqlite3
+          import stage86_hpr_engine as H
+          import stage87_hpr_storage as S
+          w=pathlib.Path('reports/stage204e'); out=w/'output'; shards=pathlib.Path('data/hpr/shards')
+          base=w/'base.sqlite'; candidate=w/'candidate.sqlite'; check=w/'restored.sqlite'
+          summary=json.loads((w/'candidate/summary.json').read_text())
+          p=w/'candidate/candidate-hpr-revisions.json'; raw=p.read_bytes(); delta=json.loads(raw)
+          assert hashlib.sha256(raw).hexdigest()==os.environ['DELTA_SHA']
+          assert summary['status']=='CANDIDATE_VALIDATED_NOT_DEPLOYED' and summary['target']=='2026-11-28'
+          assert summary['previous_candidate_unlinked']==0 and summary['previous_candidate_rows']==1736
+          assert summary['merged_delta_rows']==len(delta)==1884
+          assert summary['original_revisions_preserved'] and summary['second_save_idempotent']
+          assert summary['embedded_database']['copy_integrity']=='PASS'
+          assert summary['legacy_hpr_formula_unchanged']==H.VERSION
+          keys=[(r['horse_key'],r['race_key'],r['model_version']) for r in delta]
+          assert len(set(keys))==len(delta)
+          assert all(r['date']<'2026-11-28' and r['horse_key'].startswith('P|') and r['model_version']==H.VERSION and 0<=r['hpr']<=100 for r in delta)
+          orig=S.restore(shards,base)
+          shutil.copy2(base,candidate)
+          manifest=json.loads((shards/'manifest.json').read_text())
+          with sqlite3.connect(candidate) as c:
+              if orig['ledger_sha256']!=os.environ['EXPECTED_LEDGER']:
+                  # A changed ledger is never overwritten. An exact previous deployment is a no-op.
+                  def latest_hash(r):
+                      k=(r['horse_key'],r['race_key'],r['model_version'])
+                      v=c.execute('select source_sha from hpr_ratings where horse_key=? and race_key=? and model_version=? order by revision desc limit 1',k).fetchone()
+                      sig=hashlib.sha256(json.dumps(r,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
+                      return v and v[0]==sig
+                  assert all(latest_hash(r) for r in delta),'Live HPR ledger changed; refusing stale deployment'
+                  result={'status':'ALREADY_PUBLISHED','current_rows':orig['total_rows'],'delta_rows':len(delta),'model_formula':H.VERSION}
+                  (out/'deployment.json').write_text(json.dumps(result,indent=2)); print(json.dumps(result,indent=2)); raise SystemExit(0)
+              assert orig['total_rows']==132588
+              counts=H.save_ratings(c,delta)
+              assert counts.get('inserted',0)==1473 and counts.get('revised',0)==411 and counts.get('unchanged',0)==0,counts
+              assert c.execute('select count(*) from hpr_ratings').fetchone()[0]==134472
+              assert c.execute('pragma quick_check').fetchone()[0]=='ok'
+              c.execute('attach database ? as original',(str(base.resolve()),))
+              assert not c.execute(f'SELECT {S.FIELDS} FROM original.hpr_ratings EXCEPT SELECT {S.FIELDS} FROM main.hpr_ratings LIMIT 1').fetchone(),'Original revisions not preserved'
+              assert not c.execute('SELECT key,value FROM original.hpr_metadata EXCEPT SELECT key,value FROM main.hpr_metadata LIMIT 1').fetchone(),'Original metadata not preserved'
+              c.execute('detach database original')
+              assert H.save_ratings(c,delta)=={'unchanged':1884}
+              expected=S.ledger(c)
+          assert expected[0]==134472
+          # Build new shards only in a staging directory and validate lossless restore.
+          newshards=w/'new-shards'; S.archive(candidate,newshards)
+          restored=S.restore(newshards,check)
+          assert (restored['total_rows'],restored['ledger_sha256'])==expected
+          # Assert every validated payload is present in the exact restored file.
+          with sqlite3.connect(check) as c:
+              for row in delta:
+                  k=(row['horse_key'],row['race_key'],row['model_version'])
+                  payload=c.execute('SELECT payload FROM hpr_ratings WHERE horse_key=? AND race_key=? AND model_version=? ORDER BY revision DESC LIMIT 1',k).fetchone()
+                  assert payload and json.loads(payload[0])==row
+          shutil.rmtree(shards); shutil.copytree(newshards,shards)
+          result={'status':'READY_TO_PUBLISH','old_rows':orig['total_rows'],'new_rows':expected[0],'new_ledger_sha256':expected[1],'changes':counts,'delta_rows':len(delta),'prior_revisions_preserved':True,'independent_restore_passed':True,'model_formula':H.VERSION,'target':'2026-11-28','no_recalculation':True}
+          (out/'deployment.json').write_text(json.dumps(result,indent=2));print(json.dumps(result,indent=2))
+          PY
+      - name: Publish only HPR shard files with stale-write protection
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- data/hpr/shards && test -z "$(git status --porcelain -- data/hpr/shards)"; then echo 'Validated HPR delta already published'; exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A data/hpr/shards
+          test -z "$(git diff --cached --name-only | grep -v '^data/hpr/shards/' || true)"
+          git commit -m 'Stage204E: publish 1884 validated HPR revisions without replay'
+          for attempt in 1 2 3; do
+            git fetch origin main
+            python - <<'PY'
+          import subprocess,json,os
+          z=json.loads(subprocess.check_output(['git','show','origin/main:data/hpr/shards/manifest.json']))
+          assert z['ledger_sha256']==os.environ['EXPECTED_LEDGER'],'Remote HPR ledger changed; stop without overwriting'
+          PY
+            git rebase origin/main || { git rebase --abort || true; exit 1; }
+            if git push origin HEAD:main; then
+              python - <<'PY'
+          import json,pathlib,subprocess
+          p=pathlib.Path('reports/stage204e/output/deployment.json');z=json.loads(p.read_text());z['status']='PUBLISHED';z['commit']=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip();p.write_text(json.dumps(z,indent=2));print(json.dumps(z,indent=2))
+          PY
+              exit 0
+            fi
+            sleep "$((attempt*3))"
+          done
+          exit 1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage204e-hpr-deployment-${{ github.run_id }}
+          path: reports/stage204e/output/
+          if-no-files-found: warn
+          retention-days: 30
