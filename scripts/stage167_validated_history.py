@@ -74,6 +74,8 @@ def refreshed_inputs(history, reference, date):
             append_stage203k(db,ref,src,date)
             from scripts.stage203m_legend_repair import append as append_stage203m
             append_stage203m(db,ref,src,date)
+            from scripts.stage204g_history_corrections import apply as apply_stage204g
+            apply_stage204g(db,ref,src,date)
         yield db,ref
 
 def build(base,ref,source,tmp):
