@@ -1,0 +1,441 @@
+name: Stage210 - Verified dated trainer and jockey repairs
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: stage210-verified-persons
+  cancel-in-progress: false
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Apply exact verified evidence and validate 35 records
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p scripts data reports/stage210
+          cat > data/stage210-verified-person-identities.json <<'LEDGER'
+          {
+            "schema": "stage210-dated-final-identities-v1",
+            "records": [
+              {
+                "key": "2026-11-21|lingfield|14:20|waytodubai",
+                "horse": "Way To Dubai",
+                "position": "5",
+                "trainer": "Michael Appleby",
+                "jockey": "Cieren Fallon",
+                "source": "https://racingbrief.com/results/2026-11-21"
+              },
+              {
+                "key": "2026-11-21|punchestown|15:53|timetakestime",
+                "horse": "Time Takes Time",
+                "position": "9",
+                "trainer": "D Buckley",
+                "jockey": "Benjamin P Kennedy",
+                "source": "https://www.racingpost.com/results/195/punchestown/2026-11-21/933610/"
+              },
+              {
+                "key": "2026-11-21|newcastle|14:49|chicagostorm",
+                "horse": "Chicago Storm",
+                "position": "7",
+                "trainer": "Barry Murtagh",
+                "jockey": "Amie Waugh",
+                "source": "https://racingbrief.com/results/2026-11-21"
+              },
+              {
+                "key": "2026-11-22|lingfield|12:55|medaali",
+                "horse": "Medaali",
+                "position": "3",
+                "trainer": "Simon Crisford",
+                "jockey": "Callum Shepherd",
+                "source": "https://www.racingpost.com/results/393/lingfield-aw/2026-11-22/931810/"
+              },
+              {
+                "key": "2026-11-22|lingfield|11:55|basics",
+                "horse": "Basics",
+                "position": "6",
+                "trainer": "Simon Crisford",
+                "jockey": "Harry Davies",
+                "source": "https://www.racingpost.com/results/393/lingfield-aw/2026-11-22/931811/"
+              },
+              {
+                "key": "2026-11-22|lingfield|11:25|ladymariko",
+                "horse": "Lady Mariko",
+                "position": "3",
+                "trainer": "Dylan Cunha",
+                "jockey": "Hope Regan",
+                "source": "https://racingbrief.com/results/2026-11-22"
+              },
+              {
+                "key": "2026-11-22|punchestown|15:00|iammaximus",
+                "horse": "I Am Maximus",
+                "position": "9",
+                "trainer": "W. P. Mullins",
+                "jockey": "Mark Walsh",
+                "source": "https://racingbrief.com/results/2026-11-22"
+              },
+              {
+                "key": "2026-11-22|punchestown|14:30|kainsbourg",
+                "horse": "Kainsbourg",
+                "position": "5",
+                "trainer": "Gordon Elliott",
+                "jockey": "Mark Walsh",
+                "source": "https://racingbrief.com/results/2026-11-22"
+              },
+              {
+                "key": "2026-11-23|bangorondee|14:07|upweitjack",
+                "horse": "Upweitjack",
+                "position": "9",
+                "trainer": "Mel Rowley",
+                "jockey": "Stan Sheppard",
+                "source": "https://racingbrief.com/results/2026-11-23"
+              },
+              {
+                "key": "2026-11-23|bangorondee|13:35|solesolution",
+                "horse": "Sole Solution",
+                "position": "2",
+                "trainer": "Venetia Williams",
+                "jockey": "Stan Sheppard",
+                "source": "https://www.racingpost.com/results/4/bangor-on-dee/2026-11-23/933648/"
+              },
+              {
+                "key": "2026-11-23|bangorondee|13:05|theywantme",
+                "horse": "They Want Me",
+                "position": "1",
+                "trainer": "Donald McCain",
+                "jockey": "Kielan Woods",
+                "source": "https://www.racingpost.com/results/4/bangor-on-dee/2026-11-23/933647/"
+              },
+              {
+                "key": "2026-11-23|bangorondee|13:05|chasingglance",
+                "horse": "Chasing Glance",
+                "position": "5",
+                "trainer": "Tom Ellis",
+                "jockey": "Finn Lambert",
+                "source": "https://www.racingpost.com/results/4/bangor-on-dee/2026-11-23/933647/"
+              },
+              {
+                "key": "2026-11-23|bangorondee|15:17|pelegro",
+                "horse": "Pelegro",
+                "position": "5",
+                "trainer": "Mel Rowley",
+                "jockey": "Stan Sheppard",
+                "source": "https://racingbrief.com/results/2026-11-23"
+              },
+              {
+                "key": "2026-11-23|bangorondee|14:42|mystimeadow",
+                "horse": "Mysti Meadow",
+                "position": "4",
+                "trainer": "Mel Rowley",
+                "jockey": "Bryan Carver",
+                "source": "https://racingbrief.com/results/2026-11-23"
+              },
+              {
+                "key": "2026-11-23|bangorondee|14:42|gaelicheather",
+                "horse": "Gaelic Heather",
+                "position": "9",
+                "trainer": "Tom Ellis",
+                "jockey": "Finn Lambert",
+                "source": "https://racingbrief.com/results/2026-11-23"
+              },
+              {
+                "key": "2026-11-24|southwell|13:26|lookthisway",
+                "horse": "Look This Way",
+                "position": "10",
+                "trainer": "Tom Ward",
+                "jockey": "Liam Harrison",
+                "source": "https://racingbrief.com/results/2026-11-24"
+              },
+              {
+                "key": "2026-11-24|lingfield|14:38|firstencounter",
+                "horse": "First Encounter",
+                "position": "9",
+                "trainer": "John Gallagher",
+                "jockey": "Connor Planas",
+                "source": "https://racingbrief.com/results/2026-11-24"
+              },
+              {
+                "key": "2026-11-24|wolverhampton|16:30|diligenthenry",
+                "horse": "Diligent Henry",
+                "position": "1",
+                "trainer": "Gemma Tutty",
+                "jockey": "Oliver Carmichael",
+                "source": "https://www.racingpost.com/results/513/wolverhampton-aw/2026-11-24/931841/"
+              },
+              {
+                "key": "2026-11-25|kempton|16:20|atinasuperiore",
+                "horse": "Atina Superiore",
+                "position": "7",
+                "trainer": "Ed de Giles",
+                "jockey": "Luke Morris",
+                "source": "https://racingbrief.com/results/2026-11-25"
+              },
+              {
+                "key": "2026-11-25|hereford|15:37|ineversaid",
+                "horse": "I Never Said",
+                "position": "2",
+                "trainer": "John O'Shea",
+                "jockey": "Kielan Woods",
+                "source": "https://racingbrief.com/results/2026-11-25"
+              },
+              {
+                "key": "2026-11-25|newcastle|14:55|theresdevpumpkin",
+                "horse": "The Resdev Pumpkin",
+                "position": "5",
+                "trainer": "Michael & David Easterby",
+                "jockey": "Joanna Mason",
+                "source": "https://racingbrief.com/results/2026-11-25"
+              },
+              {
+                "key": "2026-11-25|hereford|13:31|monarkwood",
+                "horse": "Monark Wood",
+                "position": "2",
+                "trainer": "Max Comley",
+                "jockey": "Freddie Mitchell",
+                "source": "https://racingbrief.com/results/2026-11-25"
+              },
+              {
+                "key": "2026-11-25|hereford|12:31|teleleo",
+                "horse": "Teleleo",
+                "position": "4",
+                "trainer": "Martin Keighley",
+                "jockey": "James Best",
+                "source": "https://racingbrief.com/results/2026-11-25"
+              },
+              {
+                "key": "2026-11-25|newcastle|18:00|diligenthenry",
+                "horse": "Diligent Henry",
+                "position": "2",
+                "trainer": "Gemma Tutty",
+                "jockey": "Oliver Carmichael",
+                "source": "https://racingbrief.com/results/2026-11-25"
+              },
+              {
+                "key": "2026-11-26|thurles|15:39|cosmicfront",
+                "horse": "Cosmic Front",
+                "position": "12",
+                "trainer": "W. P. Mullins",
+                "jockey": "Paul Townend",
+                "source": "https://racingbrief.com/results/2026-11-26"
+              },
+              {
+                "key": "2026-11-26|thurles|15:06|momentofgrace",
+                "horse": "Moment Of Grace",
+                "position": "1",
+                "trainer": "W. P. Mullins",
+                "jockey": "Paul Townend",
+                "source": "https://racingbrief.com/results/2026-11-26"
+              },
+              {
+                "key": "2026-11-26|thurles|14:31|mahollia",
+                "horse": "Mahollia",
+                "position": "1",
+                "trainer": "W. P. Mullins",
+                "jockey": "Mr P. W. Mullins",
+                "source": "https://racingbrief.com/results/2026-11-26"
+              },
+              {
+                "key": "2026-11-26|thurles|13:56|neria",
+                "horse": "Neria",
+                "position": "1",
+                "trainer": "W. P. Mullins",
+                "jockey": "Paul Townend",
+                "source": "https://racingbrief.com/results/2026-11-26"
+              },
+              {
+                "key": "2026-11-26|thurles|12:46|champkiely",
+                "horse": "Champ Kiely",
+                "position": "1",
+                "trainer": "W. P. Mullins",
+                "jockey": "Paul Townend",
+                "source": "https://racingbrief.com/results/2026-11-26"
+              },
+              {
+                "key": "2026-11-26|thurles|12:46|highclasshero",
+                "horse": "High Class Hero",
+                "position": "3",
+                "trainer": "W. P. Mullins",
+                "jockey": "Danny Mullins",
+                "source": "https://racingbrief.com/results/2026-11-26"
+              },
+              {
+                "key": "2026-11-26|thurles|12:46|leckywatson",
+                "horse": "Lecky Watson",
+                "position": "4",
+                "trainer": "W. P. Mullins",
+                "jockey": "Sean O'Keeffe",
+                "source": "https://racingbrief.com/results/2026-11-26"
+              },
+              {
+                "key": "2026-11-26|thurles|12:46|ileatlantique",
+                "horse": "Ile Atlantique",
+                "position": "5",
+                "trainer": "W. P. Mullins",
+                "jockey": "Daniel King",
+                "source": "https://racingbrief.com/results/2026-11-26"
+              },
+              {
+                "key": "2026-11-26|marketrasen|12:29|grandscheme",
+                "horse": "Grand Scheme",
+                "position": "1",
+                "trainer": "Sam England",
+                "jockey": "Gavin Sheehan",
+                "source": "https://www.racingpost.com/results/35/market-rasen/2026-11-26/931674/"
+              },
+              {
+                "key": "2026-11-27|doncaster|12:00|kentdethaix",
+                "horse": "Kent De Thaix",
+                "position": "2",
+                "trainer": "Sam England",
+                "jockey": "Richie McLernon",
+                "source": "https://www.racingpost.com/results/15/doncaster/2026-11-27/931689/"
+              },
+              {
+                "key": "2026-11-27|southwell|18:15|neddiesboy",
+                "horse": "Neddies Boy",
+                "position": "7",
+                "trainer": "Daragh Bourke",
+                "jockey": "Oisin Orr",
+                "source": "https://www.racingpost.com/results/394/southwell-aw/2026-11-27/931878/"
+              }
+            ]
+          }
+          LEDGER
+          cat > scripts/stage210_verified_persons.py <<'HELPER'
+          """Exact dated final result identities, verified independently of declaration cards."""
+          from pathlib import Path
+          from functools import lru_cache
+          import json
+
+          @lru_cache(maxsize=1)
+          def records():
+              p=Path(__file__).resolve().parent.parent/'data/stage210-verified-person-identities.json'
+              doc=json.loads(p.read_text())
+              assert doc['schema']=='stage210-dated-final-identities-v1'
+              out={x['key']:x for x in doc['records']}
+              assert len(out)==len(doc['records'])==35
+              return out
+
+          def apply(key,race,runner,ref,person_key):
+              ev=records().get(key)
+              if not ev or race.get('status')!='final' or str(runner.get('position')).upper()!=ev['position']:
+                  return runner,ref,False
+              # Do not override a contradictory later explicit final result. Do not copy
+              # stale declaration IDs for a replaced person. Only a name-confirmed ID survives.
+              if any(runner.get(k) and person_key(runner[k])!=person_key(ev[k]) for k in ('trainer','jockey')):
+                  return runner,ref,False
+              row=dict(runner)
+              for k in ('trainer','jockey'):
+                  ident=''
+                  if runner.get(k) and person_key(runner[k])==person_key(ev[k]):
+                      ident=str(runner.get(k+'_id') or '')
+                  if not ident and ref and person_key(ref.get(k))==person_key(ev[k]):
+                      ident=str(ref.get(k+'_id') or '')
+                  row[k]=ev[k]
+                  if ident: row[k+'_id']=ident
+                  else: row.pop(k+'_id',None)
+              row['stage210_person_evidence']=ev['source']
+              return row,None,True
+          HELPER
+          python - <<'REPAIR'
+          import collections,datetime as dt,json,pathlib
+          from scripts import stage32_form_rebuild as f
+          from scripts import stage210_verified_persons as v
+          from scripts.kaggle_form_baseline import merge as merge_kaggle
+          p=pathlib.Path('scripts/stage32_form_rebuild.py');s=p.read_text()
+          needle='                ref = cache.get(key)'
+          marker='                # Stage210: authoritative dated final identities, not declarations.'
+          assert s.count(needle)==1
+          if marker not in s:
+              addition=marker+"\n                from scripts.stage210_verified_persons import apply as apply_stage210_persons\n                runner, ref, verified = apply_stage210_persons(key, race, runner, ref, person_key)\n                if verified: audit['stage210_verified_person_rows'] += 1"
+              s=s.replace(needle,needle+'\n'+addition)
+              compile(s,str(p),'exec');p.write_text(s)
+          # Persist exact missing fields in the archived final result, keeping outcomes and SP untouched.
+          cache=f.cache_index(f.load_json(f.CACHE_FILE))
+          for path in (pathlib.Path('data/racecards-archive.json'),pathlib.Path('data/racecards.json')):
+              f.combine_person_cache(cache,f.load_json(path),path.name,collections.Counter())
+          matched=collections.Counter(); changes=[]
+          for day in sorted({k[:10] for k in v.records()}):
+              path=f.RESULTS_DIR/(day+'.json');doc=f.load_json(path); before=json.loads(json.dumps(doc)); modified=0
+              for race in doc.get('results',[]):
+                  off=race.get('off_dt') or race.get('race_time') or race.get('off')
+                  for i,row in enumerate(race.get('runners',[])):
+                      if not f.is_starter(row): continue
+                      k=f.runner_key(day,race.get('course'),off,row.get('horse'))
+                      if k not in v.records():continue
+                      new,_,ok=v.apply(k,race,row,cache.get(k),f.person_key)
+                      assert ok, ('Final result changed; needs review',k,row)
+                      assert all(new.get(a)==row.get(a) for a in ('horse','position','status','sp'))
+                      matched[k]+=1
+                      if new!=row:
+                          race['runners'][i]=new; modified+=1
+                      changes.append({'key':k,'position':row['position'],'trainer':new['trainer'],'jockey':new['jockey'],'source':new['stage210_person_evidence']})
+              if modified:
+                  path.write_text(json.dumps(doc,ensure_ascii=False,indent=2)+'\n')
+          assert set(matched)==set(v.records()) and all(n==1 for n in matched.values()), dict(matched)
+          assert len(changes)==35
+          out=pathlib.Path('reports/stage210');out.mkdir(parents=True,exist_ok=True)
+          (out/'repairs.json').write_text(json.dumps({'matched':len(matched),'winning_rows':sum(x['position'] in (1,'1') for x in changes),'records':changes},indent=2,ensure_ascii=False)+'\n')
+          print('Verified final person identities:',len(matched))
+          REPAIR
+          python -m py_compile scripts/stage210_verified_persons.py scripts/stage32_form_rebuild.py
+          python - <<'VERIFY'
+          import collections,datetime as dt,json,pathlib
+          from scripts import stage32_form_rebuild as f
+          from scripts import stage210_verified_persons as v
+          from scripts.kaggle_form_baseline import merge
+          as_of=dt.date(2026,11,27);audit=collections.Counter();cache=f.cache_index(f.load_json(f.CACHE_FILE))
+          for p in (pathlib.Path('data/racecards-archive.json'),pathlib.Path('data/racecards.json')):
+              f.combine_person_cache(cache,f.load_json(p),p.name,audit)
+          rows,dates=f.get_best_rows(as_of,cache,audit)
+          assert audit['stage210_verified_person_rows']==35,audit
+          output=merge(f.build_form(rows,as_of,dates,audit),rows,dates,as_of,audit,f.build_form,f.person_key)
+          assert output['periods']['14']['identity_gaps']=={'trainer':0,'jockey':0},output['periods']['14']['identity_gaps']
+          print('27 November 14-day API+Kaggle identity gaps:',output['periods']['14']['identity_gaps'])
+          print('Verified identity rows:',audit['stage210_verified_person_rows'])
+          VERIFY
+
+      - name: Rebuild trainer and jockey strike rates only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python calculate-strike-rates.py
+          python scripts/rhp_stage70_data_coverage.py --out data/rhp-stage70-coverage.json
+          python - <<'PY'
+          import json,pathlib
+          r=json.load(open('reports/stage32/form-rebuild-audit.json'))
+          a=json.load(open('reports/stage210/repairs.json'))
+          a['published_as_of']=r['as_of'];a['published_missing_trainer']=r['fourteen_day_missing_trainer_rows'];a['published_missing_jockey']=r['fourteen_day_missing_jockey_rows']
+          if r['as_of']=='2026-11-27': assert a['published_missing_trainer']==a['published_missing_jockey']==0,a
+          pathlib.Path('reports/stage210/repairs.json').write_text(json.dumps(a,indent=2,ensure_ascii=False)+'\n')
+          print({k:v for k,v in a.items() if k!='records'})
+          PY
+
+      - name: Commit only targeted identity and form updates
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- data/stage210-verified-person-identities.json scripts/stage210_verified_persons.py scripts/stage32_form_rebuild.py data/racing-results/2026-11-{21,22,23,24,25,26,27}.json data/strike-rates.json data/form-identity-cache.json reports/stage32/form-rebuild-audit.json data/rhp-stage70-coverage.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Stage210 restore 35 dated final trainer and jockey records'
+          git pull --rebase origin main && git push origin HEAD:main
+
+      - name: Upload verification report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage210-verified-person-repair
+          path: reports/stage210/
+          if-no-files-found: warn
+          retention-days: 30
