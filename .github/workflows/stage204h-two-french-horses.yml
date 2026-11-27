@@ -1,0 +1,114 @@
+name: Stage204H - Two declared horses French form recovery
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: stage204h-two-french-horses
+  cancel-in-progress: false
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Recover only two declared horse histories on known French race dates
+        env:
+          RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
+          RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
+        run: |
+          python - <<'PY'
+          import os, json, pathlib, base64, re, unicodedata, datetime
+          from urllib.request import Request, urlopen
+          from urllib.parse import urlencode
+          from urllib.error import HTTPError, URLError
+          TARGET='2026-11-28'
+          OUT=pathlib.Path('reports/stage204h'); OUT.mkdir(parents=True,exist_ok=True)
+          def norm(s):
+              s=re.sub(r'\s*\((?:FR|GB|IRE)\)\s*$', '',str(s or ''),flags=re.I)
+              return re.sub('[^A-Z0-9]','',unicodedata.normalize('NFKD',s).encode('ascii','ignore').decode().upper())
+          cases=[dict(horse='Hamavi',horse_id='hrs_40959261',sire='Dubawi',dam='Baahama',date='2026-06-24',course='Chantilly',position=3,discipline='Flat',sources=['https://www.racingpost.com/results/204/chantilly/2026-06-24/923538/','https://www.irishracing.com/horse//Hamavi-IRE/758356']),dict(horse="Luron d'Oudairies",horse_id='hrs_53475996',sire='Masked Marvel',dam="Sonate D'Oudairies",date='2026-05-26',course='Auteuil',position=4,discipline='Chase',sources=['https://www.racingpost.com/results/205/auteuil/2026-05-26/921613/','https://www.irishracing.com/glorious-goodwood/horse/Luron-Doudairies-FR/825241'])]
+          cards=json.loads(pathlib.Path('data/racecards.json').read_text())['runners']
+          user=os.environ.get('RACING_API_USERNAME',''); password=os.environ.get('RACING_API_PASSWORD','')
+          auth=base64.b64encode((user+':'+password).encode()).decode()
+          def get(path,params):
+              if not user or not password:return None,'MISSING_API_CREDENTIALS'
+              try:
+                  req=Request('https://api.theracingapi.com'+path+'?'+urlencode(params),headers={'Authorization':'Basic '+auth,'Accept':'application/json','User-Agent':'RacingApp-targeted-form-audit/1.0'})
+                  with urlopen(req,timeout=25) as f:return json.load(f),None
+              except HTTPError as e:return None,'HTTP '+str(e.code)
+              except (URLError,TimeoutError,ValueError) as e:return None,type(e).__name__
+          def items(p):
+              if isinstance(p,list):return p
+              if isinstance(p,dict):
+                  for key in ('results','data','items','races'):
+                      if isinstance(p.get(key),list):return p[key]
+                      if isinstance(p.get(key),dict):
+                          a=items(p[key]);
+                          if a:return a
+              return []
+          def pick(r,*keys):
+              return next((r[k] for k in keys if r.get(k) not in (None,'')),None)
+          def flatten(r):
+              z=dict(r)
+              for key in ('race','runner','performance','details'):
+                  if isinstance(r.get(key),dict):z.update(r[key])
+              return z
+          def match(r,case,by_horse):
+              z=flatten(r)
+              d=str(pick(z,'date','race_date','off_dt') or '')[:10]
+              co=norm(pick(z,'course','racecourse'))
+              if d!=case['date'] or co!=norm(case['course']):return False
+              ident=pick(z,'horse_id','horse_source_id'); name=pick(z,'horse','horse_name','name')
+              if ident and str(ident)!=case['horse_id']:return False
+              if name and norm(name)!=norm(case['horse']):return False
+              if not by_horse and str(ident)!=case['horse_id']:
+                  if norm(name)!=norm(case['horse']) or norm(z.get('sire'))!=norm(case['sire']) or norm(z.get('dam'))!=norm(case['dam']):return False
+              for k in ('sire','dam'):
+                  if z.get(k) and norm(z[k])!=norm(case[k]):return False
+              return str(pick(z,'position','pos','finish_pos') or '').strip()==str(case['position'])
+          report=[]; recovered=[]
+          for case in cases:
+              card=[x for x in cards if x.get('date')==TARGET and x.get('horse_id')==case['horse_id'] and all(norm(x.get(k))==norm(case[k]) for k in ('horse','sire','dam'))]
+              row={**case,'target_card_confirmed':bool(card),'attempts':[],'status':'PUBLIC_RESULT_CORROBORATED_API_NOT_VERIFIED'}
+              if not card:
+                  row['status']='TARGET_CARD_IDENTITY_NOT_CONFIRMED'; report.append(row);continue
+              params={'start_date':case['date'],'end_date':case['date'],'limit':50}
+              matches=[]
+              for path in ('/v1/racecards/'+case['horse_id']+'/results','/v1/horses/'+case['horse_id']+'/results'):
+                  payload,err=get(path,params); batch=items(payload)
+                  matches=[flatten(x) for x in batch if isinstance(x,dict) and match(x,case,True)]
+                  row['attempts'].append({'endpoint':path,'error':err,'returned':len(batch),'matches':len(matches)})
+                  if len(matches)==1:break
+              if len(matches)!=1:
+                  matches=[]
+                  # Only this exact historical day. Retain only the matching horse, not unrelated French races.
+                  for skip in (0,100,200):
+                      payload,err=get('/v1/results',{'start_date':case['date'],'end_date':case['date'],'region':'fr','limit':100,'skip':skip}); batch=items(payload)
+                      for race in batch:
+                          if not isinstance(race,dict):continue
+                          for runner in race.get('runners',[]) or []:
+                              if isinstance(runner,dict):
+                                  z={k:v for k,v in race.items() if k!='runners'};z.update(runner)
+                                  if match(z,case,False):matches.append(flatten(z))
+                      row['attempts'].append({'endpoint':'/v1/results','skip':skip,'error':err,'returned':len(batch),'matches_so_far':len(matches)})
+                      if err or len(batch)<100:break
+              if len(matches)==1:
+                  row['status']='API_MATCH_CORROBORATED'; recovered.append({'horse_id':case['horse_id'],'horse':case['horse'],'jurisdiction':'FR','record':matches[0],'sources':case['sources']})
+              elif len(matches)>1:row['status']='AMBIGUOUS_API_MATCH_HELD'
+              report.append(row)
+          summary={'target':TARGET,'scope':'Two exact declared horses and two known prior race dates only','status':'AUDIT_COMPLETE','api_verified':len(recovered),'cases':report,'production_changes':False,'hpr_recalculated':False,'point_to_point_imported':False,'note':'Public form evidence is separate from API-backed data. No French result is inserted into the UK/IE model database or HPR ledger; model-specific compatibility and full-field validation are required before promotion.'}
+          (OUT/'summary.json').write_text(json.dumps(summary,indent=2));(OUT/'verified-target-records.json').write_text(json.dumps(recovered,indent=2));print(json.dumps(summary,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage204h-two-french-horses-${{ github.run_id }}
+          path: reports/stage204h/
+          if-no-files-found: warn
+          retention-days: 30
