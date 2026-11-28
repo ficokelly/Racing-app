@@ -1,0 +1,273 @@
+name: Stage216 - Full field win probability recovery and calibration
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: stage216-probabilities
+  cancel-in-progress: false
+jobs:
+  score:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    env:
+      PYTHONPATH: .:scripts
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      GH_TOKEN: ${{ github.token }}
+      TARGET_DAY: '2026-11-28'
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+        ref: a8d764409b9732fb1854da7a07bd8a9fdd4ce2fa
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    - name: Install original pinned dependencies
+      run: pip install numpy==2.2.6 scipy==1.15.3 pandas==2.2.3 scikit-learn==1.6.1 joblib==1.4.2 freezegun==1.5.5 requests
+        'kagglehub>=0.3,<1' 'PyYAML>=6,<7'
+    - name: Refresh declarations and materialize audited route-first engine
+      env:
+        RACING_API_USERNAME: ${{ secrets.RACING_API_USERNAME }}
+        RACING_API_PASSWORD: ${{ secrets.RACING_API_PASSWORD }}
+      run: |
+        set -euo pipefail
+        TODAY="$(TZ=Europe/Dublin date +%F)"
+        test "$TARGET_DAY" = "$TODAY" || test "$TARGET_DAY" = "$(TZ=Europe/Dublin date -d tomorrow +%F)"
+        if [ -n "$RACING_API_USERNAME" ] && [ -n "$RACING_API_PASSWORD" ]; then python collect-racecards.py; fi
+        python - <<'PY'
+        import pathlib as P, yaml, subprocess
+        steps=yaml.safe_load(P.Path('.github/workflows/stage206-audited-route-first.yml').read_text())['jobs']['score']['steps']
+        match=[s['run'] for s in steps if s.get('name')=='Materialize original route-first engine and add input gates']
+        assert len(match)==1
+        subprocess.run(['bash','-e','-o','pipefail','-c',match[0]],check=True)
+        PY
+    - name: Restore saved 45 races and historical calibration evidence
+      run: |
+        set -euo pipefail
+        mkdir -p stage216-prior stage216-historical stage216-settlement stage196-output
+        # Historical artifacts are available as each replay day completes; no historical scoring is launched here.
+        gh run download 46087614520 --repo "$GITHUB_REPOSITORY" --name stage215c-g5-recovery-46087614520 --dir stage216-prior
+        gh run download 45912361247 --repo "$GITHUB_REPOSITORY" --pattern 'stage209-day-*' --dir stage216-historical
+        gh run download 45902013748 --repo "$GITHUB_REPOSITORY" --name stage209-day-2026-10-26 --dir stage216-historical/stage209-day-2026-10-26
+        gh run download 45491296882 --repo "$GITHUB_REPOSITORY" --name stage177-shared-inputs --dir stage216-settlement
+        test -s stage216-prior/all-runners.csv
+        test -s stage216-settlement/settlement-prices.json
+    - name: Recover discarded score and native probability columns only
+      continue-on-error: true
+      run: |-
+        set -euo pipefail
+        python - <<'PY'
+        import pathlib as P, json
+        p=P.Path('stage196-work/engine.py');s=p.read_text()
+        def replace(old,new):
+         global s
+         assert s.count(old)==1,('Changed source anchor',old[:120],s.count(old))
+         s=s.replace(old,new)
+        replace("assert not unresolved,'Unexplained form gaps; stop before scoring'", "if unresolved:print('::warning::Historical form warnings remain advisory',flush=True)")
+        # Preserve source values before temporary scorer outputs are deleted. Only add output columns, never change scores.
+        anchor='# Capture only genuine, fresh declarations for the target day. Remove settlement fields and current price inputs.'
+        replace(anchor,'''# Preserve raw E scores which original replay adapters previously discarded.
+        for filename,old,new in [('stage185a_local_replay.py',"rank=rank,horse=r['horse']))","rank=rank,horse=r['horse'],score=float(v[i])))"),('stage185b_local_replay.py',"rank=rank,horse=field[i]['horse']))","rank=rank,horse=field[i]['horse'],score=float(scores[i])))")]:
+         ap=ROOT/'scripts'/filename;body=ap.read_text();assert body.count(old)==1,(filename,'score export anchor');body=body.replace(old,new);compile(body,str(ap),'exec');ap.write_text(body)
+        '''+anchor)
+        replace("model='C_HISTORICAL_CORE',horse=entry['cards'][int(i)]['horse'],rank=rank)","model='C_HISTORICAL_CORE',horse=entry['cards'][int(i)]['horse'],rank=rank,score=float(scores[int(i)]))")
+        # Collect filtered, actual original rank and numeric output, not synthetic scores.
+        replace("print('FAMILY_DONE',name,len(rows),flush=True)","writecsv(O/('stage216-raw-'+name+'.csv'),rows)\n print('FAMILY_DONE',name,len(rows),flush=True)")
+        # Reuse original G5 ranks and probabilities. For the other races keep original ranks as authoritative in the final probability layer.
+        replace('verified_cache={}', '''verified_cache={}
+        prior=ROOT/'stage216-prior'
+        with (prior/'interim-combined.csv').open(newline='',encoding='utf-8-sig') as f: previous=list(csv.DictReader(f))
+        with (prior/'all-runners.csv').open(newline='',encoding='utf-8-sig') as f: previous_full=list(csv.DictReader(f))
+        assert len(previous)==45 and len(previous_full)==445 and all(r['status']=='PAPER_SELECTION' for r in previous)
+        assert json.loads((prior/'routes.json').read_text())==routes,'Route map differs from saved selection set'
+        by_old=C.defaultdict(list)
+        for r in previous_full:by_old[rowkey(r)].append(r)
+        assert {rowkey(r) for r in previous}==set(fields),'Race universe changed; original saved selections remain intact'
+        for r in previous:
+         k=rowkey(r);rr=sorted(by_old[k],key=lambda x:int(float(x['rank'])))
+         assert r['model']==routes[assigned[k]]['model'] and r['race_type']==assigned[k]
+         if r['model'].startswith('G5_'):
+          assert {horse(x['horse']) for x in rr}=={horse(x['horse']) for x in fields[k]},'G5 field changed; cannot reuse probabilities as current'
+          verified_cache[k]=(r,rr)
+        '''.rstrip())
+        replace('for family in sorted(family_fields,key=lambda f:min(k[2] for k in family_fields[f])):',"for family in sorted((f for f in family_fields if f!='G5'),key=lambda f:min(k[2] for k in family_fields[f])):")
+        # Retain C rows (which bypass run wrapper), and all other original scorer output, before checkpoint reduces it to rank-only.
+        replace('results=checkpoint()\nwith open(os.environ[\'GITHUB_STEP_SUMMARY\'],\'a\') as f:',"results=checkpoint()\nwritecsv(O/'stage216-recovered-raw.csv',allrows)\nwith open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:")
+        # Failed scores are reported in probability audit; do not throw away previous saved rankings.
+        replace("if audit['selected']!=len(results):raise SystemExit('PARTIAL COVERAGE: valid selections preserved; inspect missing races')","if audit['selected']!=len(results):print('::warning::Some score recovery failed; original ranks retained for separate rank-only estimates')")
+        compile(s,str(p),'exec');p.write_text(s)
+        print('Stage216 score export installed; G5 excluded from recovery scoring.')
+        PY
+        python -m py_compile stage196-work/engine.py
+        python -u stage196-work/engine.py
+    - name: Fit, validate and apply probability layer to saved ranks
+      if: always()
+      run: |-
+        set -euo pipefail
+        mkdir -p stage196-output
+        cat > stage196-output/stage216_probability_layer.py <<'PY'
+        import csv,json,math,collections as C,pathlib as P,re,unicodedata
+        from datetime import datetime
+        import numpy as np
+        from scipy.optimize import minimize
+        ROOT=P.Path.cwd();out=ROOT/'stage196-output';out.mkdir(exist_ok=True)
+        DAY='2026-11-28';SPLIT='2026-11-09'
+        def read(p):return json.loads(P.Path(p).read_text())
+        def rows(p):
+         with P.Path(p).open(newline='',encoding='utf-8-sig') as f:return list(csv.DictReader(f))
+        def write(p,rr):
+         if not rr:return
+         with P.Path(p).open('w',newline='',encoding='utf8') as f:
+          w=csv.DictWriter(f,fieldnames=list(dict.fromkeys(k for r in rr for k in r)));w.writeheader();w.writerows(rr)
+        def norm(s):return re.sub('[^a-z0-9]','',unicodedata.normalize('NFKD',str(s or '')).encode('ascii','ignore').decode().lower())
+        def horse(s):return norm(re.sub(r'\s*\([A-Za-z]{2,3}\)\s*$','',str(s or '')))
+        def course(s):
+         n=norm(re.sub(r'\s*\((?:AW|GB|IRE|UK)\)\s*$','',str(s or ''),flags=re.I));return {'galwayire':'galway','wexfordire':'wexford','dundalkawire':'dundalk','dundalkire':'dundalk','dundalkaw':'dundalk','fairyhouseire':'fairyhouse','clonmelire':'clonmel','gowranparkire':'gowranpark','kemptonpark':'kempton','chelmsfordcity':'chelmsford','bangor':'bangorondee'}.get(n,n)
+        def key(r):return (r['date'],course(r.get('course') or r.get('meeting')),str(r.get('time') or r.get('time_utc') or r.get('off_utc') or '')[:5])
+        def finite(v):
+         try:return math.isfinite(float(v))
+         except (ValueError,TypeError):return False
+        def array(rr,fields):
+         for f in fields:
+          if all(finite(x.get(f)) for x in rr):return np.array([float(x[f]) for x in rr]),f
+         return None,None
+        def native(rr,fields=('win_probability','raw_source_probability')):
+         v,_=array(rr,fields)
+         return v/v.sum() if v is not None and np.all(v>=0) and abs(v.sum()-1)<1e-4 else None
+        def score(rr,fields=('research_score','score')):
+         v,_=array(rr,fields)
+         if v is None or np.any(np.diff(v)>1e-6) or np.std(v)<1e-10:return None
+         return (v-v.mean())/v.std()
+        def features(n,z=None):
+         rank=-np.log(np.arange(1,n+1,dtype=float));return np.column_stack((rank,z)) if z is not None else rank[:,None]
+        def softmax(x):
+         x=np.asarray(x);e=np.exp(x-x.max());return e/e.sum()
+        def loss(p,y):return -float(np.dot(y,np.log(np.maximum(p,1e-15))))
+        def fit(items,mode,prior=None,penalty=3.):
+         n=2 if mode=='score' else 1
+         prior=np.asarray(prior if prior is not None else ([.7,.3] if n==2 else [.7]))
+         def objective(b):
+          val=0.;grad=np.zeros(n)
+          for x in items:
+           a=features(len(x['y']),x['z'] if mode=='score' else None);p=softmax(a@b);val+=loss(p,x['y']);grad+=a.T@(p-x['y'])
+          return val+penalty*np.sum((b-prior)**2)/2,grad+penalty*(b-prior)
+         opt=minimize(objective,prior,jac=True,bounds=[(0,8)]*n,method='L-BFGS-B');assert opt.success,opt.message
+         return opt.x
+        settled={key(x):x for x in read(ROOT/'stage216-settlement/settlement-prices.json')}
+        hist=[];rejections=C.Counter();seen=set()
+        for p in sorted((ROOT/'stage216-historical').rglob('replay-candidate.json')):
+         for r in read(p)['races']:
+          k=key(r);sel=r.get('selection') or {};rr=sorted(r.get('runners') or [],key=lambda x:int(x['rank']));n=len(rr);m=r.get('source_model');typ=r.get('race_type')
+          if k[0]>=DAY or k[0]<'2026-10-25' or k[0]>'2026-11-23':continue
+          if not sel.get('pre_off_valid') or n<2 or n!=r.get('field_size') or [int(x['rank']) for x in rr]!=list(range(1,n+1)) or not m or not typ:rejections['INCOMPLETE_OR_UNSCORED']+=1;continue
+          try:
+           assert datetime.fromisoformat(sel['published_at'].replace('Z','+00:00'))<datetime.fromisoformat(r['race_time'].replace('Z','+00:00'))
+          except (KeyError,ValueError,AssertionError):rejections['PREOFF_INVALID']+=1;continue
+          v=settled.get(k)
+          if not v:rejections['NO_SETTLEMENT']+=1;continue
+          starter={horse(x['horse']) for x in v['starters']};wins={horse(x['horse']) for x in v['winner_prices']};names=[horse(x['horse']) for x in rr]
+          # Require the exact final field (no post-prediction nonrunner adjustments). Dead heats receive fractional labels.
+          if len(set(names))!=n or set(names)!=starter or not wins or not wins<=starter:rejections['FINAL_FIELD_OR_WINNER_MISMATCH']+=1;continue
+          if k in seen:raise ValueError(('Duplicate replay race',k))
+          seen.add(k);y=np.array([1/len(wins) if h in wins else 0 for h in names]);z=score(rr)
+          hist.append(dict(k=k,model=m,typ=typ,y=y,z=z,p=native(rr)))
+        assert len(hist)>=100,('Too little verified historical evidence',len(hist),rejections)
+        train=[x for x in hist if x['k'][0]<SPLIT];test=[x for x in hist if x['k'][0]>=SPLIT];assert len(train)>=50 and len(test)>=30
+        # Conditional likelihood: probability mass across the complete race field; positive coefficients preserve original ranks.
+        # Learn pooled and per-model parameters with shrinkage; race-type/model calibration only when supported by >=30 races.
+        def models(items):
+         result={}
+         for mode in ('rank','score'):
+          # Rank fallback is fitted on all exact-field races; score only on real numeric-score races.
+          valid=[x for x in items if mode=='rank' or x['z'] is not None]
+          if len(valid)<30:continue
+          pooled=fit(valid,mode);result[mode,'ALL','ALL']=(pooled,len(valid),'POOLED')
+          for m in sorted({x['model'] for x in valid}):
+           cohort=[x for x in valid if x['model']==m]
+           if len(cohort)<20:continue
+           b=fit(cohort,mode,pooled,10.);result[mode,m,'ALL']=(b,len(cohort),'MODEL')
+           for typ in sorted({x['typ'] for x in cohort}):
+            g=[x for x in cohort if x['typ']==typ]
+            if len(g)>=30:result[mode,m,typ]=(fit(g,mode,b,15.),len(g),'MODEL_RACE_TYPE')
+         return result
+        def predict(x,mm,force_rank=False):
+         mode='rank' if force_rank or x['z'] is None else 'score';m=x['model'];typ=x['typ']
+         # A score calibration for another model may be untrustworthy even after standardisation; prefer its own rank fit if no score cohort.
+         if mode=='score' and (mode,m,'ALL') not in mm:mode='rank'
+         b,n,scope=next(mm[k] for k in [(mode,m,typ),(mode,m,'ALL'),(mode,'ALL','ALL')] if k in mm)
+         return softmax(features(len(x['y']),x['z'] if mode=='score' else None)@b),mode.upper()+'_'+scope,n
+        fitted=models(train);final=models(hist)
+        validation=[];bands=[]
+        for m in ['ALL']+sorted({x['model'] for x in test}):
+         group=[x for x in test if m=='ALL' or x['model']==m]
+         for variant in ('RANK_ONLY','SCORE_WHERE_SUPPORTED','NATIVE_G'):
+          predictions=[];score_used=0
+          for x in group:
+           if variant=='NATIVE_G':
+            if x['p'] is None or not x['model'].startswith('G'):continue
+            p=x['p']
+           else:
+            p,used,_=predict(x,fitted,variant=='RANK_ONLY');score_used+=used.startswith('SCORE_')
+           predictions.append((p,x['y']))
+          if not predictions:continue
+          validation.append(dict(model=m,variant=variant,races=len(predictions),score_used_races=score_used,log_loss=sum(loss(p,y) for p,y in predictions)/len(predictions),uniform_log_loss=sum(math.log(len(p)) for p,y in predictions)/len(predictions),mean_multiclass_brier=sum(float(np.sum((p-y)**2)) for p,y in predictions)/len(predictions),mean_rank1_probability=sum(float(p[0]) for p,y in predictions)/len(predictions),actual_rank1_win_share=sum(float(y[0]) for p,y in predictions)/len(predictions)))
+          for lo in range(0,100,10):
+           pairs=[(float(a),float(b)) for p,y in predictions for a,b in zip(p,y) if lo<=100*a<lo+10 or lo==90 and a==1]
+           if pairs:bands.append(dict(model=m,variant=variant,lower_pct=lo,upper_pct=lo+10,runners=len(pairs),predicted_pct=100*np.mean([a for a,b in pairs]),observed_pct=100*np.mean([b for a,b in pairs])))
+        write(out/'stage216-holdout-validation.csv',validation);write(out/'stage216-calibration-bands.csv',bands)
+        # Select score vs rank using only held-out historical results. Prefer score if at least ten validation races and no worse log loss.
+        allow_score=set()
+        for m in {x['model'] for x in test}:
+         a=next((v for v in validation if v['model']==m and v['variant']=='RANK_ONLY'),None);b=next((v for v in validation if v['model']==m and v['variant']=='SCORE_WHERE_SUPPORTED'),None)
+         if a and b and b['score_used_races']>=10 and b['log_loss']<=a['log_loss'] and ('score',m,'ALL') in final:allow_score.add(m)
+        # Saved ranks are authoritative; score recovery must match every horse and rank before use.
+        prior=rows(ROOT/'stage216-prior/all-runners.csv');picks=rows(ROOT/'stage216-prior/interim-combined.csv');assert len(prior)==445 and len(picks)==45
+        recovered=C.defaultdict(list);raw=out/'stage216-recovered-raw.csv'
+        if raw.exists():
+         for r in rows(raw):recovered[key(r),r['model']].append(r)
+        # If a later family failed, individual score exports are retained.
+        for f in out.glob('stage216-raw-*.csv'):
+         if not raw.exists():
+          for r in rows(f):recovered[key(r),r['model']].append(r)
+        old=C.defaultdict(list)
+        for r in prior:old[key(r),r['model']].append(r)
+        assert len(old)==45
+        full=[];top=[];audit=[]
+        for pick in picks:
+         k=key(pick);m=pick['model'];typ=pick['race_type'];rr=sorted(old[k,m],key=lambda x:int(float(x['rank'])));n=len(rr)
+         assert n>=2 and [int(float(r['rank'])) for r in rr]==list(range(1,n+1)) and horse(rr[0]['horse'])==horse(pick['rank1'])
+         recovered_rows=sorted(recovered[k,m],key=lambda x:int(float(x['rank'])))
+         match=len(recovered_rows)==n and [(horse(r['horse']),int(float(r['rank']))) for r in recovered_rows]==[(horse(r['horse']),int(float(r['rank']))) for r in rr]
+         original=native(rr) if m.startswith('G5_') else native(recovered_rows) if match and m.startswith('G') else None
+         z=score(recovered_rows) if match and not m.startswith('G') else None
+         x=dict(model=m,typ=typ,y=np.zeros(n),z=z)
+         if original is not None:p=original;basis='NATIVE_MODEL_PROBABILITY';fit_n=None
+         else:p,basis,fit_n=predict(x,final,m not in allow_score)
+         assert np.all(np.isfinite(p)) and np.all(p>=0) and abs(p.sum()-1)<1e-9
+         assert np.all(np.diff(p)<=1e-6),('Probability order contradicts original rank',k,m)
+         # Keep full precision; percentages shown can be rounded by consumers.
+         for i,(r,q) in enumerate(zip(rr,p)):
+          full.append({**r,'estimated_win_probability':float(q),'estimated_win_pct':100*float(q),'probability_basis':basis,'calibration_races':fit_n,'recovered_original_score':recovered_rows[i].get('score','') if match else '', 'source_native_probability':float(original[i]) if original is not None else '', 'score_recovery_matches_original_ranks':match})
+         top.append({**pick,'estimated_win_probability':float(p[0]),'estimated_win_pct':100*float(p[0]),'rank2_estimated_win_pct':100*float(p[1]),'probability_basis':basis,'calibration_races':fit_n,'probability_gap_pct_points':100*float(p[0]-p[1]),'score_recovery_matches_original_ranks':match})
+         audit.append(dict(date=k[0],course=pick['course'],time=k[2],model=m,runners=n,probability_basis=basis,calibration_races=fit_n,score_recovery_matches_original_ranks=match,probability_sum=float(p.sum())))
+        assert len(full)==445 and len(top)==45
+        write(out/'stage216-all-runner-probabilities.csv',full);write(out/'stage216-rank1-probabilities.csv',sorted(top,key=lambda r:-r['estimated_win_pct']));write(out/'stage216-race-audit.csv',audit)
+        params=[dict(mode=k[0],model=k[1],race_type=k[2],coefficients=b.tolist(),n=n,scope=scope) for k,(b,n,scope) in final.items()]
+        (out/'stage216-calibration-parameters.json').write_text(json.dumps(params,indent=2))
+        summary=dict(status='CANDIDATE_PROBABILITIES_NOT_LIVE',races=len(top),runners=len(full),history_days=sorted({x['k'][0] for x in hist}),verified_historical_races=len(hist),training_races=len(train),holdout_races=len(test),rejections=dict(rejections),probability_basis=dict(C.Counter(r['probability_basis'] for r in top)),score_models_passing_holdout=sorted(allow_score),rankings_changed=False,hpr_recalculated=False,limitations=['Retrospective replay validation period is used to choose score versus rank; not independent validation of route selection or final refit.','Native G model probabilities are not guaranteed calibrated.','Rank-only estimates do not distinguish score gaps; pooled estimates are lower confidence.','Existing selections preserved even if recovery does not match; rank-only fallback explicitly marked.','No live publication; this is a probability snapshot of the saved 45 races, not a refreshed live declaration feed.'])
+        (out/'stage216-summary.json').write_text(json.dumps(summary,indent=2));print(json.dumps(summary,indent=2))
+        PY
+        python -m py_compile stage196-output/stage216_probability_layer.py
+        python -u stage196-output/stage216_probability_layer.py
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: stage216-win-probabilities-${{ github.run_id }}
+        path: stage196-output/
+        if-no-files-found: warn
+        retention-days: 90
+'on':
+  workflow_dispatch: null
